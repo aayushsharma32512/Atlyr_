@@ -1,0 +1,10 @@
+# Pinned versions to ensure CI/CD matches local environment
+open_clip_torch==3.2.0
+torch==2.8.0
+pillow
+supabase
+python-dotenv
+requests
+transformers==4.57.6
+tokenizers==0.22.2
+urllib3<2

@@ -1,0 +1,56 @@
+-- Migration: Include product_name in vector search RPC for products
+-- This replaces search_products_by_vector to return product_name so UI can display names
+
+-- Postgres cannot change a function's return type with CREATE OR REPLACE.
+-- Drop the existing function first, then recreate it with the new signature.
+DROP FUNCTION IF EXISTS public.search_products_by_vector(vector(1536), float, int);
+
+CREATE OR REPLACE FUNCTION search_products_by_vector(
+  query_embedding vector(1536),
+  match_threshold float DEFAULT 0.7,
+  match_count int DEFAULT 10
+)
+RETURNS TABLE (
+  id TEXT,
+  type item_type,
+  brand TEXT,
+  product_name TEXT,
+  size TEXT,
+  price INTEGER,
+  currency TEXT,
+  image_url TEXT,
+  description TEXT,
+  color TEXT,
+  created_at TIMESTAMP WITH TIME ZONE,
+  updated_at TIMESTAMP WITH TIME ZONE,
+  description_text TEXT,
+  similarity float
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    p.id,
+    p.type,
+    p.brand,
+    p.product_name,
+    p.size,
+    p.price,
+    p.currency,
+    p.image_url,
+    p.description,
+    p.color,
+    p.created_at,
+    p.updated_at,
+    p.description_text,
+    1 - (p.vector_embedding <=> query_embedding) AS similarity
+  FROM public.products p
+  WHERE p.vector_embedding IS NOT NULL
+    AND 1 - (p.vector_embedding <=> query_embedding) > match_threshold
+  ORDER BY p.vector_embedding <=> query_embedding
+  LIMIT match_count;
+END;
+$$;
+
+COMMENT ON FUNCTION search_products_by_vector IS 'Search products by vector similarity and return product_name for UI display';
