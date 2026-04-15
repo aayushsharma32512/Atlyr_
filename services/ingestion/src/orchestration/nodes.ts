@@ -772,7 +772,7 @@ export async function garmentSummaryNode(state: PipelineState): Promise<Partial<
         prompt: promptText,
         systemInstruction: viewPrompts.system,
         images: inlineImages,
-        model: 'gemini-3-pro-preview'
+        model: config.GEMINI_TEXT_MODEL
       });
       const parsed = parseStage1(response.text);
       const summaryObject = {
@@ -944,7 +944,7 @@ export async function enrichNode(state: PipelineState): Promise<Partial<Pipeline
     prompt,
     systemInstruction: ENRICH_SYSTEM_INSTRUCTION,
     images: imageParts,
-    model: 'gemini-3-pro-preview',
+    model: config.GEMINI_JSON_MODEL,
     generationConfig: {
       responseMimeType: 'application/json'
     }
@@ -1137,7 +1137,7 @@ export async function ghostNode(state: PipelineState): Promise<Partial<PipelineS
       systemInstruction: viewPrompts.system,
       aspectRatio: '1:1',
       imageSize: '2K',
-      model: 'gemini-3-pro-image-preview',
+      model: config.GEMINI_IMAGE_MODEL,
       garment: {
         data: garmentAsset.buffer,
         mimeType: garmentAsset.mimeType,

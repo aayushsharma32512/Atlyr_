@@ -41,6 +41,9 @@ const EnvSchema = z.object({
   LLM_RETRY_LIMIT: z.string().default('3'),
   LLM_RETRY_BASE_MS: z.string().default('1000'),
   LLM_RETRY_MAX_MS: z.string().default('10000'),
+  GEMINI_TEXT_MODEL: z.string().default('gemini-3.1-pro-preview'),
+  GEMINI_JSON_MODEL: z.string().default('gemini-3.1-pro-preview'),
+  GEMINI_IMAGE_MODEL: z.string().default('gemini-3-pro-image-preview'),
 
   MAX_CONCURRENCY_GLOBAL: z.string().default('8'),
   MAX_CONCURRENCY_PER_DOMAIN: z.string().default('2'),
