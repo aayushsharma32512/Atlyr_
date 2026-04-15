@@ -2,7 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { GenerationConfig, Part } from '@google/generative-ai';
 import { config } from '../../config/index';
 
-const DEFAULT_MODEL = 'gemini-3-pro-preview';
+const DEFAULT_MODEL = config.GEMINI_TEXT_MODEL;
 
 type GeminiImageInput = {
   data: Buffer;
@@ -36,6 +36,7 @@ function getClient(): GoogleGenerativeAI {
     if (!config.GOOGLE_API_KEY) {
       throw new Error('missing-google-api-key');
     }
+    console.log('[Aayush] Creating GoogleGenerativeAI client with key:', config.GOOGLE_API_KEY.substring(0, 10) + '...');
     client = new GoogleGenerativeAI(config.GOOGLE_API_KEY);
   }
   return client;
@@ -101,6 +102,7 @@ function toInlineImagePart(image: GeminiImageInput): Part {
 export async function generateGeminiJson<T = unknown>(options: GeminiJsonOptions): Promise<GeminiJsonResult<T>> {
   const clientInstance = getClient();
   const modelName = options.model ?? DEFAULT_MODEL;
+  console.log('[Aayush] generateGeminiJson: requesting model:', modelName);
 
   const generationConfig: GenerationConfig = {
     responseMimeType: 'application/json',
@@ -161,6 +163,7 @@ export async function generateGeminiJson<T = unknown>(options: GeminiJsonOptions
 export async function generateGeminiText(options: GeminiJsonOptions): Promise<GeminiTextResult> {
   const clientInstance = getClient();
   const modelName = options.model ?? DEFAULT_MODEL;
+  console.log('[Aayush] generateGeminiText: requesting model:', modelName);
 
   const generationConfig: GenerationConfig = {
     ...(options.generationConfig ?? {})
