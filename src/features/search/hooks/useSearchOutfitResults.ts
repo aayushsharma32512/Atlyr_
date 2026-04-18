@@ -41,7 +41,15 @@ export function useSearchOutfitResults({ query, imageUrl, filters, enabled }: Us
     select: (data) => {
       const pages = data.pages.map((page) => ({
         nextCursor: page.nextCursor,
-        results: page.results.filter((result): result is OutfitSearchResult => Boolean(result)),
+        results: page.results
+          .filter((result): result is OutfitSearchResult => Boolean(result))
+          .filter((result) => {
+            // If user has no gender set, show everything
+            if (!gender) return true
+            // Show outfits matching user's gender or unisex; hide others
+            const g = result.outfit.gender
+            return !g || g === gender || g === "unisex"
+          }),
       }))
       return { ...data, pages }
     },
