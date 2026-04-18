@@ -264,6 +264,14 @@ export function useProfile() {
     return guestGender === 'female' ? 'female' : 'male';
   };
 
+  /** Like getUserGender but returns null when gender is not set, instead of defaulting to 'male'. */
+  const getRawGender = (): 'male' | 'female' | null => {
+    const profGender = profile?.gender === 'female' ? 'female' : profile?.gender === 'male' ? 'male' : null;
+    if (profGender) return profGender;
+    const guestGender = guestState?.avatar?.gender;
+    return guestGender === 'female' ? 'female' : guestGender === 'male' ? 'male' : null;
+  };
+
   const getUserHeightCm = (): number => {
     if (profile && (profile as any).height_cm && typeof (profile as any).height_cm === 'number') {
       return (profile as any).height_cm as number;
@@ -320,6 +328,7 @@ export function useProfile() {
     getUserAvatarUrl,
     getSelectedAvatarId,
     getUserGender,
+    getRawGender,
     getUserHeightCm,
     hasCompletedOnboarding,
     hasSelectedAvatar,
