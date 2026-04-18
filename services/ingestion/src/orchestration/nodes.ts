@@ -951,7 +951,12 @@ export async function enrichNode(state: PipelineState): Promise<Partial<Pipeline
   });
 
   const suggestions: Record<string, unknown> = {};
-  const json = response.json ?? {};
+  let json = response.json ?? {};
+
+  // Handle case where Gemini returns response as array instead of object
+  if (Array.isArray(json) && json.length > 0) {
+    json = json[0] as Record<string, unknown>;
+  }
 
   const fitTags = normalizeTagList(json.fit, 2);
   if (fitTags) suggestions.fit = fitTags.join(', ');
