@@ -1,0 +1,160 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.cursor/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Supabase
+supabase/.temp/
+supabase/.temp
+supabase/.branches/
+
+# Build artifacts
+dist/
+build/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+
+# Product data and images (not tracked in Git)
+DB_Ready_Products/
+Men_Outfits/
+Women_Outfits/
+Staples_Outfits/
+Flatlays/
+
+# Excel files with locked versions
+~$*.xlsx
+~$*.xls
+~$*.xlsm
+~$*.xlsb
+
+# Generated mapping files
+image-url-mapping.json
+image-url-mapping.xlsx
+image-url-mapping-staples.xlsx
+background-url-mapping.xlsx
+background-url-mapping-remote.xlsx
+
+# Error reports
+upload-errors.json
+upload-outfits-errors.json
+
+# Temporary scripts
+check-duplicates.js
+
+# Local development helpers
+scripts/dev/
+
+# Debug scripts (temporary)
+scripts/debug-*.js
+
+# Avatar upload results (generated files)
+avatar-upload-mapping*.xlsx
+avatar-upload-results*.json
+
+# Processed avatar images (large files, not needed in repo)
+Processed_avatars*/
+Processed_avatars_old/
+
+# Temporary scripts (can be regenerated)
+scripts/check-excel.js
+scripts/upload-avatar-heads.js
+scripts/populate-avatar-heads.js
+scripts/debug-avatar-heads.js
+scripts/debug-military-query.js
+
+# Product image upload results (generated files)
+product-images-upload-mapping*.xlsx
+product-images-upload-results*.json
+
+# Product images folder (large files, not needed in repo)
+product_images/
+
+# Vector embedding cache files
+*_embeddings_cache.csv
+outfits_embeddings_cache.csv
+products_embeddings_cache.csv
+
+# Specific Excel files
+products_rows_1908_vSM_Upload.xlsm
+products_rows-6.csv
+similar_products_gender_aware_type.xlsx
+
+# Error reports
+update-product-errors.json
+product-insert-error-report*.xlsx
+
+# Generated UI components
+# src/components/ui/similarity-badge.tsx
+
+# Temporary debugging scripts
+scripts/check-similar.js
+scripts/examine-product-ids.js
+scripts/examine-similar-products.js
+scripts/update-similar-items.js
+scripts/test-neutral-poses.js
+
+# Database dumps and seed files (large, can be regenerated)
+supabase/seed.sql
+
+# Excel files (data processing files)
+*.xlsx
+*.xls
+*.xlsm
+*.xlsb
+
+# JSON report files (generated files)
+*.json
+
+# Deployment config
+!vercel.json
+# Local scratch notes
+frontendissue.md
+
+# Services node_modules
+services/ingestion/node_modules/
