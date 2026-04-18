@@ -68,6 +68,15 @@ const CARD_MAX_WIDTH = "24rem"
 const DEFAULT_RESULTS_PADDING_BOTTOM = "5.5rem"
 type BrowseCollectionWithInspiration = SearchBrowseCollection & { inspirationItems: InspirationItem[] }
 
+// ---------- Search session persistence ----------
+const SEARCH_SESSION_KEY = "atlyr:search:lastState"
+
+interface SearchSessionState {
+  search: string
+  mode: "products" | "outfits"
+  imageUrl?: string
+}
+
 function generateSearchId(): string {
   const cryptoId = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : null
   if (cryptoId) return cryptoId
@@ -126,6 +135,36 @@ export function SearchScreenView() {
   )
   const [suppressUrlSync, setSuppressUrlSync] = useState(false)
   const [isSearchFocused, setIsSearchFocused] = useState(false)
+
+  // ----- Mount-only: restore last search state from sessionStorage -----
+  // Runs once on mount. If the URL has no search/imageUrl param (user navigated here
+  // without a deep-link), we re-inject the last committed search into the URL so the
+  // results, search bar, and mode all restore seamlessly via the existing URL-sync logic.
+  const hasRestoredSessionRef = useRef(false)
+  useEffect(() => {
+    if (hasRestoredSessionRef.current) return
+    hasRestoredSessionRef.current = true
+
+    // If URL already carries search state, honour it — don't overwrite with stale session.
+    const currentParams = new URLSearchParams(window.location.search)
+    if (currentParams.has("search") || currentParams.has("imageUrl")) return
+
+    try {
+      const raw = window.sessionStorage.getItem(SEARCH_SESSION_KEY)
+      if (!raw) return
+      const saved: SearchSessionState = JSON.parse(raw)
+      if (!saved.search && !saved.imageUrl) return
+
+      const nextParams = new URLSearchParams()
+      if (saved.search) nextParams.set("search", saved.search)
+      if (saved.mode) nextParams.set("mode", saved.mode)
+      if (saved.imageUrl) nextParams.set("imageUrl", encodeURIComponent(saved.imageUrl))
+      setSearchParams(nextParams, { replace: true })
+    } catch {
+      // Corrupt storage — ignore silently
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // intentionally mount-only
 
   // Logic: Results mode active if text exists OR user explicitly triggered a search OR we have an applied image
   const hasTextSearch = searchParamValue.trim().length > 0
@@ -293,6 +332,23 @@ export function SearchScreenView() {
     // If URL contains search text OR image, treat it as an explicit search (deep link)
     setExplicitSearchTriggered(Boolean(nextSearchParam.trim().length > 0 || nextImageParam))
   }, [searchParams, suppressUrlSync])
+
+  // ----- Persist active search to sessionStorage -----
+  // Fires whenever the committed search params change. Only writes when there is an
+  // active search so we never overwrite a valid saved state with an empty one.
+  useEffect(() => {
+    if (!searchParamValue && !imageUrlParam) return
+    try {
+      const state: SearchSessionState = {
+        search: searchParamValue,
+        mode: modeParamValue,
+        ...(imageUrlParam ? { imageUrl: imageUrlParam } : {}),
+      }
+      window.sessionStorage.setItem(SEARCH_SESSION_KEY, JSON.stringify(state))
+    } catch {
+      // Quota or private-mode errors — ignore
+    }
+  }, [searchParamValue, modeParamValue, imageUrlParam])
 
   // --- POPSTATE SYNC: synchronize state when the browser history changes (back/forward)
   useEffect(() => {

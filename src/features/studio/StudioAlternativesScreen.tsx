@@ -186,6 +186,10 @@ export function StudioAlternativesView() {
     return currentItem?.imageUrl ?? null
   }, [hiddenSlots, resolvedTrayItems, slot])
 
+  // Cold start: no outfit exists yet in this session — show product tray immediately
+  // so the user can browse and add items to create their first outfit.
+  const isColdStart = !resolvedOutfitId
+
   // --- SEARCH STATE ---
   const search = useStudioSearch({
     onUploadError: (error) => {
@@ -209,10 +213,10 @@ export function StudioAlternativesView() {
       search.resetForSlot(slot, isAdminMode ? null : currentSlotImageUrl, isAdminMode)
 
       prevSlotRef.current = slot
-    } else if (!isInitializedRef.current && currentSlotImageUrl) {
-      // Initial load only
+    } else if (!isInitializedRef.current) {
+      // Initial load only — initialize even on cold start (no outfit yet)
       isInitializedRef.current = true
-      search.resetForSlot(slot, isAdminMode ? null : currentSlotImageUrl, isAdminMode) 
+      search.resetForSlot(slot, isAdminMode ? null : currentSlotImageUrl, isAdminMode)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slot, currentSlotImageUrl, isAdminMode])
@@ -224,14 +228,14 @@ export function StudioAlternativesView() {
     imageUrl: search.committedImageUrl,
     filters: search.activeFilters,
     gender: adminGender ?? gender,
-    allowEmptySearch: isAdminMode, // In admin mode, allow fetching all items without search query
+    allowEmptySearch: isAdminMode || isColdStart, // Allow fetching all items on cold start or in admin mode
   })
 
   // Determine which products to show and apply sorting
   const alternativeProducts = useMemo(() => {
     // In admin mode, we always use search results (which supports empty query)
     // In normal mode, we use search results only if there is an active search
-    const shouldUseSearchResults = (search.hasActiveSearch || isAdminMode) && searchResultsQuery.data
+    const shouldUseSearchResults = (search.hasActiveSearch || isAdminMode || isColdStart) && searchResultsQuery.data
     
     const products = shouldUseSearchResults
       ? [...searchResultsQuery.data]
@@ -680,13 +684,41 @@ export function StudioAlternativesView() {
 
   // --- PASSIVE SELECTION: Grid item click updates avatar but NOT search ---
   const handleAlternativeSelect = useCallback(
-    (product: StudioAlternativeProduct) => {
+    async (product: StudioAlternativeProduct) => {
       if (isViewOnly) {
         return
       }
+
+      // Cold start: no outfit exists yet — create a draft outfit with this product then navigate into it
       if (!resolvedOutfitId && !isAdminMode) {
+        if (!user?.id) return
+        try {
+          const draft = await createDraftOutfitMutation({
+            userId: user.id,
+            topId: slot === "top" ? product.id : null,
+            bottomId: slot === "bottom" ? product.id : null,
+            shoesId: slot === "shoes" ? product.id : null,
+            gender: gender ?? "female",
+            backgroundId: null,
+            createdByName: profile?.name ?? null,
+          })
+          setSlotProductId(slot, product.id)
+          const nextSlotIds: SlotIdMap = { top: null, bottom: null, shoes: null, [slot]: product.id }
+          const params = buildStudioSearchParams({
+            outfitId: draft.id,
+            slot,
+            slotIds: nextSlotIds,
+            productId: product.id,
+            share: parsedParams.share,
+            hiddenSlots: parsedParams.hiddenSlots,
+          })
+          setSearchParams(params, { replace: true })
+        } catch {
+          toast({ title: "Could not start outfit", description: "Please try again.", variant: "destructive" })
+        }
         return
       }
+
       if (
         !Number.isFinite(product.placementX) ||
         !Number.isFinite(product.placementY) ||
@@ -776,6 +808,10 @@ export function StudioAlternativesView() {
       toast,
       parsedParams.hiddenSlots,
       parsedParams.share,
+      createDraftOutfitMutation,
+      user?.id,
+      gender,
+      profile?.name,
     ],
   )
 
@@ -795,9 +831,7 @@ export function StudioAlternativesView() {
         return
       }
 
-      if (!resolvedOutfitId && !isAdminMode) {
-        return
-      }
+      // Tab switching always works, even on cold start (no outfit yet)
 
       const nextSlot = category
       if (!isStudioSlot(nextSlot) || nextSlot === slot) {

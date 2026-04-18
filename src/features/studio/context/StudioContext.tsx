@@ -55,7 +55,7 @@ interface StudioContextValue {
   openScrollUp: () => void
   closeScrollUp: () => void
   openAlternatives: (item: OutfitItem, options?: { outfitId?: string | null }) => void
-  openAlternativesSplit: (defaultSlot?: StudioSlot) => void
+  openAlternativesSplit: (defaultSlot?: StudioSlot, options?: { forceSlot?: boolean }) => void
   openProduct: (productId: string, options?: { initialProduct?: StudioProductDetail | null }) => void
   openSimilarItems: (productId: string, options?: { initialProduct?: StudioProductDetail | null }) => void
   reset: () => void
@@ -67,6 +67,41 @@ interface StudioContextValue {
 }
 
 const StudioContext = createContext<StudioContextValue | undefined>(undefined)
+
+// ---------- Studio search session persistence ----------
+const STUDIO_SEARCH_SESSION_PREFIX = "atlyr:studio:search:"
+
+/**
+ * Called as a lazy useState initializer (runs synchronously during the first render).
+ * Reads the outfitId from the current URL and loads any saved per-slot search states for it.
+ * Sets draftText = committedText so the search bar shows the last committed query on restore.
+ */
+function loadSlotSearchStates(): SlotSearchStates {
+  if (typeof window === "undefined") return {}
+  try {
+    const params = new URLSearchParams(window.location.search)
+    const parsed = parseStudioSearchParams(params)
+    const outfitId = parsed.outfitId ?? null
+    if (!outfitId) return {}
+
+    const raw = window.sessionStorage.getItem(`${STUDIO_SEARCH_SESSION_PREFIX}${outfitId}`)
+    if (!raw) return {}
+
+    const stored: SlotSearchStates = JSON.parse(raw)
+    const result: SlotSearchStates = {}
+    for (const [slot, state] of Object.entries(stored)) {
+      if (state.committedText) {
+        // Mirror committedText → draftText so the search bar shows the restored query
+        result[slot] = { ...state, draftText: state.committedText }
+      }
+    }
+    return result
+  } catch {
+    return {}
+  }
+}
+
+// ---------- End persistence helpers ----------
 
 // Helper to get initial state from URL on first mount
 function getInitialStudioState() {
@@ -88,10 +123,18 @@ export function StudioContextProvider({ children }: { children: ReactNode }) {
   const [slotProductIds, setSlotProductIds] = useState<SlotIdMap>(initialState.slotIds)
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
   
-  // Search state - persisted across route changes
-  const [slotSearchStates, setSlotSearchStates] = useState<SlotSearchStates>({})
+  // Search state - persisted across route changes; lazily initialised from sessionStorage
+  const [slotSearchStates, setSlotSearchStates] = useState<SlotSearchStates>(loadSlotSearchStates)
   const [activeSearchSlot, setActiveSearchSlot] = useState<StudioSlot | null>(null)
-  
+
+  // Tracks the outfitId that was in use when we last wrote to sessionStorage.
+  // Kept in a ref so the save/clear effect can compare without creating circular deps.
+  const savedOutfitIdRef = useRef<string | null>(initialState.outfitId)
+
+  // Refs that always hold the latest state — used for the unmount-flush below.
+  const latestSlotSearchStatesRef = useRef<SlotSearchStates>(slotSearchStates)
+  const latestSelectedOutfitIdRef = useRef<string | null>(selectedOutfitId)
+
   const navigate = useNavigate()
   const location = useLocation()
   const queryClient = useQueryClient()
@@ -138,6 +181,110 @@ export function StudioContextProvider({ children }: { children: ReactNode }) {
       return changed ? next : prev
     })
   }, [location.search])
+
+  // ----- Keep "latest" refs in sync (used for unmount flush) -----
+  useEffect(() => {
+    latestSlotSearchStatesRef.current = slotSearchStates
+    latestSelectedOutfitIdRef.current = selectedOutfitId
+  }, [slotSearchStates, selectedOutfitId])
+
+  // ----- Save slot search states to sessionStorage, scoped per outfitId -----
+  // Also handles outfit-change transitions:
+  //   • outfit changed  → save current states under the *previous* outfit's key,
+  //                        then load (or clear) states for the *new* outfit.
+  //   • same outfit     → write current states under the current outfit's key.
+  //
+  // Race-condition guard: savedOutfitIdRef stores the ID we last committed to storage.
+  // When the effect detects a mismatch with selectedOutfitId it means the outfit just
+  // changed; we save-then-load atomically before updating the ref so a re-render
+  // triggered by setSlotSearchStates() enters the "same outfit" branch.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const currentOutfitId = selectedOutfitId
+    const prevOutfitId = savedOutfitIdRef.current
+
+    const saveStates = (outfitId: string, states: SlotSearchStates) => {
+      const toSave: SlotSearchStates = {}
+      for (const [slot, state] of Object.entries(states)) {
+        if (state.committedText) toSave[slot] = state
+      }
+      if (Object.keys(toSave).length === 0) return
+      try {
+        window.sessionStorage.setItem(
+          `${STUDIO_SEARCH_SESSION_PREFIX}${outfitId}`,
+          JSON.stringify(toSave),
+        )
+      } catch {
+        // Quota / private-mode — ignore
+      }
+    }
+
+    const loadStates = (outfitId: string): SlotSearchStates | null => {
+      try {
+        const raw = window.sessionStorage.getItem(`${STUDIO_SEARCH_SESSION_PREFIX}${outfitId}`)
+        if (!raw) return null
+        const stored: SlotSearchStates = JSON.parse(raw)
+        const result: SlotSearchStates = {}
+        for (const [slot, state] of Object.entries(stored)) {
+          if (state.committedText) {
+            result[slot] = { ...state, draftText: state.committedText }
+          }
+        }
+        return Object.keys(result).length > 0 ? result : null
+      } catch {
+        return null
+      }
+    }
+
+    if (prevOutfitId !== currentOutfitId) {
+      // Outfit changed — flush current states under the OLD outfit's key first.
+      if (prevOutfitId) {
+        saveStates(prevOutfitId, slotSearchStates)
+      }
+      // Update the guard ref before any setState to prevent re-entry.
+      savedOutfitIdRef.current = currentOutfitId
+
+      // Load saved states for the new outfit (or reset to empty).
+      if (currentOutfitId) {
+        const loaded = loadStates(currentOutfitId)
+        if (loaded) {
+          setSlotSearchStates(loaded)
+        } else {
+          setSlotSearchStates({})
+        }
+      } else {
+        setSlotSearchStates({})
+      }
+    } else if (currentOutfitId) {
+      // Same outfit — just keep sessionStorage up to date.
+      saveStates(currentOutfitId, slotSearchStates)
+    }
+  }, [selectedOutfitId, slotSearchStates])
+
+  // ----- Flush on unmount (user navigates away from /studio/*) -----
+  // The save effect above is continuous, but an unmount may race a final state update.
+  // This effect captures the very last state via refs and ensures it is persisted.
+  useEffect(() => {
+    return () => {
+      const outfitId = latestSelectedOutfitIdRef.current
+      const states = latestSlotSearchStatesRef.current
+      if (!outfitId || typeof window === "undefined") return
+      const toSave: SlotSearchStates = {}
+      for (const [slot, state] of Object.entries(states)) {
+        if (state.committedText) toSave[slot] = state
+      }
+      if (Object.keys(toSave).length === 0) return
+      try {
+        window.sessionStorage.setItem(
+          `${STUDIO_SEARCH_SESSION_PREFIX}${outfitId}`,
+          JSON.stringify(toSave),
+        )
+      } catch {
+        // ignore
+      }
+    }
+  }, []) // empty deps — runs exactly once on unmount
 
   const openStudio = useCallback(() => {
     const url = buildStudioUrl(basePath, "studio", {
@@ -195,9 +342,9 @@ export function StudioContextProvider({ children }: { children: ReactNode }) {
 
   // Navigate to alternatives in split view, using the last active slot or a fallback
   const openAlternativesSplit = useCallback(
-    (fallbackSlot: StudioSlot = "top") => {
-      // Use the stored active slot if available, otherwise fall back to the provided slot
-      const slot = activeSearchSlot ?? fallbackSlot
+    (fallbackSlot: StudioSlot = "top", options?: { forceSlot?: boolean }) => {
+      // Use the stored active slot if available, unless the caller explicitly requests a specific slot
+      const slot = (!options?.forceSlot && activeSearchSlot) ? activeSearchSlot : fallbackSlot
       const parsed = parseStudioSearchParams(new URLSearchParams(location.search))
       const params = buildStudioSearchParams({
         outfitId: parsed.outfitId ?? selectedOutfitId,

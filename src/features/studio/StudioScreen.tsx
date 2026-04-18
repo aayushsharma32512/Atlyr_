@@ -32,6 +32,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useToast } from "@/hooks/use-toast"
 import { resolveOutfitAttribution } from "@/utils/outfitAttribution"
 import { useStudioHistory } from "@/features/studio/hooks/useStudioHistory"
+import { useLastStudioOutfit } from "@/features/studio/hooks/useLastStudioOutfit"
 import { useStudioRemix } from "@/features/studio/hooks/useStudioRemix"
 import { useStudioShareMode } from "@/features/studio/hooks/useStudioShareMode"
 import { mergeOutfitItemsWithTray } from "@/features/studio/utils/mergeOutfitItemsWithTray"
@@ -90,6 +91,7 @@ export function StudioScreenView() {
   const { mutateAsync: findOutfitByItemsMutation } = useFindOutfitByItems()
   const { mutateAsync: saveToCollectionMutation } = useSaveToCollection()
   const { user } = useAuth()
+  const lastOutfitQuery = useLastStudioOutfit({ userId: user?.id ?? null, outfitId })
   const { toast } = useToast()
   const { applySnapshot, canRedo, canUndo, checkpointActive, recordChange, redo, toggleCheckpoint, undo } =
     useStudioHistory()
@@ -150,6 +152,16 @@ export function StudioScreenView() {
   useEffect(() => {
     setHasHydratedFromUrl(true)
   }, [])
+
+  // Restore last outfit on cold start: when no outfitId in URL and we have a last outfit from DB,
+  // inject it into the URL so the rest of the screen picks it up normally.
+  useEffect(() => {
+    const restoredId = lastOutfitQuery.data
+    if (!restoredId || outfitId) return
+    const params = new URLSearchParams(searchParams)
+    params.set("outfitId", restoredId)
+    setSearchParams(params, { replace: true })
+  }, [lastOutfitQuery.data, outfitId])
 
   useEffect(() => {
     setSelectedOutfitId(resolvedOutfitId)
@@ -764,7 +776,8 @@ export function StudioScreenView() {
         openAlternatives(targetItem, { outfitId: syncOutfitId })
         return
       }
-      openAlternativesSplit(slot)
+      // Force the requested slot — don't let activeSearchSlot override an explicit "Add [slot]" tap
+      openAlternativesSplit(slot, { forceSlot: true })
     },
     [isViewOnly, normalizeSlot, openAlternatives, openAlternativesSplit, resolvedAvatarItems, studioAvatar, syncOutfitId],
   )
