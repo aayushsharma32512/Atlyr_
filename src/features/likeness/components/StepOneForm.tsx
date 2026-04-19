@@ -1,7 +1,7 @@
 import { UseFormReturn } from 'react-hook-form';
 import { CardHeader, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, Rotate3d } from 'lucide-react';
+import { Plus, Rotate3d, RotateCcw } from 'lucide-react';
 import { Form, FormField, FormItem, FormControl } from '@/components/ui/form';
 import { Label } from '@/components/ui/label';
 import type { LikenessFormData } from "../types"
@@ -69,13 +69,23 @@ export function StepOneForm({
             <div className="flex flex-col gap-3 items-center relative w-full max-w-[210px]">
               <div className="relative w-full aspect-[2/3] bg-muted rounded-[10px] overflow-hidden">
                 {fullBodyPhoto ? (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <img
-                      src={URL.createObjectURL(fullBodyPhoto)}
-                      alt="Full body preview"
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
+                  <>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <img
+                        src={URL.createObjectURL(fullBodyPhoto)}
+                        alt="Full body preview"
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleFullBodyClick}
+                      className="absolute bottom-0 inset-x-0 flex flex-col gap-1 items-center justify-center py-2.5 bg-black/40 hover:bg-black/55 transition-colors"
+                    >
+                      <RotateCcw className="size-4 text-white" />
+                      <span className="text-xs font-medium text-white">Try another?</span>
+                    </button>
+                  </>
                 ) : (
                   <button
                     type="button"
@@ -106,13 +116,23 @@ export function StepOneForm({
             <div className="flex flex-col gap-3 items-center relative w-full max-w-[210px]">
               <div className="relative w-full aspect-[2/3] bg-muted rounded-[10px] overflow-hidden">
                 {faceSelfiePhoto ? (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <img
-                      src={URL.createObjectURL(faceSelfiePhoto)}
-                      alt="Face selfie preview"
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
+                  <>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <img
+                        src={URL.createObjectURL(faceSelfiePhoto)}
+                        alt="Face selfie preview"
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleFaceSelfieClick}
+                      className="absolute bottom-0 inset-x-0 flex flex-col gap-1 items-center justify-center py-2.5 bg-black/40 hover:bg-black/55 transition-colors"
+                    >
+                      <RotateCcw className="size-4 text-white" />
+                      <span className="text-xs font-medium text-white">Try another?</span>
+                    </button>
+                  </>
                 ) : (
                   <button
                     type="button"

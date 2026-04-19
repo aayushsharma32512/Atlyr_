@@ -12,10 +12,13 @@ import {
   useSaveToCollection,
 } from "@/features/collections/hooks/useMoodboards"
 import { useLaunchStudio } from "@/features/studio/hooks/useLaunchStudio"
+import { useOutfitWithProduct } from "@/features/studio/hooks/useOutfitWithProduct"
 import { useStudioOutfitComplementaryProducts } from "@/features/studio/hooks/useStudioOutfitComplementaryProducts"
 import { useStudioProduct } from "@/features/studio/hooks/useStudioProduct"
 import { useStudioProductOutfits } from "@/features/studio/hooks/useStudioProductOutfits"
 import { useWardrobePairings } from "@/features/studio/hooks/useWardrobePairings"
+import { useCreateDraftOutfit } from "@/features/outfits/hooks/useCreateDraftOutfit"
+import { useAuth } from "@/contexts/AuthContext"
 import { mapLegacyOutfitItemsToStudioItems } from "@/features/studio/mappers/renderedItemMapper"
 import type { StudioOutfitDTO } from "@/features/studio/types"
 import { buildStudioSearchParams, type SlotIdMap } from "@/features/studio/utils/studioUrlState"
@@ -256,7 +259,8 @@ export function SimilarItemsView() {
   const launchStudio = useLaunchStudio()
   const { toast } = useToast()
   const analytics = useEngagementAnalytics()
-  const { gender: avatarGender } = useProfileContext()
+  const { gender: avatarGender, profile } = useProfileContext()
+  const { user } = useAuth()
   const productSaveActions = useProductSaveActions()
   const favoritesQuery = useFavorites()
   const favoriteIds = favoritesQuery.data ?? []
@@ -318,8 +322,12 @@ export function SimilarItemsView() {
   const productQuery = useStudioProduct(activeProductId)
   const product = productQuery.data
 
+  // Find the most recent outfit containing this product — used as a base when no outfit is active
+  const outfitWithProductQuery = useOutfitWithProduct(activeProductId)
+  const { mutateAsync: createDraftOutfitMutation } = useCreateDraftOutfit()
+
   const handleApplyComplementary = useCallback(
-    (clickedProductId: string, clickedSlot: StudioProductTraySlot | null) => {
+    async (clickedProductId: string, clickedSlot: StudioProductTraySlot | null) => {
       if (!activeProductId) {
         toast({ title: "No product selected", description: "Pick a product first." })
         return
@@ -333,10 +341,6 @@ export function SimilarItemsView() {
         toast({ title: "Pick a complementary item", description: "That item belongs to the same category." })
         return
       }
-      if (!outfitIdFromParams) {
-        toast({ title: "Start a studio outfit first", description: "This flow needs an active outfit." })
-        return
-      }
 
       const allSlots: StudioProductTraySlot[] = ["top", "bottom", "shoes"]
       const hiddenSlot = allSlots.find((slot) => slot !== mainSlot && slot !== clickedSlot) ?? null
@@ -345,19 +349,47 @@ export function SimilarItemsView() {
         return
       }
 
+      // Resolve an outfit ID — use the active one from URL, fall back to finding/creating one
+      let resolvedOutfitId = outfitIdFromParams
+      if (!resolvedOutfitId) {
+        const existingOutfit = outfitWithProductQuery.data
+        if (existingOutfit) {
+          resolvedOutfitId = existingOutfit.id
+        } else if (user?.id) {
+          try {
+            const draft = await createDraftOutfitMutation({
+              userId: user.id,
+              topId: mainSlot === "top" ? activeProductId : null,
+              bottomId: mainSlot === "bottom" ? activeProductId : null,
+              shoesId: mainSlot === "shoes" ? activeProductId : null,
+              gender: avatarGender ?? "female",
+              backgroundId: null,
+              createdByName: profile?.name ?? null,
+            })
+            resolvedOutfitId = draft.id
+          } catch {
+            toast({ title: "Could not start outfit", description: "Please try again.", variant: "destructive" })
+            return
+          }
+        } else {
+          toast({ title: "Sign in required", description: "Please sign in to use Studio." })
+          return
+        }
+      }
+
       const slotIds: SlotIdMap = {}
       slotIds[mainSlot] = activeProductId
       slotIds[clickedSlot] = clickedProductId
 
       const params = buildStudioSearchParams({
-        outfitId: outfitIdFromParams,
+        outfitId: resolvedOutfitId,
         slotIds,
         hiddenSlots: { [hiddenSlot]: true },
       })
       const search = params.toString()
       navigate(`${basePath}${search ? `?${search}` : ""}`)
     },
-    [activeProductId, basePath, navigate, outfitIdFromParams, product?.slot, toast],
+    [activeProductId, avatarGender, basePath, createDraftOutfitMutation, navigate, outfitIdFromParams, outfitWithProductQuery.data, product?.slot, profile?.name, toast, user?.id],
   )
 
   useEffect(() => {

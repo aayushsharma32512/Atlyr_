@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react"
-import { ArrowDownRight, ArrowUpRight, Heart, Ruler, ShoppingBag } from "lucide-react"
-import { useNavigate, useParams, useSearchParams } from "react-router-dom"
+import { ArrowDownRight, Heart, Ruler, ShoppingBag, Shuffle } from "lucide-react"
+import { useNavigate, useParams } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
 import { ProductAlternateCard, TrayActionButton, MoodboardPickerDrawer, ScreenHeader } from "@/design-system/primitives"
@@ -13,8 +13,13 @@ import { StudioLayout } from "./StudioLayout"
 import { useStudioProduct } from "@/features/studio/hooks/useStudioProduct"
 import { useStudioSimilarProducts } from "@/features/studio/hooks/useStudioSimilarProducts"
 import { useStudioProductImages } from "@/features/studio/hooks/useStudioProductImages"
+import { useOutfitWithProduct } from "@/features/studio/hooks/useOutfitWithProduct"
 import { ProductImageCarousel } from "@/components/product/ProductImageCarousel"
 import { useProductSaveActions } from "@/features/collections/hooks/useProductSaveActions"
+import { useCreateDraftOutfit } from "@/features/outfits/hooks/useCreateDraftOutfit"
+import { useAuth } from "@/contexts/AuthContext"
+import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
+import { buildStudioSearchParams } from "@/features/studio/utils/studioUrlState"
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
 import { trackProductBuyClicked } from "@/integrations/posthog/engagementTracking/entityEvents"
 import { trackStudioProductViewed } from "@/integrations/posthog/engagementTracking/studio/studioTracking"
@@ -39,23 +44,12 @@ export function ProductPageView() {
   const heartLongPressTimeout = useRef<NodeJS.Timeout | null>(null)
   const heartLongPressTriggered = useRef(false)
   const { productId } = useParams<{ productId?: string }>()
-  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const tour = useStudioTourContext()
   const { openProduct, openStudio, openSimilarItems, selectedProductId, setSelectedProductId } = useStudioContext()
+  const { user } = useAuth()
+  const { profile, gender } = useProfileContext()
   const activeProductId = productId ?? selectedProductId ?? null
-  const decodedReturnTo = useMemo(() => {
-    const raw = searchParams.get("returnTo")
-    if (!raw) {
-      return null
-    }
-    try {
-      return decodeURIComponent(raw)
-    } catch {
-      return null
-    }
-  }, [searchParams])
-
   useEffect(() => {
     if (productId) {
       setSelectedProductId(productId)
@@ -73,6 +67,10 @@ export function ProductPageView() {
 
   const similarItemsQuery = useStudioSimilarProducts(activeProductId)
   const similarItems = similarItemsQuery.data ?? []
+
+  // Find the most recent outfit in the DB that contains this product (used for Add to Studio)
+  const outfitWithProductQuery = useOutfitWithProduct(activeProductId)
+  const { mutateAsync: createDraftOutfitMutation } = useCreateDraftOutfit()
 
   // Fetch all images for the product from product_images table (architecture-compliant)
   const productImagesQuery = useStudioProductImages(activeProductId)
@@ -129,13 +127,108 @@ export function ProductPageView() {
     [openProduct],
   )
 
+  // × button: always returns to the last active Studio state from sessionStorage
   const handleClose = useCallback(() => {
-    if (decodedReturnTo) {
-      navigate(decodedReturnTo)
+    try {
+      const raw = window.sessionStorage.getItem("atlyr:studio:lastSession")
+      if (raw) {
+        const session = JSON.parse(raw) as {
+          outfitId: string
+          slotIds: { top: string | null; bottom: string | null; shoes: string | null }
+          hiddenSlots: { top: boolean; bottom: boolean; shoes: boolean }
+        }
+        if (session?.outfitId) {
+          const params = buildStudioSearchParams({
+            outfitId: session.outfitId,
+            slotIds: session.slotIds,
+            hiddenSlots: session.hiddenSlots,
+          })
+          const search = params.toString()
+          navigate(`/studio${search ? `?${search}` : ""}`)
+          return
+        }
+      }
+    } catch {}
+    navigate("/studio")
+  }, [navigate])
+
+  // Add to Studio: find the most recent outfit containing this product, create a draft
+  // copy of it, pre-seed the undo history so Undo returns to the previous outfit, then navigate.
+  const handleAddToStudio = useCallback(async () => {
+    if (!activeProductId || !user?.id) return
+
+    const slot = product?.slot ?? null
+    const existingOutfit = outfitWithProductQuery.data
+
+    let draftTopId: string | null = null
+    let draftBottomId: string | null = null
+    let draftShoesId: string | null = null
+    let draftGender: string | null = gender ?? "female"
+    let draftBackgroundId: string | null = null
+
+    if (existingOutfit) {
+      // Use the existing outfit's slots as the base for the draft
+      draftTopId = existingOutfit.top_id
+      draftBottomId = existingOutfit.bottom_id
+      draftShoesId = existingOutfit.shoes_id
+      draftGender = existingOutfit.gender ?? draftGender
+      draftBackgroundId = existingOutfit.background_id
+    } else if (slot) {
+      // Cold start: only this product in its slot
+      draftTopId = slot === "top" ? activeProductId : null
+      draftBottomId = slot === "bottom" ? activeProductId : null
+      draftShoesId = slot === "shoes" ? activeProductId : null
+    } else {
+      // Unknown slot — open Studio as-is
+      navigate("/studio")
       return
     }
-    openStudio()
-  }, [decodedReturnTo, navigate, openStudio])
+
+    try {
+      const draft = await createDraftOutfitMutation({
+        userId: user.id,
+        topId: draftTopId,
+        bottomId: draftBottomId,
+        shoesId: draftShoesId,
+        gender: draftGender,
+        backgroundId: draftBackgroundId,
+        createdByName: profile?.name ?? null,
+      })
+
+      // Pre-seed undo history so pressing Undo in Studio returns to the previous outfit
+      try {
+        const storageKey = `studio-history-v1:${user.id}:session`
+        const prevSessionRaw = window.sessionStorage.getItem("atlyr:studio:lastSession")
+        const prevSession = prevSessionRaw ? JSON.parse(prevSessionRaw) : null
+        const newSnapshot = {
+          outfitId: draft.id,
+          slotIds: { top: draftTopId, bottom: draftBottomId, shoes: draftShoesId },
+          hiddenSlots: { top: false, bottom: false, shoes: false },
+        }
+        const historyState = {
+          past: prevSession?.outfitId ? [prevSession] : [],
+          present: newSnapshot,
+          future: [],
+          checkpointSnapshot: null,
+          checkpointActive: false,
+          checkpointDirty: false,
+          preCheckpointSnapshot: null,
+          preCheckpointHistory: null,
+        }
+        window.localStorage.setItem(storageKey, JSON.stringify(historyState))
+      } catch {}
+
+      const params = buildStudioSearchParams({
+        outfitId: draft.id,
+        slotIds: { top: draftTopId, bottom: draftBottomId, shoes: draftShoesId },
+      })
+      const search = params.toString()
+      navigate(`/studio${search ? `?${search}` : ""}`)
+    } catch {
+      // Fallback: open Studio without a specific outfit
+      navigate("/studio")
+    }
+  }, [activeProductId, createDraftOutfitMutation, gender, navigate, outfitWithProductQuery.data, product?.slot, profile?.name, user?.id])
 
   const handleBuy = useCallback(() => {
     if (product?.productUrl) {
@@ -206,7 +299,8 @@ export function ProductPageView() {
       <div className={`flex w-full max-w-[${CARD_MAX_WIDTH}] flex-1 flex-col overflow-hidden rounded-t-[2rem] border border-border bg-card shadow-sm`}>
         <div className="flex flex-1 min-h-0 flex-col gap-1.5 overflow-y-auto">
           <section className="flex flex-col items-center gap-0.5 pb-1 pt-4">
-            <ScreenHeader 
+            <ScreenHeader
+              action="close"
               onAction={handleClose}
               highlightAction={tour.isHighlighted("return-from-product")}
               rightSlot={
@@ -236,13 +330,19 @@ export function ProductPageView() {
                 </figure>
               )}
               <div className="pointer-events-none absolute right-4 bottom-1 z-10">
-                <TrayActionButton
-                  tone="plain"
-                  iconEnd={ArrowUpRight}
-                  label="Studio"
-                  className="pointer-events-auto h-9 rounded-xl bg-transparent px-2 text-xs font-medium text-foreground hover:bg-card"
-                  onClick={openStudio}
-                />
+                <button
+                  type="button"
+                  className="pointer-events-auto flex h-9 items-center gap-1.5 rounded-xl bg-transparent px-2 text-foreground hover:bg-card disabled:opacity-40 transition-colors"
+                  onClick={handleAddToStudio}
+                  disabled={outfitWithProductQuery.isLoading}
+                  aria-label="Remix in Studio"
+                >
+                  <span className="flex flex-col text-left text-xs font-medium leading-tight">
+                    <span>Remix</span>
+                    <span>in Studio</span>
+                  </span>
+                  <Shuffle className="h-7 w-auto flex-none" aria-hidden="true" />
+                </button>
               </div>
             </div>
             <div className="flex w-full gap-2 overflow-x-auto px-4 pb-1 scrollbar-hide">

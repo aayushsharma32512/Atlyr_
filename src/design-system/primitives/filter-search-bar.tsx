@@ -73,6 +73,8 @@ interface FilterSearchBarProps {
   sortValue?: string
   onSortChange?: (value: string) => void
   showFilterButton?: boolean
+  filterDisabled?: boolean
+  sortDisabled?: boolean
 
   // Image Search Props
   onImageUpload?: (file: File) => void
@@ -124,6 +126,8 @@ export function FilterSearchBar({
   showCompactPreview = false,
   alignPreviewTop = false,
   showFilterButton = true,
+  filterDisabled = false,
+  sortDisabled = false,
 }: FilterSearchBarProps) {
   const hasFilters = Boolean(filters && filters.length > 0 && pillPosition !== "none")
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false)
@@ -143,14 +147,15 @@ export function FilterSearchBar({
   }
 
   const handleFilterClick = useCallback(() => {
+    if (filterDisabled) return
     setIsFilterDrawerOpen(true)
-  }, [])
+  }, [filterDisabled])
 
   const activeFilterCount = (activeFilters || []).length
 
   const defaultLeadingActions = useMemo<FilterSearchBarAction[]>(() => {
     const actions: FilterSearchBarAction[] = []
-    
+
     // Only add filter button if showFilterButton is true
     if (showFilterButton) {
       actions.push({
@@ -159,7 +164,7 @@ export function FilterSearchBar({
         icon: (
           <div className="relative">
             <SlidersHorizontal className="h-4 w-4" />
-            {activeFilterCount > 0 && (
+            {activeFilterCount > 0 && !filterDisabled && (
               <span className="absolute -top-1.5 -right-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary text-[9px] font-medium text-primary-foreground">
                 {activeFilterCount > 9 ? '9+' : activeFilterCount}
               </span>
@@ -167,19 +172,21 @@ export function FilterSearchBar({
           </div>
         ),
         onClick: handleFilterClick,
+        disabled: filterDisabled,
       })
     }
-    
+
     // Always add sort button
     actions.push({
       id: "sort",
       ariaLabel: "Sort feed",
       icon: <ArrowUpNarrowWide className="h-4 w-4" />,
-      onClick: undefined, 
+      onClick: undefined,
+      disabled: sortDisabled,
     })
-    
+
     return actions
-  }, [handleFilterClick, activeFilterCount, showFilterButton])
+  }, [handleFilterClick, activeFilterCount, showFilterButton, filterDisabled, sortDisabled])
 
   const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.value === "" && value !== "") {
@@ -390,8 +397,18 @@ export function FilterSearchBar({
             {defaultLeadingActions.map((action, index) => {
               if (action.id === "sort") {
                 return (
-                  <div key={action.id} className="flex h-full">
-                    <Select value={currentSortValue} onValueChange={handleSortChange}>
+                  <div
+                    key={action.id}
+                    className={cn(
+                      "flex h-full",
+                      sortDisabled && "pointer-events-none opacity-40",
+                    )}
+                  >
+                    <Select
+                      value={currentSortValue}
+                      onValueChange={sortDisabled ? undefined : handleSortChange}
+                      disabled={sortDisabled}
+                    >
                       <SelectTrigger className={cn("h-full w-9 rounded-none border-r border-border text-muted-foreground px-2 py-0 border-none shadow-none focus:ring-0 [&>svg:not(.arrow-icon)]:hidden [&>span]:hidden", index === 0 ? "rounded-l-xl" : "")}>
                         <ArrowUpNarrowWide className="h-4 w-4 flex-shrink-0 arrow-icon" />
                       </SelectTrigger>
@@ -409,8 +426,13 @@ export function FilterSearchBar({
                   key={action.id}
                   tone="ghost"
                   size="md"
-                  className={cn("h-full w-9 rounded-none border-r border-border text-muted-foreground", index === 0 ? "rounded-l-xl" : "")}
-                  onClick={action.onClick}
+                  className={cn(
+                    "h-full w-9 rounded-none border-r border-border text-muted-foreground",
+                    index === 0 ? "rounded-l-xl" : "",
+                    action.disabled && "pointer-events-none opacity-40",
+                  )}
+                  onClick={action.disabled ? undefined : action.onClick}
+                  disabled={action.disabled}
                 >
                   {action.icon}
                 </IconButton>

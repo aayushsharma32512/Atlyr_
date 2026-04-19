@@ -19,6 +19,14 @@ export function useSearchProductResults({ query, imageUrl, enabled, filters = {}
   const { gender } = useProfileContext()
   const trimmed = query.trim()
 
+  // If the user explicitly selected gender(s) via the filter drawer, those take
+  // priority and the profile gender default is ignored entirely.
+  const hasExplicitGender = Boolean(filters.genders && filters.genders.length > 0)
+
+  // Only pass profile gender to the backend when no explicit gender filter is set.
+  // When explicit genders are set they are already inside `filters.genders`.
+  const effectiveGender = hasExplicitGender ? null : gender
+
   // Include gender in the cache key so results refresh when gender changes
   const baseKey = searchKeys.productResults({ query: trimmed, filters, gender })
   const queryKey = [...baseKey, imageUrl || "no-image"]
@@ -30,7 +38,7 @@ export function useSearchProductResults({ query, imageUrl, enabled, filters = {}
       searchService.searchProducts({
         query: trimmed,
         imageUrl,
-        gender,
+        gender: effectiveGender,
         cursor: typeof pageParam === "number" ? pageParam : 0,
         filters,
       }),
@@ -47,10 +55,13 @@ export function useSearchProductResults({ query, imageUrl, enabled, filters = {}
         results: page.results
           .filter((result): result is ProductSearchResult => Boolean(result))
           .filter((result) => {
-            // If user has no gender set, show everything
-            if (!gender) return true
-            // Show products matching user's gender or unisex; hide others
             const g = result.gender
+            if (hasExplicitGender) {
+              // User explicitly chose gender(s): match those or unisex
+              return !g || g === "unisex" || filters.genders!.includes(g)
+            }
+            // Default: fall back to profile gender
+            if (!gender) return true
             return !g || g === gender || g === "unisex"
           }),
       }))

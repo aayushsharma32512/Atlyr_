@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import { X } from "lucide-react"
+import { X, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -116,12 +116,46 @@ export function FilterDrawer({
 
   const isControlled = externalActiveFilters !== undefined
 
+  // Collapsible sections — auto-expand only categories that have active filters
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(() => {
+    const expanded = new Set<string>()
+    ;(externalActiveFilters || []).forEach((filterId) => {
+      if (!filterId.startsWith("price:")) {
+        const [catPrefix] = filterId.split(":")
+        expanded.add(catPrefix)
+      }
+    })
+    return expanded
+  })
+
+  const toggleCategory = (categoryId: string) => {
+    setExpandedCategories((prev) => {
+      const next = new Set(prev)
+      if (next.has(categoryId)) {
+        next.delete(categoryId)
+      } else {
+        next.add(categoryId)
+      }
+      return next
+    })
+  }
+
   // Sync draft filters with external filters only when the drawer OPEN state
   // transitions from closed -> open.
   const prevOpenRef = useRef<boolean>(false)
   useEffect(() => {
     if (open && !prevOpenRef.current) {
       setDraftFilters(new Set(externalActiveFilters || []))
+
+      // Auto-expand categories that have active filters
+      const expanded = new Set<string>()
+      ;(externalActiveFilters || []).forEach((filterId) => {
+        if (!filterId.startsWith("price:")) {
+          const [catPrefix] = filterId.split(":")
+          expanded.add(catPrefix)
+        }
+      })
+      setExpandedCategories(expanded)
 
       // Initialize price range from active filters
       const priceFilter = (externalActiveFilters || []).find(f => f.startsWith('price:'))
@@ -290,66 +324,84 @@ export function FilterDrawer({
         <ScrollArea className="flex-1 px-6 scrollbar-hide overflow-scroll">
           <div className="space-y-6 pb-4">
             
-            {/* Price Range */}
-            <div className="space-y-3">
-              <Label className="text-sm font-medium">Price Range</Label>
-              <div className="flex items-center gap-2">
+            {/* Price Range — always visible, inline layout */}
+            <div className="flex items-center gap-3 py-1">
+              <span className="shrink-0 text-xs font-medium text-foreground">Price Range</span>
+              <div className="flex flex-1 items-center gap-1.5">
                 <div className="relative flex-1">
-                  <span className="absolute left-3 top-2.5 text-xs text-muted-foreground">₹</span>
+                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">₹</span>
                   <Input
                     type="number"
                     placeholder="0"
                     value={minPrice}
                     onChange={(e) => setMinPrice(e.target.value)}
-                    className="pl-7"
+                    className="h-7 pl-5 text-xs"
                   />
                 </div>
-                <span className="text-muted-foreground">-</span>
-                 <div className="relative flex-1">
-                  <span className="absolute left-3 top-2.5 text-xs text-muted-foreground">₹</span>
+                <span className="text-xs text-muted-foreground">–</span>
+                <div className="relative flex-1">
+                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">₹</span>
                   <Input
                     type="number"
                     placeholder="0"
                     value={maxPrice}
                     onChange={(e) => setMaxPrice(e.target.value)}
-                    className="pl-7"
+                    className="h-7 pl-5 text-xs"
                   />
                 </div>
               </div>
             </div>
-            {categories.map((category) => (
-              <div key={category.id} className="space-y-3">
-                <Label className="text-sm font-medium">{category.label}</Label>
-                {category.options.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-x-8 space-y-0 gap-y-2.5">
-                    {category.options.map((option) => {
-                      const isChecked = displayedFilters.includes(option.id)
-                      return (
-                        <div
-                          key={option.id}
-                          className="flex items-center space-x-2"
-                        >
-                          <Checkbox
-                            className="border-sidebar-border size-4 rounded-sm"
-                            id={option.id}
-                            checked={isChecked}
-                            onCheckedChange={() => handleFilterToggle(option.id)}
-                          />
-                          <Label
-                            htmlFor={option.id}
-                            className="text-sm font-normal text-foreground cursor-pointer"
-                          >
-                            {option.label}
-                          </Label>
+
+            {/* Category sections — collapsible */}
+            {categories.map((category) => {
+              const isExpanded = expandedCategories.has(category.id)
+              return (
+                <div key={category.id} className="border-b border-border/40 last:border-0">
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between py-2.5 text-left"
+                    onClick={() => toggleCategory(category.id)}
+                  >
+                    <span className="text-xs font-medium text-foreground">{category.label}</span>
+                    <ChevronDown
+                      className={cn(
+                        "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200",
+                        isExpanded && "rotate-180"
+                      )}
+                    />
+                  </button>
+                  {isExpanded && (
+                    <div className="pb-3">
+                      {category.options.length > 0 ? (
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                          {category.options.map((option) => {
+                            const isChecked = displayedFilters.includes(option.id)
+                            return (
+                              <div key={option.id} className="flex items-center gap-2">
+                                <Checkbox
+                                  className="border-sidebar-border size-3.5 rounded-sm"
+                                  id={option.id}
+                                  checked={isChecked}
+                                  onCheckedChange={() => handleFilterToggle(option.id)}
+                                />
+                                <Label
+                                  htmlFor={option.id}
+                                  className="text-xs font-normal text-foreground cursor-pointer"
+                                >
+                                  {option.label}
+                                </Label>
+                              </div>
+                            )
+                          })}
                         </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No options available</p>
-                )}
-              </div>
-            ))}
+                      ) : (
+                        <p className="text-xs text-muted-foreground">No options available</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
 
           </div>
         </ScrollArea>
