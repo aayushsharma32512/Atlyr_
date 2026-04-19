@@ -412,7 +412,7 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
                                     <Input
                                       type="email"
                                       {...field}
-                                      placeholder="Email"
+                                      placeholder="Enter your gmail account"
                                       disabled={isSubmitting}
                                       className={cn(
                                         "h-10 rounded-lg text-sm border-border bg-background/80 shadow-sm focus-visible:ring-1 focus-visible:ring-ring",
@@ -514,79 +514,14 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
                       </Form>
                     </div>
 
-                    <Separator />
-
-                    <div className="rounded-xl border border-border/60 bg-background/50 px-4 py-4 text-center shadow-sm sm:px-5">
-                      <div className="space-y-3">
-                        {!showInviteInput ? (
-                          <Button
-                            type="button"
-                            onClick={() => {
-                              setShowInviteInput(true);
-                              setInviteError(null);
-                            }}
-                            variant="outline"
-                            className="h-10 w-full rounded-lg border-none border-foreground/20 underline underline-offset-2 bg-background/80 text-sm font-medium shadow-sm hover:text-foreground/80 hover:underline hover:bg-transparent"
-                          >
-                            Have an invite code?
-                          </Button>
-                        ) : (
-                          <div className="relative space-y-4 text-left">
-                            <div className="flex items-start justify-between gap-4">
-                              <div className="space-y-1 pr-6">
-                                <p className="text-sm font-semibold text-foreground">Redeem your invite</p>
-                                <p className="text-xs text-muted-foreground">
-                                  Enter the code you received to create your account.
-                                </p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => setShowInviteInput(false)}
-                                className="rounded-full p-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                                aria-label="Close invite form"
-                              >
-                                ✕
-                              </button>
-                            </div>
-                            <form onSubmit={handleInviteSubmit} className="space-y-2">
-                              <div className="space-y-1">
-                                <Input
-                                  id="invite-code"
-                                  value={inviteCode}
-                                  onChange={(e) => {
-                                    setInviteCode(e.target.value);
-                                    setInviteError(null);
-                                  }}
-                                  placeholder="Invite code"
-                                  autoFocus
-                                  disabled={inviteChecking}
-                                  className="h-10 rounded-lg border-border bg-background/80 text-center text-sm shadow-sm"
-                                />
-                              </div>
-                              <Button
-                                type="submit"
-                                variant="ghost"
-                                disabled={inviteChecking}
-                                className="mt-1 h-10 w-full rounded-lg border border-border font-medium hover:bg-muted bg-muted"
-                              >
-                                {inviteChecking ? "Checking..." : "Redeem"}
-                              </Button>
-                            </form>
-                            {inviteError && <p className="text-xs text-destructive">{inviteError}</p>}
-                          </div>
-                        )}
-
-                        <div className="text-sm text-muted-foreground">
-                          <span>Already have an account? </span>
-                          <button
-                            type="button"
-                            onClick={onSignInClick}
-                            className="font-medium text-foreground underline underline-offset-2 transition-colors hover:text-foreground/80"
-                          >
-                            Sign in
-                          </button>
-                        </div>
-                      </div>
+                    <div className="rounded-xl border border-border/60 bg-background/60 p-4 shadow-sm sm:p-5">
+                      <Button
+                        type="button"
+                        onClick={() => navigate("/auth/login")}
+                        className="h-10 w-full rounded-lg font-semibold shadow-sm hover:bg-primary/90"
+                      >
+                        Have an invite / Login
+                      </Button>
                     </div>
                   </div>
                 )}
