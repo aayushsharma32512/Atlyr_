@@ -4,7 +4,6 @@ export async function getOrSignInAnon(): Promise<{ userId: string | null }> {
   try {
     const { data: { session } } = await supabase.auth.getSession()
     if (session?.user?.id) {
-      console.info('[Auth] Existing session found', { userId: session.user.id })
       return { userId: session.user.id }
     }
 
