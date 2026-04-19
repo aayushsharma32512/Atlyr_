@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react"
 import { ArrowDownRight, ArrowUpRight, Heart, Ruler, ShoppingBag } from "lucide-react"
-import { useNavigate, useParams, useSearchParams } from "react-router-dom"
+import { useNavigate, useParams } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
 import { ProductAlternateCard, TrayActionButton, MoodboardPickerDrawer, ScreenHeader } from "@/design-system/primitives"
@@ -18,6 +18,12 @@ import { useProductSaveActions } from "@/features/collections/hooks/useProductSa
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
 import { trackProductBuyClicked } from "@/integrations/posthog/engagementTracking/entityEvents"
 import { trackStudioProductViewed } from "@/integrations/posthog/engagementTracking/studio/studioTracking"
+import { useCreateDraftOutfit } from "@/features/outfits/hooks/useCreateDraftOutfit"
+import { useAuth } from "@/contexts/AuthContext"
+import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
+import { buildStudioSearchParams, isStudioSlot } from "@/features/studio/utils/studioUrlState"
+import { useToast } from "@/hooks/use-toast"
+import { useOutfitWithProduct } from "@/features/studio/hooks/useOutfitWithProduct"
 
 function ProductTagChip({ label }: { label: string }) {
   return (
@@ -39,22 +45,22 @@ export function ProductPageView() {
   const heartLongPressTimeout = useRef<NodeJS.Timeout | null>(null)
   const heartLongPressTriggered = useRef(false)
   const { productId } = useParams<{ productId?: string }>()
-  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const tour = useStudioTourContext()
-  const { openProduct, openStudio, openSimilarItems, selectedProductId, setSelectedProductId } = useStudioContext()
+  const {
+    openProduct,
+    openStudio,
+    openSimilarItems,
+    selectedProductId,
+    setSelectedProductId,
+  } = useStudioContext()
+  const { user } = useAuth()
+  const { profile, gender } = useProfileContext()
+  const { toast } = useToast()
+  const { mutateAsync: createDraftOutfitMutation } = useCreateDraftOutfit()
   const activeProductId = productId ?? selectedProductId ?? null
-  const decodedReturnTo = useMemo(() => {
-    const raw = searchParams.get("returnTo")
-    if (!raw) {
-      return null
-    }
-    try {
-      return decodeURIComponent(raw)
-    } catch {
-      return null
-    }
-  }, [searchParams])
+  // Pre-fetch: find the most recent outfit that contains this product (any slot)
+  const outfitWithProductQuery = useOutfitWithProduct(activeProductId)
 
   useEffect(() => {
     if (productId) {
@@ -129,13 +135,33 @@ export function ProductPageView() {
     [openProduct],
   )
 
+  // × button: always returns to Studio with the last active outfit.
+  // Reads from sessionStorage (written continuously by StudioScreen) so it works
+  // regardless of how the user arrived at the product page.
   const handleClose = useCallback(() => {
-    if (decodedReturnTo) {
-      navigate(decodedReturnTo)
-      return
-    }
-    openStudio()
-  }, [decodedReturnTo, navigate, openStudio])
+    try {
+      const raw = window.sessionStorage.getItem("atlyr:studio:lastSession")
+      if (raw) {
+        const session = JSON.parse(raw) as {
+          outfitId: string
+          slotIds: { top: string | null; bottom: string | null; shoes: string | null }
+          hiddenSlots: { top: boolean; bottom: boolean; shoes: boolean }
+        }
+        if (session?.outfitId) {
+          const params = buildStudioSearchParams({
+            outfitId: session.outfitId,
+            slotIds: session.slotIds,
+            hiddenSlots: session.hiddenSlots,
+          })
+          const search = params.toString()
+          navigate(`/studio${search ? `?${search}` : ""}`)
+          return
+        }
+      }
+    } catch { /* ignore parse/storage errors */ }
+    // No previous session — navigate to Studio empty; cold-start restores last outfit from DB
+    navigate("/studio")
+  }, [navigate])
 
   const handleBuy = useCallback(() => {
     if (product?.productUrl) {
@@ -147,6 +173,145 @@ export function ProductPageView() {
   const handleStyleIt = useCallback(() => {
     attemptOpenSimilar()
   }, [attemptOpenSimilar])
+
+  // "Studio" button: load an outfit containing this product (or create one), then navigate to Studio.
+  //
+  // Logic:
+  //   1. Find the most recently created outfit in DB that contains this product in any slot.
+  //      (Sorting key is "latest" for now — swappable to rating/relevance later.)
+  //   2a. Outfit found → create a DRAFT COPY of it in DB (same top/bottom/shoes) so the
+  //       user can modify it without affecting the original.
+  //   2b. No outfit found → create a cold-start draft with just this product in its slot.
+  //   3. Before navigating: pre-seed the undo history in localStorage so that one Undo
+  //      takes the user back to whichever outfit they had open in Studio before tapping here.
+  const handleAddToStudio = useCallback(async () => {
+    if (!activeProductId || !product) {
+      openStudio()
+      return
+    }
+
+    const slot = product.slot ?? null
+
+    if (!isStudioSlot(slot)) {
+      toast({
+        title: "No container found for product",
+        description: "This product type can't be placed in the Studio outfit.",
+        variant: "destructive",
+      })
+      openStudio()
+      return
+    }
+
+    if (!user?.id) {
+      openStudio()
+      return
+    }
+
+    // ── Read the previous Studio session so we can restore it via Undo ──────
+    // StudioScreen writes this on every state change; ProductPageScreen reads it here.
+    let previousSnapshot: {
+      outfitId: string
+      slotIds: { top: string | null; bottom: string | null; shoes: string | null }
+      hiddenSlots: { top: boolean; bottom: boolean; shoes: boolean }
+    } | null = null
+    try {
+      const raw = window.sessionStorage.getItem("atlyr:studio:lastSession")
+      if (raw) previousSnapshot = JSON.parse(raw)
+    } catch { /* ignore */ }
+
+    // ── Determine the draft's slot composition ───────────────────────────────
+    const foundOutfit = outfitWithProductQuery.data ?? null
+
+    let draftTopId: string | null = null
+    let draftBottomId: string | null = null
+    let draftShoesId: string | null = null
+
+    if (foundOutfit) {
+      // Full outfit found: copy all slots, then override the matching slot with the viewed product
+      draftTopId    = slot === "top"    ? activeProductId : (foundOutfit.top_id ?? null)
+      draftBottomId = slot === "bottom" ? activeProductId : (foundOutfit.bottom_id ?? null)
+      draftShoesId  = slot === "shoes"  ? activeProductId : (foundOutfit.shoes_id ?? null)
+    } else {
+      // No outfit found: single-product cold start
+      draftTopId    = slot === "top"    ? activeProductId : null
+      draftBottomId = slot === "bottom" ? activeProductId : null
+      draftShoesId  = slot === "shoes"  ? activeProductId : null
+    }
+
+    try {
+      const draft = await createDraftOutfitMutation({
+        userId: user.id,
+        topId: draftTopId,
+        bottomId: draftBottomId,
+        shoesId: draftShoesId,
+        gender: foundOutfit?.gender ?? gender ?? "female",
+        backgroundId: foundOutfit?.background_id ?? null,
+        createdByName: profile?.name ?? null,
+      })
+
+      // ── Pre-seed undo history so Undo returns to the previous Studio outfit ─
+      // useStudioHistory persists to localStorage under key `studio-history-v1:<userId>:session`.
+      // We write the new draft as `present` and the previous session as the last `past` entry
+      // BEFORE navigating, so the hook hydrates with undo already available.
+      if (previousSnapshot?.outfitId) {
+        const historyKey = `studio-history-v1:${user.id}:session`
+        const newDraftSnapshot = {
+          outfitId: draft.id,
+          slotIds: {
+            top:    draftTopId,
+            bottom: draftBottomId,
+            shoes:  draftShoesId,
+          },
+          hiddenSlots: { top: false, bottom: false, shoes: false },
+        }
+        try {
+          const existingRaw = window.localStorage.getItem(historyKey)
+          const existingHistory = existingRaw ? JSON.parse(existingRaw) : null
+          const existingPast: typeof previousSnapshot[] = existingHistory?.past ?? []
+          const cappedPast = [...existingPast, previousSnapshot].slice(-7)
+          window.localStorage.setItem(historyKey, JSON.stringify({
+            past: cappedPast,
+            present: newDraftSnapshot,
+            future: [],
+            checkpointSnapshot: newDraftSnapshot,
+            checkpointActive: false,
+            checkpointDirty: false,
+            preCheckpointSnapshot: null,
+            preCheckpointHistory: null,
+          }))
+        } catch { /* quota / private-mode — undo just won't have the previous outfit */ }
+      }
+
+      // ── Navigate to Studio with the new draft ────────────────────────────────
+      const params = buildStudioSearchParams({
+        outfitId: draft.id,
+        slotIds: {
+          top:    draftTopId,
+          bottom: draftBottomId,
+          shoes:  draftShoesId,
+        },
+      })
+      const search = params.toString()
+      navigate(`/studio${search ? `?${search}` : ""}`)
+    } catch {
+      toast({
+        title: "Could not open outfit",
+        description: "Please try again.",
+        variant: "destructive",
+      })
+    }
+  }, [
+    activeProductId,
+    createDraftOutfitMutation,
+    gender,
+    navigate,
+    openStudio,
+    outfitWithProductQuery.data,
+    product,
+    profile?.name,
+    toast,
+    user?.id,
+  ])
 
   const specItems = useMemo(() => {
     const items: { icon: React.ReactNode; label: string }[] = []
@@ -206,7 +371,8 @@ export function ProductPageView() {
       <div className={`flex w-full max-w-[${CARD_MAX_WIDTH}] flex-1 flex-col overflow-hidden rounded-t-[2rem] border border-border bg-card shadow-sm`}>
         <div className="flex flex-1 min-h-0 flex-col gap-1.5 overflow-y-auto">
           <section className="flex flex-col items-center gap-0.5 pb-1 pt-4">
-            <ScreenHeader 
+            <ScreenHeader
+              action="close"
               onAction={handleClose}
               highlightAction={tour.isHighlighted("return-from-product")}
               rightSlot={
@@ -240,8 +406,9 @@ export function ProductPageView() {
                   tone="plain"
                   iconEnd={ArrowUpRight}
                   label="Studio"
-                  className="pointer-events-auto h-9 rounded-xl bg-transparent px-2 text-xs font-medium text-foreground hover:bg-card"
-                  onClick={openStudio}
+                  className="pointer-events-auto h-9 rounded-xl bg-transparent px-2 text-xs font-medium text-foreground hover:bg-card disabled:opacity-50"
+                  onClick={handleAddToStudio}
+                  disabled={outfitWithProductQuery.isLoading}
                 />
               </div>
             </div>

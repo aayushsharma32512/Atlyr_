@@ -163,6 +163,30 @@ export function StudioScreenView() {
     setSearchParams(params, { replace: true })
   }, [lastOutfitQuery.data, outfitId])
 
+  // Persist the current Studio state to sessionStorage so that the product page can read it
+  // as the "previous snapshot" when pre-seeding the undo history.
+  useEffect(() => {
+    if (!outfitId) return
+    try {
+      const state = {
+        outfitId,
+        slotIds: {
+          top: topIdParam ?? slotProductIds.top ?? null,
+          bottom: bottomIdParam ?? slotProductIds.bottom ?? null,
+          shoes: shoesIdParam ?? slotProductIds.shoes ?? null,
+        },
+        hiddenSlots: {
+          top: Boolean(parsedParams.hiddenSlots?.top),
+          bottom: Boolean(parsedParams.hiddenSlots?.bottom),
+          shoes: Boolean(parsedParams.hiddenSlots?.shoes),
+        },
+      }
+      window.sessionStorage.setItem("atlyr:studio:lastSession", JSON.stringify(state))
+    } catch {
+      // quota / private-mode — ignore
+    }
+  }, [outfitId, topIdParam, bottomIdParam, shoesIdParam, slotProductIds, parsedParams.hiddenSlots])
+
   useEffect(() => {
     setSelectedOutfitId(resolvedOutfitId)
   }, [resolvedOutfitId, setSelectedOutfitId])
