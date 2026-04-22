@@ -345,6 +345,7 @@ export function FloatingProgressHub() {
           touchAction: "none",
           userSelect: isDragging ? "none" : undefined,
         }}
+        initial={{ maxHeight: PILL_HEIGHT }}
         animate={{
           width: isExpanded ? 280 : 44,
           height: PILL_HEIGHT,

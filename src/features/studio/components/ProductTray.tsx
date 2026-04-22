@@ -73,6 +73,7 @@ interface ProductTrayProps {
   onCreateMoodboard?: (name: string) => Promise<string | void> | string | void
   showFilter?: boolean
   showRemove?: boolean
+  showActions?: boolean
   highlightProducts?: boolean // When true, highlight individual product items (for tour)
   highlightDetails?: boolean // When true, highlight the Details button only (for tour)
   highlightSave?: boolean // When true, highlight the Save button only (for tour)
@@ -107,6 +108,7 @@ export function ProductTray({
   onCreateMoodboard,
   showFilter = true,
   showRemove = true,
+  showActions = true,
   highlightProducts = false,
   highlightDetails = false,
   highlightSave = false,
@@ -325,7 +327,7 @@ export function ProductTray({
                       </button>
                     </div>
                   </div>
-                  {action ? (
+                  {action && showActions ? (
                     <div className="flex w-20">
                       <TrayActionButton
                         tone={resolvedAction.tone}
@@ -367,7 +369,7 @@ export function ProductTray({
                 key={`${product.slot}-${product.productId}`}
               >
                 <div
-                  className={cn("transition-transform w-[76%] relative duration-200", highlightProducts && "isolate z-[75]")}
+                  className={cn("transition-transform relative duration-200", showActions ? "w-[76%]" : "w-full", highlightProducts && "isolate z-[75]")}
                   style={!isDragged && translateY !== 0 ? { transform: `translateY(${translateY}px)` } : undefined}
                 >
                   <ProductSummaryCard
@@ -403,8 +405,8 @@ export function ProductTray({
                     onDragMove={!isReadOnly ? handleDragMove : undefined}
                   />
                 </div>
-                {action ? (
-                  <div className={cn("relative flex w-20", 
+                {action && showActions ? (
+                  <div className={cn("relative flex w-20",
                     (highlightProducts || highlightDetails || highlightSave || highlightTryOn) && "isolate z-[75]",
                     (
                       (highlightDetails && resolvedAction.id === "details") ||
@@ -495,7 +497,7 @@ export function ProductTray({
                 key={`${product.slot}-${product.productId}`}
               >
                 <div
-                  className={cn("transition-transform w-[76%] relative duration-200", highlightProducts && "isolate z-[75]")}
+                  className={cn("transition-transform relative duration-200", showActions ? "w-[76%]" : "w-full", highlightProducts && "isolate z-[75]")}
                   style={!isDragged && translateY !== 0 ? { transform: `translateY(${translateY}px)` } : undefined}
                 >
                   <ProductSummaryCard
@@ -529,8 +531,8 @@ export function ProductTray({
                     onDragMove={!isReadOnly ? handleDragMove : undefined}
                   />
                 </div>
-                {action ? (
-                  <div className={cn("relative flex flex-1", 
+                {action && showActions ? (
+                  <div className={cn("relative flex flex-1",
                     (highlightProducts || highlightDetails || highlightSave || highlightTryOn) && "isolate z-[75]",
                     (
                       (highlightSave && resolvedAction.id === "save") ||

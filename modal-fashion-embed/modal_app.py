@@ -30,8 +30,8 @@ image = (
     image=image,
     cpu=4.0,
     timeout=120,
-    enable_memory_snapshot=True, 
-    scaledown_window=2, 
+    enable_memory_snapshot=True,
+    scaledown_window=300,  # Keep warm for 5 minutes after last request
 )
 class FashionEmbedder:
     @modal.enter(snap=True)
@@ -92,7 +92,7 @@ class FashionEmbedder:
     image=image,
     secrets=[modal.Secret.from_name("my-api-secrets")],
     cpu=1.0,
-    scaledown_window=2,
+    scaledown_window=300,  # Keep warm for 5 minutes after last request
 )
 @modal.fastapi_endpoint(method="POST")
 def api_embed(payload: dict, request: Request):

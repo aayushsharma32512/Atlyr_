@@ -651,23 +651,20 @@ export function CreationsTab() {
 
       {/* space gainer for the fixed product tray so that the OutfitInspirationCard is not covered by the product tray */}
       <div className="invisible z-20 flex justify-center bg-background pb-4 min-h-[150px]">
-        <ProductTray items={trayItems} slotOrder={slotOrder} />
+        <ProductTray items={trayItems} slotOrder={slotOrder} showActions={false} />
       </div>
 
       {/* Bottom Bar - Product List */}
-      <div className=" w-[94%] mx-auto fixed bottom-8 left-0 right-0 z-20 flex justify-center bg-background pb-4">
+      <div className="fixed bottom-8 left-0 right-0 z-20 flex justify-center bg-background pb-4">
+        <div style={{ width: 'min(356px, 80vw)' }}>
         <ProductTray
           items={trayItems}
           isLoading={productTrayQuery.isLoading}
           onProductPress={handleProductPress}
-          onDetailsPress={handleDetailsPress}
-          onTryOn={handleTryOn}
-          saveActionMode="toggle"
-          saveIsActive={isSaved}
-          onToggleSave={handleToggleSave}
           defaultOutfitName={activeCreation?.name ?? ""}
           showFilter={false}
           showRemove={false}
+          showActions={false}
           slotOrder={slotOrder}
           hiddenSlots={hiddenSlots}
           onAddSlot={handleAddSlot}
@@ -675,12 +672,17 @@ export function CreationsTab() {
           onRestoreSlot={handleRestoreSlot}
           onReorderSlots={handleReorderSlots}
         />
+        </div>
       </div>
       <SaveOutfitDrawer
         key={activeCreation?.id ?? "save-draft"}
         open={isSaveDrawerOpen}
         onOpenChange={setIsSaveDrawerOpen}
-        defaultOutfitName={activeOutfit?.name ?? activeCreation?.name ?? ""}
+        defaultOutfitName={
+          isDraftCreation
+            ? `${profile?.name ?? "Your"}'s Look #${String(Date.now()).slice(-4)}`
+            : (activeOutfit?.name ?? activeCreation?.name ?? "")
+        }
         defaultCategoryId={defaultCategoryId}
         defaultOccasionId={defaultOccasionId}
         defaultVibe={activeOutfit?.vibes ?? null}
