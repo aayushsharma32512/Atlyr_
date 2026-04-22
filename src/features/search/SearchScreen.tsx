@@ -1086,24 +1086,24 @@ export function SearchScreenView() {
 
     return (
       <OutfitInspirationGrid
-        items={outfitResultItems}
-        columns={2}
-        rows={8}
-        layoutMode="balanced"
-        cardTotalHeight={290}
-        cardVerticalGap={4}
-        cardMinAvatarHeight={128}
-        fixedAvatarHeight={156}
-        cardPreset="homeCurated"
-        onCardSelect={handleInspirationSelect}
-        onToggleSave={handleToggleFavorite}
-        onLongPressSave={handleLongPressSave}
-        getItemWrapperRef={(item) => {
-          const outfitId = item.outfitId ?? item.outfit?.id ?? null
-          if (!outfitId) return undefined
-          return outfitImpressionRefByOutfitId.get(outfitId)
-        }}
-      />
+          items={outfitResultItems}
+          columns={2}
+          rows={8}
+          layoutMode="balanced"
+          cardTotalHeight={290}
+          cardVerticalGap={4}
+          cardMinAvatarHeight={128}
+          fixedAvatarHeight={156}
+          cardPreset="homeCurated"
+          onCardSelect={handleInspirationSelect}
+          onToggleSave={handleToggleFavorite}
+          onLongPressSave={handleLongPressSave}
+          getItemWrapperRef={(item) => {
+            const outfitId = item.outfitId ?? item.outfit?.id ?? null
+            if (!outfitId) return undefined
+            return outfitImpressionRefByOutfitId.get(outfitId)
+          }}
+        />
     )
   }
 
@@ -1578,24 +1578,13 @@ export function SearchScreenView() {
                 setSortValue(nextSort)
               }}
 
-              leadingActions={
-                activeFilter === "products" && 
-                (productFilterCategories.length > 0 || activeFilterIds.length > 0) && 
-                !isProductResultsLoading && 
-                !isProductResultsError
-                  ? undefined 
-                  : null 
-              }
-              {...(activeFilter === "products" && 
-                (productFilterCategories.length > 0 || activeFilterIds.length > 0) && 
-                !isProductResultsLoading && 
-                !isProductResultsError && {
-                  filterCategories: productFilterCategories,
-                  activeFilters: activeFilterIds,
-                  onFilterApply: handleFilterApply,
-                  onFilterClearAll: handleFilterClearAll,
-                  onFilterChange: handleFilterOptionsChange,
-                })}
+              filterCategories={productFilterCategories}
+              activeFilters={activeFilterIds}
+              onFilterApply={handleFilterApply}
+              onFilterClearAll={handleFilterClearAll}
+              onFilterChange={handleFilterOptionsChange}
+              filterDisabled={activeFilter === "outfits"}
+              sortDisabled={activeFilter === "outfits"}
             />
           </div>
         </div>

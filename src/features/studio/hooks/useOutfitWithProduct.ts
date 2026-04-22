@@ -12,11 +12,12 @@ interface OutfitWithProduct {
 }
 
 /**
- * Finds the most recently created outfit that contains the given product in any slot.
+ * Finds the most recently created outfit in the DB that contains the given
+ * product in any slot (top, bottom, or shoes).
  *
- * Sorting is currently by `created_at DESC` (latest made) — the `sortBy` parameter is a
- * placeholder so the callsite can be switched to rating / popularity / relevance score
- * later without touching this hook's internals.
+ * Used as a fallback when no active outfit ID is present in the URL — allows
+ * "Pair with wardrobe", "Pair with new items", and "Add to Studio" flows to
+ * work without requiring the user to have an outfit already open in Studio.
  */
 export function useOutfitWithProduct(
   productId: string | null,

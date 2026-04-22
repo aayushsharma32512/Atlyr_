@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react"
-import { ArrowDownRight, ArrowUpRight, Heart, Ruler, ShoppingBag } from "lucide-react"
-import { useNavigate, useParams } from "react-router-dom"
+import { ArrowDownRight, ArrowUpRight, Heart, Ruler, ShoppingBag, Shuffle } from "lucide-react"
+import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
 import { ProductAlternateCard, TrayActionButton, MoodboardPickerDrawer, ScreenHeader } from "@/design-system/primitives"
@@ -13,15 +13,16 @@ import { StudioLayout } from "./StudioLayout"
 import { useStudioProduct } from "@/features/studio/hooks/useStudioProduct"
 import { useStudioSimilarProducts } from "@/features/studio/hooks/useStudioSimilarProducts"
 import { useStudioProductImages } from "@/features/studio/hooks/useStudioProductImages"
+import { useOutfitWithProduct } from "@/features/studio/hooks/useOutfitWithProduct"
 import { ProductImageCarousel } from "@/components/product/ProductImageCarousel"
 import { useProductSaveActions } from "@/features/collections/hooks/useProductSaveActions"
-import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
-import { trackProductBuyClicked } from "@/integrations/posthog/engagementTracking/entityEvents"
-import { trackStudioProductViewed } from "@/integrations/posthog/engagementTracking/studio/studioTracking"
 import { useCreateDraftOutfit } from "@/features/outfits/hooks/useCreateDraftOutfit"
 import { useAuth } from "@/contexts/AuthContext"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { buildStudioSearchParams, isStudioSlot } from "@/features/studio/utils/studioUrlState"
+import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
+import { trackProductBuyClicked } from "@/integrations/posthog/engagementTracking/entityEvents"
+import { trackStudioProductViewed } from "@/integrations/posthog/engagementTracking/studio/studioTracking"
 import { useToast } from "@/hooks/use-toast"
 import { useOutfitWithProduct } from "@/features/studio/hooks/useOutfitWithProduct"
 
@@ -47,21 +48,11 @@ export function ProductPageView() {
   const { productId } = useParams<{ productId?: string }>()
   const navigate = useNavigate()
   const tour = useStudioTourContext()
-  const {
-    openProduct,
-    openStudio,
-    openSimilarItems,
-    selectedProductId,
-    setSelectedProductId,
-  } = useStudioContext()
+  const { openProduct, openStudio, openSimilarItems, selectedProductId, setSelectedProductId } = useStudioContext()
   const { user } = useAuth()
   const { profile, gender } = useProfileContext()
   const { toast } = useToast()
-  const { mutateAsync: createDraftOutfitMutation } = useCreateDraftOutfit()
   const activeProductId = productId ?? selectedProductId ?? null
-  // Pre-fetch: find the most recent outfit that contains this product (any slot)
-  const outfitWithProductQuery = useOutfitWithProduct(activeProductId)
-
   useEffect(() => {
     if (productId) {
       setSelectedProductId(productId)
@@ -79,6 +70,10 @@ export function ProductPageView() {
 
   const similarItemsQuery = useStudioSimilarProducts(activeProductId)
   const similarItems = similarItemsQuery.data ?? []
+
+  // Find the most recent outfit in the DB that contains this product (used for Add to Studio)
+  const outfitWithProductQuery = useOutfitWithProduct(activeProductId)
+  const { mutateAsync: createDraftOutfitMutation } = useCreateDraftOutfit()
 
   // Fetch all images for the product from product_images table (architecture-compliant)
   const productImagesQuery = useStudioProductImages(activeProductId)
@@ -135,9 +130,7 @@ export function ProductPageView() {
     [openProduct],
   )
 
-  // × button: always returns to Studio with the last active outfit.
-  // Reads from sessionStorage (written continuously by StudioScreen) so it works
-  // regardless of how the user arrived at the product page.
+  // × button: always returns to the last active Studio state from sessionStorage
   const handleClose = useCallback(() => {
     try {
       const raw = window.sessionStorage.getItem("atlyr:studio:lastSession")
@@ -158,8 +151,7 @@ export function ProductPageView() {
           return
         }
       }
-    } catch { /* ignore parse/storage errors */ }
-    // No previous session — navigate to Studio empty; cold-start restores last outfit from DB
+    } catch {}
     navigate("/studio")
   }, [navigate])
 
@@ -402,14 +394,19 @@ export function ProductPageView() {
                 </figure>
               )}
               <div className="pointer-events-none absolute right-4 bottom-1 z-10">
-                <TrayActionButton
-                  tone="plain"
-                  iconEnd={ArrowUpRight}
-                  label="Studio"
-                  className="pointer-events-auto h-9 rounded-xl bg-transparent px-2 text-xs font-medium text-foreground hover:bg-card disabled:opacity-50"
+                <button
+                  type="button"
+                  className="pointer-events-auto flex h-9 items-center gap-1.5 rounded-xl bg-transparent px-2 text-foreground hover:bg-card disabled:opacity-40 transition-colors"
                   onClick={handleAddToStudio}
                   disabled={outfitWithProductQuery.isLoading}
-                />
+                  aria-label="Remix in Studio"
+                >
+                  <span className="flex flex-col text-left text-xs font-medium leading-tight">
+                    <span>Remix</span>
+                    <span>in Studio</span>
+                  </span>
+                  <Shuffle className="h-7 w-auto flex-none" aria-hidden="true" />
+                </button>
               </div>
             </div>
             <div className="flex w-full gap-2 overflow-x-auto px-4 pb-1 scrollbar-hide">

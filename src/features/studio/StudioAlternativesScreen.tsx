@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
-import { SquareUserRound, RefreshCw, Search, Maximize, Columns2, Maximize2, Shirt, Footprints, Grip, Minimize2 } from "lucide-react"
+import { SquareUserRound, RefreshCw, Search, Maximize2, Shirt, Footprints, Minimize2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { useOutfitSnapshot } from "@/features/outfits/hooks/useOutfitSnapshot"
 
 import {
@@ -1046,35 +1047,19 @@ export function StudioAlternativesView() {
                 )}
               </div>
 
-              <IconButton
-                tone="ghost"
+              <Button
+                variant="ghost"
                 size="sm"
                 aria-label="Try-on"
-                className="absolute bottom-2 left-0 z-10 rounded-xl bg-card h-9 w-9 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                className="absolute bottom-2 left-0 z-10 flex items-center gap-1.5 rounded-xl bg-card h-9 px-3 text-muted-foreground hover:bg-muted/40 hover:text-foreground text-xs font-medium"
                 onClick={(event) => {
                   event.stopPropagation()
                   handleTryOn()
                 }}
               >
                 <SquareUserRound className="size-4" aria-hidden="true" />
-              </IconButton>
-              <IconButton
-                tone="ghost"
-                size="md"
-                aria-label="Open full studio view"
-                className={cn(
-                  "absolute bottom-2 right-[-6px] z-10 rounded-xl bg-card h-9 w-9 text-muted-foreground hover:bg-muted/40 hover:text-foreground",
-                  tour.isHighlighted("full-screen") && "z-[75] ring-2 ring-primary ring-offset-2"
-                )}
-                onClick={() => {
-                  if (tour.isHighlighted("full-screen")) {
-                    tour.nextStep()
-                  }
-                  openStudio()
-                }}
-              >
-                <Maximize className="size-5" aria-hidden="true" />
-              </IconButton>
+                TryOn
+              </Button>
             </div>
 
             <ShortProductCard
@@ -1162,19 +1147,19 @@ export function StudioAlternativesView() {
                 </div>
               ) : (
                 <AlternativesGrid
-                  products={alternativeProducts}
-                  onSelect={isViewOnly ? undefined : handleAlternativeSelect}
-                  isProductSaved={productSaveActions.isSaved}
-                  onToggleSave={
-                    isViewOnly
-                      ? undefined
-                      : (productId, nextSaved) => productSaveActions.onToggleSave(productId, nextSaved)
-                  }
-                  onLongPressSave={
-                    isViewOnly ? undefined : (productId) => productSaveActions.onLongPressSave(productId)
-                  }
-                  className="h-full"
-                />
+                    products={alternativeProducts}
+                    onSelect={isViewOnly ? undefined : handleAlternativeSelect}
+                    isProductSaved={productSaveActions.isSaved}
+                    onToggleSave={
+                      isViewOnly
+                        ? undefined
+                        : (productId, nextSaved) => productSaveActions.onToggleSave(productId, nextSaved)
+                    }
+                    onLongPressSave={
+                      isViewOnly ? undefined : (productId) => productSaveActions.onLongPressSave(productId)
+                    }
+                    className="h-full"
+                  />
               )}
             </div>
           </section>

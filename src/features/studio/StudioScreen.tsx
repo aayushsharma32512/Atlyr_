@@ -208,6 +208,28 @@ export function StudioScreenView() {
     }
   }, [bottomIdParam, setSlotProductId, shoesIdParam, studioAvatar, topIdParam])
 
+  // Persist the current Studio state to sessionStorage so the × button on ProductPage
+  // can navigate back to exactly this outfit + slot configuration.
+  useEffect(() => {
+    if (!resolvedOutfitId) return
+    try {
+      const state = {
+        outfitId: resolvedOutfitId,
+        slotIds: {
+          top: topIdParam ?? slotProductIds.top ?? null,
+          bottom: bottomIdParam ?? slotProductIds.bottom ?? null,
+          shoes: shoesIdParam ?? slotProductIds.shoes ?? null,
+        },
+        hiddenSlots: {
+          top: Boolean(parsedParams.hiddenSlots?.top),
+          bottom: Boolean(parsedParams.hiddenSlots?.bottom),
+          shoes: Boolean(parsedParams.hiddenSlots?.shoes),
+        },
+      }
+      window.sessionStorage.setItem("atlyr:studio:lastSession", JSON.stringify(state))
+    } catch {}
+  }, [resolvedOutfitId, topIdParam, bottomIdParam, shoesIdParam, slotProductIds, parsedParams.hiddenSlots])
+
   // Prefetch search alternatives for all 3 slots when outfit loads
   // (The alternatives screen auto-searches with the current item's image)
   useEffect(() => {
