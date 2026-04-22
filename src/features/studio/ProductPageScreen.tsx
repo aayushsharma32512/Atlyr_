@@ -24,7 +24,6 @@ import { useEngagementAnalytics } from "@/integrations/posthog/engagementTrackin
 import { trackProductBuyClicked } from "@/integrations/posthog/engagementTracking/entityEvents"
 import { trackStudioProductViewed } from "@/integrations/posthog/engagementTracking/studio/studioTracking"
 import { useToast } from "@/hooks/use-toast"
-import { useOutfitWithProduct } from "@/features/studio/hooks/useOutfitWithProduct"
 
 function ProductTagChip({ label }: { label: string }) {
   return (
