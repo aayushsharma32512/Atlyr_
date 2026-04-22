@@ -12,17 +12,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Supabase configuration
-const REMOTE_SUPABASE_URL = process.env.VITE_SUPABASE_URL;
-const REMOTE_SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!REMOTE_SUPABASE_URL || !REMOTE_SUPABASE_KEY) {
-  console.error('❌ Missing required environment variables: VITE_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error('❌ Missing required environment variables: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
   process.exit(1);
 }
 
-console.log('🔑 Using remote service role key\n');
-
-const supabase = createClient(REMOTE_SUPABASE_URL, REMOTE_SUPABASE_KEY);
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Configuration
 const BATCH_SIZE = 100; // Process updates in batches

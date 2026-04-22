@@ -29,6 +29,8 @@ export function useOutfitWithProduct(
     staleTime: 30_000,
     refetchOnWindowFocus: false,
     queryFn: async () => {
+      if (!productId) return null
+
       const { data, error } = await supabase
         .from("outfits")
         .select("id, top_id, bottom_id, shoes_id, gender, background_id")

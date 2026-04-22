@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
 import fs from 'fs';
@@ -7,15 +8,15 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Local Supabase configuration
-const LOCAL_SUPABASE_URL = 'http://127.0.0.1:54321';
-const LOCAL_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-console.log('🔧 Using LOCAL Supabase database for background upload');
-console.log('📊 URL:', LOCAL_SUPABASE_URL);
-console.log('🔑 Using local service role key\n');
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error('❌ Missing required environment variables: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
+  process.exit(1);
+}
 
-const supabase = createClient(LOCAL_SUPABASE_URL, LOCAL_SUPABASE_KEY);
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Error tracking
 const errors = [];

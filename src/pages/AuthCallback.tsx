@@ -31,60 +31,14 @@ export default function AuthCallback() {
   const [status, setStatus] = useState<CallbackStatus>("waiting")
   const [message, setMessage] = useState<string>("Finalizing sign-in…")
   const redeemAttempted = useRef(false)
+  const redeemSucceeded = useRef(false)
 
   const redeemInviteMutation = useRedeemInviteMutation()
-  const accessQuery = useHasAppAccessQuery(status === "checking")
+  // Only check access if no invite redeem OR if redeem failed
+  const accessQuery = useHasAppAccessQuery(status === "checking" && !redeemSucceeded.current)
   const authSuccessEmitted = useRef(false)
 
-  useEffect(() => {
-    if (loading) return
-
-    if (!user) {
-      setStatus("blocked")
-      setMessage("We couldn't sign you in. Try logging in again.")
-      return
-    }
-
-    if (inviteCode && !redeemAttempted.current) {
-      redeemAttempted.current = true
-      setStatus("redeeming")
-      setMessage("Redeeming your invite…")
-
-      redeemInviteMutation.mutate(inviteCode, {
-        onSuccess: (result) => {
-          if (!result.success) {
-            setStatus("blocked")
-            setMessage("That invite code can’t be redeemed anymore. Request a new invite.")
-            return
-          }
-
-          clearPendingInviteCode()
-          setStatus("checking")
-          setMessage("Verifying access…")
-        },
-        onError: () => {
-          setStatus("blocked")
-          setMessage("We couldn’t redeem that invite right now. Please try again.")
-        },
-      })
-
-      return
-    }
-
-    setStatus("checking")
-    setMessage("Verifying access…")
-  }, [inviteCode, loading, redeemInviteMutation, user])
-
-  useEffect(() => {
-    if (status !== "checking") return
-    if (accessQuery.isLoading) return
-
-    if (accessQuery.isError || !accessQuery.data) {
-      setStatus("blocked")
-      setMessage("Access isn’t enabled for this account yet.")
-      return
-    }
-
+  const proceedWithAuth = () => {
     if (!authSuccessEmitted.current && user) {
       authSuccessEmitted.current = true
 
@@ -107,6 +61,77 @@ export default function AuthCallback() {
 
     setReturningMarker()
     navigate(next, { replace: true })
+  }
+
+  useEffect(() => {
+    if (loading) return
+
+    if (!user) {
+      setStatus("blocked")
+      setMessage("We couldn’t sign you in. Try logging in again.")
+      return
+    }
+
+    if (inviteCode && !redeemAttempted.current) {
+      redeemAttempted.current = true
+      setStatus("redeeming")
+      setMessage("Redeeming your invite…")
+
+      redeemInviteMutation.mutate(inviteCode, {
+        onSuccess: (result) => {
+          if (!result.success) {
+            setStatus("blocked")
+            setMessage("That invite code can’t be redeemed anymore. Request a new invite.")
+            return
+          }
+
+          redeemSucceeded.current = true
+          clearPendingInviteCode()
+          setStatus("checking")
+          setMessage("Verifying access…")
+        },
+        onError: () => {
+          setStatus("blocked")
+          setMessage("We couldn’t redeem that invite right now. Please try again.")
+        },
+      })
+
+      return
+    }
+
+    // Only proceed to access check if NOT waiting for redeem to complete
+    const isWaitingForRedeem = inviteCode && redeemAttempted.current && !redeemSucceeded.current
+
+    if (isWaitingForRedeem) return
+
+    setStatus("checking")
+    setMessage("Verifying access…")
+  }, [inviteCode, loading, redeemInviteMutation, user])
+
+  useEffect(() => {
+    if (status !== "checking") return
+
+    // If redeem succeeded, trust that and proceed - don’t check access (avoids read-after-write issues)
+    if (redeemSucceeded.current) {
+      const timer = setTimeout(() => {
+        proceedWithAuth()
+      }, 100)
+      return () => clearTimeout(timer)
+    }
+
+    if (accessQuery.isLoading) return
+
+    const timer = setTimeout(() => {
+      if (accessQuery.isError || !accessQuery.data) {
+        setStatus("blocked")
+        setMessage("Access isn’t enabled for this account yet.")
+        return
+      }
+
+      proceedWithAuth()
+    }, 100)
+
+    return () => clearTimeout(timer)
   }, [
     accessQuery.data,
     accessQuery.isError,
@@ -137,7 +162,7 @@ export default function AuthCallback() {
         })
         navigate("/auth/signup", { replace: true })
       })
-  }, [navigate, signOut, status])
+  }, [navigate, signOut, status, toast])
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
