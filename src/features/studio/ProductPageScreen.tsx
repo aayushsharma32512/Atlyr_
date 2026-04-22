@@ -19,14 +19,10 @@ import { useProductSaveActions } from "@/features/collections/hooks/useProductSa
 import { useCreateDraftOutfit } from "@/features/outfits/hooks/useCreateDraftOutfit"
 import { useAuth } from "@/contexts/AuthContext"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
-import { buildStudioSearchParams } from "@/features/studio/utils/studioUrlState"
+import { buildStudioSearchParams, isStudioSlot } from "@/features/studio/utils/studioUrlState"
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
 import { trackProductBuyClicked } from "@/integrations/posthog/engagementTracking/entityEvents"
 import { trackStudioProductViewed } from "@/integrations/posthog/engagementTracking/studio/studioTracking"
-import { useCreateDraftOutfit } from "@/features/outfits/hooks/useCreateDraftOutfit"
-import { useAuth } from "@/contexts/AuthContext"
-import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
-import { buildStudioSearchParams, isStudioSlot } from "@/features/studio/utils/studioUrlState"
 import { useToast } from "@/hooks/use-toast"
 import { useOutfitWithProduct } from "@/features/studio/hooks/useOutfitWithProduct"
 
@@ -55,6 +51,7 @@ export function ProductPageView() {
   const { openProduct, openStudio, openSimilarItems, selectedProductId, setSelectedProductId } = useStudioContext()
   const { user } = useAuth()
   const { profile, gender } = useProfileContext()
+  const { toast } = useToast()
   const activeProductId = productId ?? selectedProductId ?? null
   useEffect(() => {
     if (productId) {
@@ -157,84 +154,6 @@ export function ProductPageView() {
     } catch {}
     navigate("/studio")
   }, [navigate])
-
-  // Add to Studio: find the most recent outfit containing this product, create a draft
-  // copy of it, pre-seed the undo history so Undo returns to the previous outfit, then navigate.
-  const handleAddToStudio = useCallback(async () => {
-    if (!activeProductId || !user?.id) return
-
-    const slot = product?.slot ?? null
-    const existingOutfit = outfitWithProductQuery.data
-
-    let draftTopId: string | null = null
-    let draftBottomId: string | null = null
-    let draftShoesId: string | null = null
-    let draftGender: string | null = gender ?? "female"
-    let draftBackgroundId: string | null = null
-
-    if (existingOutfit) {
-      // Use the existing outfit's slots as the base for the draft
-      draftTopId = existingOutfit.top_id
-      draftBottomId = existingOutfit.bottom_id
-      draftShoesId = existingOutfit.shoes_id
-      draftGender = existingOutfit.gender ?? draftGender
-      draftBackgroundId = existingOutfit.background_id
-    } else if (slot) {
-      // Cold start: only this product in its slot
-      draftTopId = slot === "top" ? activeProductId : null
-      draftBottomId = slot === "bottom" ? activeProductId : null
-      draftShoesId = slot === "shoes" ? activeProductId : null
-    } else {
-      // Unknown slot — open Studio as-is
-      navigate("/studio")
-      return
-    }
-
-    try {
-      const draft = await createDraftOutfitMutation({
-        userId: user.id,
-        topId: draftTopId,
-        bottomId: draftBottomId,
-        shoesId: draftShoesId,
-        gender: draftGender,
-        backgroundId: draftBackgroundId,
-        createdByName: profile?.name ?? null,
-      })
-
-      // Pre-seed undo history so pressing Undo in Studio returns to the previous outfit
-      try {
-        const storageKey = `studio-history-v1:${user.id}:session`
-        const prevSessionRaw = window.sessionStorage.getItem("atlyr:studio:lastSession")
-        const prevSession = prevSessionRaw ? JSON.parse(prevSessionRaw) : null
-        const newSnapshot = {
-          outfitId: draft.id,
-          slotIds: { top: draftTopId, bottom: draftBottomId, shoes: draftShoesId },
-          hiddenSlots: { top: false, bottom: false, shoes: false },
-        }
-        const historyState = {
-          past: prevSession?.outfitId ? [prevSession] : [],
-          present: newSnapshot,
-          future: [],
-          checkpointSnapshot: null,
-          checkpointActive: false,
-          checkpointDirty: false,
-          preCheckpointSnapshot: null,
-          preCheckpointHistory: null,
-        }
-        window.localStorage.setItem(storageKey, JSON.stringify(historyState))
-      } catch {}
-
-      const params = buildStudioSearchParams({
-        outfitId: draft.id,
-        slotIds: { top: draftTopId, bottom: draftBottomId, shoes: draftShoesId },
-      })
-      const search = params.toString()
-      navigate(`/studio${search ? `?${search}` : ""}`)
-    } catch {
-      // Fallback: open Studio without a specific outfit
-      navigate("/studio")
-    }
-  }, [activeProductId, createDraftOutfitMutation, gender, navigate, outfitWithProductQuery.data, product?.slot, profile?.name, user?.id])
 
   const handleBuy = useCallback(() => {
     if (product?.productUrl) {
