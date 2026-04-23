@@ -8,6 +8,8 @@ import { downloadObject, deleteObjects, putObject, createSignedUrl } from "../_s
 
 const TEMP_BUCKET = "temp-candidates"
 const FINAL_BUCKET = "neutral-poses"
+const TRAINING_BUCKET = "training-data"
+const TRAINING_RECORD_LIMIT = 2500
 
 type SelectPayload = {
   candidateId: string
@@ -131,11 +133,102 @@ serve(async (req) => {
       await auth.adminClient.from("user_neutral_poses").update({ is_active: true }).eq("id", poseId)
     }
 
-    // Query all candidates for this batch to cleanup
+    // Query all candidates for this batch — used for both training archival and cleanup
     const { data: batchCandidates } = await supabase
       .from("likeness_candidates")
-      .select("storage_path")
+      .select("storage_path, candidate_index")
       .eq("batch_id", batchId)
+
+    // ── Training data archival ────────────────────────────────────────────────
+    // Runs before cleanup so temp files are still available.
+    // Failures here are non-fatal — we log and continue so the user's selection
+    // is never blocked by a training pipeline issue.
+    try {
+      const { count: trainingCount } = await supabase
+        .from("generation_training_records")
+        .select("id", { count: "exact", head: true })
+
+      if ((trainingCount ?? 0) < TRAINING_RECORD_LIMIT) {
+        // Separate selected from rejected candidates
+        const rejectedCandidates = (batchCandidates ?? []).filter(
+          (c: any) => c.candidate_index !== candidate.candidate_index
+        )
+
+        // Derive file extensions from source paths (e.g. "sources/selfie.jpg" → "jpg")
+        const selfieExt = selfieSource.split(".").pop() ?? "jpg"
+        const fullBodyExt = fullBodySource.split(".").pop() ?? "jpg"
+
+        const trainingSelfie  = `${userId}/${batchId}/inputs/selfie.${selfieExt}`
+        const trainingFullbody = `${userId}/${batchId}/inputs/fullbody.${fullBodyExt}`
+
+        // Download inputs + rejected candidates from temp bucket in parallel
+        const [selfieBytes, fullBodyBytes, ...rejectedBytes] = await Promise.all([
+          downloadObject(TEMP_BUCKET, selfieSource),
+          downloadObject(TEMP_BUCKET, fullBodySource),
+          ...rejectedCandidates.map((c: any) => downloadObject(TEMP_BUCKET, c.storage_path)),
+        ])
+
+        // Build rejected paths in training bucket
+        const rejectedTrainingPaths = rejectedCandidates.map((c: any, i: number) => ({
+          index: c.candidate_index,
+          path: `${userId}/${batchId}/rejected/candidate_${c.candidate_index}.png`,
+        }))
+
+        // Upload all to training-data bucket in parallel
+        await Promise.all([
+          putObject(TRAINING_BUCKET, trainingSelfie,   selfieBytes,   `image/${selfieExt === "jpg" ? "jpeg" : selfieExt}`),
+          putObject(TRAINING_BUCKET, trainingFullbody, fullBodyBytes, `image/${fullBodyExt === "jpg" ? "jpeg" : fullBodyExt}`),
+          ...rejectedTrainingPaths.map((rp: any, i: number) =>
+            putObject(TRAINING_BUCKET, rp.path, rejectedBytes[i], "image/png")
+          ),
+        ])
+
+        // Upsert training record — ON CONFLICT on batch_id handles retries cleanly
+        const { error: trainingInsertError } = await supabase
+          .from("generation_training_records")
+          .upsert(
+            {
+              user_id:                  userId,
+              batch_id:                 batchId,
+              selected_pose_id:         poseId,
+              selected_candidate_index: candidate.candidate_index,
+              total_candidates:         (batchCandidates ?? []).length,
+              identity_summary:         identitySummary,
+              user_overrides:           metadataJson.metadata ?? {},
+              input_selfie_path:        trainingSelfie,
+              input_fullbody_path:      trainingFullbody,
+              rejected_candidate_paths: rejectedTrainingPaths,
+            },
+            { onConflict: "batch_id" }
+          )
+
+        if (trainingInsertError) {
+          console.error("[LikenessSelect] training record upsert failed", {
+            error: trainingInsertError.message,
+            batchId,
+            correlationId: auth.correlationId,
+          })
+        } else {
+          console.log("[LikenessSelect] training record saved", {
+            batchId,
+            rejectedCount: rejectedTrainingPaths.length,
+            correlationId: auth.correlationId,
+          })
+        }
+      } else {
+        console.log("[LikenessSelect] training limit reached, skipping archival", {
+          limit: TRAINING_RECORD_LIMIT,
+          correlationId: auth.correlationId,
+        })
+      }
+    } catch (trainingErr) {
+      console.error("[LikenessSelect] training archival failed (non-fatal)", {
+        error: (trainingErr as Error).message,
+        batchId,
+        correlationId: auth.correlationId,
+      })
+    }
+    // ── End training data archival ────────────────────────────────────────────
 
     const cleanupPaths: string[] = [metadataPath]
     cleanupPaths.push(...sources.map((source: any) => source.path).filter(Boolean))
