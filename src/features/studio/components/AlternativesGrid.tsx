@@ -90,9 +90,12 @@ export function AlternativesGrid({
                 onSelect?.(product)
               }
             }}
-            role="button"
-            tabIndex={0}
-            className="flex flex-col gap-0 items-stretch  rounded-1xl"
+            role={onSelect ? "button" : undefined}
+            tabIndex={onSelect ? 0 : undefined}
+            className={cn(
+              "flex flex-col gap-0 items-stretch rounded-xl",
+              onSelect && "cursor-pointer shadow-sm ring-1 ring-border/30"
+            )}
           >
             <ProductAlternateCard
               imageSrc={product.imageSrc}
