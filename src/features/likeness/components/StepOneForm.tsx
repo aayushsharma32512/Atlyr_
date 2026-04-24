@@ -1,15 +1,15 @@
 import { UseFormReturn } from 'react-hook-form';
 import { CardHeader, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, Rotate3d, RotateCcw, Info, ChevronLeft } from 'lucide-react';
+import { Plus, RotateCcw, Info, ChevronLeft } from 'lucide-react';
 import { Form, FormField, FormItem, FormControl } from '@/components/ui/form';
 import { Label } from '@/components/ui/label';
 import type { LikenessFormData } from "../types"
 import { useRef, useState } from 'react';
 
-const FULL_BODY_INFO = `Stand facing the camera, arms slightly away from your sides. Your full silhouette must be visible — head to toe. Wear fitted clothing; loose or baggy layers hide your body proportions and reduce accuracy. Even lighting with no harsh shadows. Supported formats: JPEG, PNG, HEIC · Max 30 MB.`
+const FULL_BODY_INFO = `Neutral Pose. Stand facing the camera, arms slightly away from your sides. Your full silhouette, head to toe should be visible. Preferably, with fitted clothing.`
 
-const FACE_SELFIE_INFO = `Look directly at the camera with your face centred in frame. No sunglasses, heavy filters, or thick makeup — the AI reads your natural facial features to build your avatar. A close-up from chin to crown works best. Natural, even lighting; avoid strong backlighting or shadows across your face. Supported formats: JPEG, PNG, HEIC · Max 30 MB.`
+const FACE_SELFIE_INFO = `Look into the camera; face centred in frame. A close-up from chin to crown works best. Natural, even lighting; avoid strong backlighting or shadows across your face.`
 
 interface StepOneFormProps {
   type: 'drawer' | 'screen';
@@ -106,10 +106,10 @@ export function StepOneForm({
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setShowFullBodyInfo(true); }}
-                  className="absolute top-2 right-2 z-10 flex items-center justify-center size-5 rounded-full bg-black/25 text-white"
+                  className="absolute top-2 right-2 z-10 flex items-center justify-center text-muted-foreground"
                   aria-label="Full body photo guidelines"
                 >
-                  <Info className="size-3" />
+                  <Info className="size-4" />
                 </button>
                 {/* Info overlay */}
                 {showFullBodyInfo && (
@@ -141,9 +141,6 @@ export function StepOneForm({
                   }}
                 />
               </div>
-              <p className="text-xs text-muted-foreground text-center">
-                full body photo
-              </p>
             </div>
 
             {/* Face Selfie Photo Upload */}
@@ -181,10 +178,10 @@ export function StepOneForm({
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setShowFaceSelfieInfo(true); }}
-                  className="absolute top-2 right-2 z-10 flex items-center justify-center size-5 rounded-full bg-black/25 text-white"
+                  className="absolute top-2 right-2 z-10 flex items-center justify-center text-muted-foreground"
                   aria-label="Face selfie photo guidelines"
                 >
-                  <Info className="size-3" />
+                  <Info className="size-4" />
                 </button>
                 {/* Info overlay */}
                 {showFaceSelfieInfo && (
@@ -216,9 +213,6 @@ export function StepOneForm({
                   }}
                 />
               </div>
-              <p className="text-xs text-muted-foreground text-center">
-                face selfie photo
-              </p>
             </div>
           </div>
         </div>
@@ -235,9 +229,8 @@ export function StepOneForm({
                 className="bg-primary flex gap-2 h-9 items-center justify-center px-4 py-2 rounded-[10px] shadow-sm flex-1"
                 disabled={!fullBodyPhoto || !faceSelfiePhoto}
               >
-                <Rotate3d className="relative shrink-0 size-4 text-primary-foreground" />
                 <p className="font-medium leading-5 relative shrink-0 text-primary-foreground text-sm capitalize">
-                  generate likeness
+                  Generate
                 </p>
               </Button>
             </div>
@@ -248,9 +241,8 @@ export function StepOneForm({
               className="bg-primary flex gap-2 h-9 items-center justify-center px-4 py-2 rounded-[10px] shadow-sm w-full"
               disabled={!fullBodyPhoto || !faceSelfiePhoto}
             >
-              <Rotate3d className="relative shrink-0 size-4 text-primary-foreground" />
               <p className="font-medium leading-5 relative shrink-0 text-primary-foreground text-sm capitalize">
-                generate likeness
+                Generate
               </p>
             </Button>
           )}

@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { PriceDisplay } from "./price-display"
 import { StatChip } from "./stat-chip"
-import { Heart, ShoppingBag, Star, Users } from "lucide-react"
+import { ArrowUpRight, Heart, ShoppingBag, Star, Users } from "lucide-react"
 
 export interface ShortProductCardProps {
   title: string
@@ -34,25 +34,37 @@ export function ShortProductCard({
       onClick={onOpenDetails}
       onKeyDown={onOpenDetails ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenDetails() } } : undefined}
       className={cn(
-        "flex h-32 w-44 flex-col justify-between rounded-2xl bg-card px-0.5 py-1",
-        onOpenDetails && "cursor-pointer shadow-sm ring-1 ring-border/30",
+        "flex h-36 w-44 flex-col justify-between rounded-2xl bg-card px-0.5 py-1",
+        onOpenDetails && "cursor-pointer",
         className,
       )}
     >
       <div className="space-y-0 h-full relative">
-        <div className="flex items-center gap-1 px-0.5">
-          <h3 className="flex-1 truncate text-xs font-medium text-foreground">
+        <div className="flex items-center gap-1">
+          <h3 className="flex-1 truncate text-sm font-medium text-foreground">
             {title}
           </h3>
         </div>
 
-        <PriceDisplay
-          price={price}
-          discountPercent={discountPercent ?? undefined}
-          className="px-0.5 py-1.5 text-xs font-medium text-foreground"
-        />
+        <div className="flex items-center gap-1">
+          <PriceDisplay
+            price={price}
+            discountPercent={discountPercent ?? undefined}
+            className="flex-1 py-1.5 text-xs font-medium text-foreground"
+          />
+          {onOpenDetails && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onOpenDetails() }}
+              aria-label="Open product details"
+              className="flex items-center justify-center text-muted-foreground"
+            >
+              <ArrowUpRight className="size-4" aria-hidden="true" />
+            </button>
+          )}
+        </div>
 
-        <div className="flex items-center gap-1 px-0.5">
+        <div className="flex items-center gap-1">
           <StatChip
             icon={<Star className="size-3" />}
             className="gap-1 rounded-md px-0 py-0 text-xs2 font-medium leading-snug"

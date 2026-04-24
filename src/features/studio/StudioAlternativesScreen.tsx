@@ -932,7 +932,7 @@ export function StudioAlternativesView() {
       <ScreenHeader
         // title="Alternatives"
         onAction={handleBack}
-        className="absolute left-3 top-3 z-20 px-0 pt-0 pb-0"
+        className="absolute left-1 top-3 z-20 px-0 pt-0 pb-0"
       />
       
       {/* Main content area - search bar overlays on top */}
@@ -1063,7 +1063,7 @@ export function StudioAlternativesView() {
             </div>
 
             <ShortProductCard
-              className="w-full px-1 mb-14"
+              className="w-full pl-3 pr-1 mb-14"
               title={heroTitle}
               price={heroPrice}
               discountPercent={null}
