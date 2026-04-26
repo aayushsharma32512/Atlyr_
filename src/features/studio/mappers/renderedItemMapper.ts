@@ -48,7 +48,10 @@ export function mapSupabaseProductToStudioItem(
     return null
   }
 
-  const imageUrl = typeof product.image_url === "string" ? product.image_url.trim() : ""
+  const imageUrl = (
+    (typeof product.thumbnail_url === "string" && product.thumbnail_url.trim()) ||
+    (typeof product.image_url === "string" ? product.image_url.trim() : "")
+  )
   if (!imageUrl) {
     if (import.meta.env?.DEV) {
       console.warn("mapSupabaseProductToStudioItem: missing image_url; skipping item", {

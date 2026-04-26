@@ -171,6 +171,7 @@ async function fetchCategoryOutfits(categoryId: string, limit: number, gender: G
           price,
           currency,
           image_url,
+          thumbnail_url,
           product_url,
           description,
           color,
@@ -194,6 +195,7 @@ async function fetchCategoryOutfits(categoryId: string, limit: number, gender: G
           price,
           currency,
           image_url,
+          thumbnail_url,
           product_url,
           description,
           color,
@@ -217,6 +219,7 @@ async function fetchCategoryOutfits(categoryId: string, limit: number, gender: G
           price,
           currency,
           image_url,
+          thumbnail_url,
           product_url,
           description,
           color,
@@ -388,7 +391,7 @@ async function fetchProductsByIds(
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, product_name, brand, price, currency, image_url, color, type, type_category, gender, fit, feel, vibes, category_id, color_group, size, product_url, placement_x, placement_y, image_length, body_parts_visible",
+      "id, product_name, brand, price, currency, image_url, thumbnail_url, color, type, type_category, gender, fit, feel, vibes, category_id, color_group, size, product_url, placement_x, placement_y, image_length, body_parts_visible",
     )
     .in("id", ids)
 
@@ -446,7 +449,7 @@ async function searchOutfits({
   const outfitMap = await fetchOutfitsByIds(ids)
 
   const ordered: OutfitSearchResult[] = ids
-    .map((id, index) => {
+    .map((id) => {
       const entry = outfitMap[id]
       if (!entry) {
         return null
@@ -476,7 +479,9 @@ function mapProductRowToResult(row: Record<string, unknown>): ProductSearchResul
     return null
   }
 
-  const imageUrl = typeof row.image_url === "string" ? row.image_url : ""
+  const imageUrl =
+    (typeof row.thumbnail_url === "string" && row.thumbnail_url) ||
+    (typeof row.image_url === "string" ? row.image_url : "")
   const price = typeof row.price === "number" ? row.price : 0
   const currency = typeof row.currency === "string" ? row.currency : "INR"
   const brand = typeof row.brand === "string" ? row.brand : "Brand"
@@ -565,6 +570,7 @@ async function searchProducts({
         price: productRow.price,
         currency: productRow.currency,
         image_url: productRow.image_url,
+        thumbnail_url: productRow.thumbnail_url,
         color: productRow.color,
         type: productRow.type,
         type_category: productRow.type_category,

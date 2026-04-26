@@ -42,6 +42,7 @@ export type SupabaseProductLike =
       gender?: string | null
       product_url?: string | null
       image_url?: string | null
+      thumbnail_url?: string | null
       placement_x?: number | null
       placement_y?: number | null
       image_length?: number | null

@@ -1133,6 +1133,7 @@ export type Database = {
           size: string
           size_chart: Json | null
           text_vector: string | null
+          thumbnail_url: string | null
           type: Database["public"]["Enums"]["item_type"]
           type_category: string | null
           updated_at: string
@@ -1176,6 +1177,7 @@ export type Database = {
           size: string
           size_chart?: Json | null
           text_vector?: string | null
+          thumbnail_url?: string | null
           type: Database["public"]["Enums"]["item_type"]
           type_category?: string | null
           updated_at?: string
@@ -1219,6 +1221,7 @@ export type Database = {
           size?: string
           size_chart?: Json | null
           text_vector?: string | null
+          thumbnail_url?: string | null
           type?: Database["public"]["Enums"]["item_type"]
           type_category?: string | null
           updated_at?: string
