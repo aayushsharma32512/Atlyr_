@@ -754,6 +754,33 @@ export async function fetchCollectionProducts(
   return Array.from(deduped.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
+/**
+ * Fetches all product-to-collection-slug mappings for the user in one query.
+ * Returns Record<collectionSlug, productId[]> for O(1) membership lookups.
+ */
+export async function fetchProductCollectionMembership(
+  userId: string | null,
+): Promise<Record<string, string[]>> {
+  if (!userId) return {}
+  const { data, error } = await supabase
+    .from("user_favorites")
+    .select("product_id, collection_slug")
+    .eq("user_id", userId)
+    .not("product_id", "is", null)
+
+  if (error) throw new Error(error.message)
+
+  const result: Record<string, string[]> = {}
+  for (const row of data ?? []) {
+    const slug = row.collection_slug as string | null
+    const productId = row.product_id as string | null
+    if (!slug || !productId) continue
+    if (!result[slug]) result[slug] = []
+    result[slug].push(productId)
+  }
+  return result
+}
+
 export type TryOn = {
   id: string
   storagePath: string | null

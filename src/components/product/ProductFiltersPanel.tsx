@@ -16,6 +16,7 @@ export interface ProductFilterState {
   sizes: Set<string>;
   priceMin: number | null;
   priceMax: number | null;
+  moodboardSlugs: Set<string>;
 }
 
 export interface FilterableItem {
@@ -53,6 +54,11 @@ function deriveTypeCategory(item: FilterableItem): string | null {
   return null;
 }
 
+export interface MoodboardOption {
+  slug: string;
+  label: string;
+}
+
 interface ProductFiltersPanelProps {
   items: FilterableItem[];
   draft: ProductFilterState;
@@ -60,9 +66,21 @@ interface ProductFiltersPanelProps {
   onClearAll: () => void;
   onApply: () => void;
   className?: string;
+  moodboards?: MoodboardOption[];
 }
 
-export function ProductFiltersPanel({ items, draft, setDraft, onClearAll, onApply, className }: ProductFiltersPanelProps) {
+const SYSTEM_MOODBOARDS: MoodboardOption[] = [
+  { slug: 'favorites', label: 'Favorites' },
+  { slug: 'wardrobe', label: 'Wardrobe' },
+]
+
+export function ProductFiltersPanel({ items, draft, setDraft, onClearAll, onApply, className, moodboards = [] }: ProductFiltersPanelProps) {
+  // Only custom moodboards in the accordion — Favorites/Wardrobe are inline
+  const allMoodboards = useMemo(() => {
+    const systemSlugs = new Set(SYSTEM_MOODBOARDS.map(m => m.slug))
+    return moodboards.filter(m => !systemSlugs.has(m.slug))
+  }, [moodboards])
+
   // Unique option lists
   const uniqueTypeCategories = useMemo(() => {
     const cats = new Set<string>();
@@ -95,38 +113,35 @@ export function ProductFiltersPanel({ items, draft, setDraft, onClearAll, onAppl
     return count;
   };
 
+  const cloneDraft = (): ProductFilterState => ({
+    typeCategories: new Set(draft.typeCategories),
+    brands: new Set(draft.brands),
+    genders: new Set(draft.genders),
+    fits: new Set(draft.fits),
+    feels: new Set(draft.feels),
+    colorGroups: new Set(draft.colorGroups),
+    sizes: new Set(draft.sizes),
+    priceMin: draft.priceMin,
+    priceMax: draft.priceMax,
+    moodboardSlugs: new Set(draft.moodboardSlugs),
+  });
+
   // Toggle helpers
   const toggle = (section: keyof ProductFilterState, value: string) => {
-    const next: ProductFilterState = {
-      typeCategories: new Set(draft.typeCategories),
-      brands: new Set(draft.brands),
-      genders: new Set(draft.genders),
-      fits: new Set(draft.fits),
-      feels: new Set(draft.feels),
-      colorGroups: new Set(draft.colorGroups),
-      sizes: new Set(draft.sizes),
-      priceMin: draft.priceMin,
-      priceMax: draft.priceMax,
-    };
+    const next = cloneDraft();
     const set = next[section] as unknown as Set<string>;
     if (set.has(value)) set.delete(value); else set.add(value);
     setDraft(next);
   };
 
   const removeValue = (section: keyof ProductFilterState, value: string) => {
-    const next: ProductFilterState = {
-      typeCategories: new Set(draft.typeCategories),
-      brands: new Set(draft.brands),
-      genders: new Set(draft.genders),
-      fits: new Set(draft.fits),
-      feels: new Set(draft.feels),
-      colorGroups: new Set(draft.colorGroups),
-      sizes: new Set(draft.sizes),
-      priceMin: draft.priceMin,
-      priceMax: draft.priceMax,
-    };
+    const next = cloneDraft();
     (next[section] as unknown as Set<string>).delete(value);
     setDraft(next);
+  };
+
+  const clearSection = (section: keyof ProductFilterState) => {
+    setDraft({ ...cloneDraft(), [section]: new Set() });
   };
 
   // Dynamic summary count based on draft
@@ -196,7 +211,16 @@ export function ProductFiltersPanel({ items, draft, setDraft, onClearAll, onAppl
             <button onClick={() => removeValue('sizes', val)} className="opacity-70 hover:opacity-100">×</button>
           </span>
         ))}
-        {draft.typeCategories.size === 0 && draft.brands.size === 0 && draft.genders.size === 0 && draft.fits.size === 0 && draft.feels.size === 0 && draft.colorGroups.size === 0 && draft.sizes.size === 0 && draft.priceMin == null && draft.priceMax == null && (
+        {Array.from(draft.moodboardSlugs).map((slug) => {
+          const label = SYSTEM_MOODBOARDS.find(m => m.slug === slug)?.label ?? allMoodboards.find(m => m.slug === slug)?.label ?? toTitleCaseSlug(slug);
+          return (
+            <span key={`mb-${slug}`} className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs border bg-indigo-50 text-slate-800 border-indigo-100">
+              {label}
+              <button onClick={() => removeValue('moodboardSlugs', slug)} className="opacity-70 hover:opacity-100">×</button>
+            </span>
+          );
+        })}
+        {draft.typeCategories.size === 0 && draft.brands.size === 0 && draft.genders.size === 0 && draft.fits.size === 0 && draft.feels.size === 0 && draft.colorGroups.size === 0 && draft.sizes.size === 0 && draft.priceMin == null && draft.priceMax == null && draft.moodboardSlugs.size === 0 && (
           <span className="text-xs text-muted-foreground">No filters selected</span>
         )}
         {(draft.priceMin != null || draft.priceMax != null) && (
@@ -207,6 +231,42 @@ export function ProductFiltersPanel({ items, draft, setDraft, onClearAll, onAppl
       </div>
 
       <Accordion type="multiple" className="mt-1">
+        <AccordionItem value="collections">
+          <AccordionTrigger>
+            <span className="flex items-center gap-2">
+              User Collections
+              {draft.moodboardSlugs.size > 0 && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => { e.stopPropagation(); clearSection('moodboardSlugs'); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); clearSection('moodboardSlugs'); }}}
+                  className="text-xs text-muted-foreground underline font-normal hover:text-foreground"
+                >
+                  clear
+                </span>
+              )}
+            </span>
+          </AccordionTrigger>
+          <AccordionContent>
+            <div className="max-h-56 overflow-y-auto pr-1">
+              {allMoodboards.map((mb) => {
+                const checked = draft.moodboardSlugs.has(mb.slug);
+                return (
+                  <label key={mb.slug} className="flex items-center gap-3 py-2 px-2 rounded-md cursor-pointer">
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={() => toggle('moodboardSlugs', mb.slug)}
+                      className="h-4 w-4 border-indigo-200 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600 data-[state=checked]:text-white"
+                    />
+                    <span className="text-sm">{mb.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+
         <AccordionItem value="price">
           <AccordionTrigger>Price</AccordionTrigger>
           <AccordionContent>
@@ -219,17 +279,7 @@ export function ProductFiltersPanel({ items, draft, setDraft, onClearAll, onAppl
                   placeholder="0"
                   onChange={(e) => {
                     const val = e.target.value === '' ? null : Math.max(0, Number(e.target.value));
-                    setDraft({
-                      ...draft,
-                      typeCategories: new Set(draft.typeCategories),
-                      brands: new Set(draft.brands),
-                      genders: new Set(draft.genders),
-                      fits: new Set(draft.fits),
-                      feels: new Set(draft.feels),
-                      colorGroups: new Set(draft.colorGroups),
-                      sizes: new Set(draft.sizes),
-                      priceMin: val,
-                    });
+                    setDraft({ ...cloneDraft(), priceMin: val });
                   }}
                 />
               </div>
@@ -241,17 +291,7 @@ export function ProductFiltersPanel({ items, draft, setDraft, onClearAll, onAppl
                   placeholder="20000"
                   onChange={(e) => {
                     const val = e.target.value === '' ? null : Math.max(0, Number(e.target.value));
-                    setDraft({
-                      ...draft,
-                      typeCategories: new Set(draft.typeCategories),
-                      brands: new Set(draft.brands),
-                      genders: new Set(draft.genders),
-                      fits: new Set(draft.fits),
-                      feels: new Set(draft.feels),
-                      colorGroups: new Set(draft.colorGroups),
-                      sizes: new Set(draft.sizes),
-                      priceMax: val,
-                    });
+                    setDraft({ ...cloneDraft(), priceMax: val });
                   }}
                 />
               </div>
@@ -259,9 +299,26 @@ export function ProductFiltersPanel({ items, draft, setDraft, onClearAll, onAppl
           </AccordionContent>
         </AccordionItem>
 
+        {/* Favorites + Wardrobe — inline, after Price */}
+        <div className="flex items-center gap-3 py-3 border-b border-border/40">
+          <span className="shrink-0 text-sm font-medium">Show From</span>
+          <div className="flex flex-1 items-center gap-6">
+            {SYSTEM_MOODBOARDS.map(({ slug, label }) => (
+              <label key={slug} className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={draft.moodboardSlugs.has(slug)}
+                  onCheckedChange={() => toggle('moodboardSlugs', slug)}
+                  className="h-4 w-4 border-indigo-200 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600 data-[state=checked]:text-white"
+                />
+                <span className="text-sm">{label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
         {uniqueTypeCategories.length > 0 && (
           <AccordionItem value="type_category">
-            <AccordionTrigger>Type Category</AccordionTrigger>
+            <AccordionTrigger><span className="flex items-center gap-2">Type Category{draft.typeCategories.size > 0 && <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); clearSection('typeCategories'); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); clearSection('typeCategories'); }}} className="text-xs text-muted-foreground underline font-normal hover:text-foreground">clear</span>}</span></AccordionTrigger>
             <AccordionContent>
               <div className="max-h-56 overflow-y-auto pr-1">
                 {uniqueTypeCategories.map((opt) => {
@@ -289,7 +346,7 @@ export function ProductFiltersPanel({ items, draft, setDraft, onClearAll, onAppl
         )}
 
         <AccordionItem value="brand">
-          <AccordionTrigger>Brand</AccordionTrigger>
+          <AccordionTrigger><span className="flex items-center gap-2">Brand{draft.brands.size > 0 && <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); clearSection('brands'); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); clearSection('brands'); }}} className="text-xs text-muted-foreground underline font-normal hover:text-foreground">clear</span>}</span></AccordionTrigger>
           <AccordionContent>
             <div className="max-h-56 overflow-y-auto pr-1">
               {uniqueBrands.map((opt) => {
@@ -316,7 +373,7 @@ export function ProductFiltersPanel({ items, draft, setDraft, onClearAll, onAppl
         </AccordionItem>
 
         <AccordionItem value="gender">
-          <AccordionTrigger>Gender</AccordionTrigger>
+          <AccordionTrigger><span className="flex items-center gap-2">Gender{draft.genders.size > 0 && <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); clearSection('genders'); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); clearSection('genders'); }}} className="text-xs text-muted-foreground underline font-normal hover:text-foreground">clear</span>}</span></AccordionTrigger>
           <AccordionContent>
             <div className="max-h-56 overflow-y-auto pr-1">
               {(uniqueGenders.length ? uniqueGenders : ['male','female','unisex']).map((opt) => {
@@ -343,7 +400,7 @@ export function ProductFiltersPanel({ items, draft, setDraft, onClearAll, onAppl
         </AccordionItem>
 
         <AccordionItem value="fit">
-          <AccordionTrigger>Fit</AccordionTrigger>
+          <AccordionTrigger><span className="flex items-center gap-2">Fit{draft.fits.size > 0 && <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); clearSection('fits'); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); clearSection('fits'); }}} className="text-xs text-muted-foreground underline font-normal hover:text-foreground">clear</span>}</span></AccordionTrigger>
           <AccordionContent>
             <div className="max-h-56 overflow-y-auto pr-1">
               {uniqueFits.map((opt) => {
@@ -370,7 +427,7 @@ export function ProductFiltersPanel({ items, draft, setDraft, onClearAll, onAppl
         </AccordionItem>
 
         <AccordionItem value="feel">
-          <AccordionTrigger>Feel</AccordionTrigger>
+          <AccordionTrigger><span className="flex items-center gap-2">Feel{draft.feels.size > 0 && <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); clearSection('feels'); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); clearSection('feels'); }}} className="text-xs text-muted-foreground underline font-normal hover:text-foreground">clear</span>}</span></AccordionTrigger>
           <AccordionContent>
             <div className="max-h-56 overflow-y-auto pr-1">
               {uniqueFeels.map((opt) => {
@@ -397,7 +454,7 @@ export function ProductFiltersPanel({ items, draft, setDraft, onClearAll, onAppl
         </AccordionItem>
 
         <AccordionItem value="color_group">
-          <AccordionTrigger>Color Group</AccordionTrigger>
+          <AccordionTrigger><span className="flex items-center gap-2">Color Group{draft.colorGroups.size > 0 && <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); clearSection('colorGroups'); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); clearSection('colorGroups'); }}} className="text-xs text-muted-foreground underline font-normal hover:text-foreground">clear</span>}</span></AccordionTrigger>
           <AccordionContent>
             <div className="max-h-56 overflow-y-auto pr-1">
               {uniqueColorGroups.map((opt) => {
@@ -424,7 +481,7 @@ export function ProductFiltersPanel({ items, draft, setDraft, onClearAll, onAppl
         </AccordionItem>
 
         <AccordionItem value="size">
-          <AccordionTrigger>Size</AccordionTrigger>
+          <AccordionTrigger><span className="flex items-center gap-2">Size{draft.sizes.size > 0 && <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); clearSection('sizes'); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); clearSection('sizes'); }}} className="text-xs text-muted-foreground underline font-normal hover:text-foreground">clear</span>}</span></AccordionTrigger>
           <AccordionContent>
             <div className="max-h-56 overflow-y-auto pr-1">
               {uniqueSizes.map((opt) => {

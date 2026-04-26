@@ -12,6 +12,7 @@ import { useNavigate } from 'react-router-dom';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import ProductFiltersPanel, { ProductFilterState } from '@/components/product/ProductFiltersPanel';
+import { useProductCollectionMembership, useCollectionsOverview } from '@/features/collections/hooks/useMoodboards';
 // Removed local background service - now using database occasions
 import { useOccasions } from '@/hooks/useOccasions';
 import { useVectorSearch } from '@/hooks/useVectorSearch';
@@ -83,6 +84,7 @@ export function AlternativesList({ alternatives, selectedItem, currentOutfitItem
     sizes: new Set<string>(),
     priceMin: null,
     priceMax: null,
+    moodboardSlugs: new Set<string>(),
   });
   const [draftFilters, setDraftFilters] = useState<ProductFilterState>({
     typeCategories: new Set<string>(),
@@ -94,9 +96,23 @@ export function AlternativesList({ alternatives, selectedItem, currentOutfitItem
     sizes: new Set<string>(),
     priceMin: null,
     priceMax: null,
+    moodboardSlugs: new Set<string>(),
   });
   const expandedCardRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
+
+  // Collection membership for moodboard filter
+  const collectionMembership = useProductCollectionMembership();
+  const collectionsOverview = useCollectionsOverview();
+  const allMoodboardOptions = useMemo(() => {
+    const mbs = collectionsOverview.data?.moodboards ?? [];
+    const system = [
+      { slug: 'favorites', label: 'Favorites' },
+      { slug: 'wardrobe', label: 'Wardrobe' },
+    ];
+    const custom = mbs.filter(m => !m.isSystem).map(m => ({ slug: m.slug, label: m.label }));
+    return [...system, ...custom];
+  }, [collectionsOverview.data]);
 
   // Use currentOutfitItem if available, otherwise fall back to selectedItem
   const displayItem = currentOutfitItem || selectedItem;
@@ -259,9 +275,15 @@ export function AlternativesList({ alternatives, selectedItem, currentOutfitItem
       if (selectedFilters.sizes.size > 0 && !selectedFilters.sizes.has(p.size)) return false;
       if (minP != null && p.price < minP) return false;
       if (maxP != null && p.price > maxP) return false;
+      // Moodboard / collection filter
+      if (selectedFilters.moodboardSlugs.size > 0) {
+        const memberMap = collectionMembership.data ?? {};
+        const inAny = Array.from(selectedFilters.moodboardSlugs).some(slug => memberMap[slug]?.has(p.id));
+        if (!inAny) return false;
+      }
       return true;
     });
-  }, [hasSearched, sortedSearchResults, sortedAlternatives, selectedFilters, outfitGender]);
+  }, [hasSearched, sortedSearchResults, sortedAlternatives, selectedFilters, outfitGender, collectionMembership.data]);
 
   const openFilters = () => {
     setDraftFilters({
@@ -274,6 +296,7 @@ export function AlternativesList({ alternatives, selectedItem, currentOutfitItem
       sizes: new Set(selectedFilters.sizes),
       priceMin: selectedFilters.priceMin,
       priceMax: selectedFilters.priceMax,
+      moodboardSlugs: new Set(selectedFilters.moodboardSlugs),
     });
     setIsFilterOpen(true);
   };
@@ -288,11 +311,12 @@ export function AlternativesList({ alternatives, selectedItem, currentOutfitItem
       sizes: new Set(draftFilters.sizes),
       priceMin: draftFilters.priceMin,
       priceMax: draftFilters.priceMax,
+      moodboardSlugs: new Set(draftFilters.moodboardSlugs),
     });
     setIsFilterOpen(false);
   };
   const clearFilters = () => {
-    const empty: ProductFilterState = { typeCategories: new Set<string>(), brands: new Set<string>(), genders: new Set<string>(), fits: new Set<string>(), feels: new Set<string>(), colorGroups: new Set<string>(), sizes: new Set<string>(), priceMin: null, priceMax: null };
+    const empty: ProductFilterState = { typeCategories: new Set<string>(), brands: new Set<string>(), genders: new Set<string>(), fits: new Set<string>(), feels: new Set<string>(), colorGroups: new Set<string>(), sizes: new Set<string>(), priceMin: null, priceMax: null, moodboardSlugs: new Set<string>() };
     setDraftFilters(empty);
     setSelectedFilters(empty);
     setIsFilterOpen(false);
@@ -471,6 +495,7 @@ export function AlternativesList({ alternatives, selectedItem, currentOutfitItem
                       setDraft={setDraftFilters}
                       onClearAll={clearFilters}
                       onApply={applyFilters}
+                      moodboards={allMoodboardOptions}
                     />
                   </PopoverContent>
                 </Popover>
@@ -578,12 +603,14 @@ export function AlternativesList({ alternatives, selectedItem, currentOutfitItem
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center h-40">
-                    <p className="text-muted-foreground text-center">
+                    <p className="text-muted-foreground text-center text-sm">
                       {isSearching && alternateSearchQuery.trim()
                         ? `Looking for ${alternateSearchQuery.trim()}…`
                         : hasSearched && alternateSearchQuery.trim()
                           ? 'No search results found'
-                          : 'No alternatives available'}
+                          : selectedFilters.moodboardSlugs.size > 0
+                            ? 'Nothing saved to this collection'
+                            : 'No alternatives available'}
                     </p>
                   </div>
                 )}
