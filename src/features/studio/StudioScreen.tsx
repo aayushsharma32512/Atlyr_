@@ -1000,7 +1000,11 @@ export function StudioScreenView() {
           onRestoreSlot={handleRestoreSlot}
           onAddSlot={handleAddSlot}
           onReorderSlots={handleReorderSlots}
-          defaultOutfitName={studioAvatar?.name ?? ""}
+          defaultOutfitName={
+            studioAvatar?.name?.startsWith("draft-look-")
+              ? `${profile?.name ?? "Your"}'s Look #${String(Date.now()).slice(-4)}`
+              : (studioAvatar?.name ?? "")
+          }
           defaultCategoryId={studioAvatar?.category ?? undefined}
           defaultOccasionId={studioAvatar?.occasion?.id ?? undefined}
           moodboards={selectableMoodboards}

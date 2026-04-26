@@ -389,6 +389,56 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
           ? emitTryonGenerationCompletedIfNeeded(job, { status, errorType })
           : false
 
+        // Auto-rename draft outfits when VTO completes so they get a friendly name
+        if (wasProcessing && isNowReady && job.type === "tryon") {
+          void (async () => {
+            try {
+              // Extract outfitId from job metadata (two possible locations depending on flow)
+              const tryonPayload = job.metadata?.tryonPayload as Record<string, unknown> | undefined
+              const outfitSnapshot = tryonPayload?.outfitSnapshot as Record<string, unknown> | undefined
+              const outfitParams = job.metadata?.outfitParams as Record<string, string | null> | undefined
+              const outfitId = (outfitSnapshot?.id ?? outfitParams?.outfitId) as string | undefined
+              if (!outfitId) return
+
+              // Check if the outfit still has a draft name (avoid rename if user already saved it)
+              const { data: outfitRow } = await supabase
+                .from("outfits")
+                .select("name, user_id")
+                .eq("id", outfitId)
+                .single()
+
+              if (!outfitRow) return
+              if (typeof outfitRow.name !== "string" || !outfitRow.name.startsWith("draft-look-")) return
+
+              // Fetch the user's display name from their profile
+              const { data: profileRow } = await supabase
+                .from("profiles")
+                .select("name")
+                .eq("user_id", outfitRow.user_id)
+                .single()
+
+              const displayName = typeof profileRow?.name === "string" && profileRow.name.trim()
+                ? profileRow.name.trim()
+                : "Your"
+
+              const friendlyName = `${displayName}'s Look #${String(Date.now()).slice(-4)}`
+
+              await supabase
+                .from("outfits")
+                .update({ name: friendlyName })
+                .eq("id", outfitId)
+                .eq("user_id", outfitRow.user_id)
+                .like("name", "draft-look-%") // guard: only rename if still a draft
+
+              // Invalidate creations so the new name shows up immediately
+              queryClient.invalidateQueries({ queryKey: ["collections", "creations"] })
+            } catch (err) {
+              // Non-critical — swallow rename errors silently
+              console.warn("[JobsContext] Draft outfit auto-rename failed:", err)
+            }
+          })()
+        }
+
         if (wasProcessing && isNowReady && !notifiedJobsRef.current.has(jobId)) {
           // Trigger toast notification with action to invalidate queries
           const message =

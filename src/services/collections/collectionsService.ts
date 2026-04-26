@@ -1321,7 +1321,20 @@ export async function fetchCreations(params: {
     throw new Error(error.message)
   }
 
-  const rows = Array.isArray(data) ? data : []
+  const allRows = Array.isArray(data) ? data : []
+
+  // Exclude auto-generated draft outfits (created by Studio navigation) unless
+  // a VTO has been completed for them (latestGenerationStatus === "ready").
+  // Drafts are identified by the "draft-look-" name prefix that the Studio
+  // assigns to temporary outfits.
+  const rows = allRows.filter((row: any) => {
+    const name = typeof row?.outfit_name === "string" ? row.outfit_name : ""
+    if (!name.startsWith("draft-look-")) return true
+    // Allow draft-look- outfits that have a completed VTO image
+    const latestStatus = typeof row?.latest_generation_status === "string" ? row.latest_generation_status : null
+    return latestStatus === "ready"
+  })
+
   const latestByOutfit = new Map<string, string>()
   rows.forEach((row: any) => {
     const outfitId = typeof row?.outfit_id === "string" ? row.outfit_id : null
