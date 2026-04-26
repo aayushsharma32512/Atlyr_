@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, ChevronRight, ChevronLeft } from 'lucide-react'
+import { ChevronRight, ChevronLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useStudioTourContext } from '../context/StudioTourContext'
 import { useStudioContext } from '../context/StudioContext'
@@ -43,16 +43,17 @@ export function StudioTour() {
                 <h3 className="font-outfit font-bold text-lg leading-tight text-gray-900">{step.title}</h3>
                 <p className="font-sans text-sm text-gray-600 mt-1 leading-relaxed">{step.message}</p>
               </div>
-              <button 
-                onClick={tour.skipTour}
-                className="text-gray-400 hover:text-gray-900 transition-colors -mr-1 -mt-1 p-1"
-              >
-                <X size={16} />
-              </button>
             </div>
 
-            <div className="flex items-center justify-end mt-1">
-              
+            <div className="flex items-center justify-between mt-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={tour.skipTour}
+                className="h-8 px-3 text-xs font-medium text-gray-500 hover:text-gray-900 underline"
+              >
+                Skip
+              </Button>
               <div className="flex gap-2">
                 {tour.currentStepIndex > 0 && (
                   <Button

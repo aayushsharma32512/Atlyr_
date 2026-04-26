@@ -32,6 +32,7 @@ import {
   useCollectionsOverview,
   useRemoveOutfitFromLibrary,
   useSaveToCollection,
+  useProductCollectionMembership,
 } from "@/features/collections/hooks/useMoodboards"
 import { useLaunchStudio } from "@/features/studio/hooks/useLaunchStudio"
 import { resolveOutfitAttribution } from "@/utils/outfitAttribution"
@@ -178,6 +179,7 @@ export function SearchScreenView() {
   const [outfitFilters] = useState<OutfitSearchFilters>({})
   const [productFilters, setProductFilters] = useState<ProductSearchFilters>({})
   const [activeFilterIds, setActiveFilterIds] = useState<string[]>([])
+  const [activeCollectionSlugs, setActiveCollectionSlugs] = useState<string[]>([])
   const [draftTypeFilters, setDraftTypeFilters] = useState<string[]>([])
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
   const searchImageUpload = useSearchImageUpload()
@@ -194,6 +196,7 @@ export function SearchScreenView() {
     () => moodboards.filter((m) => !m.isSystem),
     [moodboards],
   )
+  const productCollectionMembership = useProductCollectionMembership()
   const [pendingOutfitId, setPendingOutfitId] = useState<string | null>(null)
   const [isOutfitPickerOpen, setIsOutfitPickerOpen] = useState(false)
   const launchStudio = useLaunchStudio()
@@ -433,7 +436,11 @@ export function SearchScreenView() {
   const handleFilterApply = useCallback(
     (filterIds: string[]) => {
       setActiveFilterIds(filterIds)
-      const filters = parseFiltersFromIds(filterIds)
+      // Split collection slugs out — they're applied client-side, not sent to backend
+      const collectionIds = filterIds.filter(id => id.startsWith("collection:"))
+      setActiveCollectionSlugs(collectionIds.map(id => id.replace("collection:", "")))
+      const backendFilters = filterIds.filter(id => !id.startsWith("collection:"))
+      const filters = parseFiltersFromIds(backendFilters)
       setProductFilters(filters)
       
       const typeFilters = filterIds
@@ -513,6 +520,7 @@ export function SearchScreenView() {
 
   const handleFilterClearAll = useCallback(() => {
     setActiveFilterIds([])
+    setActiveCollectionSlugs([])
     setProductFilters({})
     setDraftTypeFilters([])
   }, [])
@@ -520,6 +528,7 @@ export function SearchScreenView() {
   useEffect(() => {
     // Reset filters and sort when the search query changes from the URL
     setActiveFilterIds([])
+    setActiveCollectionSlugs([])
     setProductFilters({})
     setDraftTypeFilters([])
     setSortValue("similarity")
@@ -617,9 +626,20 @@ export function SearchScreenView() {
   }
   const activeOptions = filterOptions ?? prevFilterOptionsRef.current
 
+  // Collection filter options — custom moodboards only (Favorites/Wardrobe are inline)
+  const collectionFilterOptions = useMemo(() => {
+    const custom = selectableMoodboards.map(m => ({ id: `collection:${m.slug}`, label: m.label }))
+    return custom
+  }, [selectableMoodboards])
+
   const productFilterCategories = useMemo<FilterCategory[]>(() => {
-    if (!activeOptions) return []
-    const categories: FilterCategory[] = [
+    const collectionCategory: FilterCategory = {
+      id: "collection",
+      label: "User Collections",
+      options: collectionFilterOptions,
+    }
+    if (!activeOptions) return [collectionCategory]
+    const categories: FilterCategory[] = [collectionCategory,
       {
         id: "type",
         label: "Type",
@@ -678,7 +698,7 @@ export function SearchScreenView() {
       },
     ]
     return categories
-  }, [activeOptions])
+  }, [activeOptions, collectionFilterOptions])
 
   // --- RESULT MAPPING ---
   const mapOutfitToInspirationItem = useCallback(
@@ -789,6 +809,15 @@ export function SearchScreenView() {
       }
     })
   }, [productResultsQuery.data?.pages, productSaveActions, sortValue])
+
+  // Apply client-side collection/moodboard filter to product results
+  const filteredProductResultItems = useMemo(() => {
+    if (activeCollectionSlugs.length === 0) return productResultItems
+    const memberMap = productCollectionMembership.data ?? {}
+    return productResultItems.filter(item =>
+      activeCollectionSlugs.some(slug => memberMap[slug]?.has(item.id))
+    )
+  }, [productResultItems, activeCollectionSlugs, productCollectionMembership.data])
 
   const originPath = useMemo(
     () => `${location.pathname}${location.search}` || "/search",
@@ -1114,17 +1143,20 @@ export function SearchScreenView() {
     if (isProductResultsError) {
       return renderResultPlaceholder("Unable to fetch products right now.")
     }
-    if (productResultItems.length === 0) {
-      return renderResultPlaceholder("No products match this query yet.")
+    if (filteredProductResultItems.length === 0) {
+      const msg = activeCollectionSlugs.length > 0
+        ? "Nothing saved to this collection matches your search."
+        : "No products match this query yet."
+      return renderResultPlaceholder(msg)
     }
 
     return (
       <div className="flex flex-col gap-2 [&_img]:aspect-[3/4] [&_img]:object-contain">
         <p className="px-1 text-xs font-medium text-muted-foreground">
-          Found {productResultItems.length} items
+          Found {filteredProductResultItems.length} items
         </p>
         <ProductResultsGrid
-          items={productResultItems}
+          items={filteredProductResultItems}
           columns={2}
           rows={8}
           onItemSelect={handleProductGridSelect}

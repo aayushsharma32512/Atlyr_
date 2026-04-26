@@ -18,6 +18,7 @@ import {
   fetchMoodboardPreviews,
   fetchMoodboardOutfits,
   fetchMoodboardItems,
+  fetchProductCollectionMembership,
   deleteMoodboard,
   removeFromCollection,
   removeProductFromCollection,
@@ -361,6 +362,27 @@ export function useMoodboardPreviews(slugs: string[]) {
     queryFn: () => fetchMoodboardPreviews(slugs, user?.id ?? null),
     enabled: Boolean(user?.id) && slugs.length > 0,
     initialData: {},
+    staleTime: 2 * 60 * 1000,
+  })
+}
+
+/**
+ * Fetches all product→collection memberships in one query.
+ * Returns Record<slug, Set<productId>> for O(1) checks in filter useMemos.
+ */
+export function useProductCollectionMembership() {
+  const { user } = useAuth()
+  return useQuery({
+    queryKey: [...collectionsKeys.products(), "membership"],
+    queryFn: async () => {
+      const raw = await fetchProductCollectionMembership(user?.id ?? null)
+      const result: Record<string, Set<string>> = {}
+      for (const [slug, ids] of Object.entries(raw)) {
+        result[slug] = new Set(ids)
+      }
+      return result
+    },
+    enabled: Boolean(user?.id),
     staleTime: 2 * 60 * 1000,
   })
 }

@@ -35,7 +35,7 @@ import { useSaveOutfit } from "@/features/outfits/hooks/useSaveOutfit"
 import { useCreateDraftOutfit } from "@/features/outfits/hooks/useCreateDraftOutfit"
 import { useFindOutfitByItems } from "@/features/outfits/hooks/useFindOutfitByItems"
 import { useProductSaveActions } from "@/features/collections/hooks/useProductSaveActions"
-import { useMoodboards, useCreateMoodboard, useSaveToCollection } from "@/features/collections/hooks/useMoodboards"
+import { useMoodboards, useCreateMoodboard, useSaveToCollection, useProductCollectionMembership } from "@/features/collections/hooks/useMoodboards"
 import { useAuth } from "@/contexts/AuthContext"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import type { StudioRenderedItem } from "@/features/studio/types"
@@ -115,6 +115,8 @@ export function StudioAlternativesView() {
   const { mutateAsync: saveToCollectionMutation } = useSaveToCollection()
   const { data: moodboards = [], isLoading: moodboardsLoading } = useMoodboards()
   const selectableMoodboards = useMemo(() => moodboards.filter((m) => !m.isSystem), [moodboards])
+  const productCollectionMembership = useProductCollectionMembership()
+  const [activeCollectionSlugs, setActiveCollectionSlugs] = useState<string[]>([])
   const createMoodboardMutation = useCreateMoodboard()
   const { user } = useAuth()
   const { profile, gender } = useProfileContext()
@@ -255,6 +257,15 @@ export function StudioAlternativesView() {
     }
   }, [search.hasActiveSearch, searchResultsQuery.data, fallbackAlternativesQuery.data, sortValue])
 
+  // Apply client-side collection/moodboard filter
+  const filteredAlternativeProducts = useMemo(() => {
+    if (activeCollectionSlugs.length === 0) return alternativeProducts
+    const memberMap = productCollectionMembership.data ?? {}
+    return alternativeProducts.filter((p) =>
+      activeCollectionSlugs.some((slug) => memberMap[slug]?.has(p.id))
+    )
+  }, [alternativeProducts, activeCollectionSlugs, productCollectionMembership.data])
+
   const isLoading = search.hasActiveSearch
     ? searchResultsQuery.isLoading
     : fallbackAlternativesQuery.isLoading
@@ -274,11 +285,17 @@ export function StudioAlternativesView() {
   }, [slot, filterOptions, isFilterOptionsLoading, filterOptionsError])
 
   const filterCategories = useMemo<FilterCategory[]>(() => {
-    if (!filterOptions) return []
-    
     // Build slot-aware filter categories (hide type since tabs control it)
     // Note: Gender filter is intentionally excluded - it's auto-applied from user profile
-    const categories: FilterCategory[] = []
+    // Favorites/Wardrobe are inline — only custom moodboards in the dropdown
+    const collectionOptions = [
+      ...selectableMoodboards.map((m) => ({ id: `collection:${m.slug}`, label: m.label })),
+    ]
+    const categories: FilterCategory[] = [
+      { id: "collection", label: "User Collections", options: collectionOptions },
+    ]
+
+    if (!filterOptions) return categories
     
     if (filterOptions.typeSubCategories.length > 0) {
       categories.push({
@@ -321,7 +338,7 @@ export function StudioAlternativesView() {
     }
     
     return categories
-  }, [filterOptions])
+  }, [filterOptions, selectableMoodboards])
 
   // --- FILTER HANDLERS ---
   const handleFilterApply = useCallback(
@@ -329,15 +346,19 @@ export function StudioAlternativesView() {
       if (isViewOnly) {
         return
       }
-      console.log('[StudioSearch] Applying filters:', filterIds)
       search.setActiveFilterIds(filterIds)
-      
+
+      // Split out collection slugs — applied client-side, not sent to backend
+      const collectionIds = filterIds.filter((id) => id.startsWith("collection:"))
+      setActiveCollectionSlugs(collectionIds.map((id) => id.replace("collection:", "")))
+      const backendIds = filterIds.filter((id) => !id.startsWith("collection:"))
+
       // Parse filter IDs to ProductSearchFilters format
       const filters: Record<string, string[]> = {}
       let minPrice: number | undefined
       let maxPrice: number | undefined
-      
-      filterIds.forEach((filterId) => {
+
+      backendIds.forEach((filterId) => {
         // Handle price filter specially: format is "price:min-max"
         if (filterId.startsWith('price:')) {
           const priceRange = filterId.split(':')[1]
@@ -346,14 +367,14 @@ export function StudioAlternativesView() {
           if (max) maxPrice = parseInt(max, 10)
           return
         }
-        
+
         const [category, value] = filterId.split(":")
         if (category && value) {
           if (!filters[category]) filters[category] = []
           filters[category].push(value)
         }
       })
-      
+
       const parsedFilters = {
         genders: filters.gender,
         brands: filters.brand,
@@ -364,7 +385,6 @@ export function StudioAlternativesView() {
         minPrice,
         maxPrice,
       }
-      console.log('[StudioSearch] Parsed filters:', parsedFilters)
       search.setActiveFilters(parsedFilters)
     },
     [isViewOnly, search],
@@ -376,6 +396,7 @@ export function StudioAlternativesView() {
     }
     search.setActiveFilterIds([])
     search.setActiveFilters({})
+    setActiveCollectionSlugs([])
   }, [isViewOnly, search])
 
   // --- SORT HANDLER ---
@@ -1107,7 +1128,7 @@ export function StudioAlternativesView() {
               {!isLoading && (search.hasActiveSearch || search.activeFilterIds.length > 0) && (
                 <div className="flex items-center px-2 py-0.5 border-none bg-muted/20">
                   <span className="text-xs text-muted-foreground">
-                    {alternativeProducts.length} results
+                    {filteredAlternativeProducts.length} results
                     {search.committedText && (
                       <span> for &ldquo;{search.committedText}&rdquo;</span>
                     )}
@@ -1132,7 +1153,7 @@ export function StudioAlternativesView() {
                     </div>
                   ))}
                 </div>
-              ) : alternativeProducts.length === 0 ? (
+              ) : filteredAlternativeProducts.length === 0 ? (
                 /* Empty State */
                 <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4 text-center">
                   <div className="rounded-full bg-muted/50 p-3">
@@ -1147,7 +1168,7 @@ export function StudioAlternativesView() {
                 </div>
               ) : (
                 <AlternativesGrid
-                    products={alternativeProducts}
+                    products={filteredAlternativeProducts}
                     onSelect={isViewOnly ? undefined : handleAlternativeSelect}
                     isProductSaved={productSaveActions.isSaved}
                     onToggleSave={

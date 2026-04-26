@@ -191,9 +191,12 @@ export function FilterDrawer({
           // "type" filters are usually valid since they drove the change, so we keep them
           if (catPrefix === 'type') return
 
+          // Favorites/Wardrobe are inline — never pruned by category cleanup
+          if (filterId === 'collection:favorites' || filterId === 'collection:wardrobe') return
+
           // Find the category object in props
           const category = categories.find(c => c.id === catPrefix)
-          
+
           // If we found the category, check if this option exists
           if (category) {
              const isValidOption = category.options.some(opt => opt.id === filterId)
@@ -208,6 +211,18 @@ export function FilterDrawer({
     })
   }, [categories, open])
 
+
+  const handleClearCategory = (category: FilterCategory) => {
+    const optionIds = new Set(category.options.map((o) => o.id))
+    setDraftFilters((prev) => {
+      const next = new Set(prev)
+      optionIds.forEach((id) => next.delete(id))
+      if (onFilterChange && category.options.some((o) => o.id.startsWith('type:'))) {
+        onFilterChange(Array.from(next))
+      }
+      return next
+    })
+  }
 
   const handleFilterToggle = (filterId: string) => {
     setDraftFilters((prev) => {
@@ -273,6 +288,8 @@ export function FilterDrawer({
   const displayedFilters = Array.from(draftFilters)
 
   const getFilterLabel = (filterId: string) => {
+    if (filterId === 'collection:favorites') return 'Favorites'
+    if (filterId === 'collection:wardrobe') return 'Wardrobe'
     for (const category of categories) {
       const option = category.options.find((opt) => opt.id === filterId)
       if (option) return option.label
@@ -352,6 +369,26 @@ export function FilterDrawer({
               </div>
             </div>
 
+            {/* Favorites + Wardrobe — inline checkboxes */}
+            <div className="flex items-center gap-3 py-1">
+              <span className="shrink-0 text-xs font-medium text-foreground">Show From</span>
+              <div className="flex flex-1 items-center gap-6">
+                {([
+                  { id: "collection:favorites", label: "Favorites" },
+                  { id: "collection:wardrobe", label: "Wardrobe" },
+                ] as const).map(({ id, label }) => (
+                  <label key={id} className="flex items-center gap-1.5 cursor-pointer">
+                    <Checkbox
+                      className="border-sidebar-border size-3.5 rounded-sm"
+                      checked={displayedFilters.includes(id)}
+                      onCheckedChange={() => handleFilterToggle(id)}
+                    />
+                    <span className="text-xs font-medium text-foreground">{label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
             {/* Category sections — collapsible */}
             {categories.map((category) => {
               const isExpanded = expandedCategories.has(category.id)
@@ -362,7 +399,20 @@ export function FilterDrawer({
                     className="flex w-full items-center justify-between py-2.5 text-left"
                     onClick={() => toggleCategory(category.id)}
                   >
-                    <span className="text-xs font-medium text-foreground">{category.label}</span>
+                    <span className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-foreground">{category.label}</span>
+                      {category.options.some((o) => draftFilters.has(o.id)) && (
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => { e.stopPropagation(); handleClearCategory(category); }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); handleClearCategory(category); }}}
+                          className="text-xs text-muted-foreground underline font-normal hover:text-foreground"
+                        >
+                          clear
+                        </span>
+                      )}
+                    </span>
                     <ChevronDown
                       className={cn(
                         "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200",

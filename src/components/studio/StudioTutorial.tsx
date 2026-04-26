@@ -2,10 +2,9 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { 
-  MousePointer, 
-  Check, 
-  X, 
+import {
+  MousePointer,
+  Check,
   ChevronRight,
   ChevronLeft,
   Sparkles,
@@ -16,7 +15,8 @@ import {
   Share,
   Brackets,
   Bookmark,
-  Info
+  Info,
+  X
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
