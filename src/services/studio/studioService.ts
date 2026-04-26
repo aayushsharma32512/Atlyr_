@@ -620,6 +620,8 @@ function mapProductRowToAlternative(
   const placementY = row.placement_y
   const imageLength = row.image_length
 
+  const imageSrc = (typeof row.thumbnail_url === "string" && row.thumbnail_url) || row.image_url || ""
+
   if (!hasPlacementStats(placementX, placementY, imageLength)) {
     reportStudioDataIssue({
       type: "missing-placement",
@@ -637,7 +639,7 @@ function mapProductRowToAlternative(
       brand: row.brand ?? null,
       price: row.price ?? 0,
       currency: row.currency ?? "INR",
-      imageSrc: row.image_url ?? "",
+      imageSrc,
       productUrl: row.product_url ?? null,
       placementX: defaults.placementX,
       placementY: defaults.placementY,
@@ -657,7 +659,7 @@ function mapProductRowToAlternative(
     brand: row.brand ?? null,
     price: row.price ?? 0,
     currency: row.currency ?? "INR",
-    imageSrc: row.image_url ?? "",
+    imageSrc,
     productUrl: row.product_url ?? null,
     placementX: placementX!,
     placementY: placementY!,
@@ -1173,7 +1175,7 @@ async function getComplementaryProductsByProductId({
   const query = supabase
     .from("products")
     .select(
-      "id, product_name, brand, price, image_url, product_url, gender, type, placement_x, placement_y, image_length, size, currency, color, fit, feel, vibes, body_parts_visible",
+      "id, product_name, brand, price, image_url, thumbnail_url, product_url, gender, type, placement_x, placement_y, image_length, size, currency, color, fit, feel, vibes, body_parts_visible",
     )
     .in("type", complementarySlots)
     .neq("id", productId)
@@ -1212,7 +1214,7 @@ async function getComplementaryProductsBySlot({
 
   const query = supabase
     .from("products")
-    .select("id, product_name, brand, price, currency, image_url, gender, type")
+    .select("id, product_name, brand, price, currency, image_url, thumbnail_url, gender, type")
     .in("type", complementarySlots)
     .neq("id", productId)
     .limit(limit)
@@ -1233,7 +1235,7 @@ async function getComplementaryProductsBySlot({
       brand: row.brand ?? null,
       price: row.price ?? 0,
       currency: row.currency ?? "INR",
-      imageSrc: row.image_url ?? "",
+      imageSrc: (typeof row.thumbnail_url === "string" && row.thumbnail_url) || row.image_url || "",
       itemType: (row.type as StudioProductTraySlot) ?? null,
     }))
     .filter((item) => Boolean(item.id))
