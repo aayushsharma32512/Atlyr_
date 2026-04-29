@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { ArrowUpRight, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react"
+import { ArrowUpRight, ChevronLeft, ChevronRight, MoreVertical, RotateCcw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { OutfitInspirationTile, SaveOutfitDrawer, TrayActionButton } from "@/design-system/primitives"
@@ -13,6 +13,8 @@ import {
   useMoodboards,
   useSaveToCollection,
   useRemoveFromCollection,
+  useOutfitCollectionMembership,
+  useAnonymiseOutfit,
 } from "../hooks/useMoodboards"
 import { cn } from "@/lib/utils"
 import type { Creation } from "@/services/collections/collectionsService"
@@ -63,7 +65,10 @@ export function CreationsTab() {
   const startLikenessFlow = useStartLikenessFlow()
   const analytics = useEngagementAnalytics()
   const [isSaveDrawerOpen, setIsSaveDrawerOpen] = useState(false)
+  const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false)
 
+  const outfitMembershipQuery = useOutfitCollectionMembership()
+  const anonymiseOutfitMutation = useAnonymiseOutfit()
   const productTrayQuery = useStudioProductTray(activeCreation?.outfitId ?? null)
   const trayItems = useMemo(() => productTrayQuery.data ?? [], [productTrayQuery.data])
   const activeOutfitQuery = useStudioOutfit(activeCreation?.outfitId ?? null)
@@ -237,6 +242,66 @@ export function CreationsTab() {
       profile?.name,
       saveToCollectionMutation,
       toast,
+      updateOutfitMutation,
+      user?.id,
+    ],
+  )
+
+  const handleEditOutfitSave = useCallback(
+    async (data: {
+      outfitName: string
+      categoryId: string
+      occasionId: string
+      vibe: string
+      keywords: string
+      isPrivate: boolean
+      moodboardIds?: string[]
+    }) => {
+      if (!activeOutfit || !user?.id) return
+
+      await updateOutfitMutation.mutateAsync({
+        outfitId: activeOutfit.id,
+        userId: user.id,
+        name: data.outfitName,
+        categoryId: data.categoryId,
+        occasionId: data.occasionId,
+        backgroundId: activeOutfit.backgroundId ?? null,
+        isPrivate: data.isPrivate,
+        vibe: data.vibe || null,
+        keywords: data.keywords || null,
+        createdByName: profile?.name ?? null,
+      })
+
+      // Diff-sync moodboards
+      const selectedSlugs = data.moodboardIds ?? []
+      const membership = outfitMembershipQuery.data ?? {}
+      const currentSlugs = Object.entries(membership)
+        .filter(([slug, ids]) => ids.has(activeOutfit.id) && selectableMoodboards.some((m) => m.slug === slug))
+        .map(([slug]) => slug)
+      const current = new Set(currentSlugs)
+      const next = new Set(selectedSlugs)
+      const toAdd = selectedSlugs.filter((s) => !current.has(s))
+      const toRemove = currentSlugs.filter((s) => !next.has(s))
+      const labelBySlug = new Map(selectableMoodboards.map((m) => [m.slug, m.label]))
+
+      for (const slug of toAdd) {
+        try {
+          await saveToCollectionMutation.mutateAsync({ outfitId: activeOutfit.id, slug, label: labelBySlug.get(slug) })
+        } catch { /* ignore individual failures */ }
+      }
+      for (const slug of toRemove) {
+        try {
+          await removeFromCollectionMutation.mutateAsync({ outfitId: activeOutfit.id, slug })
+        } catch { /* ignore individual failures */ }
+      }
+    },
+    [
+      activeOutfit,
+      outfitMembershipQuery.data,
+      profile?.name,
+      removeFromCollectionMutation,
+      saveToCollectionMutation,
+      selectableMoodboards,
       updateOutfitMutation,
       user?.id,
     ],
@@ -504,6 +569,18 @@ export function CreationsTab() {
                       >
                         <div className="overflow-hidden w-full h-full rounded-lg" style={{ transform: "" }}>
                           <div className="relative h-full w-full">
+                            {/* Edit overlay — top-right, active card only */}
+                            {isActive && !isDraftCreation && activeOutfit && (
+                              <div className="absolute top-2 right-2 z-10">
+                                <TrayActionButton
+                                  tone="plain"
+                                  iconEnd={MoreVertical}
+                                  label=""
+                                  className="pointer-events-auto h-9 w-9 rounded-full bg-card/80 px-0 text-xs font-medium text-foreground hover:bg-card flex items-center justify-center"
+                                  onClick={() => setIsEditDrawerOpen(true)}
+                                />
+                              </div>
+                            )}
                             {!isCardFlipped ? (
                               showVtoImage ? (
                                 <>
@@ -693,6 +770,34 @@ export function CreationsTab() {
         onCreateMoodboard={(name) => createMoodboardMutation.mutateAsync(name).then((res) => res.slug)}
         onSave={handleSaveDraftOutfit}
       />
+
+      {/* Edit drawer for saved (non-draft) creations */}
+      {!isDraftCreation && activeOutfit && (
+        <SaveOutfitDrawer
+          key={`edit-${activeCreation?.id ?? "edit"}`}
+          open={isEditDrawerOpen}
+          onOpenChange={setIsEditDrawerOpen}
+          mode="edit"
+          defaultOutfitName={activeOutfit.name ?? activeCreation?.name ?? ""}
+          defaultCategoryId={defaultCategoryId}
+          defaultOccasionId={defaultOccasionId}
+          defaultVibe={activeOutfit.vibes ?? null}
+          defaultKeywords={activeOutfit.word_association ?? null}
+          defaultIsPrivate={activeCreation?.isPrivate ?? false}
+          defaultMoodboardIds={
+            Object.entries(outfitMembershipQuery.data ?? {})
+              .filter(([slug, ids]) => ids.has(activeOutfit.id) && selectableMoodboards.some((m) => m.slug === slug))
+              .map(([slug]) => slug)
+          }
+          moodboards={selectableMoodboards}
+          isLoadingMoodboards={moodboardsLoading}
+          onCreateMoodboard={(name) => createMoodboardMutation.mutateAsync(name).then((res) => res.slug)}
+          onSave={handleEditOutfitSave}
+          onDelete={async () => {
+            await anonymiseOutfitMutation.mutateAsync(activeOutfit.id)
+          }}
+        />
+      )}
     </div>
   )
 }

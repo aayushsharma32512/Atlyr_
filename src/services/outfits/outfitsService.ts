@@ -151,7 +151,12 @@ export async function fetchOccasions({
     throw new Error(error.message)
   }
 
-  return (data ?? []).map(mapOccasion)
+  const seen = new Set<string>()
+  return (data ?? []).map(mapOccasion).filter((o) => {
+    if (seen.has(o.name.toLowerCase())) return false
+    seen.add(o.name.toLowerCase())
+    return true
+  })
 }
 
 export async function saveOutfit(input: SaveOutfitInput) {
@@ -231,10 +236,11 @@ export async function updateOutfit(input: UpdateOutfitInput) {
     occasion: input.occasionId,
     background_id: input.backgroundId ?? null,
     is_private: input.isPrivate,
-    visible_in_feed: !input.isPrivate,
+    visible_in_feed: true, // private only anonymises created_by — never hides from feed
     created_by: createdBy,
     vibes: normalizeText(input.vibe),
     word_association: normalizeText(input.keywords),
+    updated_at: new Date().toISOString(),
   }
 
   const { data, error } = await supabase
@@ -247,6 +253,10 @@ export async function updateOutfit(input: UpdateOutfitInput) {
 
   if (error) {
     throw new Error(error.message)
+  }
+
+  if (!data) {
+    throw new Error("Outfit not found or you do not have permission to edit it")
   }
 
   return data

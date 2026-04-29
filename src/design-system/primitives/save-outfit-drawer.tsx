@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { X, Plus } from "lucide-react"
+import { X, Plus, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Switch } from "@/components/ui/switch"
 import {
   Drawer,
   DrawerClose,
@@ -31,6 +30,7 @@ import { useViewportZoomLockController } from "@/hooks/useViewportZoomLock"
 export interface SaveOutfitDrawerProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  mode?: "save" | "edit"
   defaultOutfitName?: string
   defaultCategoryId?: string
   defaultOccasionId?: string
@@ -51,11 +51,13 @@ export interface SaveOutfitDrawerProps {
     isPrivate: boolean
     moodboardIds?: string[]
   }) => Promise<void> | void
+  onDelete?: () => Promise<void> | void
 }
 
 export function SaveOutfitDrawer({
   open,
   onOpenChange,
+  mode = "save",
   defaultOutfitName = "",
   defaultCategoryId,
   defaultOccasionId,
@@ -68,7 +70,9 @@ export function SaveOutfitDrawer({
 
   onCreateMoodboard,
   onSave = async () => { },
+  onDelete,
 }: SaveOutfitDrawerProps) {
+  const isEditMode = mode === "edit"
   const [outfitName, setOutfitName] = useState(defaultOutfitName)
   const [categoryId, setCategoryId] = useState<string>(defaultCategoryId ?? "")
   const [occasionId, setOccasionId] = useState<string>(defaultOccasionId ?? "")
@@ -81,6 +85,7 @@ export function SaveOutfitDrawer({
   const [isCreating, setIsCreating] = useState(false)
   const [newMoodboardName, setNewMoodboardName] = useState("")
   const [createError, setCreateError] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const outfitNameRef = useRef<HTMLInputElement | null>(null)
   const { lock: lockViewportZoom, unlock: unlockViewportZoom } = useViewportZoomLockController()
 
@@ -163,6 +168,30 @@ export function SaveOutfitDrawer({
 
 
 
+  const handleClear = () => {
+    setOutfitName("")
+    setCategoryId("")
+    setOccasionId("")
+    setVibe("")
+    setKeywords("")
+    setIsPrivate(false)
+    setSelectedMoodboardIds([])
+    setSubmitError(null)
+  }
+
+  const handleDeleteConfirmed = async () => {
+    setIsSubmitting(true)
+    try {
+      await onDelete?.()
+      onOpenChange(false)
+    } catch {
+      setSubmitError("Delete failed. Try again.")
+    } finally {
+      setIsSubmitting(false)
+      setConfirmDelete(false)
+    }
+  }
+
   const handleCreateNewMoodboard = async () => {
     if (!onCreateMoodboard) return
     const name = newMoodboardName.trim()
@@ -199,8 +228,8 @@ export function SaveOutfitDrawer({
         >
           <DrawerHeader className="flex flex-row items-center justify-between px-6 pb-1 pt-0">
             <div className="sr-only">
-              <DrawerTitle>Save outfit to collection</DrawerTitle>
-              <DrawerDescription>Provide outfit details and choose moodboards.</DrawerDescription>
+              <DrawerTitle>{isEditMode ? "Edit outfit" : "Save outfit to collection"}</DrawerTitle>
+              <DrawerDescription>{isEditMode ? "Edit outfit details and moodboards." : "Provide outfit details and choose moodboards."}</DrawerDescription>
             </div>
 
             <DrawerClose asChild>
@@ -417,27 +446,78 @@ export function SaveOutfitDrawer({
           <Separator className="" />
 
           {/* Footer */}
-          <DrawerFooter className="px-6 pb-4 space-y-2 flex flex-row items-center gap-4">
-            {submitError ? <p className="text-sm text-destructive">{submitError}</p> : null}
-            <div className="flex flex-row gap-2 w-full">
-              <div className="flex gap-2 w-full">
-                <Button
-                  onClick={handleSave}
-                  className="flex-1 bg-foreground text-background hover:bg-foreground/90 h-10 rounded-lg"
-                  disabled={!isValid || isSubmitting || categoriesLoading || occasionsLoading}
-                >
-                  {isSubmitting ? "Saving…" : "Save to Collection"}
-                </Button>
+          <DrawerFooter className="px-6 pb-5 pt-3 flex flex-col gap-2">
+            {submitError ? <p className="text-xs text-destructive text-center">{submitError}</p> : null}
+            <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 w-full">
 
+              {/* Left: Delete / Clear / Confirm+Cancel */}
+              <div className="shrink-0">
+                {confirmDelete ? (
+                  <div className="flex flex-col items-start gap-0.5">
+                    <button
+                      type="button"
+                      onClick={handleDeleteConfirmed}
+                      disabled={isSubmitting}
+                      className="text-[11px] font-medium text-destructive underline underline-offset-2 whitespace-nowrap leading-4"
+                    >
+                      Confirm
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDelete(false)}
+                      className="text-[11px] font-medium text-muted-foreground underline underline-offset-2 whitespace-nowrap leading-4"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : isEditMode ? (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(true)}
+                    className="text-[11px] font-medium text-muted-foreground underline underline-offset-2 hover:text-destructive whitespace-nowrap"
+                  >
+                    Delete
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleClear}
+                    className="text-[11px] font-medium text-muted-foreground underline underline-offset-2 whitespace-nowrap"
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm whitespace-nowrap font-medium text-foreground">Private Only</span>
-                <Switch
-                  checked={isPrivate}
-                  onCheckedChange={setIsPrivate}
-                  className="scale-80"
+
+              {/* Center: Save button */}
+              <Button
+                onClick={handleSave}
+                className="w-full min-w-0 bg-foreground text-background hover:bg-foreground/90 h-8 rounded-lg text-xs px-3"
+                disabled={!isValid || isSubmitting || categoriesLoading || occasionsLoading}
+              >
+                <span className="truncate">
+                  {isSubmitting ? "Saving…" : isEditMode ? "Save Changes" : "Save to Collection"}
+                </span>
+              </Button>
+
+              {/* Right: Pvt Only toggle button */}
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isPrivate}
+                onClick={() => setIsPrivate((v) => !v)}
+                className={cn(
+                  "shrink-0 flex items-center gap-1 h-7 rounded-full px-2.5 text-[11px] font-medium transition-colors duration-150 whitespace-nowrap",
+                  isPrivate ? "text-foreground" : "text-muted-foreground/40",
+                )}
+              >
+                <Check
+                  className={cn("h-3 w-3 shrink-0 transition-opacity duration-150", isPrivate ? "opacity-100" : "opacity-0")}
+                  strokeWidth={2.5}
                 />
-              </div>
+                Pvt Only
+              </button>
+
             </div>
           </DrawerFooter>
         </DrawerContent>
