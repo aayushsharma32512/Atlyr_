@@ -13,6 +13,7 @@ export function useUpdateOutfit() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: collectionsKeys.creations() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.creationsCounts() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.moodboardItemsAll() })
       queryClient.invalidateQueries({ queryKey: outfitsKeys.all })
     },
   })

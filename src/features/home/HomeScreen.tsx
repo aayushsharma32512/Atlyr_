@@ -12,6 +12,7 @@ import {
   RecentStylesRail,
   SectionHeader,
   MoodboardPickerDrawer,
+  SaveOutfitDrawer,
   type FilterCategory,
 } from "@/design-system/primitives"
 import { AppShellLayout } from "@/layouts/AppShellLayout"
@@ -38,12 +39,16 @@ import {
   useCreateMoodboard,
   useMoodboardItems,
   useCollectionsOverview,
+  useOutfitCollectionMembership,
+  useAnonymiseOutfit,
+  useRemoveFromCollection,
 } from "@/features/collections/hooks/useMoodboards"
+import { useUpdateOutfit } from "@/features/outfits/hooks/useUpdateOutfit"
 import { useProductSaveActions } from "@/features/collections/hooks/useProductSaveActions"
 import { collectionsKeys } from "@/features/collections/queryKeys"
 import { TryOnGrid } from "@/features/home/components/TryOnGrid"
 import { TryOnPreviewOverlay } from "@/features/home/components/TryOnPreviewOverlay"
-import type { TryOn } from "@/services/collections/collectionsService"
+import type { TryOn, MoodboardItem } from "@/services/collections/collectionsService"
 import { fetchMoodboardItems, fetchMoodboardItemsBatch } from "@/services/collections/collectionsService"
 import { buildStudioUrl } from "@/features/studio/utils/studioUrlState"
 import { useToast } from "@/hooks/use-toast"
@@ -107,6 +112,13 @@ export function HomeScreenView() {
   const [pendingOutfitId, setPendingOutfitId] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | undefined>(undefined)
+  // Kebab: edit outfit
+  const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false)
+  const [editingItem, setEditingItem] = useState<Extract<MoodboardItem, { itemType: "outfit" }> | null>(null)
+  // Kebab: move moodboard (non-owner)
+  const [isMoveOutfitPickerOpen, setIsMoveOutfitPickerOpen] = useState(false)
+  const [pendingMoveOutfitId, setPendingMoveOutfitId] = useState<string | null>(null)
+  const [pendingMoveCurrentSlugs, setPendingMoveCurrentSlugs] = useState<string[]>([])
 
   const { toast } = useToast()
   const analytics = useEngagementAnalytics()
@@ -156,6 +168,10 @@ export function HomeScreenView() {
   const saveToCollectionMutation = useSaveToCollection()
   const removeOutfitFromLibraryMutation = useRemoveOutfitFromLibrary()
   const createMoodboardMutation = useCreateMoodboard()
+  const removeFromCollectionMutation = useRemoveFromCollection()
+  const outfitMembershipQuery = useOutfitCollectionMembership()
+  const anonymiseOutfitMutation = useAnonymiseOutfit()
+  const updateOutfitMutation = useUpdateOutfit()
 
   const recentStyles = recentStylesQuery.data ?? []
   const curatedOutfits = (curatedOutfitsQuery.data?.pages ?? []).flat()
@@ -669,6 +685,149 @@ export function HomeScreenView() {
       }
     },
     [analytics, saveToCollectionMutation, toast],
+  )
+
+  // Kebab handlers
+  const handleKebabEditOutfit = useCallback((item: Extract<MoodboardItem, { itemType: "outfit" }>) => {
+    setEditingItem(item)
+    setIsEditDrawerOpen(true)
+  }, [])
+
+  const handleRemoveOutfitFromMoodboard = useCallback(
+    async (outfitId: string) => {
+      try {
+        await removeFromCollectionMutation.mutateAsync({ outfitId, slug: activeMoodboardId })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Could not remove outfit"
+        toast({ title: "Remove failed", description: message, variant: "destructive" })
+      }
+    },
+    [activeMoodboardId, removeFromCollectionMutation, toast],
+  )
+
+  const handleRemoveFavoriteOutfit = useCallback(
+    async (outfitId: string) => {
+      try {
+        await removeFromCollectionMutation.mutateAsync({ outfitId, slug: "favorites" })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Could not remove outfit"
+        toast({ title: "Remove failed", description: message, variant: "destructive" })
+      }
+    },
+    [removeFromCollectionMutation, toast],
+  )
+
+  const handleDeleteOutfit = useCallback(
+    async (outfitId: string) => {
+      try {
+        await anonymiseOutfitMutation.mutateAsync(outfitId)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Could not delete outfit"
+        toast({ title: "Delete failed", description: message, variant: "destructive" })
+      }
+    },
+    [anonymiseOutfitMutation, toast],
+  )
+
+  const handleRemoveFromAll = useCallback(
+    async (outfitId: string) => {
+      try {
+        await removeOutfitFromLibraryMutation.mutateAsync({ outfitId })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Could not remove outfit"
+        toast({ title: "Remove failed", description: message, variant: "destructive" })
+      }
+    },
+    [removeOutfitFromLibraryMutation, toast],
+  )
+
+  const getOutfitMoodboardSlugs = useCallback(
+    (outfitId: string) => {
+      const membership = outfitMembershipQuery.data ?? {}
+      return Object.entries(membership)
+        .filter(([, ids]) => ids.has(outfitId))
+        .map(([slug]) => slug)
+        .filter((slug) => outfitPickerMoodboards.some((m) => m.slug === slug))
+    },
+    [outfitMembershipQuery.data, outfitPickerMoodboards],
+  )
+
+  const handleMoveOutfitMoodboard = useCallback(
+    (outfitId: string) => {
+      const membership = outfitMembershipQuery.data ?? {}
+      const currentSlugs = Object.entries(membership)
+        .filter(([, ids]) => ids.has(outfitId))
+        .map(([slug]) => slug)
+        .filter((slug) => outfitPickerMoodboards.some((m) => m.slug === slug))
+      setPendingMoveOutfitId(outfitId)
+      setPendingMoveCurrentSlugs(currentSlugs)
+      setIsMoveOutfitPickerOpen(true)
+    },
+    [outfitMembershipQuery.data, outfitPickerMoodboards],
+  )
+
+  const handleMoveOutfitApply = useCallback(
+    async (selectedSlugs: string[]) => {
+      if (!pendingMoveOutfitId) return
+      const labelBySlug = new Map(outfitPickerMoodboards.map((m) => [m.slug, m.label]))
+      const current = new Set(pendingMoveCurrentSlugs)
+      const next = new Set(selectedSlugs)
+      const toAdd = selectedSlugs.filter((s) => !current.has(s))
+      const toRemove = pendingMoveCurrentSlugs.filter((s) => !next.has(s))
+      let hadError = false
+      for (const slug of toAdd) {
+        try {
+          await saveToCollectionMutation.mutateAsync({ outfitId: pendingMoveOutfitId, slug, label: labelBySlug.get(slug) })
+        } catch { hadError = true }
+      }
+      for (const slug of toRemove) {
+        try {
+          await removeFromCollectionMutation.mutateAsync({ outfitId: pendingMoveOutfitId, slug })
+        } catch { hadError = true }
+      }
+      setPendingMoveOutfitId(null)
+      setPendingMoveCurrentSlugs([])
+      setIsMoveOutfitPickerOpen(false)
+      if (hadError) {
+        toast({ title: "Saved with issues", description: "Could not update all moodboards.", variant: "destructive" })
+      }
+    },
+    [outfitPickerMoodboards, pendingMoveCurrentSlugs, pendingMoveOutfitId, removeFromCollectionMutation, saveToCollectionMutation, toast],
+  )
+
+  const handleEditOutfitSave = useCallback(
+    async (data: { outfitName: string; categoryId: string; occasionId: string; vibe: string; keywords: string; isPrivate: boolean; moodboardIds?: string[] }) => {
+      if (!editingItem || !user?.id) return
+      await updateOutfitMutation.mutateAsync({
+        outfitId: editingItem.id,
+        userId: user.id,
+        name: data.outfitName,
+        categoryId: data.categoryId,
+        occasionId: data.occasionId,
+        isPrivate: data.isPrivate,
+        vibe: data.vibe || null,
+        keywords: data.keywords || null,
+      })
+
+      // Diff-sync moodboards
+      const selectedSlugs = data.moodboardIds ?? []
+      const membership = outfitMembershipQuery.data ?? {}
+      const currentSlugs = Object.entries(membership)
+        .filter(([slug, ids]) => ids.has(editingItem.id) && outfitPickerMoodboards.some((m) => m.slug === slug))
+        .map(([slug]) => slug)
+      const current = new Set(currentSlugs)
+      const next = new Set(selectedSlugs)
+      const toAdd = selectedSlugs.filter((s) => !current.has(s))
+      const toRemove = currentSlugs.filter((s) => !next.has(s))
+      const labelBySlug = new Map(outfitPickerMoodboards.map((m) => [m.slug, m.label]))
+      for (const slug of toAdd) {
+        try { await saveToCollectionMutation.mutateAsync({ outfitId: editingItem.id, slug, label: labelBySlug.get(slug) }) } catch { /* ignore */ }
+      }
+      for (const slug of toRemove) {
+        try { await removeFromCollectionMutation.mutateAsync({ outfitId: editingItem.id, slug }) } catch { /* ignore */ }
+      }
+    },
+    [editingItem, outfitMembershipQuery.data, outfitPickerMoodboards, removeFromCollectionMutation, saveToCollectionMutation, updateOutfitMutation, user?.id],
   )
 
   const isOutfitResultsLoading = outfitResultsQuery.isLoading
@@ -1257,7 +1416,10 @@ export function HomeScreenView() {
       <div className="flex flex-col gap-4">
         <MixedMasonryGrid
           items={moodboardItems}
-          favoriteOutfitIds={favoriteIds}
+          currentUserId={user?.id}
+          collectionSlug={activeMoodboardId}
+          collectionLabel={activeMoodboardLabel}
+          getOutfitMoodboardSlugs={getOutfitMoodboardSlugs}
           getOutfitWrapperRef={(outfitId) => {
             const position = moodboardItemPositionByKey.get(`outfit:${outfitId}`) ?? 0
             return getHomeBrowseCardRef({ containerKey: "moodboard_items", stableKey: `outfit:${outfitId}`, position })
@@ -1278,14 +1440,10 @@ export function HomeScreenView() {
               launchStudio(item.outfit)
             }
           }}
-          onToggleOutfitSave={(outfitId, nextSaved) => {
-            const position = moodboardItemPositionByKey.get(`outfit:${outfitId}`)
-            handleToggleOutfitById(outfitId, nextSaved, { layout: "vertical_grid", position }, "click")
-          }}
-          onLongPressOutfitSave={(outfitId) => {
-            const position = moodboardItemPositionByKey.get(`outfit:${outfitId}`)
-            handleLongPressOutfitById(outfitId, { layout: "vertical_grid", position })
-          }}
+          onEditOutfit={handleKebabEditOutfit}
+          onMoveToMoodboard={handleMoveOutfitMoodboard}
+          onRemoveFromCurrentMoodboard={handleRemoveOutfitFromMoodboard}
+          onRemoveFromAll={handleRemoveFromAll}
           onProductSelect={(productId) => {
             const position = moodboardItemPositionByKey.get(`product:${productId}`)
             trackItemClicked(analytics, {
@@ -1348,7 +1506,10 @@ export function HomeScreenView() {
       <div className="flex flex-col gap-4">
         <MixedMasonryGrid
           items={favoritesItems}
-          favoriteOutfitIds={favoriteIds}
+          currentUserId={user?.id}
+          collectionSlug="favorites"
+          collectionLabel="Favorites"
+          getOutfitMoodboardSlugs={getOutfitMoodboardSlugs}
           getOutfitWrapperRef={(outfitId) => {
             const position = favoritesItemPositionByKey.get(`outfit:${outfitId}`) ?? 0
             return getHomeBrowseCardRef({ containerKey: "moodboard_items", stableKey: `outfit:${outfitId}`, position })
@@ -1369,14 +1530,10 @@ export function HomeScreenView() {
               launchStudio(item.outfit)
             }
           }}
-          onToggleOutfitSave={(outfitId, nextSaved) => {
-            const position = favoritesItemPositionByKey.get(`outfit:${outfitId}`)
-            handleToggleOutfitById(outfitId, nextSaved, { layout: "vertical_grid", position }, "click")
-          }}
-          onLongPressOutfitSave={(outfitId) => {
-            const position = favoritesItemPositionByKey.get(`outfit:${outfitId}`)
-            handleLongPressOutfitById(outfitId, { layout: "vertical_grid", position })
-          }}
+          onEditOutfit={handleKebabEditOutfit}
+          onMoveToMoodboard={handleMoveOutfitMoodboard}
+          onRemoveFromCurrentMoodboard={handleRemoveFavoriteOutfit}
+          onRemoveFromAll={handleRemoveFromAll}
           onProductSelect={(productId) => {
             const position = favoritesItemPositionByKey.get(`product:${productId}`)
             trackItemClicked(analytics, {
@@ -1605,6 +1762,55 @@ export function HomeScreenView() {
           onOpenStudio={handleOpenStudioFromTryOn}
         />
       ) : null}
+
+      {/* Edit outfit drawer (Path A: owner) */}
+      {editingItem && (
+        <SaveOutfitDrawer
+          open={isEditDrawerOpen}
+          onOpenChange={(open) => {
+            setIsEditDrawerOpen(open)
+            if (!open) setEditingItem(null)
+          }}
+          mode="edit"
+          defaultOutfitName={editingItem.outfit?.name ?? ""}
+          defaultCategoryId={editingItem.outfit?.category !== "others" ? editingItem.outfit?.category : undefined}
+          defaultOccasionId={editingItem.outfit?.occasion?.id !== "others" ? editingItem.outfit?.occasion?.id : undefined}
+          defaultVibe={editingItem.outfit?.vibes ?? ""}
+          defaultKeywords={editingItem.outfit?.word_association ?? ""}
+          defaultIsPrivate={false}
+          defaultMoodboardIds={
+            Object.entries(outfitMembershipQuery.data ?? {})
+              .filter(([slug, ids]) => ids.has(editingItem.id) && outfitPickerMoodboards.some((m) => m.slug === slug))
+              .map(([slug]) => slug)
+          }
+          moodboards={outfitPickerMoodboards}
+          isLoadingMoodboards={collectionsOverviewQuery.isLoading}
+          onCreateMoodboard={handleCreateMoodboard}
+          onSave={handleEditOutfitSave}
+          onDelete={editingItem ? () => handleDeleteOutfit(editingItem.id) : undefined}
+        />
+      )}
+
+      {/* Move moodboard picker (Path B: non-owner) */}
+      <MoodboardPickerDrawer
+        key={`move-${pendingMoveOutfitId ?? "none"}`}
+        open={isMoveOutfitPickerOpen}
+        onOpenChange={(open) => {
+          setIsMoveOutfitPickerOpen(open)
+          if (!open) {
+            setPendingMoveOutfitId(null)
+            setPendingMoveCurrentSlugs([])
+          }
+        }}
+        moodboards={outfitPickerMoodboards}
+        mode="multi"
+        defaultSelections={pendingMoveCurrentSlugs}
+        onSelect={() => {}}
+        onApply={handleMoveOutfitApply}
+        onCreate={handleCreateMoodboard}
+        isSaving={saveToCollectionMutation.isPending || removeFromCollectionMutation.isPending}
+        title="Move Moodboard"
+      />
     </div>
   )
 }

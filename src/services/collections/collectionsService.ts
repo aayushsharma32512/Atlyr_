@@ -781,6 +781,62 @@ export async function fetchProductCollectionMembership(
   return result
 }
 
+/**
+ * Fetches all outfit-to-collection-slug mappings for the user in one query.
+ * Returns Record<collectionSlug, outfitId[]> for O(1) membership lookups.
+ */
+export async function fetchOutfitCollectionMembership(
+  userId: string | null,
+): Promise<Record<string, string[]>> {
+  if (!userId) return {}
+  const { data, error } = await supabase
+    .from("user_favorites")
+    .select("outfit_id, collection_slug")
+    .eq("user_id", userId)
+    .not("outfit_id", "is", null)
+
+  if (error) throw new Error(error.message)
+
+  const result: Record<string, string[]> = {}
+  for (const row of data ?? []) {
+    const slug = row.collection_slug as string | null
+    const outfitId = row.outfit_id as string | null
+    if (!slug || !outfitId) continue
+    if (!result[slug]) result[slug] = []
+    result[slug].push(outfitId)
+  }
+  return result
+}
+
+/**
+ * Anonymises an outfit by nulling out user attribution fields and
+ * removing the user's own user_favorites entries for it.
+ * The outfit row is kept — never hard deleted.
+ */
+export async function anonymiseOutfit(params: {
+  userId: string
+  outfitId: string
+}): Promise<void> {
+  const { userId, outfitId } = params
+  if (!userId) throw new Error("User must be authenticated")
+
+  // Remove own collection entries first
+  await supabase
+    .from("user_favorites")
+    .delete()
+    .eq("user_id", userId)
+    .eq("outfit_id", outfitId)
+
+  // Strip attribution — keep the row for others who may have saved it
+  const { error } = await supabase
+    .from("outfits")
+    .update({ created_by: null, user_id: null })
+    .eq("id", outfitId)
+    .eq("user_id", userId)
+
+  if (error) throw new Error(error.message)
+}
+
 export type TryOn = {
   id: string
   storagePath: string | null

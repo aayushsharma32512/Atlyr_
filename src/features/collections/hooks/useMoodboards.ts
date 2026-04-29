@@ -19,6 +19,8 @@ import {
   fetchMoodboardOutfits,
   fetchMoodboardItems,
   fetchProductCollectionMembership,
+  fetchOutfitCollectionMembership,
+  anonymiseOutfit,
   deleteMoodboard,
   removeFromCollection,
   removeProductFromCollection,
@@ -384,6 +386,44 @@ export function useProductCollectionMembership() {
     },
     enabled: Boolean(user?.id),
     staleTime: 2 * 60 * 1000,
+  })
+}
+
+/**
+ * Fetches all outfit→collection memberships in one query.
+ * Returns Record<slug, Set<outfitId>> for O(1) checks.
+ */
+export function useOutfitCollectionMembership() {
+  const { user } = useAuth()
+  return useQuery({
+    queryKey: [...collectionsKeys.favorites(), "outfit-membership"],
+    queryFn: async () => {
+      const raw = await fetchOutfitCollectionMembership(user?.id ?? null)
+      const result: Record<string, Set<string>> = {}
+      for (const [slug, ids] of Object.entries(raw)) {
+        result[slug] = new Set(ids)
+      }
+      return result
+    },
+    enabled: Boolean(user?.id),
+    staleTime: 2 * 60 * 1000,
+  })
+}
+
+export function useAnonymiseOutfit() {
+  const { user } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (outfitId: string) => {
+      if (!user?.id) throw new Error("Please sign in")
+      return anonymiseOutfit({ userId: user.id, outfitId })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.overview() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.favorites() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.creations() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.moodboardItemsAll() })
+    },
   })
 }
 
