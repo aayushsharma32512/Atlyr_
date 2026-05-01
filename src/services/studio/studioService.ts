@@ -825,7 +825,7 @@ async function getAlternatives({ slot, gender, limit = 24, filters }: GetAlterna
   let query = supabase
     .from("products")
     .select(
-      "id, product_name, brand, price, image_url, product_url, gender, type, placement_x, placement_y, image_length, size, currency, color, fit, feel, vibes, body_parts_visible",
+      "id, product_name, brand, price, image_url, thumbnail_url, product_url, gender, type, placement_x, placement_y, image_length, size, currency, color, fit, feel, vibes, body_parts_visible",
     )
     .eq("type", itemType)
     .not("gender", "is", null)
