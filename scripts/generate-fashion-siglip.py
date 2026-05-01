@@ -1,3 +1,4 @@
+import atexit
 import os
 import sys
 import asyncio
@@ -14,6 +15,19 @@ import open_clip
 
 # Load environment variables
 load_dotenv(".env.local")
+
+# PostHog analytics
+try:
+    from posthog import Posthog as _Posthog
+    _ph_token = os.getenv("POSTHOG_PROJECT_TOKEN")
+    _ph_host = os.getenv("POSTHOG_HOST", "https://us.i.posthog.com")
+    posthog_client = _Posthog(_ph_token, host=_ph_host, enable_exception_autocapture=True) if _ph_token else None
+    if posthog_client:
+        atexit.register(posthog_client.shutdown)
+except ImportError:
+    posthog_client = None
+
+POSTHOG_DISTINCT_ID = "embedding-pipeline"
 
 # Initialize Supabase client
 SUPABASE_URL = os.getenv("VITE_SUPABASE_URL") or os.getenv("SUPABASE_URL")
@@ -310,6 +324,20 @@ async def main():
     print(f"⏱️  Total Time: {total_time:.2f}s")
     print(f"⏱️  Avg Time/Product: {avg_time:.2f}s")
     print('=' * 70 + '\n')
+
+    if posthog_client:
+        posthog_client.capture(
+            distinct_id=POSTHOG_DISTINCT_ID,
+            event="embedding_run_completed",
+            properties={
+                "embedding_type": "product",
+                "mode": "bulk_regenerate",
+                "total_processed": total_success + total_fail,
+                "total_successful": total_success,
+                "total_failed": total_fail,
+                "duration_s": round(total_time, 1),
+            },
+        )
 
 if __name__ == "__main__":
     asyncio.run(main())
