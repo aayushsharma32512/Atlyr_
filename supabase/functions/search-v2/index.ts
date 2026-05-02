@@ -19,36 +19,30 @@ serve(async (req) => {
 
     const authHeader = req.headers.get('Authorization')
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
-      global: { headers: { Authorization: authHeader??'' } }
+      global: { headers: { Authorization: authHeader??'' } } 
     })
 
-    const { q, imageUrl, productId, filters, weights } = await req.json()
+    // Receive filters from Frontend
+    const { q, imageUrl, filters } = await req.json()
 
-    if (!q && !imageUrl && !productId) {
-      return new Response(JSON.stringify({ error: "Provide 'q' (text), 'imageUrl', or 'productId'" }), { status: 400 })
+    if (!q && !imageUrl) {
+      return new Response(JSON.stringify({ error: "Provide 'q' (text) or 'imageUrl'" }), { status: 400 })
     }
 
     let results = []
-
-    if (productId && q) {
-      console.log("⚡ Mode: Hybrid (stored vector)")
-      results = await searchHybridWithProductId(q, productId, imageUrl, filters, supabase)
-    }
-    else if (productId) {
-      console.log("⚡ Mode: Image (stored vector)")
-      results = await searchByProductId(productId, imageUrl, filters, supabase)
-    }
-    else if (q && imageUrl) {
+    
+    // We pass 'filters' to every strategy
+    if (q && imageUrl) {
       console.log("⚡ Mode: Hybrid")
       results = await searchHybridOptimized(q, imageUrl, filters, supabase)
-    }
+    } 
     else if (imageUrl) {
       console.log("⚡ Mode: Image Only")
       results = await searchByImage(imageUrl, filters, supabase)
-    }
+    } 
     else {
       console.log("⚡ Mode: Text Only")
-      results = await searchByText(q, filters, supabase, weights)
+      results = await searchByText(q, filters, supabase)
     }
 
     return new Response(JSON.stringify({ results }), {
@@ -57,8 +51,8 @@ serve(async (req) => {
 
   } catch (err) {
     console.error("❌ Error:", err.message)
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
+    return new Response(JSON.stringify({ error: err.message }), { 
+      status: 500, 
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
     })
   }
@@ -66,55 +60,57 @@ serve(async (req) => {
 
 // --- ⚡ STRATEGIES ---
 
-async function searchByText(text: string, filters: any, supabase: any, weights?: any) {
-  const textW = weights?.text ?? 0
-  const imageW = weights?.image ?? 1
-
+async function searchByText(text: string, filters: any, supabase: any) {
   const vector = await getVectorFromModal({ text })
-
-  const [
-      // textHits,
-      imageHits] = await Promise.all([
-    // rpc(supabase, 'match_products_text', vector, filters),
+  console.log(vector);
+  const [textHits, imageHits] = await Promise.all([
+    rpc(supabase, 'match_products_text', vector, filters),
     rpc(supabase, 'match_products_image', vector, filters)
   ])
-  return fuseAndSort([], normalize(imageHits), textW, imageW)
+  // Original Logic: Normalize + Weighted Sum
+  return fuseAndSort(normalize(textHits), normalize(imageHits), 0.25, 0.75)
 }
 
 async function searchByImage(imageUrl: string, filters: any, supabase: any) {
   const image_b64 = await urlToBase64(imageUrl)
   const vector = await getVectorFromModal({ image_b64 })
-
   const [textHits, imageHits] = await Promise.all([
     rpc(supabase, 'match_products_text', vector, filters),
     rpc(supabase, 'match_products_image', vector, filters)
   ])
-
+  // Original Logic: Normalize + Weighted Sum
   return fuseAndSort(normalize(textHits), normalize(imageHits), 0, 1)
 }
 
 async function searchHybridOptimized(text: string, imageUrl: string, filters: any, supabase: any) {
   const image_b64 = await urlToBase64(imageUrl)
-
   const [textVector, imageVector] = await Promise.all([
     getVectorFromModal({ text }),
     getVectorFromModal({ image_b64 })
   ])
 
-  const [textToText, textToImage, imageToText, imageToImage] = await Promise.all([
+  const [
+    textToText,
+    textToImage,
+    imageToText,
+    imageToImage
+  ] = await Promise.all([
     rpc(supabase, 'match_products_text', textVector, filters),
     rpc(supabase, 'match_products_image', textVector, filters),
     rpc(supabase, 'match_products_text', imageVector, filters),
     rpc(supabase, 'match_products_image', imageVector, filters)
   ])
 
+  // Fuse using weights (0.65/0.35)
   const textSearchResults = fuseAndSort(normalize(textToText), normalize(textToImage), 0.65, 0.35)
   const imageSearchResults = fuseAndSort(normalize(imageToText), normalize(imageToImage), 0.35, 0.65)
 
   const hybridMap = new Map()
+
   textSearchResults.forEach((item: any) => {
     hybridMap.set(item.id, { ...item, text_final_score: item.final_score, image_final_score: 0 })
   })
+
   imageSearchResults.forEach((item: any) => {
     if (hybridMap.has(item.id)) {
       hybridMap.get(item.id).image_final_score = item.final_score
@@ -123,72 +119,11 @@ async function searchHybridOptimized(text: string, imageUrl: string, filters: an
     }
   })
 
-  return Array.from(hybridMap.values())
-    .map((item: any) => ({ ...item, final_score: (item.text_final_score + item.image_final_score) / 2 }))
-    .sort((a: any, b: any) => b.final_score - a.final_score)
-}
-
-async function searchByProductId(productId: string, imageUrl: string | null, filters: any, supabase: any) {
-  const { data } = await supabase.from('products').select('image_vector').eq('id', productId).single()
-  const vector = data?.image_vector ?? null
-
-  if (!vector) {
-    console.log("⚠️ No stored vector, falling back to Modal")
-    if (!imageUrl) throw new Error('No stored vector and no imageUrl fallback')
-    return searchByImage(imageUrl, filters, supabase)
-  }
-
-  const [
-      // textHits,
-    imageHits] = await Promise.all([
-    // rpc(supabase, 'match_products_text', vector, filters),
-    rpc(supabase, 'match_products_image', vector, filters)
-  ])
-
-  return fuseAndSort([], normalize(imageHits), 0, 1)
-}
-
-async function searchHybridWithProductId(text: string, productId: string, imageUrl: string | null, filters: any, supabase: any) {
-  const [{ data }, textVector] = await Promise.all([
-    supabase.from('products').select('image_vector').eq('id', productId).single(),
-    getVectorFromModal({ text })
-  ])
-  const imageVector = data?.image_vector ?? null
-
-  if (!imageVector) {
-    console.log("⚠️ No stored vector, falling back to full hybrid")
-    if (!imageUrl) return searchByText(text, filters, supabase)
-    return searchHybridOptimized(text, imageUrl, filters, supabase)
-  }
-
-  const [
-      // textToText,
-      textToImage,
-      // imageToText,
-      imageToImage] = await Promise.all([
-    // rpc(supabase, 'match_products_text', textVector, filters),
-    rpc(supabase, 'match_products_image', textVector, filters),
-    // rpc(supabase, 'match_products_text', imageVector, filters),
-    rpc(supabase, 'match_products_image', imageVector, filters)
-  ])
-
-  const textSearchResults = fuseAndSort([], normalize(textToImage), 0, 1)
-  const imageSearchResults = fuseAndSort([], normalize(imageToImage), 0, 1)
-
-  const hybridMap = new Map()
-  textSearchResults.forEach((item: any) => {
-    hybridMap.set(item.id, { ...item, text_final_score: item.final_score, image_final_score: 0 })
-  })
-  imageSearchResults.forEach((item: any) => {
-    if (hybridMap.has(item.id)) {
-      hybridMap.get(item.id).image_final_score = item.final_score
-    } else {
-      hybridMap.set(item.id, { ...item, text_final_score: 0, image_final_score: item.final_score })
-    }
-  })
-
-  return Array.from(hybridMap.values())
-    .map((item: any) => ({ ...item, final_score: (item.text_final_score + item.image_final_score) / 2 }))
+    return Array.from(hybridMap.values())
+    .map((item: any) => ({
+      ...item,
+      final_score: (item.text_final_score + item.image_final_score) / 2,
+    }))
     .sort((a: any, b: any) => b.final_score - a.final_score)
 }
 
@@ -228,17 +163,19 @@ async function urlToBase64(url: string) {
   }
 }
 
+// Updated RPC to pass filters
 async function rpc(client: any, func: string, vector: number[], filters?: any) {
   const { data, error } = await client.rpc(func, {
-    query_embedding: vector,
+    query_embedding: vector, 
     filters: filters || {},
-    match_threshold: 0.0,
-    match_count: 50
+    match_threshold: 0, 
+    match_count: 50 // Standard fetch count, can be increased if needed
   })
   if (error) throw error
   return data
 }
 
+// OLD LOGIC: Normalization
 function normalize(items: any[]) {
   if (!items.length) return []
   const scores = items.map(i => i.similarity)
@@ -246,10 +183,11 @@ function normalize(items: any[]) {
   return items.map(i => ({ ...i, norm_score: range === 0 ? 1 : (i.similarity - min) / range }))
 }
 
+// OLD LOGIC: Weighted Fusion
 function fuseAndSort(textHits: any[], imageHits: any[], textW: number, imageW: number) {
   const merged = new Map()
   textHits.forEach(i => merged.set(i.id, { ...i, final_score: i.norm_score * textW }))
-
+  
   imageHits.forEach(i => {
     const existing = merged.get(i.id)
     if (existing) {
