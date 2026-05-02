@@ -80,7 +80,6 @@ interface SearchOutfitsInput {
 interface SearchProductsInput {
   query?: string
   imageUrl?: string
-  productId?: string
   cursor?: number | null
   limit?: number
   filters?: ProductSearchFilters
@@ -522,20 +521,18 @@ function mapProductRowToResult(row: Record<string, unknown>): ProductSearchResul
 async function searchProducts({
   query,
   imageUrl,
-  productId,
   filters,
 }: SearchProductsInput): Promise<SearchFunctionResponse<ProductSearchResult>> {
   const trimmed = query?.trim() ?? ""
 
-  if (!trimmed && !imageUrl && !productId) {
+  if (!trimmed && !imageUrl) {
     return { results: [], nextCursor: null }
   }
 
   const { data, error } = await supabase.functions.invoke("search-v2", {
     body: {
-      q: trimmed || undefined,
-      imageUrl: imageUrl || undefined,
-      productId: productId || undefined,
+      q: trimmed,
+      imageUrl: imageUrl,
       filters: filters || {},
     },
   })
@@ -545,8 +542,7 @@ async function searchProducts({
   }
 
   const raw = (data ?? { results: [] }) as { results?: Record<string, unknown>[] }
-  const rawResults = (raw.results ?? [])
-    .sort((a, b) => ((b.final_score as number) ?? 0) - ((a.final_score as number) ?? 0))
+  const rawResults = raw.results ?? []
 
   const ids = rawResults
     .map((row) => (typeof row.id === "string" ? row.id : null))
@@ -595,10 +591,7 @@ async function searchProducts({
     })
     .filter(Boolean) as ProductSearchResult[]
 
-  const idOrder = new Map(ids.map((id, index) => [id, index]))
-  const sorted = mapped.sort((a, b) => (idOrder.get(a.id) ?? 999) - (idOrder.get(b.id) ?? 999))
-
-  return { results: sorted, nextCursor: null }
+  return { results: mapped, nextCursor: null }
 }
 
 export interface ProductFilterOptions {

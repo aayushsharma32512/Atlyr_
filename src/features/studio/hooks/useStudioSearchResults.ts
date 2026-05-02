@@ -14,7 +14,6 @@ interface UseStudioSearchResultsParams {
     slot: StudioProductTraySlot
     query: string
     imageUrl: string | null
-    productId?: string | null
     filters: ProductSearchFilters
     gender: Gender
     enabled?: boolean
@@ -41,7 +40,6 @@ export function useStudioSearchResults({
     slot,
     query,
     imageUrl,
-    productId,
     filters,
     gender,
     enabled = true,
@@ -57,11 +55,10 @@ export function useStudioSearchResults({
         imageUrl: safeImageUrl,
         filtersHash,
         gender,
-        productId: productId ?? null,
     })
 
     // Enable query if we have either text or image search, OR if empty search is allowed
-    const hasSearchParams = trimmedQuery.length > 0 || Boolean(safeImageUrl) || Boolean(productId) || allowEmptySearch
+    const hasSearchParams = trimmedQuery.length > 0 || Boolean(safeImageUrl) || allowEmptySearch
 
     return useQuery<StudioAlternativeProduct[]>({
         queryKey,
@@ -71,7 +68,6 @@ export function useStudioSearchResults({
                 slot,
                 query: trimmedQuery || '(none)',
                 imageUrl: imageUrl || '(none)',
-                productId: productId || '(none)',
                 filters,
                 gender,
             })
@@ -79,7 +75,6 @@ export function useStudioSearchResults({
                 slot,
                 query: trimmedQuery || undefined,
                 imageUrl: safeImageUrl || undefined,
-                productId: productId ?? undefined,
                 filters,
                 gender,
             })
@@ -97,7 +92,6 @@ export function getStudioSearchResultsQueryOptions({
     slot,
     query,
     imageUrl,
-    productId,
     filters,
     gender,
 }: UseStudioSearchResultsParams) {
@@ -112,14 +106,12 @@ export function getStudioSearchResultsQueryOptions({
             imageUrl: safeImageUrl,
             filtersHash,
             gender,
-            productId: productId ?? null,
         }),
         queryFn: () =>
             studioService.searchAlternatives({
                 slot,
                 query: trimmedQuery || undefined,
                 imageUrl: safeImageUrl || undefined,
-                productId: productId ?? undefined,
                 filters,
                 gender,
             }),

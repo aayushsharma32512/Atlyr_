@@ -207,7 +207,6 @@ interface SearchAlternativesInput {
   slot: StudioProductTraySlot
   query?: string
   imageUrl?: string
-  productId?: string
   filters?: ProductSearchFilters
   gender: Gender
 }
@@ -218,7 +217,6 @@ async function searchAlternatives({
   slot,
   query,
   imageUrl,
-  productId,
   filters = {},
   gender,
 }: SearchAlternativesInput): Promise<StudioAlternativeProduct[]> {
@@ -254,7 +252,6 @@ async function searchAlternatives({
     const { results } = await searchService.searchProducts({
       query,
       imageUrl: safeImageUrl,
-      productId,
       filters: searchFilters,
       limit: 48,
     })
@@ -1112,7 +1109,6 @@ async function getSimilarProductsByProductId(
   // Use hybrid search with the same text format as embeddings
   const { results } = await searchService.searchProducts({
     query: searchText,
-    productId,
     filters,
   })
 

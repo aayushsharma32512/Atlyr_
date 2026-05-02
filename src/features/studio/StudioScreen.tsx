@@ -240,16 +240,14 @@ export function StudioScreenView() {
     slots.forEach((slot) => {
       // Find the product item for this slot to get its image URL
       const item = studioAvatar.items.find((i) => i.type === slot)
-      const imageUrl = item?.thumbnailUrl ?? item?.imageUrl ?? null
-      const productId = item?.id ?? null
-
-      if (productId || isHttpUrl(imageUrl)) {
+      const imageUrl = item?.imageUrl ?? null
+      
+      if (isHttpUrl(imageUrl)) {
         // Use hook-layer prefetch function (side effects live in hooks layer)
         prefetchStudioSearchResults(queryClient, {
           slot,
           query: "",
           imageUrl,
-          productId,
           filters: {},
           gender: adminGender ?? gender,
         }).catch(() => {

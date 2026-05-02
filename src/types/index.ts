@@ -53,7 +53,6 @@ export interface OutfitItem {
   price: number;
   currency: string;
   imageUrl: string;
-  thumbnailUrl?: string | null;
   productUrl?: string | null;
   description: string;
   color: string;

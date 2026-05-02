@@ -43,7 +43,6 @@ export const studioKeys = {
     imageUrl: string | null
     filtersHash: string
     gender: string | null
-    productId?: string | null
   }) =>
     [
       ...studioKeys.all,
@@ -53,7 +52,6 @@ export const studioKeys = {
       args.imageUrl || "none",
       args.filtersHash || "none",
       args.gender ?? "neutral",
-      args.productId ?? "none",
     ] as const,
   swap: (outfitId: string | null | undefined) => [...studioKeys.all, "swap", outfitId ?? "none"] as const,
   productImages: (productId: string | null | undefined) => [...studioKeys.all, "product-images", productId ?? "none"] as const,
