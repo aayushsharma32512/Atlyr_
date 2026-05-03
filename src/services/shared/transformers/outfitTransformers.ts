@@ -30,6 +30,7 @@ function mapProductToOutfitItem(product: DbProductRow | null | undefined): Outfi
     price: product.price,
     currency: product.currency,
     imageUrl: product.image_url,
+    thumbnailUrl: product.thumbnail_url ?? null,
     productUrl: product.product_url ?? null,
     description: product.description,
     color: product.color,

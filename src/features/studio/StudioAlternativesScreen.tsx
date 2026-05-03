@@ -180,13 +180,16 @@ export function StudioAlternativesView() {
     return map
   }, [requestedSlotIds, resolvedTrayItems, slotProductIds])
 
-  // Get the current item's image URL for the active slot (for auto-search)
-  const currentSlotImageUrl = useMemo(() => {
+  // Get the current item's image URL and product ID for the active slot (for auto-search)
+  const { currentSlotImageUrl, currentSlotProductId } = useMemo(() => {
     if (hiddenSlots[slot]) {
-      return null
+      return { currentSlotImageUrl: null, currentSlotProductId: null }
     }
     const currentItem = resolvedTrayItems.find((item) => item.slot === slot)
-    return currentItem?.imageUrl ?? null
+    return {
+      currentSlotImageUrl: currentItem?.imageUrl ?? null,
+      currentSlotProductId: currentItem?.productId ?? null,
+    }
   }, [hiddenSlots, resolvedTrayItems, slot])
 
   // Cold start: no outfit exists yet in this session — show product tray immediately
@@ -229,6 +232,7 @@ export function StudioAlternativesView() {
     slot,
     query: search.committedText,
     imageUrl: search.committedImageUrl,
+    productId: currentSlotProductId,
     filters: search.activeFilters,
     gender: adminGender ?? gender,
     allowEmptySearch: isAdminMode || isColdStart, // Allow fetching all items on cold start or in admin mode
