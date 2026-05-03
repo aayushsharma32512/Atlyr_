@@ -218,7 +218,7 @@ async function getVectorFromModal(payload: any) {
 
 async function urlToBase64(url: string) {
   try {
-    const resp = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
+    const resp = await fetch(url, { headers: { 'User-Agent': 'Mclozilla/5.0' } })
     if (!resp.ok) throw new Error('Failed to download image')
     const blob = await resp.blob()
     const buffer = await blob.arrayBuffer()
@@ -232,8 +232,8 @@ async function rpc(client: any, func: string, vector: number[], filters?: any) {
   const { data, error } = await client.rpc(func, {
     query_embedding: vector,
     filters: filters || {},
-    match_threshold: 0.0,
-    match_count: 50
+    match_threshold: -1,
+    match_count: 50 // Standard fetch count, can be increased if needed
   })
   if (error) throw error
   return data
