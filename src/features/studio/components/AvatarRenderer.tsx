@@ -680,10 +680,6 @@ export function AvatarRenderer({
               />
             )
           })}
-          {/* Show skeleton overlay while images are loading in the background */}
-          {!imagesRevealed && (
-            <div className="absolute inset-0 h-full w-full animate-pulse rounded-xl bg-muted/30" aria-label="Loading preview" />
-          )}
         </div>
       )}
       {blurEnabled ? (

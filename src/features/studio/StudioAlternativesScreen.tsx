@@ -180,14 +180,26 @@ export function StudioAlternativesView() {
     return map
   }, [requestedSlotIds, resolvedTrayItems, slotProductIds])
 
-  // Get the current item's image URL for the active slot (for auto-search)
-  const currentSlotImageUrl = useMemo(() => {
+  // Get the current item's image URL and product ID for the active slot (for auto-search)
+  const { currentSlotImageUrl, currentSlotProductId } = useMemo(() => {
     if (hiddenSlots[slot]) {
-      return null
+      return { currentSlotImageUrl: null, currentSlotProductId: null }
     }
     const currentItem = resolvedTrayItems.find((item) => item.slot === slot)
-    return currentItem?.imageUrl ?? null
+    return {
+      currentSlotImageUrl: currentItem?.imageUrl ?? null,
+      currentSlotProductId: currentItem?.productId ?? null,
+    }
   }, [hiddenSlots, resolvedTrayItems, slot])
+
+  // Lock the product ID used for search at slot initialization time.
+  // currentSlotProductId changes on every alternative selection (Passive Selection pattern),
+  // but the search query must NOT re-fire just because the user picked a different item.
+  const [searchProductId, setSearchProductId] = useState<string | null>(currentSlotProductId)
+  useEffect(() => {
+    setSearchProductId(currentSlotProductId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slot]) // Intentionally NOT including currentSlotProductId — only re-lock on slot change
 
   // Cold start: no outfit exists yet in this session — show product tray immediately
   // so the user can browse and add items to create their first outfit.
@@ -229,6 +241,7 @@ export function StudioAlternativesView() {
     slot,
     query: search.committedText,
     imageUrl: search.committedImageUrl,
+    productId: searchProductId,
     filters: search.activeFilters,
     gender: adminGender ?? gender,
     allowEmptySearch: isAdminMode || isColdStart, // Allow fetching all items on cold start or in admin mode
@@ -239,7 +252,7 @@ export function StudioAlternativesView() {
     // In admin mode, we always use search results (which supports empty query)
     // In normal mode, we use search results only if there is an active search
     const shouldUseSearchResults = (search.hasActiveSearch || isAdminMode || isColdStart) && searchResultsQuery.data
-    
+
     const products = shouldUseSearchResults
       ? [...searchResultsQuery.data]
       : [...(fallbackAlternativesQuery.data ?? [])]
@@ -247,15 +260,28 @@ export function StudioAlternativesView() {
     // Apply client-side sorting
     switch (sortValue) {
       case 'price-low-to-high':
-        return products.sort((a, b) => a.price - b.price)
+        products.sort((a, b) => a.price - b.price)
+        break
       case 'price-high-to-low':
-        return products.sort((a, b) => b.price - a.price)
+        products.sort((a, b) => b.price - a.price)
+        break
       case 'similarity':
       default:
-        // Default: sorted by similarity from backend
-        return products
+        break
     }
-  }, [search.hasActiveSearch, searchResultsQuery.data, fallbackAlternativesQuery.data, sortValue])
+
+    // Pin the currently selected product to the front so it's always visible as first item
+    const selectedId = activeSlotIds[slot]
+    if (selectedId) {
+      const selectedIdx = products.findIndex((p) => p.id === selectedId)
+      if (selectedIdx > 0) {
+        const [selected] = products.splice(selectedIdx, 1)
+        products.unshift(selected)
+      }
+    }
+
+    return products
+  }, [search.hasActiveSearch, searchResultsQuery.data, fallbackAlternativesQuery.data, sortValue, activeSlotIds, slot])
 
   // Apply client-side collection/moodboard filter
   const filteredAlternativeProducts = useMemo(() => {
