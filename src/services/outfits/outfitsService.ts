@@ -37,6 +37,7 @@ export interface SaveOutfitInput {
   createdByName?: string | null
   userId: string
   backgroundId?: string | null
+  sourceOutfitId?: string | null
 }
 
 export interface DraftOutfitInput {
@@ -182,6 +183,7 @@ export async function saveOutfit(input: SaveOutfitInput) {
     word_association: normalizeText(input.keywords),
     vibes: normalizeText(input.vibe),
     user_id: input.userId,
+    source_outfit_id: input.sourceOutfitId ?? null,
   }
 
   const { data, error } = await supabase.from("outfits").insert(payload).select().single()

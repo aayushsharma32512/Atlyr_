@@ -657,6 +657,7 @@ export function StudioScreenView() {
           createdByName: profile?.name ?? null,
           userId: user.id,
           backgroundId: studioAvatar?.backgroundId ?? null,
+          sourceOutfitId: (resolvedOutfitId && !hasSlotOverrides) ? resolvedOutfitId : null,
         })
         const selectedMoodboardSlugs = data.moodboardIds ?? []
         const moodboardLabelBySlug = new Map(selectableMoodboards.map((m) => [m.slug, m.label] as const))

@@ -917,6 +917,7 @@ export type Database = {
           popularity: number
           rating: number
           shoes_id: string | null
+          source_outfit_id: string | null
           top_id: string | null
           updated_at: string
           user_id: string | null
@@ -952,6 +953,7 @@ export type Database = {
           popularity?: number
           rating?: number
           shoes_id?: string | null
+          source_outfit_id?: string | null
           top_id?: string | null
           updated_at?: string
           user_id?: string | null
@@ -987,6 +989,7 @@ export type Database = {
           popularity?: number
           rating?: number
           shoes_id?: string | null
+          source_outfit_id?: string | null
           top_id?: string | null
           updated_at?: string
           user_id?: string | null
@@ -1773,6 +1776,12 @@ export type Database = {
           preview_items: Json
           preview_outfit_ids: string[]
           preview_outfits_render: Json
+        }[]
+      }
+      get_all_outfit_ids: {
+        Args: { p_gender: string | null; p_sort_by?: string; p_limit?: number; p_offset?: number }
+        Returns: {
+          id: string
         }[]
       }
       get_curated_outfit_ids_seeded: {

@@ -37,6 +37,13 @@ interface CuratedOutfitsInput {
   seed: string
 }
 
+interface AllOutfitsInput {
+  gender: Gender
+  sortBy?: 'relevance' | 'newly_added'
+  page: number
+  size?: number
+}
+
 const OUTFIT_SELECT = `
   id,
   name,
@@ -247,7 +254,35 @@ async function getCuratedOutfits({ gender, page, size = 50, seed }: CuratedOutfi
   return orderedIds.map((id) => entriesById.get(id)).filter((entry): entry is HomeOutfitEntry => Boolean(entry))
 }
 
+async function getAllOutfits({ gender, sortBy = 'newly_added', page, size = 50 }: AllOutfitsInput): Promise<HomeOutfitEntry[]> {
+  const offset = Math.max(page, 0) * size
+  const { data, error } = await supabase.rpc("get_all_outfit_ids", {
+    p_gender: gender,
+    p_sort_by: sortBy,
+    p_limit: size,
+    p_offset: offset,
+  })
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  const orderedIds = (data ?? [])
+    .map((row) => row.id)
+    .filter((id): id is string => Boolean(id))
+
+  if (orderedIds.length === 0) {
+    return []
+  }
+
+  const rows = await fetchOutfitsByIds(orderedIds, gender)
+  const entriesById = new Map(mapRowsToEntries(rows).map((entry) => [entry.id, entry]))
+
+  return orderedIds.map((id) => entriesById.get(id)).filter((entry): entry is HomeOutfitEntry => Boolean(entry))
+}
+
 export const homeService = {
   getRecentStyles,
   getCuratedOutfits,
+  getAllOutfits,
 }

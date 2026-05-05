@@ -1,3 +1,7 @@
+// LEGACY: This component is no longer the active studio path.
+// Active studio uses URL-based routing: /studio/* → StudioScreen, StudioScrollUpScreen, StudioAlternativesScreen.
+// Do not add new features here. Kept for reference only.
+
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ChevronLeft, Share, RefreshCw, Brackets, GitCompare, Undo2, Redo2, Heart, Rocket, Plus, X, Sparkles, ChevronRight, Layers, ChevronUp, ChevronDown, GripVertical } from 'lucide-react';
