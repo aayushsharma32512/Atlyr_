@@ -3,7 +3,7 @@
 -- results are deterministic and stable across pagination.
 -- Deduplicates by (top_id, bottom_id, shoes_id) — same combo = data quality issue,
 -- keeps highest-rated, newest as tiebreaker.
--- Only shows originals (source_outfit_id IS NULL) and non-private outfits.
+-- Only shows originals (source_outfit_id = id) and non-private outfits.
 
 CREATE OR REPLACE FUNCTION public.get_all_outfit_ids(
   p_gender TEXT,
@@ -23,7 +23,7 @@ AS $$
     FROM public.outfits o
     WHERE o.visible_in_feed = true
       AND o.is_private = false
-      AND o.source_outfit_id IS NULL
+      AND o.source_outfit_id = o.id
       AND o.category <> 'others'
       AND o.gender IS NOT NULL
       AND (
@@ -48,4 +48,4 @@ $$;
 GRANT EXECUTE ON FUNCTION public.get_all_outfit_ids(TEXT, TEXT, INT, INT) TO authenticated, anon;
 
 COMMENT ON FUNCTION public.get_all_outfit_ids(TEXT, TEXT, INT, INT)
-IS 'Returns deduplicated original outfit IDs (source_outfit_id IS NULL, is_private = false), sorted by relevance or newly_added. Gender-aware.';
+IS 'Returns deduplicated original outfit IDs (source_outfit_id = id, is_private = false), sorted by relevance or newly_added. Gender-aware.';

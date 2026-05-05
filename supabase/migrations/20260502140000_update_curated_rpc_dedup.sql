@@ -1,5 +1,5 @@
 -- Update get_curated_outfit_ids_seeded to match All Outfits dedup and filter rules:
--- only originals (source_outfit_id IS NULL), non-private, deduplicated by product combo.
+-- only originals (source_outfit_id = id), non-private, deduplicated by product combo.
 
 CREATE OR REPLACE FUNCTION public.get_curated_outfit_ids_seeded(
   p_gender TEXT,
@@ -19,7 +19,7 @@ AS $$
     FROM public.outfits o
     WHERE o.visible_in_feed = true
       AND o.is_private = false
-      AND o.source_outfit_id IS NULL
+      AND o.source_outfit_id = o.id
       AND o.category <> 'others'
       AND o.gender IS NOT NULL
       AND (
