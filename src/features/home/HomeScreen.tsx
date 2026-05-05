@@ -22,6 +22,7 @@ import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { useAuth } from "@/contexts/AuthContext"
 import { useHomeRecentStyles } from "@/features/home/hooks/useHomeRecentStyles"
 import { useHomeCuratedOutfits } from "@/features/home/hooks/useHomeCuratedOutfits"
+import { useHomeAllOutfits } from "@/features/home/hooks/useHomeAllOutfits"
 import { useSearchOutfitResults } from "@/features/search/hooks/useSearchOutfitResults"
 import { useSearchProductResults } from "@/features/search/hooks/useSearchProductResults"
 import type { OutfitSearchFilters, ProductSearchFilters } from "@/services/search/searchService"
@@ -100,6 +101,7 @@ export function HomeScreenView() {
   const [outfitFilters] = useState<OutfitSearchFilters>({})
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
   const curatedLoadMoreRef = useRef<HTMLDivElement | null>(null)
+  const allOutfitsLoadMoreRef = useRef<HTMLDivElement | null>(null)
   const lastScrollTopRef = useRef(0)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const [isTopBarVisible, setIsTopBarVisible] = useState(true)
@@ -158,8 +160,12 @@ export function HomeScreenView() {
     enabled: isResultsMode && activeFilter === "products" && !isSearchSubmitting,
   })
 
+  const allOutfitsSortParam = searchParams.get("sort")
+  const allOutfitsSort = (allOutfitsSortParam === "relevance" ? "relevance" : "newly_added") as "relevance" | "newly_added"
+
   const recentStylesQuery = useHomeRecentStyles(10)
   const curatedOutfitsQuery = useHomeCuratedOutfits(curatedSeed, 50)
+  const allOutfitsQuery = useHomeAllOutfits(allOutfitsSort, 50)
   const TRY_ON_PAGE_SIZE = 20
   const MOODBOARD_PAGE_SIZE = 20
   const tryOnsQuery = useTryOns(TRY_ON_PAGE_SIZE)
@@ -175,10 +181,13 @@ export function HomeScreenView() {
 
   const recentStyles = recentStylesQuery.data ?? []
   const curatedOutfits = (curatedOutfitsQuery.data?.pages ?? []).flat()
+  const allOutfits = (allOutfitsQuery.data?.pages ?? []).flat()
   const isRecentLoading = recentStylesQuery.isLoading
   const isRecentError = recentStylesQuery.isError
   const isCuratedLoading = curatedOutfitsQuery.isLoading
   const isCuratedError = curatedOutfitsQuery.isError
+  const isAllOutfitsLoading = allOutfitsQuery.isLoading
+  const isAllOutfitsError = allOutfitsQuery.isError
 
   const recentStyleItems = useMemo(
     () =>
@@ -207,6 +216,27 @@ export function HomeScreenView() {
       }),
     [buildInspirationFromEntry, curatedOutfits, favoriteIds],
   )
+  const allOutfitsStyleItems = useMemo(
+    () =>
+      allOutfits.map((entry) => {
+        const item = buildInspirationFromEntry(entry)
+        const outfitId = item.outfitId ?? entry.outfit.id
+        return {
+          ...item,
+          showSaveButton: true,
+          isSaved: outfitId ? favoriteIds.includes(outfitId) : false,
+        }
+      }),
+    [buildInspirationFromEntry, allOutfits, favoriteIds],
+  )
+
+  const allOutfitsPositionById = useMemo(() => {
+    const ids = allOutfitsStyleItems
+      .map((item) => item.outfitId ?? item.outfit?.id ?? null)
+      .filter((id): id is string => Boolean(id))
+    return computeBucketedRowMajorPositions(ids, 2)
+  }, [allOutfitsStyleItems])
+
   const isFavoritesActive = activeMoodboardId === "favorites"
   const filteredRecentItems = useMemo(
     () => (isFavoritesActive ? recentStyleItems.filter((item) => item.outfitId && favoriteIds.includes(item.outfitId)) : recentStyleItems),
@@ -330,12 +360,13 @@ export function HomeScreenView() {
   }, [favoritesItems])
 
   const moodboardTabs = useMemo<MoodboardTab[]>(() => {
-    const systemOrder = ["wardrobe", "try-ons", "favorites", "for-you"]
+    const systemOrder = ["wardrobe", "try-ons", "favorites", "for-you", "all-outfits"]
     const labels: Record<string, string> = {
       wardrobe: "Wardrobe",
       "try-ons": "Try-ons",
       favorites: "Favorites",
       "for-you": "For You",
+      "all-outfits": "All Outfits",
     }
     const systemTabs: MoodboardTab[] = systemOrder.map((slug) => ({
       id: slug,
@@ -976,6 +1007,38 @@ export function HomeScreenView() {
     isResultsMode,
   ])
 
+  useEffect(() => {
+    const node = allOutfitsLoadMoreRef.current
+    const root = scrollContainerRef.current
+    if (!node || !root) {
+      return
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) {
+          return
+        }
+        if (isResultsMode || activeMoodboardId !== "all-outfits") {
+          return
+        }
+        if (allOutfitsQuery.hasNextPage && !allOutfitsQuery.isFetchingNextPage) {
+          allOutfitsQuery.fetchNextPage()
+        }
+      },
+      { root, rootMargin: "200px" },
+    )
+
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [
+    activeMoodboardId,
+    allOutfitsQuery.fetchNextPage,
+    allOutfitsQuery.hasNextPage,
+    allOutfitsQuery.isFetchingNextPage,
+    isResultsMode,
+  ])
+
   const handleSearchChange = useCallback(
     (value: string) => {
       setSearchTerm(value)
@@ -1320,6 +1383,72 @@ export function HomeScreenView() {
     )
   }
 
+  const handleAllOutfitsSortChange = useCallback(
+    (nextSort: "relevance" | "newly_added") => {
+      const params = new URLSearchParams(searchParams)
+      params.set("sort", nextSort)
+      setSearchParams(params, { replace: true })
+    },
+    [searchParams, setSearchParams],
+  )
+
+  const renderAllOutfitsGrid = () => {
+    if (isAllOutfitsLoading && allOutfitsStyleItems.length === 0) {
+      return renderResultPlaceholder("Loading all outfits…")
+    }
+    if (isAllOutfitsError) {
+      return renderResultPlaceholder("Unable to load outfits right now.", "error")
+    }
+    if (allOutfitsStyleItems.length === 0) {
+      return renderResultPlaceholder("No outfits available yet.")
+    }
+
+    return (
+      <OutfitInspirationGrid
+        items={allOutfitsStyleItems}
+        columns={2}
+        rows={8}
+        layoutMode="balanced"
+        cardTotalHeight={320}
+        cardVerticalGap={2}
+        cardMinAvatarHeight={128}
+        fixedAvatarHeight={156}
+        cardPreset="homeCurated"
+        getItemWrapperRef={(item) => {
+          const outfitId = item.outfitId ?? item.outfit?.id
+          if (!outfitId) return undefined
+          const position = allOutfitsPositionById.get(outfitId) ?? 0
+          return getHomeBrowseCardRef({ containerKey: "curated_grid", stableKey: `outfit:${outfitId}`, position })
+        }}
+        onCardSelect={(item) => {
+          if (!item.outfit) return
+          const outfitId = item.outfitId ?? item.outfit.id
+          const position = allOutfitsPositionById.get(outfitId)
+          trackItemClicked(analytics, {
+            entity_type: "outfit",
+            entity_id: outfitId,
+            layout: "vertical_grid",
+            section: "all_outfits",
+            position,
+          })
+          launchStudio(item.outfit)
+        }}
+        onToggleSave={(item, nextSaved) => {
+          const outfitId = item.outfitId ?? item.outfit?.id ?? null
+          if (!outfitId) return
+          const position = allOutfitsPositionById.get(outfitId)
+          handleToggleOutfitById(outfitId, nextSaved, { layout: "vertical_grid", section: "all_outfits", position }, "click")
+        }}
+        onLongPressSave={(item) => {
+          const outfitId = item.outfitId ?? item.outfit?.id ?? null
+          if (!outfitId) return
+          const position = allOutfitsPositionById.get(outfitId)
+          handleLongPressOutfitById(outfitId, { layout: "vertical_grid", section: "all_outfits", position })
+        }}
+      />
+    )
+  }
+
   const renderCuratedGrid = () => {
     // Only show loading state if we have no cached data
     if (isCuratedLoading && filteredCuratedItems.length === 0) {
@@ -1622,6 +1751,47 @@ export function HomeScreenView() {
               <>
                 <SectionHeader title="Favorites" />
                 {renderFavoritesItemsContent()}
+              </>
+            ) : activeMoodboardId === "all-outfits" ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <SectionHeader title="All Outfits" />
+                  <div className="flex gap-1 pb-1">
+                    <button
+                      type="button"
+                      onClick={() => handleAllOutfitsSortChange("newly_added")}
+                      className={cn(
+                        "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                        allOutfitsSort === "newly_added"
+                          ? "bg-foreground text-background"
+                          : "bg-muted text-muted-foreground hover:bg-muted/80",
+                      )}
+                    >
+                      Newest
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAllOutfitsSortChange("relevance")}
+                      className={cn(
+                        "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                        allOutfitsSort === "relevance"
+                          ? "bg-foreground text-background"
+                          : "bg-muted text-muted-foreground hover:bg-muted/80",
+                      )}
+                    >
+                      Popular
+                    </button>
+                  </div>
+                </div>
+                <div className="px-1 py-2">{renderAllOutfitsGrid()}</div>
+                {allOutfitsQuery.hasNextPage ? (
+                  <div className="flex flex-col items-center gap-2 py-2">
+                    <div ref={allOutfitsLoadMoreRef} className="h-6 w-full" />
+                    {allOutfitsQuery.isFetchingNextPage ? (
+                      <div className="text-xs text-muted-foreground">Loading more outfits…</div>
+                    ) : null}
+                  </div>
+                ) : null}
               </>
             ) : isItemMoodboardActive ? (
               <>

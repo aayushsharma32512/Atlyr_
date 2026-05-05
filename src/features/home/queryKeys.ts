@@ -6,4 +6,6 @@ export const homeKeys = {
     [...homeKeys.all, "recent-styles", userId ?? "guest", gender ?? "neutral"] as const,
   curatedOutfits: (gender: Gender, size: number, seed: string) =>
     [...homeKeys.all, "curated-outfits", gender ?? "neutral", size, seed] as const,
+  allOutfits: (gender: Gender, size: number, sortBy: string) =>
+    [...homeKeys.all, "all-outfits", gender ?? "neutral", size, sortBy] as const,
 }

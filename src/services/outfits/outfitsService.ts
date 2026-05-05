@@ -37,6 +37,7 @@ export interface SaveOutfitInput {
   createdByName?: string | null
   userId: string
   backgroundId?: string | null
+  sourceOutfitId?: string | null
 }
 
 export interface DraftOutfitInput {
@@ -166,8 +167,9 @@ export async function saveOutfit(input: SaveOutfitInput) {
 
   const createdBy = input.isPrivate ? "ATLYR" : normalizeText(input.createdByName) ?? "ATLYR"
 
+  const newId = crypto.randomUUID()
   const payload: OutfitInsert = {
-    id: crypto.randomUUID(),
+    id: newId,
     name: input.name,
     category: input.categoryId,
     occasion: input.occasionId,
@@ -182,6 +184,8 @@ export async function saveOutfit(input: SaveOutfitInput) {
     word_association: normalizeText(input.keywords),
     vibes: normalizeText(input.vibe),
     user_id: input.userId,
+    // original: source_outfit_id = own id. copy: source_outfit_id = source outfit's id.
+    source_outfit_id: input.sourceOutfitId ?? newId,
   }
 
   const { data, error } = await supabase.from("outfits").insert(payload).select().single()

@@ -670,6 +670,7 @@ export function StudioAlternativesView() {
           createdByName: profile?.name ?? null,
           userId: user.id,
           backgroundId: outfitData?.outfit?.backgroundId ?? null,
+          sourceOutfitId: (resolvedOutfitId && !hasSlotOverrides) ? resolvedOutfitId : null,
         })
         const selectedMoodboardSlugs = data.moodboardIds ?? []
         const moodboardLabelBySlug = new Map(selectableMoodboards.map((m) => [m.slug, m.label] as const))

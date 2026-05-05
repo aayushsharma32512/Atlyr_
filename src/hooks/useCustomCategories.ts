@@ -9,6 +9,7 @@ export interface CustomCategory {
   slug: string;
   isForYou: boolean; // Special flag for "For You" category
   isExploreMoods: boolean; // Special flag for "Explore Moods" category
+  isAllOutfits?: boolean; // Special flag for "All Outfits" category
 }
 
 export function useCustomCategories() {
@@ -40,6 +41,7 @@ export function useCustomCategories() {
         const defaultCategories: CustomCategory[] = [
           { id: 'explore-moods', name: 'Explore Moods', slug: 'explore-moods', isForYou: false, isExploreMoods: true },
           { id: 'for-you', name: 'For You', slug: 'for-you', isForYou: true, isExploreMoods: false },
+          { id: 'all-outfits', name: 'All Outfits', slug: 'all-outfits', isForYou: false, isExploreMoods: false, isAllOutfits: true },
           ...(allCategories || []).map(cat => ({
             id: cat.id,
             name: cat.name,
@@ -95,7 +97,17 @@ export function useCustomCategories() {
         isExploreMoods: false
       });
 
-      // 3. Add user's preferred categories alphabetically
+      // 3. Always add "All Outfits" third
+      customCategories.push({
+        id: 'all-outfits',
+        name: 'All Outfits',
+        slug: 'all-outfits',
+        isForYou: false,
+        isExploreMoods: false,
+        isAllOutfits: true
+      });
+
+      // 4. Add user's preferred categories alphabetically
       const preferredCategoryIds = profile?.preferred_categories || [];
       const preferredCategories = (allCategories || [])
         .filter(cat => preferredCategoryIds.includes(cat.id))
