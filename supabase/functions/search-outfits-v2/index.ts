@@ -61,24 +61,28 @@ serve(async (req) => {
 // --- ⚡ STRATEGIES ---
 
 async function searchByText(text: string, filters: any, supabase: any) {
+    const textW = 0
+    const imageW = 1
     const vector = await getVectorFromModal({ text })
     const [textHits, imageHits] = await Promise.all([
         rpc(supabase, 'match_outfits_text', vector, filters),
         rpc(supabase, 'match_outfits_image', vector, filters)
     ])
     // Logic: Normalize + Weighted Sum
-    return fuseAndSort(normalize(textHits), normalize(imageHits), 0.25, 0.75)
+    return fuseAndSort(normalize(textHits), normalize(imageHits), textW, imageW)
 }
 
 async function searchByImage(imageUrl: string, filters: any, supabase: any) {
     const image_b64 = await urlToBase64(imageUrl)
     const vector = await getVectorFromModal({ image_b64 })
-    const [textHits, imageHits] = await Promise.all([
-        rpc(supabase, 'match_outfits_text', vector, filters),
+    const [
+        // textHits,
+        imageHits] = await Promise.all([
+        // rpc(supabase, 'match_outfits_text', vector, filters),
         rpc(supabase, 'match_outfits_image', vector, filters)
     ])
     // Logic: Normalize + Weighted Sum
-    return fuseAndSort(normalize(textHits), normalize(imageHits), 0, 1)
+    return fuseAndSort([], normalize(imageHits), 0, 1)
 }
 
 async function searchHybridOptimized(text: string, imageUrl: string, filters: any, supabase: any) {
@@ -89,20 +93,20 @@ async function searchHybridOptimized(text: string, imageUrl: string, filters: an
     ])
 
     const [
-        textToText,
+        // textToText,
         textToImage,
-        imageToText,
+        // imageToText,
         imageToImage
     ] = await Promise.all([
-        rpc(supabase, 'match_outfits_text', textVector, filters),
+        // rpc(supabase, 'match_outfits_text', textVector, filters),
         rpc(supabase, 'match_outfits_image', textVector, filters),
-        rpc(supabase, 'match_outfits_text', imageVector, filters),
+        // rpc(supabase, 'match_outfits_text', imageVector, filters),
         rpc(supabase, 'match_outfits_image', imageVector, filters)
     ])
 
     // Fuse using weights (0.65/0.35)
-    const textSearchResults = fuseAndSort(normalize(textToText), normalize(textToImage), 0.75, 0.25)
-    const imageSearchResults = fuseAndSort(normalize(imageToText), normalize(imageToImage), 0.25, 0.75)
+    const textSearchResults = fuseAndSort([], normalize(textToImage), 0, 1)
+    const imageSearchResults = fuseAndSort([], normalize(imageToImage), 0, 1)
 
     const hybridMap = new Map()
 
