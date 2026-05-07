@@ -312,7 +312,7 @@ serve(async (req) => {
     p_candidate_id: reservedCandidateId,
     p_user_id: auth.userId,
     p_batch_id: reservedBatchId,
-    p_daily_limit: 3,
+    p_daily_limit: 5,
   })
 
   if (reserveError) {
@@ -330,7 +330,7 @@ serve(async (req) => {
       JSON.stringify({
         status: "error",
         code: "E_LIMIT_REACHED",
-        message: "You have reached the daily limit of 3 likeness generations.",
+        message: "You have reached the daily limit of 5 likeness generations.",
         correlationId: auth.correlationId,
       }),
       { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },

@@ -69,7 +69,7 @@ CREATE OR REPLACE FUNCTION reserve_likeness_slot(
   p_candidate_id UUID,
   p_user_id UUID,
   p_batch_id UUID,
-  p_daily_limit INTEGER DEFAULT 3
+  p_daily_limit INTEGER DEFAULT 5
 )
 RETURNS UUID
 LANGUAGE plpgsql
