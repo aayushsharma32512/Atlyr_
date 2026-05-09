@@ -80,7 +80,7 @@ async function buildAuthHeaders({ json = true }: { json?: boolean } = {}) {
   return headers
 }
 
-const LIKENESS_LIMIT = 3
+const LIKENESS_LIMIT = 5
 
 /**
  * Get start of current day in IST (12 AM IST = UTC+5:30).
