@@ -8,21 +8,24 @@ import { useJobs } from "@/features/progress/providers/JobsContext"
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
 import { trackTryonGenerationStarted } from "@/integrations/posthog/engagementTracking/tryon/tryonTracking"
 
-export function useGenerateTryOn(tempJobId?: string) {
+type TryOnMutationVariables = TryOnGeneratePayload & { tempJobId?: string }
+
+export function useGenerateTryOn() {
   const queryClient = useQueryClient()
   const { updateJob, getJobById } = useJobs()
   const analytics = useEngagementAnalytics()
 
   return useMutation({
     mutationKey: tryOnKeys.generate(),
-    mutationFn: (payload: TryOnGeneratePayload) => generateTryOn(payload),
-    onSuccess: (data: TryOnGenerateResponse) => {
+    mutationFn: ({ tempJobId: _tempJobId, ...payload }: TryOnMutationVariables) => generateTryOn(payload),
+    onSuccess: (data: TryOnGenerateResponse, variables: TryOnMutationVariables) => {
       queryClient.invalidateQueries({ queryKey: tryOnKeys.list() })
       queryClient.invalidateQueries({ queryKey: tryOnKeys.generation(data.generationId) })
       queryClient.invalidateQueries({ queryKey: likenessKeys.list() })
       queryClient.invalidateQueries({ queryKey: ["daily-limits"] })
 
       // Update temp job with real generation ID
+      const tempJobId = variables.tempJobId
       if (tempJobId) {
         const existing = getJobById(tempJobId)
         const existingMetadata = (existing?.metadata ?? {}) as Record<string, unknown>
