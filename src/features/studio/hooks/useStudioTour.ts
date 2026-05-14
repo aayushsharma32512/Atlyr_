@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 
-export type StudioTourStepId = 'welcome' | 'mannequin' | 'alternatives' | 'full-screen' | 'product-details' | 'remix' | 'product-interaction' | 'return-from-product' | 'undo-redo' | 'checkpoint' | 'click-details' | 'back-from-details' | 'save-button' | 'share-button' | 'tryon-button'
+export type StudioTourStepId = 'welcome' | 'mannequin' | 'alternatives' | 'full-screen' | 'remix' | 'product-interaction' | 'return-from-product' | 'undo-redo' | 'checkpoint' | 'click-details' | 'back-from-details' | 'save-button' | 'share-button' | 'tryon-button'
 
 export interface StudioTourStep {
     id: StudioTourStepId
@@ -40,12 +40,6 @@ const STUDIO_TOUR_STEPS: StudioTourStep[] = [
         title: 'Go Full Screen',
         message: 'Tap here to open the complete studio experience with all the styling tools.',
         tooltipPosition: { bottom: '300px', right: '40px' },
-    },
-    {
-        id: 'product-details',
-        title: 'Your Current Look',
-        message: 'Here\'s what you\'re wearing. Tap any item to view details, save, or buy.',
-        tooltipPosition: { bottom: '300px', left: 'calc(50% - 144px)' },
     },
     {
         id: 'return-from-product',
@@ -155,10 +149,7 @@ export function useStudioTour() {
         const isScrollUpRoute = location.pathname.includes('/scroll-up')
         const isStudioOrAlternatives = (location.pathname.includes('/studio') || location.pathname.includes('/alternatives')) && !isProductRoute && !isScrollUpRoute
 
-        if (currentStepId === 'product-details' && isProductRoute) {
-            const returnStepIndex = STUDIO_TOUR_STEPS.findIndex(s => s.id === 'return-from-product')
-            if (returnStepIndex !== -1) setCurrentStepIndex(returnStepIndex)
-        } else if (currentStepId === 'return-from-product' && isStudioOrAlternatives) {
+        if (currentStepId === 'return-from-product' && isStudioOrAlternatives) {
             const undoRedoIndex = STUDIO_TOUR_STEPS.findIndex(s => s.id === 'undo-redo')
             if (undoRedoIndex !== -1) setCurrentStepIndex(undoRedoIndex)
         } else if (currentStepId === 'click-details' && isScrollUpRoute) {
@@ -180,12 +171,6 @@ export function useStudioTour() {
         manualStepChangeRef.current = true
         setCurrentStepIndex(prev => {
             if (prev < STUDIO_TOUR_STEPS.length - 1) {
-                const currentStepId = STUDIO_TOUR_STEPS[prev].id
-                // If user clicks next on "Your Current Look", skip to history tools
-                if (currentStepId === 'product-details') {
-                    const undoRedoIndex = STUDIO_TOUR_STEPS.findIndex(s => s.id === 'undo-redo')
-                    return undoRedoIndex !== -1 ? undoRedoIndex : prev + 1
-                }
                 return prev + 1
             }
             endTour()
@@ -195,15 +180,7 @@ export function useStudioTour() {
 
     const prevStep = useCallback(() => {
         manualStepChangeRef.current = true
-        setCurrentStepIndex(prev => {
-            const currentStepId = STUDIO_TOUR_STEPS[prev].id
-            // If going back from history tools, skip the interaction steps and go to Step 5
-            if (currentStepId === 'undo-redo') {
-                const step5Index = STUDIO_TOUR_STEPS.findIndex(s => s.id === 'product-details')
-                return step5Index !== -1 ? step5Index : Math.max(0, prev - 1)
-            }
-            return Math.max(0, prev - 1)
-        })
+        setCurrentStepIndex(prev => Math.max(0, prev - 1))
     }, [])
 
     const goToStep = useCallback((stepId: StudioTourStepId) => {

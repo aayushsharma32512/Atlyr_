@@ -980,17 +980,18 @@ export function StudioScreenView() {
       
       {/* space gainer for the fixed product tray so that the OutfitInspirationCard is not covered by the product tray */}
       <div className="invisible z-20 flex justify-center bg-background pb-4">
-        <ProductTray items={resolvedTrayItems} />
+        <ProductTray items={resolvedTrayItems} showItems={false} />
       </div>
 
       <div 
         className={cn(
-          "fixed bottom-8 left-0 right-0 flex justify-center pb-4",
-          (tour.isHighlighted("product-details") || tour.isHighlighted("product-interaction") || tour.isHighlighted("click-details") || tour.isHighlighted("save-button") || tour.isHighlighted("tryon-button")) ? "bg-transparent z-[75]" : "bg-background z-20"
+          "fixed bottom-16 left-0 right-0 flex justify-center pb-4",
+          (tour.isHighlighted("product-interaction") || tour.isHighlighted("click-details") || tour.isHighlighted("save-button") || tour.isHighlighted("tryon-button")) ? "bg-transparent z-[75]" : "bg-background z-20"
         )}
       >
         <ProductTray
           items={resolvedTrayItems}
+          showItems={false}
           isLoading={productTrayQuery.isLoading || isOutfitLoading || isLoadingOverrides}
           onProductPress={isViewOnly ? undefined : handleProductPress}
           onDetailsPress={isViewOnly ? undefined : handleDetailsPress}
@@ -1013,7 +1014,7 @@ export function StudioScreenView() {
           moodboards={selectableMoodboards}
           moodboardsLoading={moodboardsLoading}
           onCreateMoodboard={(name) => createMoodboardMutation.mutateAsync(name).then((res) => res.slug)}
-          highlightProducts={tour.isHighlighted("product-details") || tour.isHighlighted("product-interaction")}
+          highlightProducts={tour.isHighlighted("product-interaction")}
           highlightDetails={tour.isHighlighted("click-details")}
           highlightSave={tour.isHighlighted("save-button")}
           highlightTryOn={tour.isHighlighted("tryon-button")}
