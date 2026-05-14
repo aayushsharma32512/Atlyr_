@@ -107,38 +107,27 @@ function getStartOfDayIST(): string {
  */
 export async function checkLikenessLimit(pendingCount = 0): Promise<{ allowed: boolean; count: number; limit: number }> {
   await getOrSignInAnon()
-  
+
   const startOfDayIST = getStartOfDayIST()
-  
-  // Count saved neutral poses created today
-  const { count: savedCount, error: savedError } = await supabase
-    .from("user_neutral_poses")
-    .select("*", { count: "exact", head: true })
-    .gte("created_at", startOfDayIST)
-  
-  if (savedError) {
-    console.error("Failed to check likeness limit (saved):", savedError)
-    throw new Error("Unable to verify likeness limit")
-  }
-  
-  // Count distinct pending candidate batches created today
-  const { data: pendingBatches, error: batchError } = await supabase
+
+  // Count distinct generate API calls today (each batch_id = one generate call)
+  // Saves (user_neutral_poses) are NOT counted — only triggered generates count
+  const { data: batches, error: batchError } = await supabase
     .from("likeness_candidates")
     .select("batch_id, created_at")
     .gte("created_at", startOfDayIST)
-  
+
   if (batchError) {
-    console.error("Failed to check likeness limit (pending):", batchError)
+    console.error("Failed to check likeness limit:", batchError)
     throw new Error("Unable to verify likeness limit")
   }
-  
-  const pendingBatchCount = pendingBatches 
-    ? new Set(pendingBatches.map((b) => b.batch_id)).size 
+
+  const dbCount = batches
+    ? new Set(batches.map((b) => b.batch_id)).size
     : 0
-  
-  const dbCount = (savedCount ?? 0) + pendingBatchCount
+
   const totalCount = dbCount + pendingCount
-  
+
   return {
     allowed: totalCount < LIKENESS_LIMIT,
     count: totalCount,

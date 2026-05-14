@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useForm, FormProvider } from "react-hook-form"
 import { toast as sonnerToast } from "sonner"
 import {
@@ -67,7 +67,12 @@ export function LikenessDrawer({
   const [savedMode, setSavedMode] = useState(false)
   const [savedPoseId, setSavedPoseId] = useState<string | null>(null)
   const [hasInitialized, setHasInitialized] = useState(false)
-  
+
+  // Synchronous counters for in-flight requests — prevents stale-closure race
+  // where two rapid clicks both see the same stale `jobs` snapshot and both pass limit checks
+  const pendingLikenessCountRef = useRef(0)
+  const pendingTryonCountRef = useRef(0)
+
   const form = useForm<LikenessFormData>({
     mode: "onChange",
     defaultValues: {
@@ -83,8 +88,8 @@ export function LikenessDrawer({
   const selectMutation = useLikenessSelectMutation()
   const setActiveMutation = useLikenessSetActiveMutation()
   const ensureSummariesMutation = useEnsureSummaries()
-  const [tempTryonId, setTempTryonId] = useState<string | undefined>()
-  const generateTryOnMutation = useGenerateTryOn(tempTryonId)
+  const generateTryOnMutation = useGenerateTryOn()
+  const [isVTonApiPending, setIsVTonApiPending] = useState(false)
   const jobState = useLikenessJobStatus({
     uploadStatus: uploadMutation.status,
     selectStatus: selectMutation.status,
@@ -184,109 +189,117 @@ export function LikenessDrawer({
   }, [currentStep, updateStep])
 
   const handleGenerateLikeness = useCallback(async () => {
-    // Add job to JobsContext IMMEDIATELY to prevent rapid-click race condition
+    // Increment synchronously — concurrent rapid clicks each get a unique count,
+    // closing the stale-closure race where both would see the same jobs snapshot
+    pendingLikenessCountRef.current += 1
+
     const tempId = `temp-likeness-${Date.now()}`
-    addJob({
-      id: tempId,
-      type: "likeness",
-      status: "processing",
-      progress: 0,
-      metadata: { batchId: tempId },
-    })
-
-    // Count pending likeness jobs (now includes the one we just added)
-    const pendingLikenessJobs = jobs.filter(
-      (j) => j.type === "likeness" && j.status === "processing"
-    ).length + 1 // +1 for the job we just added (not yet in jobs array)
-
-    // Check likeness limit
     try {
-      const limitCheck = await checkLikenessLimit(pendingLikenessJobs)
-      if (!limitCheck.allowed) {
+      addJob({
+        id: tempId,
+        type: "likeness",
+        status: "processing",
+        progress: 0,
+        metadata: { batchId: tempId },
+      })
+
+      // committed jobs (from state, may be stale) + all concurrent in-flight calls (ref, always current)
+      const pendingLikenessJobs =
+        jobs.filter((j) => j.type === "likeness" && j.status === "processing").length +
+        pendingLikenessCountRef.current
+
+      // Check likeness limit
+      try {
+        const limitCheck = await checkLikenessLimit(pendingLikenessJobs)
+        if (!limitCheck.allowed) {
+          removeJob(tempId)
+          toast({
+            title: "Generation limit reached",
+            description: `You have used all ${limitCheck.limit} likeness generations today.`,
+            variant: "destructive",
+          })
+          return
+        }
+      } catch (err) {
+        console.error("Failed to check likeness limit:", err)
+        // Continue anyway - edge function will enforce the limit
+      }
+
+      const values = form.getValues()
+      if (!values.fullBodyPhoto || !values.faceSelfiePhoto) {
         removeJob(tempId)
         toast({
-          title: "Generation limit reached",
-          description: `You have used all ${limitCheck.limit} likeness generations today.`,
+          title: "Missing photos",
+          description: "Please upload both a full body photo and a selfie.",
           variant: "destructive",
         })
         return
       }
-    } catch (err) {
-      console.error("Failed to check likeness limit:", err)
-      // Continue anyway - edge function will enforce the limit
-    }
 
-    const values = form.getValues()
-    if (!values.fullBodyPhoto || !values.faceSelfiePhoto) {
-      removeJob(tempId)
-      toast({
-        title: "Missing photos",
-        description: "Please upload both a full body photo and a selfie.",
-        variant: "destructive",
-      })
-      return
-    }
-    try {
-      setHasStartedFlow(true)
-      
-      // Capture outfit parameters from props
-      const outfitParams = {
-        topId: outfitItems?.topId ?? null,
-        bottomId: outfitItems?.bottomId ?? null,
-        footwearId: outfitItems?.footwearId ?? null,
-        outfitId: outfitSnapshot?.id ?? null,
-        outfitName: outfitSnapshot?.name ?? null,
-        outfitCategory: outfitSnapshot?.category ?? null,
-        outfitOccasion: outfitSnapshot?.occasionId ?? null,
-        outfitBackgroundId: outfitSnapshot?.backgroundId ?? null,
-        outfitGender: outfitSnapshot?.gender ?? null,
-        returnTo: null,
+      try {
+        setHasStartedFlow(true)
+
+        // Capture outfit parameters from props
+        const outfitParams = {
+          topId: outfitItems?.topId ?? null,
+          bottomId: outfitItems?.bottomId ?? null,
+          footwearId: outfitItems?.footwearId ?? null,
+          outfitId: outfitSnapshot?.id ?? null,
+          outfitName: outfitSnapshot?.name ?? null,
+          outfitCategory: outfitSnapshot?.category ?? null,
+          outfitOccasion: outfitSnapshot?.occasionId ?? null,
+          outfitBackgroundId: outfitSnapshot?.backgroundId ?? null,
+          outfitGender: outfitSnapshot?.gender ?? null,
+          returnTo: null,
+        }
+
+        // Update the temp job we created earlier with outfit params
+        updateJob(tempId, {
+          metadata: {
+            batchId: tempId,
+            outfitParams,
+            expectedCount: 2, // We expect 2 candidates
+          },
+        })
+
+        // Show background generation toast
+        sonnerToast.info("Generating avatar in background...", {
+          description: "You can continue browsing. We'll notify you when ready.",
+          duration: 4000,
+        })
+
+        const response = await uploadMutation.mutateAsync({
+          fullBody: values.fullBodyPhoto,
+          selfie: values.faceSelfiePhoto,
+          candidateCount: 2,
+          parallelStreams: 2,
+        })
+        setActiveBatchId(response.uploadBatchId)
+
+        // Update temp job with real batchId from response
+        updateJob(tempId, {
+          id: response.uploadBatchId,
+          metadata: {
+            batchId: response.uploadBatchId,
+            outfitParams,
+            expectedCount: 2,
+          },
+        })
+
+        // Close drawer once upload is submitted (background generation continues)
+        onOpenChange(false)
+      } catch (error) {
+        removeJob(tempId)
+        toast({
+          title: "Upload failed",
+          description: `${error instanceof Error ? error.message : "Unable to generate likeness."} Please try again.`,
+          variant: "destructive",
+        })
       }
-      
-      // Update the temp job we created earlier with outfit params
-      updateJob(tempId, {
-        metadata: { 
-          batchId: tempId, 
-          outfitParams,
-          expectedCount: 2, // We expect 2 candidates
-        },
-      })
-      
-      // Show background generation toast
-      sonnerToast.info("Generating avatar in background...", {
-        description: "You can continue browsing. We'll notify you when ready.",
-        duration: 4000,
-      })
-      
-      const response = await uploadMutation.mutateAsync({
-        fullBody: values.fullBodyPhoto,
-        selfie: values.faceSelfiePhoto,
-        candidateCount: 2,
-        parallelStreams: 2,
-      })
-      setActiveBatchId(response.uploadBatchId)
-      
-      // Update temp job with real batchId from response
-      updateJob(tempId, {
-        id: response.uploadBatchId,
-        metadata: { 
-          batchId: response.uploadBatchId, 
-          outfitParams,
-          expectedCount: 2,
-        },
-      })
-
-      // Close drawer once upload is submitted (background generation continues)
-      onOpenChange(false)
-    } catch (error) {
-      removeJob(tempId)
-      toast({
-        title: "Upload failed",
-        description: error instanceof Error ? error.message : "Unable to generate likeness.",
-        variant: "destructive",
-      })
+    } finally {
+      pendingLikenessCountRef.current -= 1
     }
-  }, [jobs, form, toast, uploadMutation, updateStep, addJob, removeJob, updateJob, outfitItems, outfitSnapshot])
+  }, [jobs, form, toast, uploadMutation, addJob, removeJob, updateJob, outfitItems, outfitSnapshot, onOpenChange])
 
   const handleSaveCandidate = useCallback(
     async (candidateId: string) => {
@@ -326,7 +339,7 @@ export function LikenessDrawer({
       } catch (error) {
         toast({
           title: "Save failed",
-          description: error instanceof Error ? error.message : "Unable to save the selected candidate.",
+          description: `${error instanceof Error ? error.message : "Unable to save the selected candidate."} Please try again.`,
           variant: "destructive",
         })
       }
@@ -364,7 +377,7 @@ export function LikenessDrawer({
         onError: (error) =>
           toast({
             title: "Failed to set active pose",
-            description: error.message,
+            description: `${error.message} Please try again.`,
             variant: "destructive",
           }),
       })
@@ -374,114 +387,136 @@ export function LikenessDrawer({
 
   const handleUseAvatar = useCallback(
     async (poseId: string) => {
-      // Add job to JobsContext IMMEDIATELY to prevent rapid-click race condition
-      // Other clicks will see this job in the pending count
+      // Increment synchronously — concurrent rapid clicks each get a unique count,
+      // closing the stale-closure race where both would see the same jobs snapshot
+      pendingTryonCountRef.current += 1
+
       const tempId = `temp-tryon-${Date.now()}`
-      addJob({
-        id: tempId,
-        type: "tryon",
-        status: "processing",
-        progress: 0,
-        metadata: { generationId: tempId },
-      })
-
-      // Count pending tryon jobs (now includes the one we just added)
-      const pendingTryonJobs = jobs.filter(
-        (j) => j.type === "tryon" && j.status === "processing"
-      ).length + 1 // +1 for the job we just added (not yet in jobs array)
-
-      // Check limit
       try {
-        const limitCheck = await checkTryOnLimit(pendingTryonJobs)
-        if (!limitCheck.allowed) {
-          // Remove the job we just added since we're not proceeding
+        // Concurrent cap check — before addJob to avoid polluting jobs state with rejected attempts
+        // ref already incremented, so concurrent rapid clicks each get a unique total
+        const activeTryons =
+          jobs.filter((j) => j.type === "tryon" && j.status === "processing").length +
+          pendingTryonCountRef.current
+        if (activeTryons > 3) {
+          toast({
+            title: "Too many try-ons queued",
+            description: "Please wait until your other try-ons finish before starting a new one.",
+          })
+          return
+        }
+
+        addJob({
+          id: tempId,
+          type: "tryon",
+          status: "processing",
+          progress: 0,
+          metadata: { generationId: tempId },
+        })
+
+        // committed jobs (from state, may be stale) + all concurrent in-flight calls (ref, always current)
+        const pendingTryonJobs =
+          jobs.filter((j) => j.type === "tryon" && j.status === "processing").length +
+          pendingTryonCountRef.current
+
+        // Check limit
+        try {
+          const limitCheck = await checkTryOnLimit(pendingTryonJobs)
+          if (!limitCheck.allowed) {
+            removeJob(tempId)
+            toast({
+              title: "Generation limit reached",
+              description: `You have used all ${limitCheck.limit} try-on generations today.`,
+              variant: "destructive",
+            })
+            return
+          }
+        } catch (err) {
+          console.error("Failed to check try-on limit:", err)
+          // Continue anyway - edge function will enforce the limit
+        }
+
+        const { topId, bottomId, footwearId } = outfitItems ?? {}
+
+        if (!topId && !bottomId && !footwearId) {
           removeJob(tempId)
           toast({
-            title: "Generation limit reached",
-            description: `You have used all ${limitCheck.limit} try-on generations today.`,
+            title: "No outfit items",
+            description: "Select at least one garment in Studio before starting a try-on.",
             variant: "destructive",
           })
           return
         }
-      } catch (err) {
-        console.error("Failed to check try-on limit:", err)
-        // Continue anyway - edge function will enforce the limit
-      }
 
-      const { topId, bottomId, footwearId } = outfitItems ?? {}
-
-      if (!topId && !bottomId && !footwearId) {
-        removeJob(tempId)
-        toast({
-          title: "No outfit items",
-          description: "Select at least one garment in Studio before starting a try-on.",
-          variant: "destructive",
-        })
-        return
-      }
-
-      const outfitItemsFromProps = {
-        topId,
-        bottomId,
-        footwearId,
-      }
-
-      const outfitSnapshotFromProps = outfitSnapshot
-        ? {
-            id: outfitSnapshot.id,
-            name: outfitSnapshot.name ?? null,
-            category: outfitSnapshot.category ?? null,
-            occasion: outfitSnapshot.occasionId ?? null,
-            background_id: outfitSnapshot.backgroundId ?? null,
-            gender: outfitSnapshot.gender ?? null,
-            top_id: topId ?? null,
-            bottom_id: bottomId ?? null,
-            shoes_id: footwearId ?? null,
-          }
-        : undefined
-
-      try {
-        // Update the temp job we created earlier with comboKey
-        setTempTryonId(tempId)
-        const tryonPayload = {
-          neutralPoseId: poseId,
-          outfitItems: outfitItemsFromProps,
-          outfitSnapshot: outfitSnapshotFromProps,
+        const outfitItemsFromProps = {
+          topId,
+          bottomId,
+          footwearId,
         }
-        const comboKey = buildStudioComboKey({
-          slotIds: {
-            topId: topId ?? null,
-            bottomId: bottomId ?? null,
-            shoesId: footwearId ?? null,
-          },
-          hiddenSlots: { top: false, bottom: false, shoes: false },
-        })
-        updateJob(tempId, {
-          metadata: { generationId: tempId, comboKey, tryonPayload },
-        })
 
-        // Show background generation toast immediately
-        sonnerToast.info("Starting try-on generation...", {
-          description: "Continue browsing. We'll notify you when it's ready.",
-          duration: 4000,
-        })
+        const outfitSnapshotFromProps = outfitSnapshot
+          ? {
+              id: outfitSnapshot.id,
+              name: outfitSnapshot.name ?? null,
+              category: outfitSnapshot.category ?? null,
+              occasion: outfitSnapshot.occasionId ?? null,
+              background_id: outfitSnapshot.backgroundId ?? null,
+              gender: outfitSnapshot.gender ?? null,
+              top_id: topId ?? null,
+              bottom_id: bottomId ?? null,
+              shoes_id: footwearId ?? null,
+            }
+          : undefined
 
-        onOpenChange(false)
-        await setActiveMutation.mutateAsync(poseId)
-        await ensureSummariesMutation.mutateAsync([topId, bottomId, footwearId])
-        await generateTryOnMutation.mutateAsync({
-          neutralPoseId: poseId,
-          outfitItems: outfitItemsFromProps,
-          outfitSnapshot: outfitSnapshotFromProps,
-        })
-      } catch (error) {
-        toast({
-          title: "Try-on failed",
-          description: error instanceof Error ? error.message : "Unable to start try-on.",
-          variant: "destructive",
-        })
-        // Remove the temp job on error
-        removeJob(tempId)
+        try {
+          // Update the temp job we created earlier with comboKey
+          const tryonPayload = {
+            neutralPoseId: poseId,
+            outfitItems: outfitItemsFromProps,
+            outfitSnapshot: outfitSnapshotFromProps,
+          }
+          const comboKey = buildStudioComboKey({
+            slotIds: {
+              topId: topId ?? null,
+              bottomId: bottomId ?? null,
+              shoesId: footwearId ?? null,
+            },
+            hiddenSlots: { top: false, bottom: false, shoes: false },
+          })
+          updateJob(tempId, {
+            metadata: { generationId: tempId, comboKey, tryonPayload },
+          })
+
+          // Show background generation toast immediately
+          sonnerToast.info("Starting try-on generation...", {
+            description: "Continue browsing. We'll notify you when it's ready.",
+            duration: 4000,
+          })
+
+          onOpenChange(false)
+          setIsVTonApiPending(true)
+          try {
+            await setActiveMutation.mutateAsync(poseId)
+            await ensureSummariesMutation.mutateAsync([topId, bottomId, footwearId])
+            await generateTryOnMutation.mutateAsync({
+              neutralPoseId: poseId,
+              outfitItems: outfitItemsFromProps,
+              outfitSnapshot: outfitSnapshotFromProps,
+              tempJobId: tempId,
+            })
+          } finally {
+            setIsVTonApiPending(false)
+          }
+        } catch (error) {
+          toast({
+            title: "Try-on failed",
+            description: `${error instanceof Error ? error.message : "Unable to start try-on."} Please try again.`,
+            variant: "destructive",
+          })
+          removeJob(tempId)
+        }
+      } finally {
+        pendingTryonCountRef.current -= 1
       }
     },
     [
@@ -529,6 +564,7 @@ export function LikenessDrawer({
                     showBack={canReturnToStepThree}
                     onBack={handleBackToStepThree}
                     isBackDisabled={uploadMutation.isPending}
+                    isSaving={uploadMutation.isPending}
                   />
                 )}
                 {currentStep === 2 && (
@@ -561,7 +597,7 @@ export function LikenessDrawer({
                     onUseAvatar={handleUseAvatar}
                     onSetActive={handleSetActivePose}
                     isSettingActive={setActiveMutation.isPending}
-                    isGeneratingTryOn={ensureSummariesMutation.isPending || generateTryOnMutation.isPending}
+                    isGeneratingTryOn={isVTonApiPending}
                     savedMode={savedMode}
                     savedPoseId={savedPoseId}
                   />

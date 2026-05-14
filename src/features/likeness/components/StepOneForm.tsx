@@ -18,6 +18,7 @@ interface StepOneFormProps {
   showBack?: boolean
   onBack?: () => void
   isBackDisabled?: boolean
+  isSaving?: boolean
 }
 
 export function StepOneForm({
@@ -27,6 +28,7 @@ export function StepOneForm({
   showBack = false,
   onBack,
   isBackDisabled = false,
+  isSaving = false,
 }: StepOneFormProps) {
   const fullBodyInputRef = useRef<HTMLInputElement>(null);
   const faceSelfieInputRef = useRef<HTMLInputElement>(null);
@@ -227,10 +229,10 @@ export function StepOneForm({
                 type="button"
                 onClick={handleGenerate}
                 className="bg-primary flex gap-2 h-9 items-center justify-center px-4 py-2 rounded-[10px] shadow-sm flex-1"
-                disabled={!fullBodyPhoto || !faceSelfiePhoto}
+                disabled={!fullBodyPhoto || !faceSelfiePhoto || isSaving}
               >
                 <p className="font-medium leading-5 relative shrink-0 text-primary-foreground text-sm capitalize">
-                  Generate
+                  {isSaving ? 'Generating...' : 'Generate'}
                 </p>
               </Button>
             </div>
@@ -239,10 +241,10 @@ export function StepOneForm({
               type="button"
               onClick={handleGenerate}
               className="bg-primary flex gap-2 h-9 items-center justify-center px-4 py-2 rounded-[10px] shadow-sm w-full"
-              disabled={!fullBodyPhoto || !faceSelfiePhoto}
+              disabled={!fullBodyPhoto || !faceSelfiePhoto || isSaving}
             >
               <p className="font-medium leading-5 relative shrink-0 text-primary-foreground text-sm capitalize">
-                Generate
+                {isSaving ? 'Generating...' : 'Generate'}
               </p>
             </Button>
           )}
