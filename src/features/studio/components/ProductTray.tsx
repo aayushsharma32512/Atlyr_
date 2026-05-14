@@ -6,30 +6,6 @@ import { ProductSummaryCard, TrayActionButton, SaveOutfitDrawer, IconButton } fr
 import type { Moodboard } from "@/services/collections/collectionsService"
 import type { StudioProductTrayItem, StudioProductTraySlot } from "@/services/studio/studioService"
 import { cn } from "@/lib/utils"
-import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
-import { trackProductBuyClicked } from "@/integrations/posthog/engagementTracking/entityEvents"
-
-
-const ACTIONS = [
-  {
-    id: "save",
-    label: "Save",
-    tone: "outline" as const,
-    iconStart: Heart,
-  },
-  {
-    id: "tryon",
-    label: "Tryon",
-    tone: "outline" as const,
-    iconStart: SquareUserRound,
-  },
-  {
-    id: "details",
-    label: "Details",
-    tone: "plain" as const,
-    iconEnd: ChevronDown,
-  },
-]
 
 const SLOT_LABELS: Record<StudioProductTraySlot, string> = {
   top: "Topwear",
@@ -73,6 +49,7 @@ interface ProductTrayProps {
   onCreateMoodboard?: (name: string) => Promise<string | void> | string | void
   showFilter?: boolean
   showRemove?: boolean
+  showItems?: boolean
   showActions?: boolean
   highlightProducts?: boolean // When true, highlight individual product items (for tour)
   highlightDetails?: boolean // When true, highlight the Details button only (for tour)
@@ -108,13 +85,13 @@ export function ProductTray({
   onCreateMoodboard,
   showFilter = true,
   showRemove = true,
+  showItems = true,
   showActions = true,
   highlightProducts = false,
   highlightDetails = false,
   highlightSave = false,
   highlightTryOn = false,
 }: ProductTrayProps) {
-  const analytics = useEngagementAnalytics()
   const hasItems = items.length > 0
   const [isSaveDrawerOpen, setIsSaveDrawerOpen] = useState(false)
   const [localItems, setLocalItems] = useState(items) // The local items that are being displayed in the tray
@@ -256,7 +233,7 @@ export function ProductTray({
       "mx-auto w-full max-w-sm rounded-t-3xl px-1 pb-0 pt-1",
       (highlightProducts) ? "bg-transparent" : "bg-card"
     )}>
-      <div className="flex flex-col gap-0.5 pb-2">
+      {showItems && <div className="flex flex-col gap-0.5 pb-2">
         {isLoading ? (
           <div className="flex items-center justify-center rounded-2xl border border-dashed border-muted-foreground/30 bg-muted/10 p-4 text-xs text-muted-foreground">
             Loading outfit items…
@@ -265,14 +242,8 @@ export function ProductTray({
           (localSlotOrder ?? slotOrder ?? []).map((slot, index) => {
             const product = slotItemMap.get(slot)
             const isHidden = Boolean(hiddenSlots?.[slot])
-            const action = ACTIONS[index]
-            const resolvedAction =
-              action?.id === "save"
-                ? { ...action, iconStart: SaveIcon, label: saveActionMode === "toggle" && saveIsActive ? "Saved" : action.label }
-                : action
             const isDragged = draggedIndex === index
 
-            // Calculate visual shift for other cards
             let translateY = 0
             if (draggedIndex !== null && targetIndex !== null && !isDragged) {
               if (draggedIndex < targetIndex && index > draggedIndex && index <= targetIndex) {
@@ -287,13 +258,8 @@ export function ProductTray({
               const label = SLOT_LABELS[slot] ?? "Item"
               return (
                 <div
-                  ref={(el) => {
-                    cardRefs.current[index] = el
-                  }}
-                  className={cn(
-                    "flex items-stretch gap-2",
-                    isDragged && "z-50"
-                  )}
+                  ref={(el) => { cardRefs.current[index] = el }}
+                  className={cn("flex items-stretch gap-2", isDragged && "z-50")}
                   key={`${slot}-hidden`}
                 >
                   <div
@@ -305,9 +271,7 @@ export function ProductTray({
                         tone="ghost"
                         size="sm"
                         aria-label={`Restore ${label}`}
-                        onClick={
-                          !isReadOnly && isHidden && onRestoreSlot ? () => onRestoreSlot(slot) : undefined
-                        }
+                        onClick={!isReadOnly && isHidden && onRestoreSlot ? () => onRestoreSlot(slot) : undefined}
                         disabled={isReadOnly || !isHidden || !onRestoreSlot}
                         className="text-foreground"
                       >
@@ -327,49 +291,18 @@ export function ProductTray({
                       </button>
                     </div>
                   </div>
-                  {action && showActions ? (
-                    <div className="flex w-20">
-                      <TrayActionButton
-                        tone={resolvedAction.tone}
-                        iconStart={resolvedAction.iconStart}
-                        iconEnd={resolvedAction.iconEnd}
-                        label={resolvedAction.label}
-                        aria-label={resolvedAction.label}
-                        aria-pressed={resolvedAction.id === "save" && saveActionMode === "toggle" ? saveIsActive : undefined}
-                        disabled={isReadOnly}
-                        onClick={
-                          isReadOnly
-                            ? undefined
-                            : resolvedAction.id === "details"
-                              ? onDetailsPress
-                              : resolvedAction.id === "save"
-                                ? handleSaveClick
-                                : resolvedAction.id === "tryon"
-                                  ? onTryOn
-                                  : undefined
-                        }
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex w-20" />
-                  )}
                 </div>
               )
             }
 
             return (
               <div
-                ref={(el) => {
-                  cardRefs.current[index] = el
-                }}
-                className={cn(
-                  "flex items-stretch gap-2",
-                  isDragged && "z-50"
-                )}
+                ref={(el) => { cardRefs.current[index] = el }}
+                className={cn("flex items-stretch gap-2", isDragged && "z-50")}
                 key={`${product.slot}-${product.productId}`}
               >
                 <div
-                  className={cn("transition-transform relative duration-200", showActions ? "w-[76%]" : "w-full", highlightProducts && "isolate z-[75]")}
+                  className={cn("transition-transform relative duration-200 w-full", highlightProducts && "isolate z-[75]")}
                   style={!isDragged && translateY !== 0 ? { transform: `translateY(${translateY}px)` } : undefined}
                 >
                   <ProductSummaryCard
@@ -382,104 +315,25 @@ export function ProductTray({
                     price={product.price}
                     discountPercent={null}
                     onFilter={noop}
-                    onRemove={
-                      !isReadOnly && onRemoveSlot ? () => onRemoveSlot(slot) : undefined
-                    }
-                    onAddToBag={
-                      !isReadOnly && product.productUrl
-                        ? (event) => {
-                            event.stopPropagation()
-                            trackProductBuyClicked(analytics, {
-                              entity_id: product.productId,
-                              section: "product_tray",
-                            })
-                            window.open(product.productUrl as string, "_blank", "noopener,noreferrer")
-                          }
-                        : undefined
-                    }
+                    onRemove={!isReadOnly && onRemoveSlot ? () => onRemoveSlot(slot) : undefined}
                     onClick={onProductPress ? () => onProductPress(product) : undefined}
-                    onDragStart={
-                      !isReadOnly ? () => handleDragStart(index) : undefined
-                    }
+                    onDragStart={!isReadOnly ? () => handleDragStart(index) : undefined}
                     onDragEnd={!isReadOnly ? handleDragEnd : undefined}
                     onDragMove={!isReadOnly ? handleDragMove : undefined}
                   />
                 </div>
-                {action && showActions ? (
-                  <div className={cn("relative flex w-20",
-                    (highlightProducts || highlightDetails || highlightSave || highlightTryOn) && "isolate z-[75]",
-                    (
-                      (highlightDetails && resolvedAction.id === "details") ||
-                      (highlightSave && resolvedAction.id === "save") ||
-                      (highlightTryOn && resolvedAction.id === "tryon")
-                    ) && "z-[75]"
-                  )}>
-                    {highlightProducts ? (
-                      resolvedAction.id === "details" ? (
-                        <div className="absolute -inset-1 z-40  rounded-xl" />
-                      ) : (resolvedAction.id === "save" || resolvedAction.id === "tryon") ? (
-                        <div className="absolute inset-0 z-40  rounded-lg bg-black/60" />
-                      ) : (
-                        <div className="absolute inset-1 z-10  rounded-lg bg-primary/10 ring-1 ring-primary/30 shadow-sm" />
-                      )
-                    ) : highlightDetails && resolvedAction.id === "details" ? (
-                      <div className="absolute -inset-1 z-40  rounded-xl ring-2 ring-primary" />
-                    ) : null}
-
-                    <TrayActionButton
-                      tone={resolvedAction.tone}
-                      iconStart={resolvedAction.iconStart}
-                      iconEnd={resolvedAction.iconEnd}
-                      label={resolvedAction.label}
-                      aria-label={resolvedAction.label}
-                      aria-pressed={resolvedAction.id === "save" && saveActionMode === "toggle" ? saveIsActive : undefined}
-                      disabled={isReadOnly}
-                      className={cn(
-                        (highlightProducts || highlightDetails) && resolvedAction.id === "details" && "relative z-[75]",
-                        highlightSave && resolvedAction.id === "save" && "relative z-[75]",
-                        highlightTryOn && resolvedAction.id === "tryon" && "relative z-[75]"
-                      )}
-                      onClick={
-                        isReadOnly
-                          ? undefined
-                          : resolvedAction.id === "details"
-                            ? onDetailsPress
-                            : resolvedAction.id === "save"
-                              ? handleSaveClick
-                              : resolvedAction.id === "tryon"
-                                ? onTryOn
-                                : undefined
-                      }
-                    />
-
-                    {/* Highlight rings for Save/Tryon - rendered after button for proper layering */}
-                    {highlightSave && resolvedAction.id === "save" ? (
-                      <div className="absolute -inset-1 !z-[75] pointer-events-none rounded-xl ring-2 ring-primary shadow-lg" />
-                    ) : highlightTryOn && resolvedAction.id === "tryon" ? (
-                      <div className="absolute -inset-1 !z-[75] pointer-events-none rounded-xl ring-2 ring-primary shadow-lg" />
-                    ) : null}
-                  </div>
-                ) : null}
               </div>
             )
           })
         ) : hasItems ? (
           localItems.map((product, index) => {
-            const action = ACTIONS[index]
-            const resolvedAction =
-              action?.id === "save"
-                ? { ...action, iconStart: SaveIcon, label: saveActionMode === "toggle" && saveIsActive ? "Saved" : action.label }
-                : action
             const isDragged = draggedIndex === index
 
-            // Calculate visual shift for other cards
             let translateY = 0
             if (draggedIndex !== null && targetIndex !== null && !isDragged) {
-              // When dragging down (draggedIndex < targetIndex): cards between shift up
               if (draggedIndex < targetIndex && index > draggedIndex && index <= targetIndex) {
                 translateY = -64
               }
-              // When dragging up (draggedIndex > targetIndex): cards between shift down
               if (draggedIndex > targetIndex && index >= targetIndex && index < draggedIndex) {
                 translateY = 64
               }
@@ -487,17 +341,12 @@ export function ProductTray({
 
             return (
               <div
-                ref={(el) => {
-                  cardRefs.current[index] = el
-                }}
-                className={cn(
-                  "flex items-stretch gap-1",
-                  isDragged && "z-50"
-                )}
+                ref={(el) => { cardRefs.current[index] = el }}
+                className={cn("flex items-stretch gap-1", isDragged && "z-50")}
                 key={`${product.slot}-${product.productId}`}
               >
                 <div
-                  className={cn("transition-transform relative duration-200", showActions ? "w-[76%]" : "w-full", highlightProducts && "isolate z-[75]")}
+                  className={cn("transition-transform relative duration-200 w-full", highlightProducts && "isolate z-[75]")}
                   style={!isDragged && translateY !== 0 ? { transform: `translateY(${translateY}px)` } : undefined}
                 >
                   <ProductSummaryCard
@@ -511,81 +360,12 @@ export function ProductTray({
                     showFilter={showFilter}
                     onFilter={noop}
                     onRemove={noop}
-                    onAddToBag={
-                      !isReadOnly && product.productUrl
-                        ? (event) => {
-                          event.stopPropagation()
-                          trackProductBuyClicked(analytics, {
-                            entity_id: product.productId,
-                            section: "product_tray",
-                          })
-                          window.open(product.productUrl as string, "_blank", "noopener,noreferrer")
-                        }
-                        : undefined
-                    }
                     onClick={onProductPress ? () => onProductPress(product) : undefined}
-                    onDragStart={
-                      !isReadOnly ? () => handleDragStart(index) : undefined
-                    }
+                    onDragStart={!isReadOnly ? () => handleDragStart(index) : undefined}
                     onDragEnd={!isReadOnly ? handleDragEnd : undefined}
                     onDragMove={!isReadOnly ? handleDragMove : undefined}
                   />
                 </div>
-                {action && showActions ? (
-                  <div className={cn("relative flex flex-1",
-                    (highlightProducts || highlightDetails || highlightSave || highlightTryOn) && "isolate z-[75]",
-                    (
-                      (highlightSave && resolvedAction.id === "save") ||
-                      (highlightTryOn && resolvedAction.id === "tryon")
-                    ) && "z-[75]"
-                  )}>
-                    
-                    {highlightProducts ? (
-                      resolvedAction.id === "details" ? (
-                        <div className="absolute -inset-1 z-40  rounded-xl bg-black/20" />
-                      ) : (resolvedAction.id === "save" || resolvedAction.id === "tryon") ? (
-                        <div className="absolute inset-0 z-40  rounded-xl bg-black/60" />
-                      ) : (
-                        <div className="absolute inset-0 z-40  rounded-xl bg-black/40 border-2 border-primary shadow-lg" />
-                      )
-                    ) : highlightDetails && resolvedAction.id === "details" ? (
-                      <div className="absolute -inset-1 z-40 rounded-xl ring-2 ring-primary" />
-                    ) : null}
-
-                    <TrayActionButton
-                      tone={resolvedAction.tone}
-                      iconStart={resolvedAction.iconStart}
-                      iconEnd={resolvedAction.iconEnd}
-                      label={resolvedAction.label}
-                      aria-label={resolvedAction.label}
-                      aria-pressed={resolvedAction.id === "save" && saveActionMode === "toggle" ? saveIsActive : undefined}
-                      disabled={isReadOnly}
-                      className={cn(
-                        (highlightProducts || highlightDetails) && resolvedAction.id === "details" && "relative z-[75]",
-                        highlightSave && resolvedAction.id === "save" && "relative z-[75]",
-                        highlightTryOn && resolvedAction.id === "tryon" && "relative z-[75]"
-                      )}
-                      onClick={
-                        isReadOnly
-                          ? undefined
-                          : resolvedAction.id === "details"
-                            ? onDetailsPress
-                            : resolvedAction.id === "save"
-                              ? handleSaveClick
-                              : resolvedAction.id === "tryon"
-                                ? onTryOn
-                                : undefined
-                      }
-                    />
-
-                    {/* Highlight rings for Save/Tryon - rendered after button for proper layering */}
-                    {highlightSave && resolvedAction.id === "save" ? (
-                      <div className="absolute -inset-1 !z-[75] pointer-events-none rounded-xl ring-2 ring-primary shadow-lg" />
-                    ) : highlightTryOn && resolvedAction.id === "tryon" ? (
-                      <div className="absolute -inset-1 !z-[75] pointer-events-none rounded-xl ring-2 ring-primary shadow-lg" />
-                    ) : null}
-                  </div>
-                ) : null}
               </div>
             )
           })
@@ -594,7 +374,58 @@ export function ProductTray({
             No outfit items available.
           </div>
         )}
-      </div>
+      </div>}
+
+      {/* Horizontal action row at the bottom */}
+      {showActions && (
+        <div className="flex items-center gap-0 px-1 pt-1 pb-0">
+          <div className={cn("relative flex flex-1", highlightSave && "isolate z-[75]")}>
+            {highlightSave && (
+              <div className="absolute -inset-1 !z-[75] pointer-events-none rounded-xl ring-2 ring-primary shadow-lg" />
+            )}
+            <TrayActionButton
+              tone="outline"
+              iconStart={SaveIcon}
+              label={saveActionMode === "toggle" && saveIsActive ? "Saved" : "Save"}
+              aria-label="Save"
+              aria-pressed={saveActionMode === "toggle" ? saveIsActive : undefined}
+              disabled={isReadOnly}
+              className={cn("w-full h-9 rounded-xl text-xs", highlightSave && "relative z-[75]")}
+              onClick={isReadOnly ? undefined : handleSaveClick}
+            />
+          </div>
+          <div className="h-6 w-px bg-border/60 shrink-0" aria-hidden="true" />
+          <div className={cn("relative flex flex-1", highlightTryOn && "isolate z-[75]")}>
+            {highlightTryOn && (
+              <div className="absolute -inset-1 !z-[75] pointer-events-none rounded-xl ring-2 ring-primary shadow-lg" />
+            )}
+            <TrayActionButton
+              tone="outline"
+              iconStart={SquareUserRound}
+              label="Tryon"
+              aria-label="Try on"
+              disabled={isReadOnly}
+              className={cn("w-full h-9 rounded-xl text-xs", highlightTryOn && "relative z-[75]")}
+              onClick={isReadOnly ? undefined : onTryOn}
+            />
+          </div>
+          <div className="h-6 w-px bg-border/60 shrink-0" aria-hidden="true" />
+          <div className={cn("relative flex flex-1", (highlightDetails || highlightProducts) && "isolate z-[75]")}>
+            {highlightDetails && (
+              <div className="absolute -inset-1 z-40 rounded-xl ring-2 ring-primary" />
+            )}
+            <TrayActionButton
+              tone="plain"
+              iconEnd={ChevronDown}
+              label="Details"
+              aria-label="Details"
+              disabled={isReadOnly}
+              className={cn("w-full h-9 rounded-xl text-xs", (highlightDetails || highlightProducts) && "relative z-[75]")}
+              onClick={isReadOnly ? undefined : onDetailsPress}
+            />
+          </div>
+        </div>
+      )}
 
       {saveActionMode === "drawer" ? (
         <SaveOutfitDrawer

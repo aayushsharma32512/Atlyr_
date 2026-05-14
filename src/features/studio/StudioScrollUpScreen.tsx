@@ -46,7 +46,6 @@ import { useStudioShareMode } from "@/features/studio/hooks/useStudioShareMode"
 import { buildStudioUrl, parseStudioSearchParams, type SlotIdMap } from "@/features/studio/utils/studioUrlState"
 import { mergeOutfitItemsWithTray } from "@/features/studio/utils/mergeOutfitItemsWithTray"
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
-import { trackProductBuyClicked } from "@/integrations/posthog/engagementTracking/entityEvents"
 import {
   setPendingStudioComboChange,
   trackStudioProductViewed,
@@ -873,13 +872,6 @@ function RecommendationRow({
     return [BASE_DELIVERY_SPECS[BASE_DELIVERY_SPECS.length - 1]]
   }, [])
   
-  const handleAddToBag = useCallback(() => {
-    if (product.productUrl) {
-      trackProductBuyClicked(analytics, { entity_id: product.productId })
-      window.open(product.productUrl, "_blank", "noopener,noreferrer")
-    }
-  }, [analytics, product.productId, product.productUrl])
-
   useEffect(() => {
     if (didEmitProductViewedRef.current) return
     didEmitProductViewedRef.current = true
@@ -910,8 +902,6 @@ function RecommendationRow({
             primarySpecs={[...primarySpecs, BASE_PRIMARY_SPECS[2]]}
             deliverySpecs={deliverySpecs}
             tags={tags}
-            onAddToBag={product.productUrl ? handleAddToBag : undefined}
-            onSizeGuide={product.productUrl ? handleAddToBag : undefined}
             onClick={() => onProductOpen(product)}
             isSaved={isSaved}
             onToggleSave={onToggleSave}
