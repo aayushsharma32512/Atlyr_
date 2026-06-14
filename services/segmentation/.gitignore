@@ -1,0 +1,28 @@
+# Local segmentation ignore rules
+
+# Utilities and model weights
+Utils/
+checkpoints/
+models/
+
+# VLM-related files
+experiment_vlm_classify.py
+output_vlm/
+output_vlm_mannequin_visualization/
+
+# Extra execution/visualization scripts
+visualize_mannequin_placements.py
+visualize_predicted_placements.py
+run_all_extractions.py
+run_full_evaluation.py
+
+# Python cache files
+__pycache__/
+*.pyc
+
+# Large weight extensions
+*.pdparams
+*.pdiparams
+*.pth
+*.onnx
+*.bin

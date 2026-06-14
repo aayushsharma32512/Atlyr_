@@ -1,0 +1,9 @@
+fashn-human-parser
+torch
+torchvision
+opencv-python-headless
+numpy
+Pillow
+scipy
+transformers
+requests

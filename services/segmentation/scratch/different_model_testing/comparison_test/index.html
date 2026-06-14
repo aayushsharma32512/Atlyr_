@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Garment Segmentation Comparison Dashboard</title>
+    <style>
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            margin: 0;
+            padding: 24px;
+        }
+        h1 {
+            font-size: 2.2rem;
+            margin-bottom: 8px;
+            color: #38bdf8;
+            font-weight: 800;
+        }
+        .subtitle {
+            color: #94a3b8;
+            margin-bottom: 24px;
+            font-size: 1.1rem;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: #1e293b;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+        }
+        th, td {
+            padding: 16px;
+            text-align: center;
+            border-bottom: 1px solid #334155;
+        }
+        th {
+            background-color: #0f172a;
+            color: #38bdf8;
+            font-weight: 700;
+            font-size: 0.95rem;
+        }
+        tr:hover {
+            background-color: #33415550;
+        }
+        .thumb-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+        /* Subtly render transparent PNGs on top of CSS checkerboard */
+        .transparent-bg {
+            background-color: #1e293b;
+            background-image: conic-gradient(#161e2e 25%, transparent 25% 50%, #161e2e 50% 75%, transparent 75%);
+            background-size: 16px 16px;
+            padding: 8px;
+            border-radius: 6px;
+            box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.3);
+        }
+        img {
+            max-width: 150px;
+            border-radius: 4px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: block;
+        }
+        img:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+        }
+        .tag {
+            font-size: 0.75rem;
+            color: #94a3b8;
+            background-color: #0f172a;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            margin-top: 4px;
+        }
+        .time-tag {
+            font-size: 0.75rem;
+            color: #10b981;
+            font-weight: 600;
+        }
+        .case-header {
+            font-weight: 800;
+            color: #38bdf8;
+            font-size: 1.1rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>Garment Segmentation Model Comparison Dashboard</h1>
+    <div class="subtitle">Comparing transparent background renders side-by-side on 10 test images. Images are overlaid on top of a CSS checkerboard pattern to reveal transparent boundaries. Click any thumbnail to open.</div>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>Test Case</th>
+                <th>Original</th>
+                <th>FASHN Seg</th>
+                <th>DINO Boxes</th>
+                <th>BiRefNet</th>
+                <th>InSPyReNet</th>
+                <th>BRIA RMBG-1.4</th>
+                <th>Hybrid Rules</th>
+                <th>MODNet</th>
+                <th>PP-Matting 1024</th>
+                <th>Grounded-SAM-2 (DINO+SAM)</th>
+            </tr>
+        </thead>
+        <tbody>
+    
+            <tr>
+                <td class="case-header">
+                    F1<br>
+                    <span class="tag">Original Size</span>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="F1/original.png" alt="Original F1" onclick="window.open(this.src)">
+                    </div>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="F1/fashn_seg.png" alt="FASHN Seg F1" onclick="window.open(this.src)">
+                    </div>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="F1/dino_detected_boxes.png" alt="DINO Boxes F1" onclick="window.open(this.src)">
+                    </div>
+                </td>
+        
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F1/biref_only_transparent.png" 
+                             alt="BiRefNet (Gated) F1"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">1.51s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F1/inspyrenet_transparent.png" 
+                             alt="InSPyReNet (Gated) F1"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">1.17s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F1/rmbg_transparent.png" 
+                             alt="BRIA RMBG-1.4 (Gated) F1"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.83s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F1/hybrid_rules_transparent.png" 
+                             alt="Hybrid Rules (RMBG + dilated body skin) F1"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.13s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F1/modnet_transparent.png" 
+                             alt="MODNet ONNX (Gated) F1"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.88s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F1/ppmatting_1024_transparent.png" 
+                             alt="PP-Matting 1024 (Gated) F1"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">31.80s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F1/grounded_sam2_transparent.png" 
+                             alt="Grounded-SAM-2 (DINO+SAM) F1"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">15.88s</span>
+                    </div>
+                </td>
+                        </tr>
+            <tr>
+                <td class="case-header">
+                    F3<br>
+                    <span class="tag">Original Size</span>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="F3/original.png" alt="Original F3" onclick="window.open(this.src)">
+                    </div>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="F3/fashn_seg.png" alt="FASHN Seg F3" onclick="window.open(this.src)">
+                    </div>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="F3/dino_detected_boxes.png" alt="DINO Boxes F3" onclick="window.open(this.src)">
+                    </div>
+                </td>
+        
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F3/biref_only_transparent.png" 
+                             alt="BiRefNet (Gated) F3"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">1.94s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F3/inspyrenet_transparent.png" 
+                             alt="InSPyReNet (Gated) F3"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">2.21s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F3/rmbg_transparent.png" 
+                             alt="BRIA RMBG-1.4 (Gated) F3"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">1.88s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F3/hybrid_rules_transparent.png" 
+                             alt="Hybrid Rules (RMBG + dilated body skin) F3"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.11s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F3/modnet_transparent.png" 
+                             alt="MODNet ONNX (Gated) F3"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">2.08s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F3/ppmatting_1024_transparent.png" 
+                             alt="PP-Matting 1024 (Gated) F3"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">32.89s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F3/grounded_sam2_transparent.png" 
+                             alt="Grounded-SAM-2 (DINO+SAM) F3"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">4.37s</span>
+                    </div>
+                </td>
+                        </tr>
+            <tr>
+                <td class="case-header">
+                    F8<br>
+                    <span class="tag">Original Size</span>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="F8/original.png" alt="Original F8" onclick="window.open(this.src)">
+                    </div>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="F8/fashn_seg.png" alt="FASHN Seg F8" onclick="window.open(this.src)">
+                    </div>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="F8/dino_detected_boxes.png" alt="DINO Boxes F8" onclick="window.open(this.src)">
+                    </div>
+                </td>
+        
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F8/biref_only_transparent.png" 
+                             alt="BiRefNet (Gated) F8"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.82s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F8/inspyrenet_transparent.png" 
+                             alt="InSPyReNet (Gated) F8"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.91s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F8/rmbg_transparent.png" 
+                             alt="BRIA RMBG-1.4 (Gated) F8"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.61s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F8/hybrid_rules_transparent.png" 
+                             alt="Hybrid Rules (RMBG + dilated body skin) F8"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.12s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F8/modnet_transparent.png" 
+                             alt="MODNet ONNX (Gated) F8"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.71s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F8/ppmatting_1024_transparent.png" 
+                             alt="PP-Matting 1024 (Gated) F8"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">29.34s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F8/grounded_sam2_transparent.png" 
+                             alt="Grounded-SAM-2 (DINO+SAM) F8"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">2.95s</span>
+                    </div>
+                </td>
+                        </tr>
+            <tr>
+                <td class="case-header">
+                    F10<br>
+                    <span class="tag">Original Size</span>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="F10/original.png" alt="Original F10" onclick="window.open(this.src)">
+                    </div>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="F10/fashn_seg.png" alt="FASHN Seg F10" onclick="window.open(this.src)">
+                    </div>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="F10/dino_detected_boxes.png" alt="DINO Boxes F10" onclick="window.open(this.src)">
+                    </div>
+                </td>
+        
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F10/biref_only_transparent.png" 
+                             alt="BiRefNet (Gated) F10"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.55s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F10/inspyrenet_transparent.png" 
+                             alt="InSPyReNet (Gated) F10"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.65s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F10/rmbg_transparent.png" 
+                             alt="BRIA RMBG-1.4 (Gated) F10"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.35s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F10/hybrid_rules_transparent.png" 
+                             alt="Hybrid Rules (RMBG + dilated body skin) F10"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.11s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F10/modnet_transparent.png" 
+                             alt="MODNet ONNX (Gated) F10"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.57s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F10/ppmatting_1024_transparent.png" 
+                             alt="PP-Matting 1024 (Gated) F10"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">28.82s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="F10/grounded_sam2_transparent.png" 
+                             alt="Grounded-SAM-2 (DINO+SAM) F10"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">2.91s</span>
+                    </div>
+                </td>
+                        </tr>
+            <tr>
+                <td class="case-header">
+                    N1<br>
+                    <span class="tag">Original Size</span>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="N1/original.png" alt="Original N1" onclick="window.open(this.src)">
+                    </div>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="N1/fashn_seg.png" alt="FASHN Seg N1" onclick="window.open(this.src)">
+                    </div>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="N1/dino_detected_boxes.png" alt="DINO Boxes N1" onclick="window.open(this.src)">
+                    </div>
+                </td>
+        
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="N1/biref_only_transparent.png" 
+                             alt="BiRefNet (Gated) N1"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.84s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="N1/inspyrenet_transparent.png" 
+                             alt="InSPyReNet (Gated) N1"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">1.07s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="N1/rmbg_transparent.png" 
+                             alt="BRIA RMBG-1.4 (Gated) N1"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.68s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="N1/hybrid_rules_transparent.png" 
+                             alt="Hybrid Rules (RMBG + dilated body skin) N1"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.11s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="N1/modnet_transparent.png" 
+                             alt="MODNet ONNX (Gated) N1"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.80s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="N1/ppmatting_1024_transparent.png" 
+                             alt="PP-Matting 1024 (Gated) N1"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">29.31s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="N1/grounded_sam2_transparent.png" 
+                             alt="Grounded-SAM-2 (DINO+SAM) N1"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">3.17s</span>
+                    </div>
+                </td>
+                        </tr>
+            <tr>
+                <td class="case-header">
+                    N3<br>
+                    <span class="tag">Original Size</span>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="N3/original.png" alt="Original N3" onclick="window.open(this.src)">
+                    </div>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="N3/fashn_seg.png" alt="FASHN Seg N3" onclick="window.open(this.src)">
+                    </div>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="N3/dino_detected_boxes.png" alt="DINO Boxes N3" onclick="window.open(this.src)">
+                    </div>
+                </td>
+        
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="N3/biref_only_transparent.png" 
+                             alt="BiRefNet (Gated) N3"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.61s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="N3/inspyrenet_transparent.png" 
+                             alt="InSPyReNet (Gated) N3"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.75s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="N3/rmbg_transparent.png" 
+                             alt="BRIA RMBG-1.4 (Gated) N3"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.42s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="N3/hybrid_rules_transparent.png" 
+                             alt="Hybrid Rules (RMBG + dilated body skin) N3"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.11s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="N3/modnet_transparent.png" 
+                             alt="MODNet ONNX (Gated) N3"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.52s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="N3/ppmatting_1024_transparent.png" 
+                             alt="PP-Matting 1024 (Gated) N3"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">28.00s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="N3/grounded_sam2_transparent.png" 
+                             alt="Grounded-SAM-2 (DINO+SAM) N3"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">2.73s</span>
+                    </div>
+                </td>
+                        </tr>
+            <tr>
+                <td class="case-header">
+                    N8<br>
+                    <span class="tag">Original Size</span>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="N8/original.png" alt="Original N8" onclick="window.open(this.src)">
+                    </div>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="N8/fashn_seg.png" alt="FASHN Seg N8" onclick="window.open(this.src)">
+                    </div>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="N8/dino_detected_boxes.png" alt="DINO Boxes N8" onclick="window.open(this.src)">
+                    </div>
+                </td>
+        
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="N8/biref_only_transparent.png" 
+                             alt="BiRefNet (Gated) N8"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">2.44s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="N8/inspyrenet_transparent.png" 
+                             alt="InSPyReNet (Gated) N8"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">2.80s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="N8/rmbg_transparent.png" 
+                             alt="BRIA RMBG-1.4 (Gated) N8"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">2.36s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="N8/hybrid_rules_transparent.png" 
+                             alt="Hybrid Rules (RMBG + dilated body skin) N8"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.12s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="N8/modnet_transparent.png" 
+                             alt="MODNet ONNX (Gated) N8"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">2.39s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="N8/ppmatting_1024_transparent.png" 
+                             alt="PP-Matting 1024 (Gated) N8"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">28.81s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="N8/grounded_sam2_transparent.png" 
+                             alt="Grounded-SAM-2 (DINO+SAM) N8"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">4.48s</span>
+                    </div>
+                </td>
+                        </tr>
+            <tr>
+                <td class="case-header">
+                    T4<br>
+                    <span class="tag">Original Size</span>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="T4/original.png" alt="Original T4" onclick="window.open(this.src)">
+                    </div>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="T4/fashn_seg.png" alt="FASHN Seg T4" onclick="window.open(this.src)">
+                    </div>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="T4/dino_detected_boxes.png" alt="DINO Boxes T4" onclick="window.open(this.src)">
+                    </div>
+                </td>
+        
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="T4/biref_only_transparent.png" 
+                             alt="BiRefNet (Gated) T4"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.51s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="T4/inspyrenet_transparent.png" 
+                             alt="InSPyReNet (Gated) T4"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.72s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="T4/rmbg_transparent.png" 
+                             alt="BRIA RMBG-1.4 (Gated) T4"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.31s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="T4/hybrid_rules_transparent.png" 
+                             alt="Hybrid Rules (RMBG + dilated body skin) T4"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.11s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="T4/modnet_transparent.png" 
+                             alt="MODNet ONNX (Gated) T4"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.58s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="T4/ppmatting_1024_transparent.png" 
+                             alt="PP-Matting 1024 (Gated) T4"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">27.00s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="T4/grounded_sam2_transparent.png" 
+                             alt="Grounded-SAM-2 (DINO+SAM) T4"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">2.74s</span>
+                    </div>
+                </td>
+                        </tr>
+            <tr>
+                <td class="case-header">
+                    T5<br>
+                    <span class="tag">Original Size</span>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="T5/original.png" alt="Original T5" onclick="window.open(this.src)">
+                    </div>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="T5/fashn_seg.png" alt="FASHN Seg T5" onclick="window.open(this.src)">
+                    </div>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="T5/dino_detected_boxes.png" alt="DINO Boxes T5" onclick="window.open(this.src)">
+                    </div>
+                </td>
+        
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="T5/biref_only_transparent.png" 
+                             alt="BiRefNet (Gated) T5"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.69s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="T5/inspyrenet_transparent.png" 
+                             alt="InSPyReNet (Gated) T5"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.84s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="T5/rmbg_transparent.png" 
+                             alt="BRIA RMBG-1.4 (Gated) T5"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.51s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="T5/hybrid_rules_transparent.png" 
+                             alt="Hybrid Rules (RMBG + dilated body skin) T5"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.11s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="T5/modnet_transparent.png" 
+                             alt="MODNet ONNX (Gated) T5"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.65s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="T5/ppmatting_1024_transparent.png" 
+                             alt="PP-Matting 1024 (Gated) T5"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">28.56s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="T5/grounded_sam2_transparent.png" 
+                             alt="Grounded-SAM-2 (DINO+SAM) T5"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">3.09s</span>
+                    </div>
+                </td>
+                        </tr>
+            <tr>
+                <td class="case-header">
+                    T6<br>
+                    <span class="tag">Original Size</span>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="T6/original.png" alt="Original T6" onclick="window.open(this.src)">
+                    </div>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="T6/fashn_seg.png" alt="FASHN Seg T6" onclick="window.open(this.src)">
+                    </div>
+                </td>
+                <td>
+                    <div class="thumb-container">
+                        <img src="T6/dino_detected_boxes.png" alt="DINO Boxes T6" onclick="window.open(this.src)">
+                    </div>
+                </td>
+        
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="T6/biref_only_transparent.png" 
+                             alt="BiRefNet (Gated) T6"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.67s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="T6/inspyrenet_transparent.png" 
+                             alt="InSPyReNet (Gated) T6"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.78s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="T6/rmbg_transparent.png" 
+                             alt="BRIA RMBG-1.4 (Gated) T6"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.45s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="T6/hybrid_rules_transparent.png" 
+                             alt="Hybrid Rules (RMBG + dilated body skin) T6"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.13s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="T6/modnet_transparent.png" 
+                             alt="MODNet ONNX (Gated) T6"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">0.50s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="T6/ppmatting_1024_transparent.png" 
+                             alt="PP-Matting 1024 (Gated) T6"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">36.14s</span>
+                    </div>
+                </td>
+            
+                <td>
+                    <div class="thumb-container transparent-bg">
+                        <img class="model-img" 
+                             src="T6/grounded_sam2_transparent.png" 
+                             alt="Grounded-SAM-2 (DINO+SAM) T6"
+                             onclick="window.open(this.src)">
+                        <span class="time-tag">2.86s</span>
+                    </div>
+                </td>
+                        </tr>
+        </tbody>
+    </table>
+</body>
+</html>
