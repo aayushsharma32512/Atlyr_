@@ -1,3 +1,4 @@
+import atexit
 import os
 import sys
 import asyncio
@@ -17,6 +18,19 @@ import open_clip
 
 # Load environment variables
 load_dotenv(".env.local")
+
+# PostHog analytics
+try:
+    from posthog import Posthog as _Posthog
+    _ph_token = os.getenv("POSTHOG_PROJECT_TOKEN")
+    _ph_host = os.getenv("POSTHOG_HOST", "https://us.i.posthog.com")
+    posthog_client = _Posthog(_ph_token, host=_ph_host, enable_exception_autocapture=True) if _ph_token else None
+    if posthog_client:
+        atexit.register(posthog_client.shutdown)
+except ImportError:
+    posthog_client = None
+
+POSTHOG_DISTINCT_ID = "embedding-pipeline"
 
 # Initialize Supabase client
 SUPABASE_URL = os.getenv("VITE_SUPABASE_URL") or os.getenv("SUPABASE_URL")
@@ -330,6 +344,22 @@ async def main():
     print(f"  🖼️  Image Embeddings: {results['imageGenerated']}")
     print(f"  ⏱️  Duration: {duration:.1f}s")
     print(f"  ⏰ Finished: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+    if posthog_client:
+        posthog_client.capture(
+            distinct_id=POSTHOG_DISTINCT_ID,
+            event="embedding_run_completed",
+            properties={
+                "embedding_type": "product",
+                "mode": mode_str.lower(),
+                "total_processed": results['total'],
+                "total_successful": results['successful'],
+                "total_failed": results['failed'],
+                "text_embeddings_generated": results['textGenerated'],
+                "image_embeddings_generated": results['imageGenerated'],
+                "duration_s": round(duration, 1),
+            },
+        )
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -80,7 +80,10 @@ export function EngagementAnalyticsProvider({ children }: { children: ReactNode 
   const capture = useCallback<EngagementAnalytics["capture"]>(
     (name, properties = {}) => {
       const surface = surfaceContext.surface
-      if (!surface) return
+      if (!surface) {
+        console.log("[PostHog] capture DROPPED — no surface for event:", name)
+        return
+      }
 
       const payload = {
         session_id: session.getSessionId(),
@@ -90,7 +93,11 @@ export function EngagementAnalyticsProvider({ children }: { children: ReactNode 
 
       recordEngagementDebugEvent({ name, properties: payload, ts: nowMs() })
 
-      if (!shouldSendToPostHog()) return
+      if (!shouldSendToPostHog()) {
+        console.log("[PostHog] capture DROPPED — shouldSendToPostHog=false for event:", name, payload)
+        return
+      }
+      console.log("[PostHog] capture SENT:", name, payload)
       posthog?.capture(name, payload)
     },
     [posthog, session, shouldSendToPostHog, surfaceContext.surface],

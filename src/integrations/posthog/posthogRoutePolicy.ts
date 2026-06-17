@@ -1,4 +1,4 @@
-export const POSTHOG_ALLOWED_HOSTNAMES = new Set(["www.atlyr.in", "atlyr.in"])
+export const POSTHOG_ALLOWED_HOSTNAMES = new Set(["www.atlyr.app", "atlyr.app"])
 
 const EXACT_ALLOWED_PATHS = new Set([
   "/",
@@ -23,22 +23,31 @@ export function shouldDisablePostHogForLocation(opts: {
 }): boolean {
   const { hostname, pathname } = opts
 
-  // Only capture in production domains.
-  if (!POSTHOG_ALLOWED_HOSTNAMES.has(hostname)) return true
+  if (!POSTHOG_ALLOWED_HOSTNAMES.has(hostname)) {
+    console.log("[PostHog] BLOCKED — hostname not allowed:", hostname, "| allowed:", [...POSTHOG_ALLOWED_HOSTNAMES])
+    return true
+  }
 
-  // Explicitly exclude legacy app.
-  if (pathname.startsWith("/app")) return true
+  if (pathname.startsWith("/app")) {
+    console.log("[PostHog] BLOCKED — legacy /app path:", pathname)
+    return true
+  }
 
-  // Explicitly exclude admin/debug/design-system and other non-product areas.
   if (
     pathname.startsWith("/admin") ||
     pathname.startsWith("/hitl") ||
     pathname.startsWith("/design-system") ||
     pathname.startsWith("/mannequin")
   ) {
+    console.log("[PostHog] BLOCKED — excluded path:", pathname)
     return true
   }
 
-  // Only allow the new-app + public marketing routes.
-  return !isPostHogAllowedPath(pathname)
+  if (!isPostHogAllowedPath(pathname)) {
+    console.log("[PostHog] BLOCKED — path not in allowed list:", pathname)
+    return true
+  }
+
+  console.log("[PostHog] ALLOWED —", hostname, pathname)
+  return false
 }

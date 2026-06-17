@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { ChevronLeft, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -6,12 +6,20 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Outfit } from '@/types';
 import { DynamicAvatar } from '@/components/studio/DynamicAvatar';
 import { formatCurrency } from '@/utils/constants';
+import { useEngagementAnalytics } from '@/integrations/posthog/engagementTracking/EngagementAnalyticsContext';
 
 export function CheckoutScreen() {
   const { outfitId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
   const outfit: Outfit = location.state?.outfit;
+  const analytics = useEngagementAnalytics();
+
+  useEffect(() => {
+    if (!outfit) return;
+    analytics.capture('checkout_viewed', { item_count: outfit.items.length });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!outfit) {
     return (
@@ -127,7 +135,10 @@ export function CheckoutScreen() {
 
       {/* Proceed Button */}
       <div className="p-4 border-t border-border">
-        <Button className="w-full h-12 text-lg font-semibold">
+        <Button
+          className="w-full h-12 text-lg font-semibold"
+          onClick={() => analytics.capture('checkout_proceeded', { item_count: outfit.items.length })}
+        >
           Proceed to Payment
         </Button>
       </div>

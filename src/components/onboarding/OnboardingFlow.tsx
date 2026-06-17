@@ -10,6 +10,7 @@ import { WelcomeStep } from './WelcomeStep';
 import { PersonalInfoStep } from './PersonalInfoStep';
 import { AvatarSelectionStep } from './AvatarSelectionStep';
 import { CompleteStep } from './CompleteStep';
+import { useEngagementAnalytics } from '@/integrations/posthog/engagementTracking/EngagementAnalyticsContext';
 
 interface OnboardingFlowProps {
   onComplete: (user: {
@@ -36,6 +37,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   // const [showFemininePopup, setShowFemininePopup] = useState(false); // Commented out feminine popup
   const { toast } = useToast();
+  const analytics = useEngagementAnalytics();
   const [formData, setFormData] = useState({
     name: '',
     day: '',
@@ -82,6 +84,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const handleNext = async () => {
     switch (currentStep) {
       case 'welcome':
+        analytics.capture('onboarding_step_completed', { step: 'welcome' });
         setCurrentStep('personal-info');
         break;
       case 'personal-info': {
@@ -103,16 +106,20 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
           return;
         }
         setDobError(null);
+        analytics.capture('onboarding_step_completed', { step: 'personal_info', gender: formData.gender });
         setCurrentStep('avatar-selection');
         setAvatarStep('face-shape');
         break;
       }
       case 'avatar-selection':
         if (avatarStep === 'face-shape' && formData.selectedFaceShape) {
+          analytics.capture('onboarding_step_completed', { step: 'avatar_face_shape' });
           setAvatarStep('skin-tone');
         } else if (avatarStep === 'skin-tone' && formData.selectedSkinTone) {
+          analytics.capture('onboarding_step_completed', { step: 'avatar_skin_tone' });
           setAvatarStep('hairstyle');
         } else if (avatarStep === 'hairstyle' && formData.selectedHairstyle) {
+          analytics.capture('onboarding_step_completed', { step: 'avatar_hairstyle' });
           setCurrentStep('complete');
         }
         break;
@@ -149,6 +156,7 @@ export function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
             // We will pass height as an optional extra field via spread and let Index.tsx include it
             ...(heightCm ? { heightCm } : {}),
           });
+          analytics.capture('onboarding_completed', { gender: formData.gender, has_height: Boolean(heightCm) });
         } catch (error) {
           console.error('Failed to complete onboarding:', error);
           toast({

@@ -222,6 +222,10 @@ export function CreationsTab() {
           }
         }
 
+        analytics.capture("draft_outfit_saved", {
+          collection_count: selectedMoodboardSlugs.length + 1,
+          is_private: data.isPrivate,
+        })
         toast({
           title: "Outfit saved",
           description: hadCollectionError ? "Saved outfit, but could not add it to all collections." : undefined,
@@ -238,6 +242,7 @@ export function CreationsTab() {
     },
     [
       activeOutfit,
+      analytics,
       selectableMoodboards,
       profile?.name,
       saveToCollectionMutation,
@@ -294,9 +299,16 @@ export function CreationsTab() {
           await removeFromCollectionMutation.mutateAsync({ outfitId: activeOutfit.id, slug })
         } catch { /* ignore individual failures */ }
       }
+
+      analytics.capture("outfit_edited", {
+        collections_added: toAdd.length,
+        collections_removed: toRemove.length,
+        is_private: data.isPrivate,
+      })
     },
     [
       activeOutfit,
+      analytics,
       outfitMembershipQuery.data,
       profile?.name,
       removeFromCollectionMutation,
