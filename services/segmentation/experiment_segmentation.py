@@ -980,7 +980,7 @@ def _load_schp_model(
 
     import sys
     # Add SCHP repo to path — adjust this to wherever you cloned it
-    schp_root = os.environ.get("SCHP_ROOT", os.path.join(current_dir, "Self-Correction-Human-Parsing"))
+    schp_root = os.environ.get("SCHP_ROOT", os.path.join(current_dir, "Utils", "Self-Correction-Human-Parsing"))
     if schp_root not in sys.path:
         sys.path.insert(0, schp_root)
 
@@ -1316,28 +1316,12 @@ def extract_garment_rgba(image: np.ndarray, mask: np.ndarray, sampled_bg: np.nda
     """
     Extract garment as RGBA image using the mask.
     Transparent background where mask == 0.
-    Applies de-spill matting if sampled_bg is provided.
     """
     if image.shape[2] == 3:
         rgba = cv2.cvtColor(image, cv2.COLOR_BGR2BGRA)
     else:
         rgba = image.copy()
-        
-    refined_mask = mask.copy()
-    if sampled_bg is not None:
-        # Fix 3: Erase faint fringe pixels
-        refined_mask[refined_mask < 15] = 0
-        
-        # Fix 4: Texture-aware alpha tightening
-        refined_mask = _texture_aware_alpha_tighten(refined_mask, image, texture_threshold=12.0)
-        
-        # Fix 2: despill with min_alpha_threshold guard
-        rgba_rgb = rgba[:, :, :3]
-        clean_rgb = _despill_rgba(rgba_rgb, refined_mask, sampled_bg, min_alpha_threshold=0.15)
-        rgba[:, :, :3] = clean_rgb
-        print(f"  [RGBA] Applied edge despill matting against RGB({sampled_bg[0]:.0f}, {sampled_bg[1]:.0f}, {sampled_bg[2]:.0f})")
-        
-    rgba[:, :, 3] = refined_mask
+    rgba[:, :, 3] = mask
     return rgba
 
 

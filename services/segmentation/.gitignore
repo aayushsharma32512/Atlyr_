@@ -9,12 +9,17 @@ models/
 experiment_vlm_classify.py
 output_vlm/
 output_vlm_mannequin_visualization/
+scratch/
+try_sam_matting/
 
 # Extra execution/visualization scripts
 visualize_mannequin_placements.py
 visualize_predicted_placements.py
 run_all_extractions.py
 run_full_evaluation.py
+report.tex
+generate_sam2_exclusion_latex.py
+generate_sam2_exclusion_improved_report.py
 
 # Python cache files
 __pycache__/
@@ -26,3 +31,18 @@ __pycache__/
 *.pth
 *.onnx
 *.bin
+
+# Older pipelines & alternate scripts
+experiment_full_pipeline.py
+run_exact_biref_vton.py
+
+# Input datasets / test images
+test_images/
+
+# Large PDF reports
+report.pdf
+
+# Older/intermediate output directories
+final_biref_exclusion/
+output_ghost_test_vton/
+output_pipeline_test/
