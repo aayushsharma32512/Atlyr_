@@ -1,6 +1,6 @@
-# Garment Extraction Experiments
+# Garment Extraction & Segmentation Pipeline
 
-Local experiment scripts to validate the ML pipeline before integrating into the ingestion service.
+Production-ready local segmentation scripts to extract clean transparent garment assets from model shots.
 
 ## Setup
 
@@ -9,87 +9,53 @@ cd services/segmentation
 pip install -r requirements.txt
 ```
 
-> **GPU**: These scripts auto-detect CUDA. RTX 4060 (8GB VRAM) is more than sufficient.
+> **GPU Requirement**: These scripts automatically detect and leverage CUDA. An RTX 3060/4060 (8GB VRAM) or higher is recommended for fast processing.
 
-## Quick Start
+---
 
-### 1. Get test images
-Drop garment images (model shots work best) into `test_images/`:
+## Production Pipeline: SAM2-Only VTON (Improved)
+
+The core script is **`run_exact_sam2_only_vton_improved.py`**. It performs high-precision garment segmentation using Grounded-SAM-2 as the base mask, completely bypassing BiRefNet to avoid background bleeding, and applies advanced parsing and morphological filters for clean edge extraction.
+
+### Execution
+
 ```bash
-mkdir test_images
-# Copy some product images there — model shots with visible garment
+python run_exact_sam2_only_vton_improved.py
 ```
 
-### 2. Run individual experiments
+### Ingestion Details
 
-**Segmentation only** (no API key needed):
-```bash
-python experiment_segmentation.py test_images/shirt.jpg --output-dir output_seg
-```
+The pipeline processes input model shots from `output_ghost_test_vton/` and outputs clean transparent garments to `final_sam2_only_exclusion_improved/` using the following stages:
 
-**LaMa Inpainting** (no API key needed, auto-downloads model ~200MB):
-```bash
-python experiment_inpainting.py output_seg/original.png output_seg/occlusion_mask.png --output-dir output_inpaint
-```
+1. **Garment Prior Filtering**: Leverages FASHN and SCHP human parser models to construct a coarse semantic garment region gate, filtering the SAM2 base mask.
+2. **Morphological Closing**: Fills vertical slits and gaps (e.g., zipper lines, button seams) inside the garment prior to preserve detail.
+3. **Skin Exclusion Subtraction**: Subtracts skin boundaries (arms, neck, face) based on FASHN/SCHP maps without aggressive dilation to prevent trimming garment cuffs.
+4. **Multi-Component Cleanup**: Runs connected-component analysis and retains all disjoint regions with an area > 1000px to safeguard disconnected sleeves, strings, or footwear.
+5. **Adaptive Color Extension (Inpainting)**: Erodes the mask to find a clean garment core, then inpaints background border regions using the garment's internal colors to completely remove edge contamination.
+6. **Erosion Gating**: Applies a final outer boundary-only 2px erosion to ensure no background bleeding remains.
 
-**VLM Classification** (needs Gemini API key):
-```bash
-set GEMINI_API_KEY=your_key_here
-python experiment_vlm_classify.py test_images/shirt.jpg --output-dir output_vlm
-# Or batch: python experiment_vlm_classify.py test_images/ --output-dir output_vlm
-```
+---
 
-### 3. Run full pipeline
-```bash
-set GEMINI_API_KEY=your_key_here
-python experiment_full_pipeline.py test_images/shirt.jpg --output-dir output_pipeline
-```
+## Output File Structure
 
-## What Each Experiment Tests
-
-| Script | What | Models Used | GPU Needed? |
-| :--- | :--- | :--- | :--- |
-| `experiment_segmentation.py` | Garment mask extraction + neck clipping | FASHN Human Parser (SegFormer-B4) | Yes (or slow CPU) |
-| `experiment_inpainting.py` | Hair/hand occlusion cleanup | LaMa (ONNX) | Optional (CPU works) |
-| `experiment_vlm_classify.py` | View/type/placement auto-detection | Gemini 2.5 Flash (API) | No (cloud API) |
-| `experiment_full_pipeline.py` | All of the above chained together | All above | Yes |
-
-## Output Files
-
-Each experiment creates numbered output files:
+Each processed subject folder inside `final_sam2_only_exclusion_improved/` contains:
 
 ```
-output_pipeline/
-├── 01_original.png           # Input image
-├── 02_classification.json    # VLM classification result
-├── 03_segmentation_map.png   # 18-class colored segmentation
-├── 04_garment_mask.png       # Raw garment binary mask
-├── 05_head_neck_mask.png     # Head/neck region
-├── 06_occlusion_mask.png     # Hair/hand overlap on garment
-├── 07_neck_clipped_mask.png  # After Bézier collar clipping
-├── 08_inpainted.png          # After LaMa cleanup (if needed)
-├── 09_final_garment.png      # Clean RGBA garment (transparent BG)
-└── pipeline_report.json      # Timing + quality metrics
+final_sam2_only_exclusion_improved/<subject_id>/
+├── 01_sam_raw.png                # Raw SAM2 gating mask
+├── 02_fashn_garment.png          # FASHN & SCHP combined garment prior
+├── 03_sam_and_fashn.png          # Morphologically closed and filtered base mask
+├── 06_exclusion_mask.png         # Combined skin/background exclusion region
+├── 07b_sam2_alpha.png            # Final eroded binary mask
+├── 09_final_garment.png          # Clean RGBA garment (transparent background)
+└── 09_final_garment_checker.png  # Checkerboard preview of the extracted garment
 ```
 
-## Key Parameters to Tune
+---
 
-- `--collar-depth 0.03`: How deep the Bézier neck clip goes (fraction of image height). Increase for deeper V-necks.
-- `--occlusion-threshold 5.0`: Minimum occlusion % to trigger LaMa inpainting. Lower = more aggressive cleanup.
-- `--garment-type auto`: Force a specific garment class (`top`, `dress`, `pants`, `skirt`, `coat`).
+## Alternative/Legacy Scripts (Excluded from Git)
 
-## SAM-Guided Matting Pipeline
-
-This pipeline combines parser models and segmenters to resolve staircase (aliasing) artifacts at garment boundaries and outputs clean transparent RGBA garment assets.
-
-### Model Inputs and Output Usage Summary
-
-| Model / Stage | Inputs Provided | Outputs and Usage |
-| :--- | :--- | :--- |
-| FASHN Human Parser & SCHP | Original model shot image | Coarse semantic segmentation maps used to isolate garment region, neckline, and body part exclusion boundaries (hands, face, hair, etc.). |
-| Grounded-SAM-2 | Original image, Grounding DINO text prompts, and FASHN/SCHP exclusion coordinates | High-precision binary garment mask and neck cutout. Used as the region gate for BiRefNet and to generate the trimap for ViTMatte. |
-| Trimap Generation | Grounded-SAM-2 binary mask | A three-state trimap (foreground, background, unknown boundary region). Used as the guide for ViTMatte. |
-| ViTMatte | Original image and the generated trimap | Soft, sub-pixel alpha transparency values. Used to resolve fine fabric edges and anti-alias boundaries during hybrid blending. |
-| BiRefNet | Original image and the dilated Grounded-SAM-2 gate mask | Sharp alpha matte restricted to the gated region. Used to retain solid interior garment opacity and block skin/background leaks. |
-| Hybrid Blending | ViTMatte soft alpha, BiRefNet sharp alpha, and Gaussian-blurred blend weights | Combined final hybrid alpha matte. Used to extract the final transparent RGBA garment. |
-
+The following scripts are excluded from repository tracking to keep the codebase focused on the production SAM2-only pipeline:
+* `run_exact_biref_vton.py`: Alternative matting pipeline incorporating BiRefNet.
+* `experiment_full_pipeline.py`: Chained segmentation, VLM classification, and LaMa inpainting.
+* `experiment_vlm_classify.py`: VLM-based view/type/placement classification.
