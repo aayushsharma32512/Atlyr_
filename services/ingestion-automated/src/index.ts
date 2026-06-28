@@ -3,11 +3,13 @@ import { createLogger } from './utils/logger';
 import { initBoss } from './queue/boss';
 import { startWorker } from './queue/worker';
 import { buildApp } from './api/index';
+import { ensureBucketExists } from './utils/ensure-bucket';
 
 const logger = createLogger({ stage: 'bootstrap' });
 
 async function main() {
   logger.info({}, 'starting ingestion-automated service');
+  await ensureBucketExists();
 
   const boss = await initBoss(logger, {
     registerWorkers: (bossInstance) => {

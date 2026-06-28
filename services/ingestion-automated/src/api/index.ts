@@ -4,6 +4,7 @@ import type PgBoss from 'pg-boss';
 import { config } from '../config/index';
 import { registerSubmitRoute } from './routes/submit';
 import { registerStatusRoutes } from './routes/status';
+import { registerProceedRoute } from './routes/proceed';
 
 function bearerAuth(req: { headers: Record<string, string | string[] | undefined> }, token: string): boolean {
   const header = req.headers['authorization'] ?? '';
@@ -30,6 +31,7 @@ export async function buildApp(boss: PgBoss) {
 
   await registerSubmitRoute(app, boss);
   await registerStatusRoutes(app);
+  await registerProceedRoute(app, boss);
 
   return app;
 }
