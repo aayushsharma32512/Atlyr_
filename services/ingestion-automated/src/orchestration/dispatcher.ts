@@ -1,15 +1,17 @@
 import { getJob, markJobFailed } from '../domain/job-catalog';
 import type { StepHandler } from '../domain/types';
 import { PendingHandler } from '../steps/pending.handler';
+import { ScrapingHandler } from '../steps/scraping.handler';
+import { IdentificationHandler } from '../steps/identifying.handler';
 import { createLogger } from '../utils/logger';
 
 const logger = createLogger({ stage: 'dispatcher' });
 
-// Populated incrementally as phases are built. States not listed here cause the
-// job to fail immediately so it's obvious when a handler is missing.
 const HANDLERS: Record<string, StepHandler> = {
-  pending: new PendingHandler(),
-  // scraping, identifying, ... added in Phase 2+
+  pending:    new PendingHandler(),
+  scraping:   new ScrapingHandler(),
+  identifying: new IdentificationHandler(),
+  // generating_garment_summary, generating_vton, segmenting, segmented added in Phase 3+
 };
 
 export async function dispatch(jobId: string): Promise<void> {
