@@ -1,8 +1,11 @@
 import { config } from '../config/index';
 import { withRetry } from '../utils/retry';
+import { selectProfile } from './sites/registry';
+import { isShopifySite, extractShopifyGenericImages } from './sites/shopify-generic';
 
 export interface FirecrawlProductResult {
   finalUrl: string;
+  siteProfile: string | null;
   meta: {
     brand: string | null;
     product_name: string | null;
@@ -23,7 +26,7 @@ const PRODUCT_PROMPT = `Extract product data from this product detail page. Retu
 - color: primary color description (string or null)
 - images: array of objects { url: string } containing ALL product gallery image URLs (front, back, side, detail views). Exclude recommendation sections, related products, ads, icons, and logos.`;
 
-function extractImageUrls(images: unknown): string[] {
+function extractJsonImages(images: unknown): string[] {
   if (!Array.isArray(images)) return [];
   const urls: string[] = [];
   for (const img of images) {
@@ -38,8 +41,13 @@ function extractImageUrls(images: unknown): string[] {
 export async function scrapeProductPage(url: string): Promise<FirecrawlProductResult> {
   if (!config.FIRECRAWL_API_KEY) throw new Error('FIRECRAWL_API_KEY is not set');
 
+  const profile = selectProfile(url);
+
   return withRetry(
     async () => {
+      const formats: string[] = ['json'];
+      if (profile?.needsHtml) formats.push('html');
+
       const resp = await fetch('https://api.firecrawl.dev/v1/scrape', {
         method: 'POST',
         headers: {
@@ -48,7 +56,7 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
         },
         body: JSON.stringify({
           url,
-          formats: ['json'],
+          formats,
           jsonOptions: { prompt: PRODUCT_PROMPT },
           actions: [
             { type: 'wait', milliseconds: 1500 },
@@ -67,15 +75,32 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
       const payload = await resp.json() as Record<string, unknown>;
       const data = (payload['data'] ?? payload) as Record<string, unknown>;
       const json = (data['json'] ?? {}) as Record<string, unknown>;
+      const html = typeof data['html'] === 'string' ? data['html'] : undefined;
       const metadata = (data['metadata'] ?? {}) as Record<string, unknown>;
 
       const finalUrl = (metadata['sourceURL'] ?? metadata['sourceUrl'] ?? url) as string;
+      const jsonImages = extractJsonImages(json['images']);
 
-      const imageUrls = extractImageUrls(json['images']);
+      // Apply site-specific image filter; fall back to generic Shopify; then raw JSON images.
+      let imageUrls: string[];
+      if (profile) {
+        imageUrls = profile.postProcess({ originalUrl: url, finalUrl, html, jsonImages });
+      } else if (isShopifySite(jsonImages)) {
+        imageUrls = extractShopifyGenericImages(jsonImages);
+      } else {
+        imageUrls = jsonImages;
+      }
+
+      if (imageUrls.length === 0 && jsonImages.length > 0) {
+        // Filter returned nothing — fall back to LLM images rather than hard-failing
+        imageUrls = jsonImages;
+      }
+
       if (imageUrls.length === 0) throw new Error('No product images found on page');
 
       return {
         finalUrl,
+        siteProfile: profile?.id ?? (isShopifySite(jsonImages) ? 'shopify-generic' : null),
         meta: {
           brand:        (json['brand'] as string | null)        ?? null,
           product_name: (json['product_name'] as string | null) ?? null,

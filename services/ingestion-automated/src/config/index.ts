@@ -19,7 +19,7 @@ const EnvSchema = z.object({
   FIRECRAWL_MAX_CONCURRENCY: z.string().default('3'),
 
   GOOGLE_API_KEY: optStr,
-  GEMINI_TEXT_MODEL: z.string().default('gemini-1.5-pro'),
+  GEMINI_TEXT_MODEL: z.string().default('gemini-3.5-flash'),
   SIGLIP_ENDPOINT: optUrl,
   SIGLIP_API_KEY: optStr,
 

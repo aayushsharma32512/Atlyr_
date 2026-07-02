@@ -79,6 +79,7 @@ export class ScrapingHandler implements StepHandler {
       artifactType: 'crawl_meta',
       data: {
         final_url:       result.finalUrl,
+        site_profile:    result.siteProfile,
         brand:           result.meta.brand,
         product_name:    result.meta.product_name,
         description:     result.meta.description,
