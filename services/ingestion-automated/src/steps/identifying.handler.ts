@@ -2,7 +2,7 @@ import type { StepHandler, IngestionPipelineJob } from '../domain/types';
 import { getArtifacts, saveArtifact } from '../domain/artifacts';
 import { updateJob } from '../domain/job-catalog';
 import { advanceAndTrigger } from '../orchestration/advance-and-trigger';
-import { classifyImages, selectVtonImage } from '../adapters/siglip';
+import { classifyImage, selectVtonImage } from '../adapters/siglip';
 import { createLogger } from '../utils/logger';
 
 const logger = createLogger({ stage: 'identifying' });
@@ -19,56 +19,64 @@ export class IdentificationHandler implements StepHandler {
 
     const rawImages = await getArtifacts(job_id, 'raw_image');
 
-    // Collect public URLs for bulk SigLIP call
-    const publicUrls = rawImages.map((a) => (a.data as Record<string, unknown>)['public_url'] as string);
-
-    const classifications = await classifyImages(publicUrls);
-    logger.info({ jobId: job_id, count: classifications.length }, 'siglip classifications received');
+    // Classify each image individually (Modal endpoint takes one image at a time)
+    const classifications = await Promise.all(
+      rawImages.map(async (artifact) => {
+        const publicUrl = (artifact.data as Record<string, unknown>)['public_url'] as string;
+        const result = await classifyImage(publicUrl, job.product_type, job.product_gender_type);
+        return { artifact, result };
+      }),
+    );
 
     // Save one artifact per image
-    for (const cls of classifications) {
-      const rawImage = rawImages.find(
-        (a) => (a.data as Record<string, unknown>)['public_url'] === cls.imageUrl
-      );
+    for (const { artifact, result } of classifications) {
       await saveArtifact({
         jobId:        job_id,
         stepName:     'identifying',
         artifactType: 'image_classification',
-        storagePath:  rawImage?.storage_path ?? null,
+        storagePath:  artifact.storage_path ?? undefined,
         data: {
-          public_url:   cls.imageUrl,
-          storage_path: rawImage?.storage_path ?? null,
-          label:        cls.label,
-          confidence:   cls.confidence,
+          public_url:    result.imageUrl,
+          storage_path:  artifact.storage_path ?? null,
+          category:      result.category,
+          stage1_winner: result.stage1Winner,
+          stage1_labels: result.stage1Labels,
+          stage1_probs:  result.stage1Probs,
+          stage2_winner: result.stage2Winner,
+          stage2_labels: result.stage2Labels,
+          stage2_probs:  result.stage2Probs,
+          stage1_uncertain: result.stage1Uncertain,
+          stage2_uncertain: result.stage2Uncertain,
         },
       });
     }
 
-    // Select the best image for VTON
-    const selected = selectVtonImage(classifications, job.v_ton_image_preference);
-    if (!selected) throw new Error('Could not select a VTON image from classifications');
+    logger.info({ jobId: job_id, count: classifications.length }, 'classifications saved');
 
-    const selectionReason = job.v_ton_image_preference
-      ? `preference:${job.v_ton_image_preference.type}`
-      : `priority:${selected.label}`;
+    // Pick best VTON image
+    const selected = selectVtonImage(
+      classifications.map((c) => c.result),
+      job.v_ton_image_preference,
+    );
+
+    if (!selected) throw new Error('Could not select a VTON image from classifications');
 
     await saveArtifact({
       jobId:        job_id,
       stepName:     'identifying',
       artifactType: 'vton_image_selection',
       data: {
-        public_url:       selected.imageUrl,
-        label:            selected.label,
-        confidence:       selected.confidence,
-        selection_reason: selectionReason,
-        source:           'auto',
+        public_url: selected.imageUrl,
+        category:   selected.category,
+        stage1_uncertain: selected.stage1Uncertain,
+        stage2_uncertain: selected.stage2Uncertain,
+        source:     'auto',
       },
     });
 
     await updateJob(job_id, { v_ton_preferred_image: selected.imageUrl });
-    logger.info({ jobId: job_id, label: selected.label, reason: selectionReason }, 'vton image selected');
+    logger.info({ jobId: job_id, category: selected.category }, 'vton image selected');
 
-    // Reload job so advance-and-trigger sees updated hitl flag
     const updatedJob = { ...job, v_ton_preferred_image: selected.imageUrl };
     await advanceAndTrigger(updatedJob);
   }
