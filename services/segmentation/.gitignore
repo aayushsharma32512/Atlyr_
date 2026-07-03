@@ -41,8 +41,11 @@ test_images/
 
 # Large PDF reports
 report.pdf
+*.pdf
+*.tex
 
 # Older/intermediate output directories
 final_biref_exclusion/
 output_ghost_test_vton/
 output_pipeline_test/
+vton_intern_pack

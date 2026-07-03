@@ -518,7 +518,8 @@ def _polish_mask_hard(
     if n > 1:
         sizes = ndimage.sum(filled, labeled, range(1, n + 1))
         max_size = max(sizes)
-        keep_ids = {i + 1 for i, s in enumerate(sizes) if s >= max(500, max_size * 0.05)}
+        # Use 0.5% (0.005) instead of 5% to protect thin garment parts (straps, thin sleeves, boots)
+        keep_ids = {i + 1 for i, s in enumerate(sizes) if s >= max(1000, max_size * 0.005)}
         filled = np.isin(labeled, list(keep_ids))
 
     return (filled * 255).astype(np.uint8)
@@ -630,6 +631,11 @@ def _run_grounding_dino_detect(
         positive_boxes: list of np.ndarray [x1, y1, x2, y2]
         negative_boxes: list of np.ndarray [x1, y1, x2, y2]
     """
+    import os
+    if os.environ.get("SKIP_DINO", "1") == "1":
+        print("  [DINO] Bypassing GroundingDINO detection (using FASHN/SCHP points directly)")
+        return [], []
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     processor, model = _load_grounding_dino()
     model = model.to(device)
