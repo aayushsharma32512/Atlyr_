@@ -171,23 +171,26 @@ function winner(probs: number[]): { idx: number; margin: number } {
 // ---------------------------------------------------------------------------
 
 type AnchorKey = string;
-const anchorCache = new Map<AnchorKey, number[]>();
+// Cache the in-flight promise (not the resolved value) so concurrent callers
+// for the same key await one shared request instead of each firing their own.
+const anchorCache = new Map<AnchorKey, Promise<number[]>>();
 
-async function getAnchor(phrases: string[]): Promise<number[]> {
+function getAnchor(phrases: string[]): Promise<number[]> {
   const key = phrases.join('|');
-  if (anchorCache.has(key)) return anchorCache.get(key)!;
-  const vec = await embedTexts(phrases);
-  anchorCache.set(key, vec);
-  return vec;
+  if (!anchorCache.has(key)) anchorCache.set(key, embedTexts(phrases));
+  return anchorCache.get(key)!;
 }
 
 // ---------------------------------------------------------------------------
 // Modal HTTP calls
 // ---------------------------------------------------------------------------
 
+// TODO: Aayush — these fire once per image, concurrently (see identifying.handler.ts).
+// A burst of images in one job can force several parallel Modal cold starts.
+// Batch embedImage/embedTexts into a single multi-item request to SigLIPEmbed
+// instead, so one job pays for at most one cold start.
 async function callModal(payload: Record<string, unknown>): Promise<{ vector: number[] }> {
   if (!config.SIGLIP_ENDPOINT) throw new Error('SIGLIP_ENDPOINT is not set');
-
 
   return withRetry(async () => {
     const resp = await fetch(config.SIGLIP_ENDPOINT!, {
