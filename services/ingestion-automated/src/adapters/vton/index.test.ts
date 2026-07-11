@@ -35,13 +35,14 @@ test('resolveVtonModel routes to fashn_vton when explicitly requested', () => {
   expect(provider.name).toBe('fashn_vton');
 });
 
-test('resolveVtonModel auto-routes simple product_complexity to fashn_vton', () => {
-  const provider = resolveVtonModel(job({ v_ton_model: null, product_complexity: 'simple' }));
-  expect(provider.name).toBe('fashn_vton');
+test('resolveVtonModel defaults to gemini_nano_banana regardless of product_complexity', () => {
+  expect(resolveVtonModel(job({ v_ton_model: null, product_complexity: 'simple' })).name).toBe('gemini_nano_banana');
+  expect(resolveVtonModel(job({ v_ton_model: null, product_complexity: 'complex' })).name).toBe('gemini_nano_banana');
 });
 
-test('resolveVtonModel auto-routes non-simple product_complexity to gemini_nano_banana (not yet built)', () => {
-  expect(() => resolveVtonModel(job({ v_ton_model: null, product_complexity: 'complex' }))).toThrow('E_UNKNOWN_VTON_MODEL');
+test('resolveVtonModel routes to gemini_nano_banana when explicitly requested', () => {
+  const provider = resolveVtonModel(job({ v_ton_model: 'gemini_nano_banana' }));
+  expect(provider.name).toBe('gemini_nano_banana');
 });
 
 test('resolveVtonModel throws for an unregistered manual override', () => {
