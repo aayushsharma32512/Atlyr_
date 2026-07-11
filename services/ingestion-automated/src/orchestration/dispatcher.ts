@@ -4,6 +4,7 @@ import { PendingHandler } from '../steps/pending.handler';
 import { ScrapingHandler } from '../steps/scraping.handler';
 import { IdentificationHandler } from '../steps/identifying.handler';
 import { GarmentSummaryHandler } from '../steps/garment-summary.handler';
+import { VtonGenerationHandler } from '../steps/vton-generation.handler';
 import { createLogger } from '../utils/logger';
 
 const logger = createLogger({ stage: 'dispatcher' });
@@ -13,7 +14,8 @@ const HANDLERS: Record<string, StepHandler> = {
   scraping:                   new ScrapingHandler(),
   identifying:                new IdentificationHandler(),
   generating_garment_summary: new GarmentSummaryHandler(),
-  // generating_vton, segmenting, segmented added in Phase 3+
+  generating_vton:            new VtonGenerationHandler(),
+  // segmenting, segmented added in Phase 4+
 };
 
 export async function dispatch(jobId: string): Promise<void> {
