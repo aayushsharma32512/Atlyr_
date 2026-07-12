@@ -20,6 +20,7 @@ const EnvSchema = z.object({
 
   GOOGLE_API_KEY: optStr,
   GEMINI_TEXT_MODEL: z.string().default('gemini-3.5-flash'),
+  GEMINI_IMAGE_MODEL: z.string().default('gemini-3-pro-image-preview'),
   SIGLIP_ENDPOINT: optUrl,
   SIGLIP_API_KEY: optStr,
 
@@ -27,8 +28,6 @@ const EnvSchema = z.object({
   FASHN_VTON_API_KEY: optStr,
   SEEDREAM_API_URL: optUrl,
   SEEDREAM_API_KEY: optStr,
-  GEMINI_NANO_BANANA_API_URL: optUrl,
-  GEMINI_NANO_BANANA_API_KEY: optStr,
 
   FASHN_SEG_API_URL: optUrl,
   SCHP_SEG_API_URL: optUrl,

@@ -19,7 +19,7 @@ image = (
 )
 
 
-@app.cls(image=image, cpu=4.0, timeout=120, enable_memory_snapshot=True, scaledown_window=300)
+@app.cls(image=image, cpu=0.5, timeout=120, enable_memory_snapshot=True, scaledown_window=15)
 class SigLIPEmbed:
     @modal.enter(snap=True)
     def load(self):
@@ -57,7 +57,7 @@ class SigLIPEmbed:
         return mean[0].tolist()
 
 
-@app.function(image=image, cpu=1.0, scaledown_window=300)
+@app.function(image=image, cpu=0.125, scaledown_window=15)
 @modal.fastapi_endpoint(method="POST")
 def api_embed(payload: dict):
     from fastapi import HTTPException

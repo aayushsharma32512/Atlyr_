@@ -91,8 +91,8 @@ export interface TryonInput {
 }
 
 export interface TryonOutput {
-  imageUrl: string;
-  storagePath: string;
+  bytes: Buffer;
+  mimeType: string;
   inferenceMs: number;
   modelUsed: string;
 }
