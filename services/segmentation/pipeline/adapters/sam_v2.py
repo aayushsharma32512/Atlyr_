@@ -73,7 +73,13 @@ class SamV2Adapter:
         foreground_mask = cv2.bitwise_not(green_mask_clean)
 
         green_coverage = np.sum(green_mask_clean > 0) / (img_h * img_w)
-        is_green_screen = green_coverage > 0.05
+        # Check green coverage at the border area of the image (outer 5% border) to distinguish 
+        # a green garment in the center from an actual green screen background.
+        border_mask = np.ones((img_h, img_w), dtype=np.uint8) * 255
+        border_mask[int(img_h*0.05):int(img_h*0.95), int(img_w*0.05):int(img_w*0.95)] = 0
+        green_border_pixels = cv2.bitwise_and(green_mask_clean, border_mask)
+        green_border_coverage = np.sum(green_border_pixels > 0) / np.sum(border_mask > 0)
+        is_green_screen = (green_coverage > 0.05) and (green_border_coverage > 0.15)
 
         if is_green_screen:
             print(f"  [SAM2] Green screen detected ({green_coverage:.1%}). Keeping full exclusion mask.")

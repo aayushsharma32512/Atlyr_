@@ -205,7 +205,13 @@ def run_green_screen_pipeline_e2e(
         foreground_mask = cv2.bitwise_not(green_mask_clean)
 
         green_coverage = np.sum(green_mask_clean > 0) / (h * w)
-        is_green_screen = green_coverage > 0.05
+        # Check green coverage at the border area of the image (outer 5% border) to distinguish 
+        # a green garment in the center from an actual green screen background.
+        border_mask = np.ones((h, w), dtype=np.uint8) * 255
+        border_mask[int(h*0.05):int(h*0.95), int(w*0.05):int(w*0.95)] = 0
+        green_border_pixels = cv2.bitwise_and(green_mask_clean, border_mask)
+        green_border_coverage = np.sum(green_border_pixels > 0) / np.sum(border_mask > 0)
+        is_green_screen = (green_coverage > 0.05) and (green_border_coverage > 0.15)
 
         if is_green_screen:
             print(f"  Green screen detected ({green_coverage:.1%}). Keeping full exclusion mask.")
@@ -284,7 +290,10 @@ def run_green_screen_pipeline_e2e(
         step_order = 5
         step_start = datetime.utcnow().isoformat() + "Z"
         print(f"\n--- Step {step_order}: Post-Processing ---")
-        sam2_only_alpha = cv2.bitwise_and(sam_refined_mask, foreground_mask)
+        if is_green_screen:
+            sam2_only_alpha = cv2.bitwise_and(sam_refined_mask, foreground_mask)
+        else:
+            sam2_only_alpha = sam_refined_mask.copy()
 
         # Head/neck guided skin subtraction
         fashn_hn = extract_class_mask(seg_map, [1, 2, 16])
