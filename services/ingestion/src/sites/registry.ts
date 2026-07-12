@@ -6,6 +6,7 @@ import { applyNykaaDeterministicImageFilter, isNykaaHostname, nykaaOverridePromp
 import { applyPumaDeterministicImageFilter, isPumaHostname, pumaOverridePrompt, pumaProductIdFromUrl } from './puma';
 import { applyNishoramaDeterministicImageFilter, isNishoramaHostname, nishoramaOverridePrompt, transformNishoramaUrl } from './nishorama';
 import { applyBonkersCornerDeterministicImageFilter, isBonkersCornerHostname, bonkersCornerOverridePrompt } from './bonkerscorner';
+import { applyDefaultImageFilter } from './default';
 
 function safeHostname(url: string): string {
   try {
@@ -41,7 +42,13 @@ const DEFAULT_PROFILE: SiteProfile = {
   version: 'v1',
   match: () => true,
   buildScrapePrompt: ({ basePrompt }) => basePrompt,
-  scrape: undefined
+  scrape: {
+    requireHtml: true,
+    requireRawHtml: true,
+    postProcess: (params) => {
+      return applyDefaultImageFilter(params);
+    }
+  }
 };
 
 const MYNTRA_PROFILE: SiteProfile = {

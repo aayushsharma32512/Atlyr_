@@ -22,7 +22,10 @@ export function useIngestionV2Job(jobId: string | null) {
   const [artifacts, setArtifacts] = useState<StepArtifact[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Keep a ref to the latest job state to avoid stale closures in setInterval
+  const jobStateRef = useRef<string | undefined>(undefined)
+  jobStateRef.current = job?.current_state
 
   const load = useCallback(async (id: string) => {
     try {
@@ -52,17 +55,19 @@ export function useIngestionV2Job(jobId: string | null) {
     setLoading(true)
     load(jobId)
 
-    intervalRef.current = setInterval(() => {
-      // Stop polling once terminal
-      if (job && TERMINAL_STATES.has(job.current_state)) return
+    const interval = setInterval(() => {
+      const currentState = jobStateRef.current
+      if (currentState && TERMINAL_STATES.has(currentState)) {
+        return
+      }
       load(jobId)
     }, 3000)
 
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current)
+      clearInterval(interval)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobId])
+  }, [jobId, load])
 
   const refetch = useCallback(() => {
     if (jobId) load(jobId)

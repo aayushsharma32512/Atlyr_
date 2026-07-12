@@ -1,0 +1,51 @@
+# Ignore local test runs and output directories
+output_segmentation_pipeline/
+final_sam2_only_green_screen/
+output_green_screen_pipeline/
+*.csv
+*.log
+
+# Ignore Python cache directories and files
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Ignore virtual environments
+.venv/
+env/
+venv/
+
+# Ignore local configuration and secrets (Secrets are mounted securely via Modal instead)
+.env
+.git/
+.gitignore
+README.md
+
+# Ignore documents, LaTeX files, and redundant assets
+*.pdf
+*.tex
+*.zip
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+*.png.bak
+*.jpg.bak
+*.json.bak
+report*.csv
+
+# Ignore redundant intern/testing folders
+vton_intern_pack/
+final_sam2_only_exclusion_improved/
+output_ghost_test_vton/
+output_vlm/
+
+# Ignore legacy, visualization, and experimental scripts
+run_exact_sam2_only_vton_improved.py
+experiment_full_pipeline.py
+experiment_vlm_classify.py
+visualize_mannequin_placements.py
+visualize_predicted_placements.py
+dev_scripts/
+

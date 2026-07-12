@@ -1,6 +1,5 @@
 # Local segmentation ignore rules
 
-# Utilities and model weights
 Utils/
 checkpoints/
 models/
@@ -13,13 +12,14 @@ scratch/
 try_sam_matting/
 
 # Extra execution/visualization scripts
-visualize_mannequin_placements.py
-visualize_predicted_placements.py
+dev_scripts/visualize_mannequin_placements.py
+dev_scripts/visualize_predicted_placements.py
 run_all_extractions.py
 run_full_evaluation.py
 report.tex
 generate_sam2_exclusion_latex.py
 generate_sam2_exclusion_improved_report.py
+dev_scripts/run_exact_sam2_only_vton_improved.py
 
 # Python cache files
 __pycache__/
@@ -49,3 +49,7 @@ final_biref_exclusion/
 output_ghost_test_vton/
 output_pipeline_test/
 vton_intern_pack
+final_sam2_only_green_screen/
+dev_scripts/
+
+

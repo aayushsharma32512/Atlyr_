@@ -2,6 +2,7 @@ import { config } from '../config/index';
 import { withRetry } from '../utils/retry';
 import { selectProfile } from './sites/registry';
 import { isShopifySite, extractShopifyGenericImages } from './sites/shopify-generic';
+import { applyGenericImageFilter } from './sites/generic-filter';
 
 export interface FirecrawlProductResult {
   finalUrl: string;
@@ -45,8 +46,7 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
 
   return withRetry(
     async () => {
-      const formats: string[] = ['json'];
-      if (profile?.needsHtml) formats.push('html');
+      const formats: string[] = ['json', 'html'];
 
       const resp = await fetch('https://api.firecrawl.dev/v1/scrape', {
         method: 'POST',
@@ -81,14 +81,14 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
       const finalUrl = (metadata['sourceURL'] ?? metadata['sourceUrl'] ?? url) as string;
       const jsonImages = extractJsonImages(json['images']);
 
-      // Apply site-specific image filter; fall back to generic Shopify; then raw JSON images.
+      // Apply site-specific image filter; fall back to generic Shopify; then raw JSON images with generic filter.
       let imageUrls: string[];
       if (profile) {
         imageUrls = profile.postProcess({ originalUrl: url, finalUrl, html, jsonImages });
       } else if (isShopifySite(jsonImages)) {
         imageUrls = extractShopifyGenericImages(jsonImages);
       } else {
-        imageUrls = jsonImages;
+        imageUrls = applyGenericImageFilter(html, url, jsonImages);
       }
 
       if (imageUrls.length === 0 && jsonImages.length > 0) {
