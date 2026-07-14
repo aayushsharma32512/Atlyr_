@@ -43,7 +43,7 @@ describe('myntra deterministic image filter', () => {
 
     const out = applyMyntraDeterministicImageFilter({ originalUrl, json, html });
     expect(out.imageUrls.some((u) => u.includes('/v1/assets/images/2025/JULY/14/'))).toBe(true);
-    expect(out.imageUrls.some((u) => /\\/assets\\/images\\/35700035\\/(large|side)\\.jpg$/i.test(u))).toBe(false);
+    expect(out.imageUrls.some((u) => /\/assets\/images\/35700035\/(large|side)\.jpg$/i.test(u))).toBe(false);
   });
 
   it('does not force rewrite JSON image URLs into /v1 transform paths', () => {

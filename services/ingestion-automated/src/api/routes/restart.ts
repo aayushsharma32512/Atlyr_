@@ -92,7 +92,17 @@ export async function registerRestartRoute(app: FastifyInstance, boss: PgBoss): 
         .eq('job_id', jobId);
     }
 
-    await updateState(jobId, from_state);
+    await supabaseAdmin
+      .from('ingestion_pipeline_jobs')
+      .update({
+        current_state: from_state,
+        last_error: null,
+        last_error_step: null,
+        error_count: 0,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('job_id', jobId);
+
     await boss.send('run-pipeline-step', { jobId });
 
     logger.info({ jobId, from_state }, 'job restarted');
