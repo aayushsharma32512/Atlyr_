@@ -422,7 +422,7 @@ export function applyGenericImageFilter(
   // Clean raw LLM extracted images
   const cleanJsonImages = jsonImages
     .map(url => normalizeUrl(url, baseOrigin))
-    .filter((url): url is string => url !== null && !looksLikeUnrelatedImage(url))
+    .filter((url): url is string => typeof url === 'string' && !looksLikeUnrelatedImage(url))
     .map(upgradeGenericResolution);
     
   if (!html) {
@@ -431,7 +431,7 @@ export function applyGenericImageFilter(
   
   // Signal 0 (highest trust): Product-ID-tagged grid containers or any image URLs containing product-ID in HTML
   const productIdGridImages = extractProductIdGridImages(html, originalUrl, baseOrigin)
-    .filter(url => !looksLikeUnrelatedImage(url));
+    .filter(url => typeof url === 'string' && !looksLikeUnrelatedImage(url));
     
   const productIdHtmlImages = extractProductIdImagesFromHtml(html, originalUrl, baseOrigin);
   
@@ -446,15 +446,15 @@ export function applyGenericImageFilter(
   // Extract trusted images from JSON-LD and OG tags
   const jsonLdImages = extractJsonLdProductImages(html)
     .map(url => normalizeUrl(url, baseOrigin))
-    .filter((url): url is string => url !== null && !looksLikeUnrelatedImage(url));
+    .filter((url): url is string => typeof url === 'string' && !looksLikeUnrelatedImage(url));
     
   const ogImages = extractOgImages(html)
     .map(url => normalizeUrl(url, baseOrigin))
-    .filter((url): url is string => url !== null && !looksLikeUnrelatedImage(url));
+    .filter((url): url is string => typeof url === 'string' && !looksLikeUnrelatedImage(url));
     
   const galleryImages = extractGenericGalleryImages(html, baseOrigin)
     .map(url => normalizeUrl(url, baseOrigin))
-    .filter((url): url is string => url !== null && !looksLikeUnrelatedImage(url));
+    .filter((url): url is string => typeof url === 'string' && !looksLikeUnrelatedImage(url));
   
   // If the LLM extracted a reasonable number of images (1-10) and the gallery
   // returned a suspiciously large number (3x+ more), the gallery is likely polluted 
