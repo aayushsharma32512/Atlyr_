@@ -17,17 +17,17 @@ Note: A CUDA-enabled GPU (minimum 8GB VRAM) is recommended for fast processing.
 
 ## Production Pipeline Execution
 
-To run the standalone segmentation pipeline:
+To run the standalone segmentation pipeline (local CLI):
 
 ```bash
-python run_exact_sam2_only_vton_improved.py
+python pipeline/run.py --image /path/to/input.png --output-dir /path/to/output_dir
 ```
 
 ### Execution Stages
 
-1. **Garment Prior Filtering**: Combines FASHN and SCHP human parser models to define a coarse garment area.
+1. **Garment Prior Filtering**: Uses the FASHN human parser to resolve the garment category and define a coarse garment area.
 2. **Morphological Closing**: Fills small slits, button seams, and zipper gaps inside the garment.
-3. **Skin Exclusion Subtraction**: Subtracts skin areas (face, neck, arms) from the mask.
+3. **Skin Exclusion Subtraction**: Subtracts skin areas (face, neck, arms) from the mask, utilizing SCHP parser maps to augment the exclusion boundaries.
 4. **Multi-Component Cleanup**: Retains disjoint areas larger than 1000px to preserve sleeves, straps, or strings.
 5. **Adaptive Color Extension (Inpainting)**: Erodes the mask to isolate the garment core and inpaints background borders using the garment's internal colors to remove color bleed.
 6. **Erosion Gating**: Applies a final 2px outer boundary erosion to secure clean edges.
@@ -67,11 +67,13 @@ Processed outputs are written to the target directory under the subject identifi
 
 ```
 output_dir/<subject_id>/
-├── 01_sam_raw.png                # Raw SAM2 gating mask
-├── 02_fashn_garment.png          # FASHN & SCHP combined garment prior
+├── 01_original.png               # Original input image
+├── 02_fashn_exclusion.png         # FASHN baseline skin/exclusion mask
+├── 02_fashn_garment.png          # FASHN coarse garment prior mask
+├── 03_schp_exclusion.png         # SCHP exclusion mask
 ├── 03_sam_and_fashn.png          # Morphologically closed and filtered base mask
 ├── 06_exclusion_mask.png         # Combined skin/background exclusion region
-├── 07b_sam2_alpha.png            # Final eroded binary mask
+├── 07b_sam2_alpha.png            # Final eroded binary mask (post-processed alpha)
 ├── 09_final_garment.png          # Clean RGBA garment (transparent background)
 └── 09_final_garment_checker.png  # Checkerboard preview of the extracted garment
 ```
