@@ -296,7 +296,7 @@ export function applyDefaultImageFilter(params: {
   
   const cleanJsonImages = imageUrls
     .map(url => normalizeUrl(url, baseOrigin))
-    .filter((url): url is string => Boolean(url) && !looksLikeUnrelatedImage(url));
+    .filter((url): url is string => typeof url === 'string' && !looksLikeUnrelatedImage(url));
     
   const contentHtml = rawHtml ?? html;
   if (!contentHtml) {
@@ -311,15 +311,15 @@ export function applyDefaultImageFilter(params: {
   
   const jsonLdImages = extractJsonLdProductImages(contentHtml)
     .map(url => normalizeUrl(url, baseOrigin))
-    .filter((url): url is string => Boolean(url) && !looksLikeUnrelatedImage(url));
+    .filter((url): url is string => typeof url === 'string' && !looksLikeUnrelatedImage(url));
     
   const ogImages = extractOgImages(contentHtml)
     .map(url => normalizeUrl(url, baseOrigin))
-    .filter((url): url is string => Boolean(url) && !looksLikeUnrelatedImage(url));
+    .filter((url): url is string => typeof url === 'string' && !looksLikeUnrelatedImage(url));
     
   const galleryImages = extractGenericGalleryImages(contentHtml, baseOrigin)
     .map(url => normalizeUrl(url, baseOrigin))
-    .filter((url): url is string => Boolean(url) && !looksLikeUnrelatedImage(url));
+    .filter((url): url is string => typeof url === 'string' && !looksLikeUnrelatedImage(url));
     
   const trustedImages = [...new Set([...jsonLdImages, ...ogImages, ...galleryImages])];
   

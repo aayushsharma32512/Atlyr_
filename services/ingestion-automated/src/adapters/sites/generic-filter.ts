@@ -269,7 +269,7 @@ export function applyGenericImageFilter(
   // Clean raw LLM extracted images
   const cleanJsonImages = jsonImages
     .map(url => normalizeUrl(url, baseOrigin))
-    .filter((url): url is string => Boolean(url) && !looksLikeUnrelatedImage(url));
+    .filter((url): url is string => typeof url === 'string' && !looksLikeUnrelatedImage(url));
     
   if (!html) {
     return cleanJsonImages;
@@ -278,15 +278,15 @@ export function applyGenericImageFilter(
   // Extract trusted images from JSON-LD and OG tags
   const jsonLdImages = extractJsonLdProductImages(html)
     .map(url => normalizeUrl(url, baseOrigin))
-    .filter((url): url is string => Boolean(url) && !looksLikeUnrelatedImage(url));
+    .filter((url): url is string => typeof url === 'string' && !looksLikeUnrelatedImage(url));
     
   const ogImages = extractOgImages(html)
     .map(url => normalizeUrl(url, baseOrigin))
-    .filter((url): url is string => Boolean(url) && !looksLikeUnrelatedImage(url));
+    .filter((url): url is string => typeof url === 'string' && !looksLikeUnrelatedImage(url));
     
   const galleryImages = extractGenericGalleryImages(html, baseOrigin)
     .map(url => normalizeUrl(url, baseOrigin))
-    .filter((url): url is string => Boolean(url) && !looksLikeUnrelatedImage(url));
+    .filter((url): url is string => typeof url === 'string' && !looksLikeUnrelatedImage(url));
     
   const trustedImages = [...new Set([...jsonLdImages, ...ogImages, ...galleryImages])];
   
