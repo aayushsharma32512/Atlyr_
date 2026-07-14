@@ -23,7 +23,7 @@ const PRODUCT_PROMPT = `Extract product data from this product detail page. Retu
 - brand: brand/manufacturer name (string or null)
 - product_name: full product name (string or null)
 - description: product description text (string or null)
-- price: price as a number in the smallest currency unit e.g. paise for INR, cents for USD (number or null)
+- price: price as a number in standard units e.g. 4000 for INR, 19.99 for USD (number or null)
 - currency: ISO currency code e.g. INR, USD (string or null)
 - color: primary color description (string or null)
 - images: array of objects { url: string } containing ALL product gallery image URLs (front, back, side, detail views). Exclude recommendation sections, related products, ads, icons, and logos.`;

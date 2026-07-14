@@ -58,14 +58,30 @@ export async function scrapeShopifyApi(url: string): Promise<ShopifyApiResult | 
       : rawImages;
       
     // Shopify .js endpoint returns price in cents/paise (e.g. 199900 for 1999.00)
-    const price = typeof data.price === 'number' ? data.price : null;
+    // We divide by 100 to convert to standard units (e.g. 1999) matching the database schema.
+    const price = typeof data.price === 'number' ? Math.round(data.price / 100) : null;
+    
+    // Infer currency code based on the domain TLD
+    const host = parsed.hostname.toLowerCase();
+    let currency = 'USD';
+    if (host.endsWith('.in') || host.includes('.in.')) {
+      currency = 'INR';
+    } else if (host.endsWith('.uk') || host.endsWith('.gb') || host.includes('.uk.')) {
+      currency = 'GBP';
+    } else if (host.endsWith('.ca')) {
+      currency = 'CAD';
+    } else if (host.endsWith('.au')) {
+      currency = 'AUD';
+    } else if (host.endsWith('.eu')) {
+      currency = 'EUR';
+    }
     
     return {
       brand: data.vendor || null,
       product_name: data.title || null,
       description: data.description || null,
       price,
-      currency: null, // Shopify .js API doesn't guarantee currency field, we'll let firecrawl fallback resolve it if needed
+      currency,
       imageUrls
     };
   } catch {
