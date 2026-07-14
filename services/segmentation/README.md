@@ -1,47 +1,72 @@
-# Garment Extraction & Segmentation Pipeline
+# Garment Segmentation Pipeline
 
-Production-ready local segmentation scripts to extract clean transparent garment assets from model shots.
+This service extracts high-precision, transparent garment assets from model product shots. It features a SAM2-only pipeline designed to segment clothing while avoiding edge bleeding and background contamination.
 
 ## Setup
+
+Navigate to the segmentation directory and install the dependencies:
 
 ```bash
 cd services/segmentation
 pip install -r requirements.txt
 ```
 
-> **GPU Requirement**: These scripts automatically detect and leverage CUDA. An RTX 3060/4060 (8GB VRAM) or higher is recommended for fast processing.
+Note: A CUDA-enabled GPU (minimum 8GB VRAM) is recommended for fast processing.
 
 ---
 
-## Production Pipeline: SAM2-Only VTON (Improved)
+## Production Pipeline Execution
 
-The core script is **`run_exact_sam2_only_vton_improved.py`**. It performs high-precision garment segmentation using Grounded-SAM-2 as the base mask, completely bypassing BiRefNet to avoid background bleeding, and applies advanced parsing and morphological filters for clean edge extraction.
-
-### Execution
+To run the standalone segmentation pipeline:
 
 ```bash
 python run_exact_sam2_only_vton_improved.py
 ```
 
-### Ingestion Details
+### Execution Stages
 
-The pipeline processes input model shots from `output_ghost_test_vton/` and outputs clean transparent garments to `final_sam2_only_exclusion_improved/` using the following stages:
+1. **Garment Prior Filtering**: Combines FASHN and SCHP human parser models to define a coarse garment area.
+2. **Morphological Closing**: Fills small slits, button seams, and zipper gaps inside the garment.
+3. **Skin Exclusion Subtraction**: Subtracts skin areas (face, neck, arms) from the mask.
+4. **Multi-Component Cleanup**: Retains disjoint areas larger than 1000px to preserve sleeves, straps, or strings.
+5. **Adaptive Color Extension (Inpainting)**: Erodes the mask to isolate the garment core and inpaints background borders using the garment's internal colors to remove color bleed.
+6. **Erosion Gating**: Applies a final 2px outer boundary erosion to secure clean edges.
 
-1. **Garment Prior Filtering**: Leverages FASHN and SCHP human parser models to construct a coarse semantic garment region gate, filtering the SAM2 base mask.
-2. **Morphological Closing**: Fills vertical slits and gaps (e.g., zipper lines, button seams) inside the garment prior to preserve detail.
-3. **Skin Exclusion Subtraction**: Subtracts skin boundaries (arms, neck, face) based on FASHN/SCHP maps without aggressive dilation to prevent trimming garment cuffs.
-4. **Multi-Component Cleanup**: Runs connected-component analysis and retains all disjoint regions with an area > 1000px to safeguard disconnected sleeves, strings, or footwear.
-5. **Adaptive Color Extension (Inpainting)**: Erodes the mask to find a clean garment core, then inpaints background border regions using the garment's internal colors to completely remove edge contamination.
-6. **Erosion Gating**: Applies a final outer boundary-only 2px erosion to ensure no background bleeding remains.
+---
+
+## Database Nomenclature
+
+The segmentation service tracks each stage of the pipeline in the `segmentation_step_results` table in the database.
+
+### Active Pipeline Steps
+
+For standard production jobs, the following 6 sequential steps are recorded:
+
+| Step Order | Step Name | Description | Output Artifacts |
+| :--- | :--- | :--- | :--- |
+| 1 | `fashn_parse` | Coarse FASHN semantic segment map extraction. | `02_fashn_garment.png` |
+| 2 | `schp_parse` | Self-Correction Human Parsing mask extraction. | `03_schp_exclusion.png` |
+| 3 | `chroma_key` | Green-screen detection and skin color checks. | `06_exclusion_mask.png` |
+| 4 | `sam2_refine` | SAM2 interactive prompt refinement. | `03_sam_and_fashn.png` |
+| 5 | `post_process` | Inpainting, multi-component area checks, and edge feathering. | `07b_sam2_alpha.png` |
+| 6 | `final_output` | Composite transparent RGBA image generation and upload. | `09_final_garment.png` |
+
+### Bypassed Steps
+
+The legacy steps listed below are bypassed in the production pipeline and return a status of `skipped` without triggering model inference:
+
+* `vitmatte` (Step 6 in legacy setup)
+* `birefnet` (Step 7 in legacy setup)
+* `combine` (Step 8 in legacy setup)
 
 ---
 
 ## Output File Structure
 
-Each processed subject folder inside `final_sam2_only_exclusion_improved/` contains:
+Processed outputs are written to the target directory under the subject identifier:
 
 ```
-final_sam2_only_exclusion_improved/<subject_id>/
+output_dir/<subject_id>/
 ├── 01_sam_raw.png                # Raw SAM2 gating mask
 ├── 02_fashn_garment.png          # FASHN & SCHP combined garment prior
 ├── 03_sam_and_fashn.png          # Morphologically closed and filtered base mask
@@ -50,12 +75,3 @@ final_sam2_only_exclusion_improved/<subject_id>/
 ├── 09_final_garment.png          # Clean RGBA garment (transparent background)
 └── 09_final_garment_checker.png  # Checkerboard preview of the extracted garment
 ```
-
----
-
-## Alternative/Legacy Scripts (Excluded from Git)
-
-The following scripts are excluded from repository tracking to keep the codebase focused on the production SAM2-only pipeline:
-* `run_exact_biref_vton.py`: Alternative matting pipeline incorporating BiRefNet.
-* `experiment_full_pipeline.py`: Chained segmentation, VLM classification, and LaMa inpainting.
-* `experiment_vlm_classify.py`: VLM-based view/type/placement classification.
