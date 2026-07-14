@@ -125,14 +125,24 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
 
       if (imageUrls.length === 0) throw new Error('No product images found on page');
 
+      const detectedProfile = profile?.id ?? (isShopifySite(jsonImages) ? 'shopify-generic' : null);
+
+      // Shopify structured data (JSON-LD, meta tags) always stores prices in
+      // subunits (cents/paise). VLMs read these and return the raw value despite
+      // prompt instructions. When we detect a Shopify page, divide by 100.
+      let price = (json['price'] as number | null) ?? null;
+      if (price != null && detectedProfile === 'shopify-generic') {
+        price = Math.round(price / 100);
+      }
+
       return {
         finalUrl,
-        siteProfile: profile?.id ?? (isShopifySite(jsonImages) ? 'shopify-generic' : null),
+        siteProfile: detectedProfile,
         meta: {
           brand:        (json['brand'] as string | null)        ?? null,
           product_name: (json['product_name'] as string | null) ?? null,
           description:  (json['description'] as string | null)  ?? null,
-          price:        (json['price'] as number | null)        ?? null,
+          price,
           currency:     (json['currency'] as string | null)     ?? null,
           color:        (json['color'] as string | null)        ?? null,
         },

@@ -465,11 +465,38 @@ export function applyGenericImageFilter(
     return deduplicateImagesByKey(cleanJsonImages);
   }
 
+  // Find if there is a specific long variant/color ID shared by the LLM images (e.g. 10-12 digits).
+  // If found, we can strictly filter the HTML images to match this specific variant.
+  let specificVariantId: string | null = null;
+  const counts = new Map<string, number>();
+  for (const url of cleanJsonImages) {
+    const matches = url.match(/\d{10,12}/g) || [];
+    for (const m of matches) {
+      counts.set(m, (counts.get(m) ?? 0) + 1);
+    }
+  }
+  for (const [seq, count] of counts.entries()) {
+    if (count >= cleanJsonImages.length / 2) {
+      specificVariantId = seq;
+      break;
+    }
+  }
+
   const rawTrustedImages = [...new Set([...jsonLdImages, ...ogImages, ...galleryImages])];
-  const trustedImages = filterByUrlNumericId(rawTrustedImages, originalUrl);
+  let trustedImages = filterByUrlNumericId(rawTrustedImages, originalUrl);
+
+  if (specificVariantId) {
+    // Keep only images that explicitly match the specific variant ID
+    trustedImages = trustedImages.filter(img => img.includes(specificVariantId!));
+  }
   
   if (trustedImages.length === 0) {
-    return deduplicateImagesByKey(filterByUrlNumericId(cleanJsonImages, originalUrl));
+    const fallbackImages = filterByUrlNumericId(cleanJsonImages, originalUrl);
+    return deduplicateImagesByKey(
+      specificVariantId 
+        ? fallbackImages.filter(img => img.includes(specificVariantId!))
+        : fallbackImages
+    );
   }
   
   // Use trusted images to filter the combined candidates.

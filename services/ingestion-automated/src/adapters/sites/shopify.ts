@@ -14,6 +14,7 @@ export interface ShopifyApiResult {
  * Returns structured metadata and images if successful, otherwise null.
  */
 export async function scrapeShopifyApi(url: string): Promise<ShopifyApiResult | null> {
+  console.log('[shopify-api] attempting pre-scrape for:', url);
   try {
     const parsed = new URL(url);
     
@@ -33,15 +34,20 @@ export async function scrapeShopifyApi(url: string): Promise<ShopifyApiResult | 
       headers: { 
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' 
       },
-      signal: AbortSignal.timeout(3000)
+      signal: AbortSignal.timeout(8000)
     });
     
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      console.log('[shopify-api] non-ok response:', resp.status, resp.statusText);
+      return null;
+    }
     
     const data = await resp.json() as Record<string, any>;
     if (!data || typeof data !== 'object' || !data.title || !Array.isArray(data.images)) {
+      console.log('[shopify-api] invalid data shape, keys:', data ? Object.keys(data) : 'null');
       return null;
     }
+    console.log('[shopify-api] success! vendor:', data.vendor, 'price:', data.price, 'images:', data.images?.length);
     
     // Clean and normalize image URLs to get the highest resolution possible
     const rawImages = data.images.map((img: string) => {
@@ -76,15 +82,26 @@ export async function scrapeShopifyApi(url: string): Promise<ShopifyApiResult | 
       currency = 'EUR';
     }
     
+    // Derive brand: prefer vendor, but fall back to domain name when vendor looks
+    // like junk (year, purely numeric, empty, or very short).
+    let brand: string | null = data.vendor || null;
+    if (!brand || /^\d+$/.test(brand) || brand.length < 2) {
+      // Extract store name from domain: e.g. toffle.in → Toffle
+      const parts = host.split('.');
+      const storeName = parts[0] === 'www' ? (parts[1] ?? parts[0]) : parts[0];
+      brand = storeName.charAt(0).toUpperCase() + storeName.slice(1);
+    }
+
     return {
-      brand: data.vendor || null,
+      brand,
       product_name: data.title || null,
       description: data.description || null,
       price,
       currency,
       imageUrls
     };
-  } catch {
+  } catch (err) {
+    console.log('[shopify-api] error:', err instanceof Error ? err.message : String(err));
     return null;
   }
 }
