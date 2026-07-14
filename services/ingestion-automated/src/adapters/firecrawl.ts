@@ -3,6 +3,7 @@ import { withRetry } from '../utils/retry';
 import { selectProfile } from './sites/registry';
 import { isShopifySite, extractShopifyGenericImages } from './sites/shopify-generic';
 import { applyGenericImageFilter } from './sites/generic-filter';
+import { scrapeShopifyApi } from './sites/shopify';
 
 export interface FirecrawlProductResult {
   finalUrl: string;
@@ -40,13 +41,38 @@ function extractJsonImages(images: unknown): string[] {
 }
 
 export async function scrapeProductPage(url: string): Promise<FirecrawlProductResult> {
+  // 1. Try Shopify API first (fast, reliable, and does not require Firecrawl API key)
+  const shopifyResult = await scrapeShopifyApi(url);
+  if (shopifyResult) {
+    return {
+      finalUrl: url,
+      siteProfile: 'shopify-api',
+      meta: {
+        brand:        shopifyResult.brand,
+        product_name: shopifyResult.product_name,
+        description:  shopifyResult.description,
+        price:        shopifyResult.price,
+        currency:     shopifyResult.currency,
+        color:        null
+      },
+      imageUrls: shopifyResult.imageUrls,
+    };
+  }
+
   if (!config.FIRECRAWL_API_KEY) throw new Error('FIRECRAWL_API_KEY is not set');
 
   const profile = selectProfile(url);
+  const targetUrl = profile?.transformUrl ? profile.transformUrl(url) : url;
 
   return withRetry(
     async () => {
       const formats: string[] = ['json', 'html'];
+      const prompt = profile?.buildScrapePrompt ? `${PRODUCT_PROMPT}\n\n${profile.buildScrapePrompt(targetUrl)}` : PRODUCT_PROMPT;
+      const actions = profile?.extraActions ?? [
+        { type: 'wait', milliseconds: 1500 },
+        { type: 'scroll', direction: 'down' },
+        { type: 'wait', milliseconds: 1000 },
+      ];
 
       const resp = await fetch('https://api.firecrawl.dev/v1/scrape', {
         method: 'POST',
@@ -55,14 +81,10 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          url,
+          url: targetUrl,
           formats,
-          jsonOptions: { prompt: PRODUCT_PROMPT },
-          actions: [
-            { type: 'wait', milliseconds: 1500 },
-            { type: 'scroll', direction: 'down' },
-            { type: 'wait', milliseconds: 1000 },
-          ],
+          jsonOptions: { prompt },
+          actions,
         }),
         signal: AbortSignal.timeout(120_000),
       });
@@ -78,17 +100,17 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
       const html = typeof data['html'] === 'string' ? data['html'] : undefined;
       const metadata = (data['metadata'] ?? {}) as Record<string, unknown>;
 
-      const finalUrl = (metadata['sourceURL'] ?? metadata['sourceUrl'] ?? url) as string;
+      const finalUrl = (metadata['sourceURL'] ?? metadata['sourceUrl'] ?? targetUrl) as string;
       const jsonImages = extractJsonImages(json['images']);
 
       // Apply site-specific image filter; fall back to generic Shopify; then raw JSON images with generic filter.
       let imageUrls: string[];
       if (profile) {
-        imageUrls = profile.postProcess({ originalUrl: url, finalUrl, html, jsonImages });
+        imageUrls = profile.postProcess({ originalUrl: targetUrl, finalUrl, html, jsonImages });
       } else if (isShopifySite(jsonImages)) {
         imageUrls = extractShopifyGenericImages(jsonImages);
       } else {
-        imageUrls = applyGenericImageFilter(html, url, jsonImages);
+        imageUrls = applyGenericImageFilter(html, targetUrl, jsonImages);
       }
 
       if (imageUrls.length === 0 && jsonImages.length > 0) {

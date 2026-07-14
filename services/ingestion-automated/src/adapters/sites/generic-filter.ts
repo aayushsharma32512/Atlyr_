@@ -58,6 +58,7 @@ export function getBaseAssetKey(url: string): string {
     // e.g. name_100x100, name_800x, name_large, name_crop_center, w_540, h_720, w_2000
     let key = filename
       .toLowerCase()
+      .replace(/[-_]\d+w[x_-]\d+h/gi, '')
       .replace(/[-_]\d+x\d*/g, '')
       .replace(/[-_]\d+x/g, '')
       .replace(/[-_]crop(?:[-_]center)?/g, '')
@@ -74,6 +75,21 @@ export function getBaseAssetKey(url: string): string {
 
 export function looksLikeUnrelatedImage(url: string): boolean {
   const lower = url.toLowerCase();
+  
+  // Exclude swatches, chips, and color thumbnails
+  if (
+    lower.includes('/chip/') || 
+    lower.includes('/swatch/') || 
+    lower.includes('swatch.jpg') || 
+    lower.includes('chip.jpg') || 
+    lower.includes('swatch_') || 
+    lower.endsWith('-swatch') || 
+    lower.includes('_chip') ||
+    lower.includes('-swatch.jpg') ||
+    lower.includes('-swatch.png')
+  ) {
+    return true;
+  }
   
   // Exclude SVGs and GIFs (typically icons, trackers, or loaders)
   if (/\.(svg|gif)(?:\?|$)/i.test(lower)) return true;
@@ -258,6 +274,143 @@ export function extractGenericGalleryImages(html: string, baseOrigin: string): s
   return [...new Set(urls)];
 }
 
+export function filterByUrlNumericId(images: string[], originalUrl: string): string[] {
+  const digitSequences = originalUrl.match(/\d{6,12}/g) || [];
+  if (digitSequences.length === 0) {
+    return images;
+  }
+  
+  const matchedImages = images.filter(img => 
+    digitSequences.some(seq => img.includes(seq))
+  );
+  
+  if (matchedImages.length > 0) {
+    return matchedImages;
+  }
+  
+  return images;
+}
+
+// Extract images from product-ID-tagged grid containers (e.g. H&M's data-testid="grid-image-{id}_N")
+function extractProductIdGridImages(html: string, originalUrl: string, baseOrigin: string): string[] {
+  const digitSequences = originalUrl.match(/\d{6,12}/g) || [];
+  if (digitSequences.length === 0) return [];
+
+  const urls: string[] = [];
+  for (const productId of digitSequences) {
+    // Find all grid-image containers for this product ID
+    const gridRe = new RegExp(`data-testid=["']grid-image-${productId}_\\d+["']`, 'gi');
+    for (const match of html.matchAll(gridRe)) {
+      const startIdx = match.index ?? -1;
+      if (startIdx < 0) continue;
+
+      // Extract a small block after this attribute to find the img inside
+      const block = html.slice(startIdx, Math.min(html.length, startIdx + 3000));
+      
+      // Find img src/srcset in this block
+      const imgMatches = block.matchAll(/<img[^>]+>/gi);
+      for (const imgMatch of imgMatches) {
+        const tag = imgMatch[0] ?? '';
+        
+        const srcsetMatch = tag.match(/(?:data-srcset|srcset)=["']([^"']+)["']/i);
+        if (srcsetMatch) {
+          const largest = parseSrcsetLargest(decodeHtmlEntities(srcsetMatch[1] ?? ''));
+          const norm = largest ? normalizeUrl(largest, baseOrigin) : null;
+          if (norm) urls.push(norm);
+          continue; // prefer srcset over src
+        }
+        
+        const srcMatch = tag.match(/(?:data-src|src)=["']([^"']+)["']/i);
+        if (srcMatch) {
+          const norm = normalizeUrl(decodeHtmlEntities(srcMatch[1] ?? ''), baseOrigin);
+          if (norm) urls.push(norm);
+        }
+      }
+    }
+  }
+  
+  return [...new Set(urls)];
+}
+
+function parseGenericResolutionScore(url: string): number {
+  const wMatch = url.match(/[,/_]w_(\d+)/i) || url.match(/[-_](\d+)x/i) || url.match(/[-_](\d+)w/i) || url.match(/\/t(\d+)\//i);
+  if (wMatch) return Number(wMatch[1]);
+  
+  const dimsMatch = url.match(/[-_](\d+)Wx(\d+)H/i);
+  if (dimsMatch) return Number(dimsMatch[1]) * Number(dimsMatch[2]);
+  
+  return 0;
+}
+
+function isImageFileOrPath(url: string): boolean {
+  const lower = url.toLowerCase().split('?')[0] ?? '';
+  if (/\.(jpg|jpeg|png|webp|gif|svg|bmp)(?:\?|$)/i.test(lower)) return true;
+  if (
+    lower.includes('/images/') || 
+    lower.includes('/imagesgoods/') || 
+    lower.includes('/media/') || 
+    lower.includes('/upload/') ||
+    lower.includes('/medias/')
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function upgradeGenericResolution(url: string): string {
+  const lower = url.toLowerCase();
+  if (lower.includes('uniqlo.com') && lower.includes('width=')) {
+    return url.replace(/width=\d+/g, 'width=1000');
+  }
+  if (lower.includes('ajio.com') || lower.includes('sheinindia.in')) {
+    return url.replace(/\d+Wx\d+H/gi, '1000Wx1250H');
+  }
+  return url;
+}
+
+// Extract any images in the HTML whose URL contains the numeric product ID sequence
+function extractProductIdImagesFromHtml(html: string, originalUrl: string, baseOrigin: string): string[] {
+  const digitSequences = originalUrl.match(/\d{5,12}/g) || [];
+  if (digitSequences.length === 0) return [];
+
+  const urls: string[] = [];
+  for (const productId of digitSequences) {
+    if (productId === '2026' || productId === '2025') continue;
+    
+    // Avoid syntax errors with backticks inside RegExp pattern
+    const re = new RegExp('(?:https?:)?//[^\\s"\'>`]+' + productId + '[^\\s"\'>`]+', 'gi');
+    for (const match of html.matchAll(re)) {
+      const decoded = decodeHtmlEntities(match[0]);
+      const norm = normalizeUrl(decoded, baseOrigin);
+      if (norm && !looksLikeUnrelatedImage(norm) && isImageFileOrPath(norm)) {
+        urls.push(norm);
+      }
+    }
+  }
+  
+  return [...new Set(urls)];
+}
+
+function deduplicateImagesByKey(urls: string[]): string[] {
+  const bestByKey = new Map<string, { url: string; score: number; firstIndex: number }>();
+  urls.forEach((url, index) => {
+    const key = getBaseAssetKey(url);
+    const score = parseGenericResolutionScore(url);
+    const existing = bestByKey.get(key);
+    if (!existing) {
+      bestByKey.set(key, { url, score, firstIndex: index });
+      return;
+    }
+    if (score > existing.score) {
+      bestByKey.set(key, { url, score, firstIndex: existing.firstIndex });
+    }
+  });
+
+  return Array.from(bestByKey.values())
+    .sort((a, b) => a.firstIndex - b.firstIndex)
+    .map((entry) => entry.url);
+}
+
 // Core Generic Image Filter Function
 export function applyGenericImageFilter(
   html: string | undefined,
@@ -269,46 +422,65 @@ export function applyGenericImageFilter(
   // Clean raw LLM extracted images
   const cleanJsonImages = jsonImages
     .map(url => normalizeUrl(url, baseOrigin))
-    .filter((url): url is string => Boolean(url) && !looksLikeUnrelatedImage(url));
+    .filter((url): url is string => url !== null && !looksLikeUnrelatedImage(url))
+    .map(upgradeGenericResolution);
     
   if (!html) {
-    return cleanJsonImages;
+    return deduplicateImagesByKey(filterByUrlNumericId(cleanJsonImages, originalUrl));
   }
   
+  // Signal 0 (highest trust): Product-ID-tagged grid containers or any image URLs containing product-ID in HTML
+  const productIdGridImages = extractProductIdGridImages(html, originalUrl, baseOrigin)
+    .filter(url => !looksLikeUnrelatedImage(url));
+    
+  const productIdHtmlImages = extractProductIdImagesFromHtml(html, originalUrl, baseOrigin);
+  
+  const combinedIdImages = [...new Set([...productIdGridImages, ...productIdHtmlImages])]
+    .map(upgradeGenericResolution);
+
+  if (combinedIdImages.length > 0) {
+    const ordered = deduplicateImagesByKey(combinedIdImages);
+    if (ordered.length > 0) return ordered;
+  }
+
   // Extract trusted images from JSON-LD and OG tags
   const jsonLdImages = extractJsonLdProductImages(html)
     .map(url => normalizeUrl(url, baseOrigin))
-    .filter((url): url is string => Boolean(url) && !looksLikeUnrelatedImage(url));
+    .filter((url): url is string => url !== null && !looksLikeUnrelatedImage(url));
     
   const ogImages = extractOgImages(html)
     .map(url => normalizeUrl(url, baseOrigin))
-    .filter((url): url is string => Boolean(url) && !looksLikeUnrelatedImage(url));
+    .filter((url): url is string => url !== null && !looksLikeUnrelatedImage(url));
     
   const galleryImages = extractGenericGalleryImages(html, baseOrigin)
     .map(url => normalizeUrl(url, baseOrigin))
-    .filter((url): url is string => Boolean(url) && !looksLikeUnrelatedImage(url));
-    
-  const trustedImages = [...new Set([...jsonLdImages, ...ogImages, ...galleryImages])];
+    .filter((url): url is string => url !== null && !looksLikeUnrelatedImage(url));
+  
+  // If the LLM extracted a reasonable number of images (1-10) and the gallery
+  // returned a suspiciously large number (3x+ more), the gallery is likely polluted 
+  // with cross-sell/recommendation images. Trust the LLM output instead.
+  const llmCount = cleanJsonImages.length;
+  const galleryCount = galleryImages.length;
+  if (llmCount >= 1 && llmCount <= 10 && galleryCount > llmCount * 3) {
+    return deduplicateImagesByKey(cleanJsonImages);
+  }
+
+  const rawTrustedImages = [...new Set([...jsonLdImages, ...ogImages, ...galleryImages])];
+  const trustedImages = filterByUrlNumericId(rawTrustedImages, originalUrl);
   
   if (trustedImages.length === 0) {
-    // If no trusted images parsed, just return the filtered LLM images
-    return cleanJsonImages;
+    return deduplicateImagesByKey(filterByUrlNumericId(cleanJsonImages, originalUrl));
   }
   
-  // Use trusted images to filter cleanJsonImages.
-  // We want to keep jsonImages that match trusted images, or share the same base key (filename)
-  // or domain + subdirectory as a trusted image (to filter out other products).
+  // Use trusted images to filter the combined candidates.
   const trustedKeys = new Set(trustedImages.map(getBaseAssetKey));
   
-  const filtered = cleanJsonImages.filter(url => {
-    // Check direct URL match
+  const filtered = [...new Set([...cleanJsonImages, ...trustedImages])].filter(url => {
     if (trustedImages.includes(url)) return true;
     
-    // Check base asset key match (e.g. name of the image file matches)
     const key = getBaseAssetKey(url);
     if (trustedKeys.has(key)) return true;
     
-    // Check if the keys share a common prefix of at least 4 characters
     const hasBaseKeyPrefixMatch = Array.from(trustedKeys).some(tKey => {
       if (tKey.length >= 4 && (key.startsWith(tKey) || tKey.startsWith(key))) {
         return true;
@@ -321,10 +493,12 @@ export function applyGenericImageFilter(
   });
   
   if (filtered.length > 0) {
-    return filtered;
+    return deduplicateImagesByKey(filtered.map(upgradeGenericResolution));
   }
   
-  // If the filter would discard everything, fall back to trustedImages itself, 
-  // and if that is empty, fall back to cleanJsonImages
-  return trustedImages.length > 0 ? trustedImages : cleanJsonImages;
+  return deduplicateImagesByKey(
+    trustedImages.length > 0 
+      ? trustedImages.map(upgradeGenericResolution) 
+      : filterByUrlNumericId(cleanJsonImages, originalUrl)
+  );
 }
