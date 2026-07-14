@@ -28,10 +28,29 @@ def get_db_mode(output_dir: str) -> bool:
     return output_dir in _db_job_configs
 
 def ensure_local_file(path_or_url: str, output_dir: str) -> str:
-    """Helper to download file locally if it is a remote URL."""
+    """Helper to download file locally if it is a remote URL with SSRF protection."""
     if not path_or_url:
         return path_or_url
     if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
+        # Prevent SSRF: block loopback, link-local, and private IP subnets
+        from urllib.parse import urlparse
+        import socket
+        parsed_url = urlparse(path_or_url)
+        hostname = parsed_url.hostname
+        if hostname:
+            try:
+                ip = socket.gethostbyname(hostname)
+                if (ip.startswith("127.") or 
+                    ip.startswith("10.") or 
+                    ip.startswith("192.168.") or 
+                    ip.startswith("169.254.") or
+                    any(ip.startswith(f"172.{sub}.") for sub in range(16, 32))):
+                    raise ValueError(f"SSRF Prevention: Blocked connection to private IP address {ip}")
+            except Exception as e:
+                if "SSRF Prevention" in str(e):
+                    raise e
+                # Allow standard DNS resolution failure to propagate to urlretrieve
+
         filename = path_or_url.split("/")[-1]
         local_path = os.path.join(output_dir, filename)
         if not os.path.exists(local_path):

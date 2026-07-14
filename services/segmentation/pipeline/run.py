@@ -106,7 +106,6 @@ def main():
         clear_from_step(output_dir, args.restart_from)
         print_status(output_dir)
 
-    # 3. Execution
     if not args.image:
         print("Error: --image is required to run the pipeline.")
         sys.exit(1)
@@ -116,7 +115,7 @@ def main():
     print(f"[Pipeline] Output directory: {output_dir}")
     print(f"[Pipeline] Resolved initial category: {args.category}")
     
-    seg_job_id = str(uuid.uuid4())
+    seg_job_id = ""
     pipeline_job_id = str(uuid.uuid4())
     
     result = run_segmentation_pipeline(

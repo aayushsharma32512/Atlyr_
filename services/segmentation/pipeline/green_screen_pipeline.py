@@ -133,16 +133,19 @@ def run_green_screen_pipeline_e2e(
         fashn = FashnHumanParser()
         seg_map = fashn.predict(img_rgb)
 
-        # Resolve category
-        category = "top"
-        best_area = 0
-        for cat, class_ids in GARMENT_CLASSES_LOCAL.items():
-            mask = extract_class_mask(seg_map, class_ids)
-            area = mask.sum() // 255
-            if area > best_area:
-                best_area = area
-                category = cat
-        print(f"  Resolved category: {category}")
+        # Resolve category: use auto-resolution if not passed or invalid
+        if category not in GARMENT_CLASSES_LOCAL:
+            category = "top"
+            best_area = 0
+            for cat, class_ids in GARMENT_CLASSES_LOCAL.items():
+                mask = extract_class_mask(seg_map, class_ids)
+                area = mask.sum() // 255
+                if area > best_area:
+                    best_area = area
+                    category = cat
+            print(f"  Resolved category (auto): {category}")
+        else:
+            print(f"  Using supplied category: {category}")
 
         fashn_g_ids = FASHN_GARMENT_CLASSES.get(category, [3])
         coarse_garment_mask = extract_class_mask(seg_map, fashn_g_ids)

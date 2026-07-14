@@ -58,6 +58,7 @@ export function useIngestionV2Job(jobId: string | null) {
     const interval = setInterval(() => {
       const currentState = jobStateRef.current
       if (currentState && TERMINAL_STATES.has(currentState)) {
+        clearInterval(interval)
         return
       }
       load(jobId)

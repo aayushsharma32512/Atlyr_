@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type PgBoss from 'pg-boss';
 import { z } from 'zod';
-import { getJob, updateState } from '../../domain/job-catalog';
+import { getJob } from '../../domain/job-catalog';
 import { deleteArtifactsForSteps } from '../../domain/artifacts';
 import { hasTransition, HITL_STATES, TERMINAL_STATES } from '../../orchestration/state-machine';
 import { supabaseAdmin } from '../../db/supabase';

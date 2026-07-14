@@ -25,7 +25,7 @@ export function normalizeUrl(rawUrl: string, baseOrigin: string): string | null 
 export function decodeHtmlEntities(value: string): string {
   if (!value) return value;
   return value.replace(/&quot;|\\u0026quot;|&amp;|\\u0026amp;|\\u003d|\\u002f/g, (t) => {
-    if (t === '&quot;' || t === '\\u0026quot;') return '';
+    if (t === '&quot;' || t === '\\u0026quot;') return '"';
     if (t === '&amp;'  || t === '\\u0026amp;')  return '&';
     if (t === '\\u003d') return '=';
     if (t === '\\u002f') return '/';

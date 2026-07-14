@@ -23,6 +23,8 @@ To run the standalone segmentation pipeline (local CLI):
 python pipeline/run.py --image /path/to/input.png --output-dir /path/to/output_dir
 ```
 
+> **Supabase Environment Keys**: Running the pipeline locally requires connection to Supabase storage. Ensure you have `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` configured in your environment (or inside a `.env` file in the segmentation folder).
+
 ### Execution Stages
 
 1. **Garment Prior Filtering**: Uses the FASHN human parser to resolve the garment category and define a coarse garment area.

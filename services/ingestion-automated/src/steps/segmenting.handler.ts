@@ -54,15 +54,22 @@ export class SegmentingHandler implements StepHandler {
       throw new Error(`Failed to create segmentation job: ${segErr?.message ?? 'Unknown error'}`);
     }
 
-    // Resolve category
+    // Resolve category to match Modal segmentation model's expected labels
     let category = 'top';
     const prodType = (job.product_type ?? '').toLowerCase();
-    if (prodType.includes('bottom')) category = 'bottom';
-    else if (prodType.includes('dress')) category = 'dress';
+    if (prodType.includes('bottom') || prodType.includes('pants') || prodType.includes('trouser') || prodType.includes('jeans')) {
+      category = 'pants';
+    } else if (prodType.includes('skirt')) {
+      category = 'skirt';
+    } else if (prodType.includes('dress') || prodType.includes('jumpsuit')) {
+      category = 'dress';
+    } else if (prodType.includes('shoe') || prodType.includes('footwear') || prodType.includes('sneaker')) {
+      category = 'footwear';
+    }
 
     logger.info({ jobId: job_id, segJobId: segJob.seg_job_id, category }, 'triggering Modal segmentation endpoint');
 
-    // 4. Trigger Modal cloud GPU endpoint synchronously
+    // 4. Trigger Modal cloud GPU endpoint synchronously with a 3-minute timeout
     const modalUrl = process.env.MODAL_SEGMENTATION_URL || 'https://nahmahn--atlyr-segmentation-segment.modal.run';
     const triggerUrl = `${modalUrl}/?seg_job_id=${segJob.seg_job_id}&pipeline_job_id=${job_id}&category=${category}`;
 
@@ -71,6 +78,7 @@ export class SegmentingHandler implements StepHandler {
       headers: {
         'Content-Type': 'application/json',
       },
+      signal: AbortSignal.timeout(180_000) // 3-minute timeout for cold starts + GPU inference
     });
 
     if (!res.ok) {
