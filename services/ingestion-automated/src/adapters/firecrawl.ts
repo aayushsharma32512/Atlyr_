@@ -67,6 +67,9 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
   return withRetry(
     async () => {
       const formats: string[] = ['json', 'html'];
+      if (profile?.needsRawHtml) {
+        formats.push('rawHtml');
+      }
       const prompt = profile?.buildScrapePrompt ? `${PRODUCT_PROMPT}\n\n${profile.buildScrapePrompt(targetUrl)}` : PRODUCT_PROMPT;
       const actions = profile?.extraActions ?? [
         { type: 'wait', milliseconds: 1500 },
@@ -97,7 +100,9 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
       const payload = await resp.json() as Record<string, unknown>;
       const data = (payload['data'] ?? payload) as Record<string, unknown>;
       const json = (data['json'] ?? {}) as Record<string, unknown>;
-      const html = typeof data['html'] === 'string' ? data['html'] : undefined;
+      const html = profile?.needsRawHtml
+        ? (typeof data['rawHtml'] === 'string' ? data['rawHtml'] : undefined)
+        : (typeof data['html'] === 'string' ? data['html'] : undefined);
       const metadata = (data['metadata'] ?? {}) as Record<string, unknown>;
 
       const finalUrl = (metadata['sourceURL'] ?? metadata['sourceUrl'] ?? targetUrl) as string;
