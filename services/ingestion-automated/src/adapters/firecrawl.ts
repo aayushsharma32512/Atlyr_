@@ -3,6 +3,7 @@ import { withRetry } from '../utils/retry';
 import { selectProfile } from './sites/registry';
 import { isShopifySite, extractShopifyGenericImages } from './sites/shopify-generic';
 import { applyGenericImageFilter } from './sites/generic-filter';
+import { scrapeShopifyApi } from './sites/shopify';
 
 export interface FirecrawlProductResult {
   finalUrl: string;
@@ -22,7 +23,7 @@ const PRODUCT_PROMPT = `Extract product data from this product detail page. Retu
 - brand: brand/manufacturer name (string or null)
 - product_name: full product name (string or null)
 - description: product description text (string or null)
-- price: price as a number in the smallest currency unit e.g. paise for INR, cents for USD (number or null)
+- price: price as a number in standard units e.g. 4000 for INR, 19.99 for USD (number or null)
 - currency: ISO currency code e.g. INR, USD (string or null)
 - color: primary color description (string or null)
 - images: array of objects { url: string } containing ALL product gallery image URLs (front, back, side, detail views). Exclude recommendation sections, related products, ads, icons, and logos.`;
@@ -40,13 +41,41 @@ function extractJsonImages(images: unknown): string[] {
 }
 
 export async function scrapeProductPage(url: string): Promise<FirecrawlProductResult> {
+  // 1. Try Shopify API first (fast, reliable, and does not require Firecrawl API key)
+  const shopifyResult = await scrapeShopifyApi(url);
+  if (shopifyResult) {
+    return {
+      finalUrl: url,
+      siteProfile: 'shopify-api',
+      meta: {
+        brand:        shopifyResult.brand,
+        product_name: shopifyResult.product_name,
+        description:  shopifyResult.description,
+        price:        shopifyResult.price,
+        currency:     shopifyResult.currency,
+        color:        null
+      },
+      imageUrls: shopifyResult.imageUrls,
+    };
+  }
+
   if (!config.FIRECRAWL_API_KEY) throw new Error('FIRECRAWL_API_KEY is not set');
 
   const profile = selectProfile(url);
+  const targetUrl = profile?.transformUrl ? profile.transformUrl(url) : url;
 
   return withRetry(
     async () => {
       const formats: string[] = ['json', 'html'];
+      if (profile?.needsRawHtml) {
+        formats.push('rawHtml');
+      }
+      const prompt = profile?.buildScrapePrompt ? `${PRODUCT_PROMPT}\n\n${profile.buildScrapePrompt(targetUrl)}` : PRODUCT_PROMPT;
+      const actions = profile?.extraActions ?? [
+        { type: 'wait', milliseconds: 1500 },
+        { type: 'scroll', direction: 'down' },
+        { type: 'wait', milliseconds: 1000 },
+      ];
 
       const resp = await fetch('https://api.firecrawl.dev/v1/scrape', {
         method: 'POST',
@@ -55,14 +84,10 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          url,
+          url: targetUrl,
           formats,
-          jsonOptions: { prompt: PRODUCT_PROMPT },
-          actions: [
-            { type: 'wait', milliseconds: 1500 },
-            { type: 'scroll', direction: 'down' },
-            { type: 'wait', milliseconds: 1000 },
-          ],
+          jsonOptions: { prompt },
+          actions,
         }),
         signal: AbortSignal.timeout(120_000),
       });
@@ -75,20 +100,22 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
       const payload = await resp.json() as Record<string, unknown>;
       const data = (payload['data'] ?? payload) as Record<string, unknown>;
       const json = (data['json'] ?? {}) as Record<string, unknown>;
-      const html = typeof data['html'] === 'string' ? data['html'] : undefined;
+      const html = profile?.needsRawHtml
+        ? (typeof data['rawHtml'] === 'string' ? data['rawHtml'] : undefined)
+        : (typeof data['html'] === 'string' ? data['html'] : undefined);
       const metadata = (data['metadata'] ?? {}) as Record<string, unknown>;
 
-      const finalUrl = (metadata['sourceURL'] ?? metadata['sourceUrl'] ?? url) as string;
+      const finalUrl = (metadata['sourceURL'] ?? metadata['sourceUrl'] ?? targetUrl) as string;
       const jsonImages = extractJsonImages(json['images']);
 
       // Apply site-specific image filter; fall back to generic Shopify; then raw JSON images with generic filter.
       let imageUrls: string[];
       if (profile) {
-        imageUrls = profile.postProcess({ originalUrl: url, finalUrl, html, jsonImages });
+        imageUrls = profile.postProcess({ originalUrl: targetUrl, finalUrl, html, jsonImages });
       } else if (isShopifySite(jsonImages)) {
         imageUrls = extractShopifyGenericImages(jsonImages);
       } else {
-        imageUrls = applyGenericImageFilter(html, url, jsonImages);
+        imageUrls = applyGenericImageFilter(html, targetUrl, jsonImages);
       }
 
       if (imageUrls.length === 0 && jsonImages.length > 0) {
@@ -98,14 +125,24 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
 
       if (imageUrls.length === 0) throw new Error('No product images found on page');
 
+      const detectedProfile = profile?.id ?? (isShopifySite(jsonImages) ? 'shopify-generic' : null);
+
+      // Shopify structured data (JSON-LD, meta tags) always stores prices in
+      // subunits (cents/paise). VLMs read these and return the raw value despite
+      // prompt instructions. When we detect a Shopify page, divide by 100.
+      let price = (json['price'] as number | null) ?? null;
+      if (price != null && detectedProfile === 'shopify-generic') {
+        price = Math.round(price / 100);
+      }
+
       return {
         finalUrl,
-        siteProfile: profile?.id ?? (isShopifySite(jsonImages) ? 'shopify-generic' : null),
+        siteProfile: detectedProfile,
         meta: {
           brand:        (json['brand'] as string | null)        ?? null,
           product_name: (json['product_name'] as string | null) ?? null,
           description:  (json['description'] as string | null)  ?? null,
-          price:        (json['price'] as number | null)        ?? null,
+          price,
           currency:     (json['currency'] as string | null)     ?? null,
           color:        (json['color'] as string | null)        ?? null,
         },

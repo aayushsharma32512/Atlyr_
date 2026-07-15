@@ -39,7 +39,7 @@ export class ScrapingHandler implements StepHandler {
     logger.info({ jobId: job_id }, 'scraping product page');
 
     const result = await scrapeProductPage(product_url);
-    logger.info({ jobId: job_id, imageCount: result.imageUrls.length }, 'firecrawl done');
+    logger.info({ jobId: job_id, imageCount: result.imageUrls.length, siteProfile: result.siteProfile }, 'firecrawl done');
 
     // Download images and upload to storage
     let uploadedCount = 0;
