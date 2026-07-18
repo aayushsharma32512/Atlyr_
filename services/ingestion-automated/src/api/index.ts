@@ -6,6 +6,8 @@ import { registerSubmitRoute } from './routes/submit';
 import { registerStatusRoutes } from './routes/status';
 import { registerProceedRoute } from './routes/proceed';
 import { registerRestartRoute } from './routes/restart';
+import { registerRetagRoute } from './routes/retag';
+import { registerDetailsRoute } from './routes/details';
 
 function bearerAuth(req: { headers: Record<string, string | string[] | undefined> }, token: string): boolean {
   const header = req.headers['authorization'] ?? '';
@@ -17,7 +19,7 @@ export async function buildApp(boss: PgBoss) {
 
   await app.register(fastifyCors, {
     origin: true,
-    methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
@@ -34,6 +36,8 @@ export async function buildApp(boss: PgBoss) {
   await registerStatusRoutes(app);
   await registerProceedRoute(app, boss);
   await registerRestartRoute(app, boss);
+  await registerRetagRoute(app);
+  await registerDetailsRoute(app);
 
   return app;
 }

@@ -65,3 +65,37 @@ export async function deleteArtifactsForSteps(
 
   if (error) throw new Error(`deleteArtifactsForSteps failed: ${error.message}`);
 }
+
+// Everything above this line is insert-only (event-sourced) — this is the one exception,
+// used to layer a human retag verdict onto an existing image_classification row without
+// losing the original SigLIP verdict it sits next to. A `restart` from 'identifying' still
+// deletes the whole row via deleteArtifactsForSteps above, so overrides never survive a
+// full re-classification.
+export async function getArtifactByPublicUrl(
+  jobId: string,
+  artifactType: string,
+  publicUrl: string
+): Promise<PipelineStepArtifact | null> {
+  const { data, error } = await supabaseAdmin
+    .from('pipeline_step_artifacts')
+    .select('*')
+    .eq('job_id', jobId)
+    .eq('artifact_type', artifactType)
+    .eq('data->>public_url', publicUrl)
+    .maybeSingle();
+
+  if (error) throw new Error(`getArtifactByPublicUrl failed: ${error.message}`);
+  return data as PipelineStepArtifact | null;
+}
+
+export async function updateArtifactData(
+  artifactId: string,
+  data: Record<string, unknown>
+): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from('pipeline_step_artifacts')
+    .update({ data })
+    .eq('id', artifactId);
+
+  if (error) throw new Error(`updateArtifactData failed: ${error.message}`);
+}
