@@ -7,6 +7,7 @@ import { GarmentSummaryHandler } from '../steps/garment-summary.handler';
 import { VtonGenerationHandler } from '../steps/vton-generation.handler';
 import { SegmentingHandler } from '../steps/segmenting.handler';
 import { SegmentedHandler } from '../steps/segmented.handler';
+import { PlacementHandler } from '../steps/placement.handler';
 import { createLogger } from '../utils/logger';
 
 const logger = createLogger({ stage: 'dispatcher' });
@@ -19,6 +20,7 @@ const HANDLERS: Record<string, StepHandler> = {
   generating_vton:            new VtonGenerationHandler(),
   segmenting:                 new SegmentingHandler(),
   segmented:                  new SegmentedHandler(),
+  placement:                  new PlacementHandler(),
 };
 
 export async function dispatch(jobId: string): Promise<void> {
