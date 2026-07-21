@@ -38,6 +38,10 @@ image = (
         "hydra-core",
     )
     .pip_install("SAM-2 @ git+https://github.com/facebookresearch/sam2.git")
+    .run_commands(
+        "python -c 'import urllib.request, os; os.makedirs(\"/root/.cache/sam\", exist_ok=True); urllib.request.urlretrieve(\"https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_base_plus.pt\", \"/root/.cache/sam/sam2.1_hiera_base_plus.pt\")'",
+        "python -c 'from fashn_human_parser import FashnHumanParser; FashnHumanParser(device=\"cpu\")'",
+    )
     .add_local_dir(local_dir, remote_path="/root", ignore=get_ignore_list())
 )
 
