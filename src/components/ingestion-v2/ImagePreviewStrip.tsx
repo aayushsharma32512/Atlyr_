@@ -53,6 +53,7 @@ export function ImagePreviewStrip({ job, artifacts }: Props) {
   const rawImages = artifacts.filter(a => a.artifact_type === 'raw_image')
   const vtonSelection = artifacts.find(a => a.artifact_type === 'vton_image_selection')
   const vtonImage = artifacts.find(a => a.artifact_type === 'vton_image')
+  const placementArtifact = artifacts.find(a => a.artifact_type === 'placement')
 
   // raw_image: URL lives in data.public_url (storage_path is also valid but data.public_url is authoritative)
   const rawUrl = (rawImages[rawIndex]?.data?.public_url as string | undefined)
@@ -64,11 +65,14 @@ export function ImagePreviewStrip({ job, artifacts }: Props) {
     ?? null
   const vtonGenUrl = job.vton_image_url ?? (vtonImage?.data?.public_url as string | undefined) ?? null
   const segmentedUrl = job.segmented_image_url
+  const placedUrl = (placementArtifact?.data?.placedImageUrl as string | undefined)
+    ?? (placementArtifact?.data?.final_image_url as string | undefined)
+    ?? null
 
   return (
     <div>
       <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Output Preview</p>
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-5 gap-3">
 
         {/* Submitted */}
         <div className="flex flex-col gap-1.5">
@@ -116,7 +120,13 @@ export function ImagePreviewStrip({ job, artifacts }: Props) {
         <ImageSlot
           label="Segmented"
           url={segmentedUrl}
-          note={segmentedUrl ? 'Final output' : undefined}
+          note={segmentedUrl ? 'Garment Output' : undefined}
+        />
+
+        <ImageSlot
+          label="Final Placement"
+          url={placedUrl}
+          note={placementArtifact?.data?.selectedMannequin ? `${String(placementArtifact.data.selectedMannequin)} Mannequin` : (placedUrl ? 'Composited' : undefined)}
         />
       </div>
     </div>
