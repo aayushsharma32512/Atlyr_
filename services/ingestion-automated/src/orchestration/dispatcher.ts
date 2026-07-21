@@ -1,3 +1,4 @@
+import { TERMINAL_STATES } from '../orchestration/state-machine';
 import { getJob, markJobFailed } from '../domain/job-catalog';
 import type { StepHandler } from '../domain/types';
 import { PendingHandler } from '../steps/pending.handler';
@@ -25,6 +26,12 @@ const HANDLERS: Record<string, StepHandler> = {
 
 export async function dispatch(jobId: string): Promise<void> {
   const job = await getJob(jobId);
+
+  if (TERMINAL_STATES.includes(job.current_state as never)) {
+    logger.info({ jobId, state: job.current_state }, 'Job is in terminal state, skipping dispatch');
+    return;
+  }
+
   const handler = HANDLERS[job.current_state];
 
   if (!handler) {

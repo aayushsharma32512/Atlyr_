@@ -1,6 +1,6 @@
 import type { StepHandler, IngestionPipelineJob } from '../domain/types';
 import { saveArtifact } from '../domain/artifacts';
-import { advanceAndTrigger } from '../orchestration/advance-and-trigger';
+import { updateState } from '../domain/job-catalog';
 import { createLogger } from '../utils/logger';
 
 const logger = createLogger({ stage: 'placement' });
@@ -60,7 +60,6 @@ export class PlacementHandler implements StepHandler {
       },
     });
 
-    const updatedJob = { ...job, current_state: 'completed' as const };
-    await advanceAndTrigger(updatedJob);
+    await updateState(job_id, 'completed');
   }
 }

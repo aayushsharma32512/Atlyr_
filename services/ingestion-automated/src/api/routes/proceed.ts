@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type PgBoss from 'pg-boss';
 import { z } from 'zod';
+import type { PipelineState } from '../../domain/types';
 import { getJob, updateJob } from '../../domain/job-catalog';
 import { nextState, HITL_STATES } from '../../orchestration/state-machine';
 import { updateState } from '../../domain/job-catalog';
@@ -13,7 +14,7 @@ const ProceedBody = z.object({
   segmented_image_override: z.string().url().optional(),
 });
 
-const PROCEED_ALLOWED_STATES = ['awaiting_hitl_identification', 'awaiting_hitl_segmentation'];
+const PROCEED_ALLOWED_STATES = ['awaiting_hitl_identification', 'awaiting_hitl_segmentation', 'placement'];
 
 export async function registerProceedRoute(app: FastifyInstance, boss: PgBoss): Promise<void> {
   app.post('/jobs/:jobId/proceed', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -49,15 +50,21 @@ export async function registerProceedRoute(app: FastifyInstance, boss: PgBoss): 
     }
 
     const updatedJob = { ...job, ...updates };
-    const next = nextState(updatedJob);
-    await updateState(jobId, next);
 
-    // Only re-enqueue if next state is not another HITL pause
+    let next: PipelineState;
+    if (job.current_state === 'placement') {
+      next = 'placement';
+    } else {
+      next = nextState(updatedJob);
+      await updateState(jobId, next);
+    }
+
+    // Enqueue step execution if not paused on HITL
     if (!HITL_STATES.includes(next)) {
       await boss.send('run-pipeline-step', { jobId });
     }
 
-    logger.info({ jobId, from: job.current_state, to: next }, 'HITL proceed');
+    logger.info({ jobId, from: job.current_state, to: next }, 'HITL proceed / trigger');
     return reply.send({ job_id: jobId, previous_state: job.current_state, current_state: next });
   });
 }
