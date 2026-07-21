@@ -1,0 +1,16 @@
+assets/
+bulk_registration_output/
+demo/
+intern_pack_registration_output/
+resgistration_output/
+
+*.pdf
+*.rar
+*.zip
+generate_pdf_report.py
+run_bulk_test.py
+results/
+
+final_sam2_assets/
+asset_placement_results/
+.env
