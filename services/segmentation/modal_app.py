@@ -46,7 +46,7 @@ image = (
     gpu="L4",                                             # L4 is 27% cheaper and newer than A10G
     cpu=4.0,                                              # 4 CPU cores for fast parallel OpenCV inpainting
     image=image,
-    secrets=[modal.Secret.from_name("supabase-secrets")],  # Mounts the Supabase credentials securely
+    secrets=[modal.Secret.from_name("supabase-secret")],  # Mounts the Supabase credentials securely
     timeout=600,                                          # 10 minutes timeout limit
     scaledown_window=10,                                  # Spin down container after 10s idle (saves 50s of idle billing!)
 )

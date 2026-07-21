@@ -780,7 +780,7 @@ def punch_vneck_skin_final(
     garment_left   = int(xs.min())
     garment_right  = int(xs.max())
     garment_h      = garment_bottom - garment_top
-    neck_zone_bottom = garment_top + int(garment_h * 0.35)
+    neck_zone_bottom = garment_top + int(garment_h * 0.85)
 
     neck_zone = np.zeros((h, w), dtype=bool)
     neck_zone[garment_top:neck_zone_bottom,

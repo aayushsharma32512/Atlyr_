@@ -63,7 +63,10 @@ export class SegmentingHandler implements StepHandler {
     logger.info({ jobId: job_id, segJobId: segJob.seg_job_id, category }, 'triggering Modal segmentation endpoint');
 
     // 4. Trigger Modal cloud GPU endpoint synchronously
-    const modalUrl = process.env.MODAL_SEGMENTATION_URL || 'https://nahmahn--atlyr-segmentation-segment.modal.run';
+    const modalUrl = process.env.MODAL_SEGMENTATION_URL;
+    if (!modalUrl) {
+      throw new Error('MODAL_SEGMENTATION_URL is not set in environment variables');
+    }
     const triggerUrl = `${modalUrl}/?seg_job_id=${segJob.seg_job_id}&pipeline_job_id=${job_id}&category=${category}`;
 
     const res = await fetch(triggerUrl, {
@@ -87,8 +90,8 @@ export class SegmentingHandler implements StepHandler {
 
     // 5. Save the final segmentation artifact
     await saveArtifact({
-      jobId:        job_id,
-      stepName:     'segmenting',
+      jobId: job_id,
+      stepName: 'segmenting',
       artifactType: 'segmentation',
       data: {
         segmentedImageUrl: modalResult.final_image_url,
