@@ -98,12 +98,18 @@ export function JobStateControl({ job, onRefetch }: Props) {
         <Card className={job.current_state.includes('identification') ? 'border-amber-500/40' : 'border-blue-500/40'}>
           <CardHeader className="py-3 px-4">
             <CardTitle className="text-sm">
-              {job.current_state === 'awaiting_hitl_identification' ? '▶ HITL — Identification Review' : '▶ HITL — Segmentation Review'}
+              {job.current_state === 'awaiting_hitl_identification'
+                ? '▶ HITL — Identification Review'
+                : job.current_state === 'placement'
+                ? '▶ Placement — Ready to Run Garment Placement'
+                : '▶ HITL — Segmentation Review'}
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4 flex flex-col gap-3">
             <p className="text-xs text-muted-foreground">
-              Review the step outputs in the Step Details tab, then proceed or override.
+              {job.current_state === 'placement'
+                ? 'Segmentation is verified. Click below to trigger cloud GPU placement and composite the garment onto the mannequin avatar.'
+                : 'Review the step outputs in the Step Details tab, then proceed or override.'}
             </p>
 
             {job.current_state === 'awaiting_hitl_identification' && (
@@ -136,7 +142,7 @@ export function JobStateControl({ job, onRefetch }: Props) {
 
             <Button size="sm" onClick={handleProceed} disabled={loading}>
               {loading && <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" />}
-              Proceed to Next Step
+              {job.current_state === 'placement' ? 'Run Garment Placement' : 'Proceed to Next Step'}
             </Button>
           </CardContent>
         </Card>

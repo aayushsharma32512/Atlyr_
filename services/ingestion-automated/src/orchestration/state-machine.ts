@@ -3,7 +3,6 @@ import type { IngestionPipelineJob, PipelineState } from '../domain/types';
 export const HITL_STATES: PipelineState[] = [
   'awaiting_hitl_identification',
   'awaiting_hitl_segmentation',
-  'placement',
 ];
 
 export const TERMINAL_STATES: PipelineState[] = [

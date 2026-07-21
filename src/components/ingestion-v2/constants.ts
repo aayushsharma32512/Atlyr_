@@ -63,7 +63,7 @@ export const RESTARTABLE_STATES = [
   'generating_garment_summary',
   'generating_vton',
   'segmenting',
-  'segmented',
+  'placement',
 ] as const
 
 export const RESTARTABLE_STATE_LABELS: Record<string, string> = {
@@ -72,11 +72,12 @@ export const RESTARTABLE_STATE_LABELS: Record<string, string> = {
   generating_garment_summary: 'Garment Summary — re-run Gemini',
   generating_vton:            'VTon Generation — re-generate try-on image',
   segmenting:                 'Segmentation — re-run full segmentation pipeline',
-  segmented:                  'Segmented — re-write ingested_products row',
+  placement:                  'Placement — re-run garment placement pipeline',
 }
 
 // Step order used to determine impact of restart
 export const STEP_ORDER = [
   'scraping', 'identifying', 'generating_garment_summary',
-  'generating_vton', 'segmenting', 'segmented',
+  'generating_vton', 'segmenting', 'placement',
 ] as const
+

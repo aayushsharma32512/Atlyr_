@@ -53,17 +53,18 @@ export function StepDetailsAccordion({ job, artifacts }: Props) {
   const vtonSelection = firstByType('vton_image_selection')
   const garmentSummary = firstByType('garment_summary')
   const vtonImage = firstByType('vton_image')
+  const placementArtifact = firstByType('placement')
 
   const hasScraping = rawImages.length > 0
   const hasIdentification = classifications.length > 0
   const hasGarmentSummary = !!garmentSummary
   const hasVton = !!vtonImage || !!job.vton_image_url
   const hasSegmented = !!job.segmented_image_url
+  const hasPlacement = !!placementArtifact || job.current_state === 'completed'
 
   return (
     <div className="flex flex-col gap-2">
-
-      {/* Scraping */}
+      {/* Scraping, Identification, Garment Summary, VTon, Segmentation elements remain here... */}
       <AccordionItem title="Step 2 — Scraping" badge={<StepBadge done={hasScraping} />}>
         {rawImages.length > 0 ? (
           <>
@@ -109,7 +110,6 @@ export function StepDetailsAccordion({ job, artifacts }: Props) {
                 const category = c.data?.category as string | undefined
                 const stage2Winner = c.data?.stage2_winner as string | undefined
                 const uncertain = c.data?.uncertain as boolean | undefined
-                // v_ton_preferred_image is a public URL, compare against data.public_url
                 const isSelected = !!job.v_ton_preferred_image
                   && (c.data?.public_url as string | undefined) === job.v_ton_preferred_image
                 return (
@@ -194,6 +194,43 @@ export function StepDetailsAccordion({ job, artifacts }: Props) {
             {['segmenting', 'segmented'].includes(job.current_state) || job.current_state.includes('segmen')
               ? 'Segmentation in progress…'
               : 'Segmentation not started yet.'}
+          </p>
+        )}
+      </AccordionItem>
+
+      {/* Placement */}
+      <AccordionItem title="Step 7 — Placement" badge={<StepBadge done={hasPlacement} />}>
+        {hasPlacement || placementArtifact?.data ? (
+          <div className="flex gap-4 items-start">
+            {((placementArtifact?.data?.placedImageUrl as string) || (placementArtifact?.data?.final_image_url as string)) ? (
+              <img
+                src={(placementArtifact?.data?.placedImageUrl as string) || (placementArtifact?.data?.final_image_url as string)}
+                alt="placed garment"
+                className="h-36 w-auto rounded border border-border object-contain"
+              />
+            ) : null}
+            <div className="flex flex-col gap-1.5 text-xs">
+              {placementArtifact?.data?.selectedMannequin && (
+                <div>
+                  <span className="text-muted-foreground">Selected Mannequin: </span>
+                  <Badge variant="outline" className="text-[10px] text-primary">{String(placementArtifact.data.selectedMannequin)}</Badge>
+                </div>
+              )}
+              {((placementArtifact?.data?.placedImageUrl as string) || (placementArtifact?.data?.final_image_url as string)) && (
+                <div className="break-all">
+                  <span className="text-muted-foreground">Result URL: </span>
+                  <span className="text-muted-foreground/70 font-mono text-[10px]">
+                    {(placementArtifact?.data?.placedImageUrl as string) || (placementArtifact?.data?.final_image_url as string)}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            {job.current_state === 'placement'
+              ? 'Garment placement ready to run…'
+              : 'Placement not started yet.'}
           </p>
         )}
       </AccordionItem>
