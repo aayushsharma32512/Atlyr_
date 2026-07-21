@@ -16,7 +16,7 @@ const STEP_ORDER = [
   'generating_garment_summary',
   'generating_vton',
   'segmenting',
-  'segmented',
+  'placement',
 ] as const;
 
 type RestartableState = typeof STEP_ORDER[number];
