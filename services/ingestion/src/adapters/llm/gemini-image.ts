@@ -83,7 +83,7 @@ function createInlineImagePart(input: GeminiImageInput): Part {
 
 export async function generateGeminiImage(request: GeminiImageRequest): Promise<GeminiImageResponse> {
   const clientInstance = getClient();
-  const modelName = request.model ?? 'gemini-3-pro-image-preview';
+  const modelName = request.model ?? 'gemini-3-pro-image';
 
   // The SDK's `GenerationConfig` type lags behind the API surface for image models.
   // We pass the additional fields via a cast to keep TS strict elsewhere.
