@@ -84,8 +84,8 @@ export async function registerRestartRoute(app: FastifyInstance, boss: PgBoss): 
       await cleanSegmentationData(jobId);
     }
 
-    // If restarting before segmented, also clear the ingested_product link
-    if (fromIndex < STEP_ORDER.indexOf('segmented') && job.ingested_product_id) {
+    // If restarting before placement, also clear the ingested_product link
+    if (fromIndex < STEP_ORDER.indexOf('placement') && job.ingested_product_id) {
       await supabaseAdmin
         .from('ingestion_pipeline_jobs')
         .update({ ingested_product_id: null })

@@ -12,7 +12,7 @@ export const STATE_LABELS: Record<string, string> = {
   segmenting:                   'Segmenting',
   segmented:                    'Segmented',
   awaiting_hitl_segmentation:   'Review: Segmentation',
-  placement:                    'Awaiting Placement',
+  placement:                    'Placing',
   completed:                    'Completed',
   failed:                       'Failed',
   discarded:                    'Discarded',
