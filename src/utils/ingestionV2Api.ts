@@ -47,6 +47,31 @@ export interface StepArtifact {
   created_at: string
 }
 
+export type SlotKey = 'front_model' | 'front_flat' | 'back_model' | 'back_flat'
+export interface SlotPick { publicUrl: string; uncertain: boolean; manual: boolean }
+export type SlotMapResult = Record<SlotKey, SlotPick | null>
+
+export interface UpdateJobDetailsBody {
+  product_name?: string
+  brand?: string
+  price?: number
+  currency?: string
+  product_gender_type?: 'male' | 'female' | 'unisex'
+  product_type?: 'topwear' | 'bottomwear' | 'dress'
+  product_sub_type?: string
+  product_complexity?: string
+  // Drives which of the 4 VTON slots wins when nothing's been manually retagged — see
+  // pickPreferredSlot in services/ingestion-automated/src/adapters/siglip.ts. null = auto (model).
+  v_ton_image_preference?: { type: 'model' | 'flat_lay' } | null
+}
+
+export interface RetagPhotoBody {
+  image_url: string
+  // Omit view when type is 'Detail' — a macro/texture crop has no front/back of its own.
+  view?: 'Front' | 'Back' | 'Side'
+  type: 'Model' | 'Flat' | 'Detail'
+}
+
 export interface SubmitJobBody {
   product_url: string
   product_gender_type: 'male' | 'female' | 'unisex'
@@ -76,6 +101,18 @@ export const v2Api = {
 
   proceed: (jobId: string, body: { vton_image_override?: string; segmented_image_override?: string } = {}) =>
     call<{ job_id: string; current_state: string; previous_state: string }>(`/jobs/${jobId}/proceed`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateJobDetails: (jobId: string, body: UpdateJobDetailsBody) =>
+    call<{ job_id: string; updated: boolean }>(`/jobs/${jobId}/details`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  retagPhoto: (jobId: string, body: RetagPhotoBody) =>
+    call<{ job_id: string; slots: SlotMapResult; preferred_slot: SlotKey | null; public_url: string | null; changed: boolean }>(`/jobs/${jobId}/photos/retag`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),

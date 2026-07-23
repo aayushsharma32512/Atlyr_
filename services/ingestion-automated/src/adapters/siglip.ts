@@ -303,3 +303,95 @@ export function selectVtonImage(
 
   return classifications.find(c => c.stage1Winner !== 'Macro Detail') ?? classifications[0];
 }
+
+// ---------------------------------------------------------------------------
+// 4-slot selection (Front·Model, Front·Flat, Back·Model, Back·Flat) with HITL override
+// ---------------------------------------------------------------------------
+//
+// This sits alongside selectVtonImage above (kept as the fallback for jobs where no
+// image lands in any of the 4 named slots — e.g. only Side / Macro Detail shots exist).
+
+export type SlotKey = 'front_model' | 'front_flat' | 'back_model' | 'back_flat';
+export const SLOT_KEYS: SlotKey[] = ['front_model', 'front_flat', 'back_model', 'back_flat'];
+
+export interface SlotPick {
+  publicUrl: string;
+  uncertain: boolean;
+  manual: boolean;
+}
+
+export type SlotMapResult = Record<SlotKey, SlotPick | null>;
+
+// One row per image, using its *effective* verdict — the human override if one has been
+// applied (see image_classification.data.user_override), otherwise SigLIP's own winner.
+export interface ClassificationInput {
+  imageUrl: string;
+  stage1: string | null; // 'Flat Lay' | 'Live Model' | 'Macro Detail' | null
+  stage2: string | null; // 'Front' | 'Back' | 'Side' | null
+  score: number;         // the stage2 winning probability ("the back %") — ranks candidates within a bucket
+  uncertain: boolean;
+  manual: boolean;
+  overriddenAt: string | null; // ISO timestamp; set only when manual
+}
+
+// The stage2 probability of whatever stage2 actually won — e.g. "the back %" when
+// stage2Winner is 'Back'. 0 when there's nothing to rank (no stage2 axis, e.g. Macro Detail).
+export function winningScore(labels: string[] | null | undefined, probs: number[] | null | undefined, winner: string | null | undefined): number {
+  if (!labels || !probs || !winner) return 0;
+  const idx = labels.indexOf(winner);
+  return idx >= 0 ? probs[idx] : 0;
+}
+
+function slotKeyFor(stage1: string | null, stage2: string | null): SlotKey | null {
+  if (stage2 !== 'Front' && stage2 !== 'Back') return null; // Side / Macro Detail never fill a slot
+  if (stage1 === 'Live Model') return stage2 === 'Front' ? 'front_model' : 'back_model';
+  if (stage1 === 'Flat Lay')   return stage2 === 'Front' ? 'front_flat'  : 'back_flat';
+  return null;
+}
+
+// Manual always outranks auto. Between two manual tags on the same slot (someone changed
+// their mind about which photo is primary), the latest one wins. Between two auto
+// candidates, the one with the higher "winning %" wins — not just "confident vs not."
+function isBetter(candidate: ClassificationInput, existing: ClassificationInput): boolean {
+  if (candidate.manual !== existing.manual) return candidate.manual;
+  if (candidate.manual) return (candidate.overriddenAt ?? '') > (existing.overriddenAt ?? '');
+  return candidate.score > existing.score;
+}
+
+export function buildSlots(items: ClassificationInput[]): SlotMapResult {
+  const slots: SlotMapResult = { front_model: null, front_flat: null, back_model: null, back_flat: null };
+  const winners: Partial<Record<SlotKey, ClassificationInput>> = {};
+
+  for (const item of items) {
+    const key = slotKeyFor(item.stage1, item.stage2);
+    if (!key) continue;
+    const existing = winners[key];
+    if (!existing || isBetter(item, existing)) winners[key] = item;
+  }
+
+  for (const key of SLOT_KEYS) {
+    const w = winners[key];
+    slots[key] = w ? { publicUrl: w.imageUrl, uncertain: w.uncertain, manual: w.manual } : null;
+  }
+
+  return slots;
+}
+
+// No preference set → default to a model shot, not flat lay.
+const PREFERRED_ORDER: Record<string, SlotKey[]> = {
+  model:    ['front_model', 'back_model', 'front_flat', 'back_flat'],
+  flat_lay: ['front_flat', 'back_flat', 'front_model', 'back_model'],
+};
+
+export function pickPreferredSlot(slots: SlotMapResult, preferenceType: string | null | undefined): SlotKey | null {
+  const order = PREFERRED_ORDER[preferenceType ?? 'model'] ?? PREFERRED_ORDER.model;
+  for (const key of order) if (slots[key]) return key;
+  return null;
+}
+
+export const SLOT_LABEL: Record<SlotKey, string> = {
+  front_model: 'Front · Model',
+  front_flat:  'Front · Flat Lay',
+  back_model:  'Back · Model',
+  back_flat:   'Back · Flat Lay',
+};

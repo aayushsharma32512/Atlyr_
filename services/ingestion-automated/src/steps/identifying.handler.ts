@@ -2,7 +2,10 @@ import type { StepHandler, IngestionPipelineJob } from '../domain/types';
 import { getArtifacts, saveArtifact } from '../domain/artifacts';
 import { updateJob } from '../domain/job-catalog';
 import { advanceAndTrigger } from '../orchestration/advance-and-trigger';
-import { classifyImage, selectVtonImage } from '../adapters/siglip';
+import {
+  classifyImage, selectVtonImage, buildSlots, pickPreferredSlot, winningScore, SLOT_LABEL,
+  type ClassificationInput,
+} from '../adapters/siglip';
 import { createLogger } from '../utils/logger';
 
 const logger = createLogger({ stage: 'identifying' });
@@ -53,31 +56,49 @@ export class IdentificationHandler implements StepHandler {
 
     logger.info({ jobId: job_id, count: classifications.length }, 'classifications saved');
 
-    // Pick best VTON image
-    const selected = selectVtonImage(
-      classifications.map((c) => c.result),
-      job.v_ton_image_preference,
-    );
+    // Resolve the 4 named slots (Front·Model, Front·Flat, Back·Model, Back·Flat) and pick
+    // the preferred one per job.v_ton_image_preference (defaults to 'model' if unset).
+    const items: ClassificationInput[] = classifications.map(({ result }) => ({
+      imageUrl:  result.imageUrl,
+      stage1:    result.stage1Winner,
+      stage2:    result.stage2Winner,
+      score:     winningScore(result.stage2Labels, result.stage2Probs, result.stage2Winner),
+      uncertain: result.stage1Uncertain || result.stage2Uncertain,
+      manual:    false,
+      overriddenAt: null,
+    }));
+    const slots = buildSlots(items);
+    const preferredKey = pickPreferredSlot(slots, job.v_ton_image_preference?.type);
+    const preferred = preferredKey ? slots[preferredKey] : null;
 
-    if (!selected) throw new Error('Could not select a VTON image from classifications');
+    // Fallback for jobs where nothing landed in any of the 4 named slots (e.g. only
+    // Side / Macro Detail shots were scraped) — never leave a job without a pick.
+    const fallback = preferred ? null : selectVtonImage(classifications.map((c) => c.result), job.v_ton_image_preference);
+    const finalUrl = preferred?.publicUrl ?? fallback?.imageUrl ?? null;
+    if (!finalUrl) throw new Error('Could not select a VTON image from classifications');
 
     await saveArtifact({
       jobId:        job_id,
       stepName:     'identifying',
       artifactType: 'vton_image_selection',
       data: {
-        public_url: selected.imageUrl,
-        category:   selected.category,
-        stage1_uncertain: selected.stage1Uncertain,
-        stage2_uncertain: selected.stage2Uncertain,
+        // Kept at top level for backward-compat with existing readers (ImagePreviewStrip.tsx).
+        public_url: finalUrl,
+        category:   preferredKey ? SLOT_LABEL[preferredKey] : fallback?.category ?? null,
+        stage1_uncertain: preferred?.uncertain ?? fallback?.stage1Uncertain ?? false,
+        stage2_uncertain: false,
         source:     'auto',
+        // Full slot breakdown, so the dashboard can render/retag all 4 rather than just the winner.
+        slots,
+        preferred_slot: preferredKey,
+        preference_type: job.v_ton_image_preference?.type ?? null,
       },
     });
 
-    await updateJob(job_id, { v_ton_preferred_image: selected.imageUrl });
-    logger.info({ jobId: job_id, category: selected.category }, 'vton image selected');
+    await updateJob(job_id, { v_ton_preferred_image: finalUrl });
+    logger.info({ jobId: job_id, preferredKey }, 'vton image selected');
 
-    const updatedJob = { ...job, v_ton_preferred_image: selected.imageUrl };
+    const updatedJob = { ...job, v_ton_preferred_image: finalUrl };
     await advanceAndTrigger(updatedJob);
   }
 }
