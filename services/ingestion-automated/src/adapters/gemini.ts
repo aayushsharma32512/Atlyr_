@@ -1,6 +1,9 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { config } from '../config/index';
-import { withRetry } from '../utils/retry';
+import { withRetry, isTransientUpstreamError, errorHttpStatus } from '../utils/retry';
+import { createLogger } from '../utils/logger';
+
+const logger = createLogger({ stage: 'adapter:gemini' });
 
 // ─── Client ──────────────────────────────────────────────────────────────────
 
@@ -188,11 +191,12 @@ export interface GarmentSummary {
   color_and_fabric: string | null;
   complexity_level: 'simple' | 'complex';
   raw: string;
+  model_used: string;
 }
 
 // ─── Parser (ported from nodes.ts parseStage1) ───────────────────────────────
 
-function parseStage1(text: string): Omit<GarmentSummary, 'complexity_level'> {
+function parseStage1(text: string): Omit<GarmentSummary, 'complexity_level' | 'model_used'> {
   const techLines: string[] = [];
   const garmentLines: string[] = [];
   let item_name: string | null = null;
@@ -243,6 +247,11 @@ function deriveComplexity(parsed: ReturnType<typeof parseStage1>): 'simple' | 'c
 
 // ─── Main export ─────────────────────────────────────────────────────────────
 
+function textModelCandidates(): string[] {
+  const fallbacks = config.GEMINI_TEXT_MODEL_FALLBACKS.split(',').map((m) => m.trim()).filter(Boolean);
+  return [...new Set([config.GEMINI_TEXT_MODEL, ...fallbacks])];
+}
+
 export async function generateGarmentSummary(
   imageUrl: string,
   garmentCategory: 'topwear' | 'bottomwear' | 'dress',
@@ -252,27 +261,60 @@ export async function generateGarmentSummary(
   const promptText = promptBundle.prompt.replace('{PRODUCT_LINK}', productUrl);
 
   const client = getClient();
-  const model = client.getGenerativeModel({
-    model: config.GEMINI_TEXT_MODEL,
-    systemInstruction: promptBundle.system,
+  const inlineImage = await withRetry(() => fetchImageAsInlineData(imageUrl), {
+    retries: 3,
+    backoffMs: 1000,
   });
 
-  return withRetry(async () => {
-    const inlineImage = await fetchImageAsInlineData(imageUrl);
+  // A single Gemini model can be unavailable for hours (sustained 503 "high demand"),
+  // so after per-model retries are exhausted we move down the fallback chain.
+  const candidates = textModelCandidates();
+  let lastErr: unknown;
 
-    const result = await model.generateContent([
-      { text: promptText },
-      { inlineData: inlineImage },
-    ]);
+  for (const modelName of candidates) {
+    const model = client.getGenerativeModel({
+      model: modelName,
+      systemInstruction: promptBundle.system,
+    });
 
-    const text = result.response.text();
-    const parsed = parseStage1(text);
+    try {
+      return await withRetry(async () => {
+        const result = await model.generateContent([
+          { text: promptText },
+          { inlineData: inlineImage },
+        ]);
 
-    return {
-      ...parsed,
-      complexity_level: deriveComplexity(parsed),
-    };
-  }, { retries: 3, backoffMs: 1000 });
+        const text = result.response.text();
+        const parsed = parseStage1(text);
+
+        return {
+          ...parsed,
+          complexity_level: deriveComplexity(parsed),
+          model_used: modelName,
+        };
+      }, {
+        retries: 4,
+        backoffMs: 2000,
+        maxBackoffMs: 30_000,
+        shouldRetry: isTransientUpstreamError,
+        onRetry: (err, attempt, delayMs) =>
+          logger.warn({ model: modelName, attempt, delayMs, error: (err as Error).message }, 'garment summary call failed, retrying'),
+      });
+    } catch (err) {
+      lastErr = err;
+      const status = errorHttpStatus(err);
+      // Overload or a missing/retired model id — the next candidate may still work.
+      if (isTransientUpstreamError(err) || status === 404) {
+        logger.warn({ model: modelName, status, error: (err as Error).message }, 'model unavailable, trying next fallback');
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error(`All Gemini text models failed: ${candidates.join(', ')}`);
 }
 
 async function fetchImageAsInlineData(url: string): Promise<{ mimeType: string; data: string }> {

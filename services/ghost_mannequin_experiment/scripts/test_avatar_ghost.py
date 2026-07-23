@@ -67,7 +67,7 @@ except ImportError:
 # ── Defaults ──────────────────────────────────────────────────────────────────
 
 DEFAULT_TEXT_MODEL   = "gemini-3.1-pro-preview"
-DEFAULT_IMAGE_MODEL  = "gemini-3-pro-image-preview"
+DEFAULT_IMAGE_MODEL  = "gemini-3-pro-image"
 DEFAULT_BUCKET       = "ingested_inventory"
 
 # Matches MANNEQUIN_ASSETS in ghostPrompts.ts

@@ -2,7 +2,6 @@ import type { StepHandler, IngestionPipelineJob } from '../domain/types';
 import { getLatestArtifact, saveArtifact } from '../domain/artifacts';
 import { advanceAndTrigger } from '../orchestration/advance-and-trigger';
 import { generateGarmentSummary, GHOST_PROMPT_VERSION } from '../adapters/gemini';
-import { config } from '../config/index';
 import { createLogger } from '../utils/logger';
 
 const logger = createLogger({ stage: 'garment-summary' });
@@ -50,7 +49,7 @@ export class GarmentSummaryHandler implements StepHandler {
         color_and_fabric: summary.color_and_fabric,
         complexity_level: summary.complexity_level,
         raw:              summary.raw,
-        model:            config.GEMINI_TEXT_MODEL,
+        model:            summary.model_used,
         prompt_version:   GHOST_PROMPT_VERSION,
       },
     });

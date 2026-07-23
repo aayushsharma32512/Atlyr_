@@ -20,7 +20,9 @@ const EnvSchema = z.object({
 
   GOOGLE_API_KEY: optStr,
   GEMINI_TEXT_MODEL: z.string().default('gemini-3.5-flash'),
-  GEMINI_IMAGE_MODEL: z.string().default('gemini-3-pro-image-preview'),
+  // Comma-separated models tried in order when the primary is unavailable (503/404).
+  GEMINI_TEXT_MODEL_FALLBACKS: z.string().default('gemini-3.6-flash,gemini-flash-latest'),
+  GEMINI_IMAGE_MODEL: z.string().default('gemini-3-pro-image'),
   SIGLIP_ENDPOINT: optUrl,
   SIGLIP_API_KEY: optStr,
 

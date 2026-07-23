@@ -161,3 +161,7 @@ frontendissue.md
 # Services node_modules
 services/ingestion/node_modules/
 services/ingestion/.env
+
+# Assets
+services/ingestion-automated/assets/old-gemini-avatar-female.png
+services/ingestion-automated/assets/old-gemini-avatar-male.png
