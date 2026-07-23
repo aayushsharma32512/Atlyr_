@@ -1,4 +1,11 @@
-import { Annotation, StateGraph, START, END, typedNode, Command, isGraphInterrupt } from '@langchain/langgraph';
+import { Annotation, StateGraph, START, END, Command, isGraphInterrupt } from '@langchain/langgraph';
+
+// `typedNode` is not exported by published @langchain/langgraph builds — it was only a
+// type-inference helper. Runtime behavior is identity: keep the node fn, keep the types.
+const typedNode =
+  <A extends { State: unknown; Update: unknown }>(_annotation: A) =>
+  <F extends (state: A['State'], config?: unknown) => Promise<A['Update']> | A['Update']>(fn: F): F =>
+    fn;
 import type { PipelineState } from '../domain/state';
 import { mergePipelineState } from '../domain/merge-pipeline-state';
 import {
