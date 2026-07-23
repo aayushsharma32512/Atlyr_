@@ -231,6 +231,7 @@ class SamV2Adapter:
             output_path=sam_output_path,
             metadata={
                 "category": category,
+                "is_green_screen": bool(is_green_screen),
                 "exclusion_mask_path": fashn_out["mask_path"],
                 "foreground_mask_path": foreground_mask_path,
                 "color_skin_mask_path": color_skin_mask_path,

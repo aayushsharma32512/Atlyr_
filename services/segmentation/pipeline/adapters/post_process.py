@@ -38,8 +38,12 @@ class FashnSegRefineAdapter:
         color_skin_mask = cv2.imread(sam_v2_out["metadata"]["color_skin_mask_path"], cv2.IMREAD_GRAYSCALE)
         parser_skin_mask = cv2.imread(sam_v2_out["metadata"]["parser_skin_mask_path"], cv2.IMREAD_GRAYSCALE)
         
-        # 1. Gate SAM2 result with chroma key foreground mask
-        sam2_only_alpha = cv2.bitwise_and(sam_mask, foreground_mask)
+        # 1. Gate SAM2 result with chroma key foreground mask ONLY if green screen input
+        is_green_screen = sam_v2_out["metadata"].get("is_green_screen", False)
+        if is_green_screen:
+            sam2_only_alpha = cv2.bitwise_and(sam_mask, foreground_mask)
+        else:
+            sam2_only_alpha = sam_mask.copy()
 
         # 2. Head/neck guided skin subtraction (neck collar punch)
         fashn_out = step_input.prior_results["fashn_seg"]
