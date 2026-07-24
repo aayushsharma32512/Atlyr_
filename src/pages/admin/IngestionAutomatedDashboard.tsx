@@ -12,6 +12,7 @@ import { ItemDetailPage } from '@/components/ingestion-automated/ItemDetailPage'
 import { AddItemDialog } from '@/components/ingestion-automated/AddItemDialog'
 import { PlacementEditorDialog } from '@/components/ingestion-automated/PlacementEditorDialog'
 import { PhotoViewerDialog, type ViewerImage } from '@/components/ingestion-automated/PhotoViewerDialog'
+import { SegmentEraserDialog } from '@/components/ingestion-automated/SegmentEraserDialog'
 import { ErrorAttentionDialog } from '@/components/ingestion-automated/ErrorAttentionDialog'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -20,6 +21,7 @@ export default function IngestionAutomatedDashboard() {
   const [detailJobId, setDetailJobId] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [placementJobId, setPlacementJobId] = useState<string | null>(null)
+  const [eraserJobId, setEraserJobId] = useState<string | null>(null)
   const [errorJobId, setErrorJobId] = useState<string | null>(null)
   const [viewer, setViewer] = useState<{ images: ViewerImage[]; index: number; open: boolean }>({ images: [], index: 0, open: false })
 
@@ -29,6 +31,7 @@ export default function IngestionAutomatedDashboard() {
   const { products: productMeta, refetch: refetchProduct } = useProductMeta(queue.paged.map(p => p.job))
   const garmentSummaries = useGarmentSummary(queue.paged.map(p => p.job))
   const placementJob = queue.jobs.find(j => j.job_id === placementJobId) ?? null
+  const eraserJob = queue.jobs.find(j => j.job_id === eraserJobId) ?? null
   const errorJob = queue.jobs.find(j => j.job_id === errorJobId) ?? null
 
   return (
@@ -70,6 +73,7 @@ export default function IngestionAutomatedDashboard() {
                   onOpenError={setErrorJobId}
                   onOpenPlacement={setPlacementJobId}
                   onOpenViewer={(images, index) => setViewer({ images, index, open: true })}
+                  onOpenEraser={setEraserJobId}
                   refetch={queue.refetch}
                   refetchSelection={refetchSelection}
                   refetchTags={refetchTags}
@@ -94,6 +98,13 @@ export default function IngestionAutomatedDashboard() {
         job={placementJob}
         open={placementJobId !== null}
         onOpenChange={(o) => !o && setPlacementJobId(null)}
+      />
+
+      <SegmentEraserDialog
+        job={eraserJob}
+        open={eraserJobId !== null}
+        onOpenChange={(o) => !o && setEraserJobId(null)}
+        onSaved={queue.refetch}
       />
 
       <ErrorAttentionDialog
