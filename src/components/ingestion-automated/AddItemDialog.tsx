@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
-import { v2Api, type SubmitJobBody } from '@/utils/ingestionV2Api'
+import { v2Api, DuplicateJobError, type SubmitJobBody } from '@/utils/ingestionV2Api'
 import { useNotWiredDialog } from './NotWiredDialog'
 
 const EMPTY: SubmitJobBody = {
@@ -28,9 +28,10 @@ type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: (jobId: string) => void
+  onDuplicate: (existingJobId: string) => void
 }
 
-export function AddItemDialog({ open, onOpenChange, onSuccess }: Props) {
+export function AddItemDialog({ open, onOpenChange, onSuccess, onDuplicate }: Props) {
   const [form, setForm] = useState<SubmitJobBody>(EMPTY)
   const [loading, setLoading] = useState(false)
   const { toast } = useToast()
@@ -50,7 +51,16 @@ export function AddItemDialog({ open, onOpenChange, onSuccess }: Props) {
       onOpenChange(false)
       onSuccess(res.job_id)
     } catch (e) {
-      toast({ title: 'Submit failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' })
+      if (e instanceof DuplicateJobError) {
+        const desc = e.kind === 'already_ingested'
+          ? `Already ingested${e.productId ? ` as product ${e.productId}` : ''} — highlighting the original`
+          : 'A job for this URL is already running — highlighting it'
+        toast({ title: e.kind === 'already_ingested' ? 'Already ingested' : 'Already in queue', description: desc })
+        onOpenChange(false)
+        if (e.existingJobId) onDuplicate(e.existingJobId)
+      } else {
+        toast({ title: 'Submit failed', description: e instanceof Error ? e.message : 'Unknown error', variant: 'destructive' })
+      }
     } finally {
       setLoading(false)
     }

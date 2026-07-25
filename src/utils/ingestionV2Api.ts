@@ -13,6 +13,21 @@ async function call<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as T
 }
 
+// Thrown by v2Api.submit when the URL is a duplicate (409). Carries the original job/product so
+// the dashboard can point at and highlight the earlier ingestion.
+export class DuplicateJobError extends Error {
+  kind: 'already_active' | 'already_ingested'
+  existingJobId: string | null
+  productId: string | null
+  constructor(kind: 'already_active' | 'already_ingested', message: string, existingJobId: string | null, productId: string | null) {
+    super(message)
+    this.name = 'DuplicateJobError'
+    this.kind = kind
+    this.existingJobId = existingJobId
+    this.productId = productId
+  }
+}
+
 export interface PipelineJob {
   job_id: string
   product_url: string
@@ -72,6 +87,14 @@ export interface RetagPhotoBody {
   type: 'Model' | 'Flat' | 'Detail'
 }
 
+export interface SavePlacementBody {
+  /** Flattened 1800x3072 composite from the mesh editor, base64 without the data: prefix. */
+  image_base64: string
+  transform: { scale: number; rotationDeg: number; tx: number; ty: number }
+  /** Warp lattice offsets in garment geometry space, so the edit stays re-openable. */
+  warp: { x: number; y: number }[]
+}
+
 export interface SubmitJobBody {
   product_url: string
   product_gender_type: 'male' | 'female' | 'unisex'
@@ -90,8 +113,30 @@ export const v2Api = {
   getJob: (jobId: string) =>
     call<PipelineJob>(`/jobs/${jobId}`),
 
-  submit: (body: SubmitJobBody) =>
-    call<{ job_id: string }>('/jobs', { method: 'POST', body: JSON.stringify(body) }),
+  submit: async (body: SubmitJobBody): Promise<{ job_id: string }> => {
+    const res = await fetch(`${BASE}/jobs`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (res.status === 409) {
+      const b = await res.json().catch(() => ({})) as { error?: string; message?: string; existing_job_id?: string; product_id?: string }
+      throw new DuplicateJobError(
+        b.error === 'already_active' ? 'already_active' : 'already_ingested',
+        b.message ?? 'Duplicate URL',
+        b.existing_job_id ?? null,
+        b.product_id ?? null,
+      )
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => `HTTP ${res.status}`)
+      throw new Error(text || `HTTP ${res.status}`)
+    }
+    return res.json() as Promise<{ job_id: string }>
+  },
+
+  deleteJob: (jobId: string) =>
+    call<{ job_id: string; deleted: boolean }>(`/jobs/${jobId}`, { method: 'DELETE' }),
 
   restart: (jobId: string, from_state: string) =>
     call<{ job_id: string; restarted_from: string; previous_state: string }>(`/jobs/${jobId}/restart`, {
@@ -109,6 +154,20 @@ export const v2Api = {
     call<{ job_id: string; updated: boolean }>(`/jobs/${jobId}/details`, {
       method: 'PATCH',
       body: JSON.stringify(body),
+    }),
+
+  savePlacement: (jobId: string, body: SavePlacementBody) =>
+    call<{ job_id: string; placed_image_url: string }>(`/jobs/${jobId}/placement`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  publish: (jobId: string) =>
+    call<{ job_id: string; product_id: string; live: boolean }>(`/jobs/${jobId}/publish`, {
+      method: 'POST',
+      // call() always sends Content-Type: application/json, so a body is required or Fastify
+      // rejects it with FST_ERR_CTP_EMPTY_JSON_BODY.
+      body: JSON.stringify({}),
     }),
 
   retagPhoto: (jobId: string, body: RetagPhotoBody) =>

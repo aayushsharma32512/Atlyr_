@@ -10,14 +10,16 @@ export type ProductMeta = {
 }
 
 // crawl_meta is written once by the scraping step (services/ingestion-automated/src/steps/
-// scraping.handler.ts) — same batch-in-one-query pattern as useSourceImages. Explicit
-// refetch() because PATCH /jobs/:jobId/details only touches crawl_meta for name/brand/price
-// edits — it doesn't necessarily bump the job row's updated_at.
+// scraping.handler.ts) — same batch-in-one-query pattern as useSourceImages. The key includes
+// updated_at so we refetch when a job advances (e.g. the scrape completing and writing
+// crawl_meta after the row first appeared) — keying on job_id alone left the fields stale at
+// "—" until a hard reload. The explicit refetch() additionally covers PATCH /jobs/:jobId/details
+// name/brand/price edits, which don't necessarily bump the job row's updated_at.
 export function useProductMeta(jobs: PipelineJob[]): { products: Record<string, ProductMeta>; refetch: () => void } {
   const [map, setMap] = useState<Record<string, ProductMeta>>({})
   const [nonce, setNonce] = useState(0)
   const ids = jobs.map(j => j.job_id)
-  const key = ids.join(',')
+  const key = jobs.map(j => `${j.job_id}:${j.updated_at}`).join(',')
 
   const load = useCallback(async () => {
     if (ids.length === 0) { setMap({}); return }
