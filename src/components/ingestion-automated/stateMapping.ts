@@ -62,7 +62,7 @@ export function attentionNote(job: PipelineJob): string | null {
     case 'awaiting_hitl_segmentation':
       return 'Needs review — confirm segmented image before placement'
     case 'placement':
-      return 'Awaiting placement — no live endpoint yet, use the placement editor preview'
+      return 'Awaiting placement — ↻ Place to auto-place, or open the editor to place manually'
     default:
       return null
   }
