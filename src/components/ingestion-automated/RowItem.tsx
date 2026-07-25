@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { format } from 'date-fns'
 import {
   ExternalLink, Info, RefreshCcw, ArrowUpRight, Trash2, ChevronLeft, ChevronRight, Loader2,
@@ -71,12 +71,17 @@ type Props = {
   sourceImages: string[]
   product: ProductMeta | undefined
   refetchProduct: () => void
+  placementImage: string | undefined
   garmentSummary: GarmentSummaryData | undefined
   selected: boolean
   onToggleSelect: (jobId: string) => void
   onOpenDetail: (jobId: string) => void
   onOpenError: (jobId: string) => void
   onOpenPlacement: (jobId: string) => void
+  onOpenMesh: (jobId: string) => void
+  catalogStatus: 'live' | 'staged' | undefined
+  onPublished: () => void
+  highlighted?: boolean
   onOpenViewer: (images: ViewerImage[], index: number) => void
   onOpenEraser: (jobId: string) => void
   refetch: () => void
@@ -85,11 +90,17 @@ type Props = {
 }
 
 export function RowItem({
-  job, stage, tags, selection, sourceImages, product, refetchProduct, garmentSummary, selected, onToggleSelect, onOpenDetail, onOpenError, onOpenPlacement, onOpenViewer, onOpenEraser, refetch, refetchSelection, refetchTags,
+  job, stage, tags, selection, sourceImages, product, refetchProduct, placementImage, garmentSummary, selected, onToggleSelect, onOpenDetail, onOpenError, onOpenPlacement, onOpenMesh, catalogStatus, onPublished, highlighted, onOpenViewer, onOpenEraser, refetch, refetchSelection, refetchTags,
 }: Props) {
   const [expanded, setExpanded] = useState(false)
   const [packOpen, setPackOpen] = useState(false)
   const [srcIdx, setSrcIdx] = useState(0)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  // When flagged as the highlight target (e.g. the original of a duplicate submit), scroll to it.
+  useEffect(() => {
+    if (highlighted) rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [highlighted])
   const [busy, setBusy] = useState<string | null>(null)
   const [retagging, setRetagging] = useState(false)
   const [draftView, setDraftView] = useState<View>('Front')
@@ -107,7 +118,7 @@ export function RowItem({
   const [updatingDetails, setUpdatingDetails] = useState(false)
 
   const { toast } = useToast()
-  const { notify, dialog } = useNotWiredDialog()
+  const { dialog } = useNotWiredDialog()
 
   // Re-sync drafts whenever the underlying data changes (initial load, or after a
   // successful Update Details refetch) — but not on every keystroke.
@@ -190,6 +201,32 @@ export function RowItem({
     } catch (e) {
       toast({ title: 'Push failed', description: e instanceof Error ? e.message : undefined, variant: 'destructive' })
     } finally {
+      setBusy(null)
+    }
+  }
+
+  const runPublish = async () => {
+    setBusy('publish')
+    try {
+      await v2Api.publish(job.job_id)
+      toast({ title: 'Published to catalog', description: 'Product is now live' })
+      onPublished()
+    } catch (e) {
+      toast({ title: 'Publish failed', description: e instanceof Error ? e.message : undefined, variant: 'destructive' })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const runDelete = async () => {
+    if (!window.confirm('Delete this job and all its data (images, artifacts, and any catalog entry)? This cannot be undone.')) return
+    setBusy('delete')
+    try {
+      await v2Api.deleteJob(job.job_id)
+      toast({ title: 'Job deleted' })
+      refetch()
+    } catch (e) {
+      toast({ title: 'Delete failed', description: e instanceof Error ? e.message : undefined, variant: 'destructive' })
       setBusy(null)
     }
   }
@@ -281,10 +318,16 @@ export function RowItem({
 
   return (
     <div
+      ref={rootRef}
       className={cn(
-        'flex items-stretch rounded-[10px] border-[1.5px] bg-card py-2.5 pl-1.5 pr-2.5 transition-opacity',
+        'flex items-stretch rounded-[10px] border-[1.5px] bg-card py-2.5 pl-1.5 pr-2.5 transition-colors',
         ROW_TONE[rowState],
-        pushed && 'opacity-60 border-border bg-muted/30'
+        highlighted && 'ring-2 ring-amber-400 ring-offset-2 ring-offset-background',
+        // Finished states: green tint instead of a washed-out dim. Live-in-catalog is deeper than
+        // merely-completed; discarded/cancelled stay muted grey.
+        catalogStatus === 'live' && 'border-emerald-500/60 bg-emerald-500/10',
+        catalogStatus !== 'live' && job.current_state === 'completed' && 'border-emerald-500/30 bg-emerald-500/[0.05]',
+        (job.current_state === 'discarded' || job.current_state === 'cancelled') && 'opacity-60 border-border bg-muted/30'
       )}
     >
       {/* Left rail — delete pinned at the bottom, like the handoff */}
@@ -312,8 +355,8 @@ export function RowItem({
         >
           <ArrowUpRight className="h-3.5 w-3.5" />
         </button>
-        <button onClick={() => notify('Delete job')} title="Delete" className="text-muted-foreground hover:text-destructive">
-          <Trash2 className="h-3.5 w-3.5" />
+        <button onClick={runDelete} disabled={busy !== null} title="Delete job" className="text-muted-foreground hover:text-destructive disabled:opacity-30">
+          {busy === 'delete' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
         </button>
       </div>
 
@@ -448,6 +491,24 @@ export function RowItem({
                 : job.current_state === 'placement' ? 'Place →'
                 : 'Push →'}
             </Button>
+            {job.current_state === 'completed' && (
+              catalogStatus === 'live' ? (
+                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10.5px] font-semibold text-emerald-600 dark:text-emerald-400">
+                  ✓ Live
+                </span>
+              ) : (
+                <Button
+                  size="sm"
+                  className="h-6 px-2.5 text-[10.5px] font-semibold"
+                  disabled={busy !== null}
+                  onClick={runPublish}
+                  title="Publish this item to the live products catalog"
+                >
+                  {busy === 'publish' && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+                  Go Live →
+                </Button>
+              )
+            )}
           </div>
         </div>
       </div>
@@ -607,12 +668,17 @@ export function RowItem({
                 { icon: <Eraser className="h-3 w-3" />, label: 'AI eraser', onClick: () => onOpenEraser(job.job_id) },
               ] : undefined}
             />
-            <PhotoCard
-              label="Placed"
-              state="empty"
-              note={job.current_state === 'placement' ? 'Use placement editor' : pushed ? 'Pushed to catalog' : 'Waiting on Sgmtd'}
-              size="xl"
-            />
+            {/* ml-auto parks the final output hard right, away from the intermediate steps */}
+            <div className="ml-auto shrink-0">
+              <PhotoCard
+                label="Placed"
+                state={placementImage ? 'available' : rowState === 'processing' ? 'processing' : 'empty'}
+                url={placementImage}
+                note={placementImage ? undefined : job.current_state === 'placement' ? 'Use placement editor' : pushed ? 'Pushed to catalog' : 'Waiting on Sgmtd'}
+                size="xl"
+                onExpand={job.segmented_image_url ? () => onOpenMesh(job.job_id) : undefined}
+              />
+            </div>
           </>
         )}
       </div>

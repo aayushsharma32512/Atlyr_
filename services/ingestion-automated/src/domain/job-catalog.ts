@@ -60,6 +60,23 @@ export async function findJobByDedupeKey(
   return data as IngestionPipelineJob | null;
 }
 
+// Most recent job for a dedupe key regardless of state — used to detect a URL that was already
+// fully ingested (a completed job), so re-submitting it is blocked and linked to the original.
+export async function findLatestJobByDedupeKey(
+  key: string
+): Promise<IngestionPipelineJob | null> {
+  const { data, error } = await supabaseAdmin
+    .from('ingestion_pipeline_jobs')
+    .select('*')
+    .eq('dedupe_key', key)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(`findLatestJobByDedupeKey failed: ${error.message ?? error.code ?? JSON.stringify(error)}`);
+  return data as IngestionPipelineJob | null;
+}
+
 export async function markJobFailed(
   jobId: string,
   errorMsg: string,

@@ -5,12 +5,14 @@ import { useImageClassification } from '@/components/ingestion-automated/useImag
 import { useVtonSelection } from '@/components/ingestion-automated/useVtonSelection'
 import { useSourceImages } from '@/components/ingestion-automated/useSourceImages'
 import { useProductMeta } from '@/components/ingestion-automated/useProductMeta'
+import { usePlacementImage } from '@/components/ingestion-automated/usePlacementImage'
+import { useCatalogStatus } from '@/components/ingestion-automated/useCatalogStatus'
 import { useGarmentSummary } from '@/components/ingestion-automated/useGarmentSummary'
 import { QueueSidebar } from '@/components/ingestion-automated/QueueSidebar'
 import { RowItem } from '@/components/ingestion-automated/RowItem'
 import { ItemDetailPage } from '@/components/ingestion-automated/ItemDetailPage'
 import { AddItemDialog } from '@/components/ingestion-automated/AddItemDialog'
-import { PlacementEditorDialog } from '@/components/ingestion-automated/PlacementEditorDialog'
+import { PlacementMeshEditor } from '@/components/ingestion-automated/PlacementMeshEditor'
 import { PhotoViewerDialog, type ViewerImage } from '@/components/ingestion-automated/PhotoViewerDialog'
 import { SegmentEraserDialog } from '@/components/ingestion-automated/SegmentEraserDialog'
 import { ErrorAttentionDialog } from '@/components/ingestion-automated/ErrorAttentionDialog'
@@ -20,19 +22,27 @@ export default function IngestionAutomatedDashboard() {
   const queue = useQueueState()
   const [detailJobId, setDetailJobId] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
-  const [placementJobId, setPlacementJobId] = useState<string | null>(null)
   const [eraserJobId, setEraserJobId] = useState<string | null>(null)
+  const [meshJobId, setMeshJobId] = useState<string | null>(null)
   const [errorJobId, setErrorJobId] = useState<string | null>(null)
+  const [highlightJobId, setHighlightJobId] = useState<string | null>(null)
   const [viewer, setViewer] = useState<{ images: ViewerImage[]; index: number; open: boolean }>({ images: [], index: 0, open: false })
 
   const { tags: classifications, refetch: refetchTags } = useImageClassification(queue.paged.map(p => p.job))
   const { selections, refetch: refetchSelection } = useVtonSelection(queue.paged.map(p => p.job))
   const sourceImages = useSourceImages(queue.paged.map(p => p.job))
   const { products: productMeta, refetch: refetchProduct } = useProductMeta(queue.paged.map(p => p.job))
+  const { placements, refetch: refetchPlacement } = usePlacementImage(queue.paged.map(p => p.job))
+  const { statuses: catalogStatus, refetch: refetchCatalog } = useCatalogStatus(queue.paged.map(p => p.job))
   const garmentSummaries = useGarmentSummary(queue.paged.map(p => p.job))
-  const placementJob = queue.jobs.find(j => j.job_id === placementJobId) ?? null
   const eraserJob = queue.jobs.find(j => j.job_id === eraserJobId) ?? null
   const errorJob = queue.jobs.find(j => j.job_id === errorJobId) ?? null
+
+  // Flash a row (e.g. the original of a duplicate submit) and auto-clear.
+  const highlight = (jobId: string) => {
+    setHighlightJobId(jobId)
+    window.setTimeout(() => setHighlightJobId(cur => (cur === jobId ? null : cur)), 4000)
+  }
 
   return (
     <AppShellLayout>
@@ -66,12 +76,17 @@ export default function IngestionAutomatedDashboard() {
                   sourceImages={sourceImages[job.job_id] ?? []}
                   product={productMeta[job.job_id]}
                   refetchProduct={refetchProduct}
+                  placementImage={placements[job.job_id]?.url}
+                  onOpenMesh={setMeshJobId}
+                  catalogStatus={catalogStatus[job.job_id]}
+                  onPublished={() => { refetchCatalog(); queue.refetch() }}
+                  highlighted={highlightJobId === job.job_id}
                   garmentSummary={garmentSummaries[job.job_id]}
                   selected={queue.model.selected.has(job.job_id)}
                   onToggleSelect={queue.actions.toggleSelect}
                   onOpenDetail={setDetailJobId}
                   onOpenError={setErrorJobId}
-                  onOpenPlacement={setPlacementJobId}
+                  onOpenPlacement={setMeshJobId}
                   onOpenViewer={(images, index) => setViewer({ images, index, open: true })}
                   onOpenEraser={setEraserJobId}
                   refetch={queue.refetch}
@@ -92,12 +107,7 @@ export default function IngestionAutomatedDashboard() {
         open={addOpen}
         onOpenChange={setAddOpen}
         onSuccess={(jobId) => { queue.refetch(); setDetailJobId(jobId) }}
-      />
-
-      <PlacementEditorDialog
-        job={placementJob}
-        open={placementJobId !== null}
-        onOpenChange={(o) => !o && setPlacementJobId(null)}
+        onDuplicate={(jobId) => { queue.refetch(); highlight(jobId) }}
       />
 
       <SegmentEraserDialog
@@ -111,8 +121,16 @@ export default function IngestionAutomatedDashboard() {
         job={errorJob}
         open={errorJobId !== null}
         onOpenChange={(o) => !o && setErrorJobId(null)}
-        onOpenPlacement={setPlacementJobId}
+        onOpenPlacement={setMeshJobId}
         refetch={queue.refetch}
+      />
+
+      <PlacementMeshEditor
+        job={queue.jobs.find(j => j.job_id === meshJobId) ?? null}
+        placement={meshJobId ? placements[meshJobId] : undefined}
+        open={meshJobId !== null}
+        onOpenChange={(o) => !o && setMeshJobId(null)}
+        onSaved={() => { refetchPlacement(); queue.refetch() }}
       />
 
       <PhotoViewerDialog

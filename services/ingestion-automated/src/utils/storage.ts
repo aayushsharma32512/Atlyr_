@@ -21,3 +21,35 @@ export function getPublicUrl(path: string): string {
     .getPublicUrl(path);
   return data.publicUrl;
 }
+
+/**
+ * Best-effort recursive removal of everything under a storage prefix (e.g. "<jobId>/"). Supabase
+ * .list() is one level deep, so we recurse into subfolders. Never throws — used during job delete.
+ */
+export async function removeStoragePrefix(prefix: string): Promise<void> {
+  const bucket = supabaseAdmin.storage.from(config.STORAGE_BUCKET);
+  const normalized = prefix.replace(/\/+$/, '');
+
+  const collect = async (dir: string): Promise<string[]> => {
+    const { data, error } = await bucket.list(dir, { limit: 1000 });
+    if (error || !data) return [];
+    const files: string[] = [];
+    for (const entry of data) {
+      const full = dir ? `${dir}/${entry.name}` : entry.name;
+      // A folder entry has no id/metadata; recurse. Otherwise it's a file.
+      if (entry.id === null || entry.metadata === null) {
+        files.push(...await collect(full));
+      } else {
+        files.push(full);
+      }
+    }
+    return files;
+  };
+
+  try {
+    const files = await collect(normalized);
+    if (files.length > 0) await bucket.remove(files);
+  } catch {
+    // best-effort — leave orphaned files rather than fail the delete
+  }
+}

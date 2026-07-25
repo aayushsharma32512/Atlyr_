@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type PgBoss from 'pg-boss';
 import { z } from 'zod';
-import { insertJob, findJobByDedupeKey } from '../../domain/job-catalog';
+import { insertJob, findJobByDedupeKey, findLatestJobByDedupeKey } from '../../domain/job-catalog';
 import { computeDedupeKey } from '../../domain/dedup';
 import { createLogger } from '../../utils/logger';
 
@@ -30,12 +30,26 @@ export async function registerSubmitRoute(app: FastifyInstance, boss: PgBoss): P
     const body = parsed.data;
     const dedupeKey = computeDedupeKey(body.product_url);
 
-    const existing = await findJobByDedupeKey(dedupeKey).catch(() => null);
-    if (existing) {
+    const active = await findJobByDedupeKey(dedupeKey).catch(() => null);
+    if (active) {
       return reply.status(409).send({
-        error: 'A job for this URL is already active',
-        job_id: existing.job_id,
-        current_state: existing.current_state,
+        error: 'already_active',
+        message: 'A job for this URL is already active',
+        existing_job_id: active.job_id,
+        current_state: active.current_state,
+      });
+    }
+
+    // No active job, but the URL may have been ingested before (a completed job). Block and link
+    // the caller to the original so the dashboard can highlight it.
+    const previous = await findLatestJobByDedupeKey(dedupeKey).catch(() => null);
+    if (previous && previous.current_state === 'completed') {
+      return reply.status(409).send({
+        error: 'already_ingested',
+        message: 'This product has already been ingested',
+        existing_job_id: previous.job_id,
+        product_id: previous.ingested_product_id,
+        current_state: previous.current_state,
       });
     }
 

@@ -54,7 +54,7 @@ export function PhotoCard({ label, state, url, badge, note, size = 'md', onExpan
           <span className="absolute top-1 left-1 bg-black/70 text-white text-[9px] px-1 py-0.5 rounded">{badge}</span>
         )}
 
-        {onExpand && state === 'available' && (
+        {onExpand && (state === 'available' || state === 'empty') && (
           <button
             onClick={onExpand}
             className="absolute top-1 right-1 bg-black/60 rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity"
