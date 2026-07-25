@@ -17,6 +17,8 @@ import { PhotoViewerDialog, type ViewerImage } from '@/components/ingestion-auto
 import { SegmentEraserDialog } from '@/components/ingestion-automated/SegmentEraserDialog'
 import { ErrorAttentionDialog } from '@/components/ingestion-automated/ErrorAttentionDialog'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useToast } from '@/hooks/use-toast'
+import { v2Api } from '@/utils/ingestionV2Api'
 
 export default function IngestionAutomatedDashboard() {
   const queue = useQueueState()
@@ -26,7 +28,8 @@ export default function IngestionAutomatedDashboard() {
   const [meshJobId, setMeshJobId] = useState<string | null>(null)
   const [errorJobId, setErrorJobId] = useState<string | null>(null)
   const [highlightJobId, setHighlightJobId] = useState<string | null>(null)
-  const [viewer, setViewer] = useState<{ images: ViewerImage[]; index: number; open: boolean }>({ images: [], index: 0, open: false })
+  const [viewer, setViewer] = useState<{ images: ViewerImage[]; index: number; open: boolean; jobId?: string }>({ images: [], index: 0, open: false })
+  const { toast } = useToast()
 
   const { tags: classifications, refetch: refetchTags } = useImageClassification(queue.paged.map(p => p.job))
   const { selections, refetch: refetchSelection } = useVtonSelection(queue.paged.map(p => p.job))
@@ -87,7 +90,7 @@ export default function IngestionAutomatedDashboard() {
                   onOpenDetail={setDetailJobId}
                   onOpenError={setErrorJobId}
                   onOpenPlacement={setMeshJobId}
-                  onOpenViewer={(images, index) => setViewer({ images, index, open: true })}
+                  onOpenViewer={(images, index, viewerJobId) => setViewer({ images, index, open: true, jobId: viewerJobId })}
                   onOpenEraser={setEraserJobId}
                   refetch={queue.refetch}
                   refetchSelection={refetchSelection}
@@ -139,6 +142,34 @@ export default function IngestionAutomatedDashboard() {
         onIndexChange={(i) => setViewer(v => ({ ...v, index: i }))}
         open={viewer.open}
         onOpenChange={(o) => setViewer(v => ({ ...v, open: o }))}
+        jobId={viewer.jobId}
+        preferredUrl={viewer.jobId ? (queue.jobs.find(j => j.job_id === viewer.jobId)?.v_ton_preferred_image ?? null) : null}
+        onRetag={async (url, view, type) => {
+          if (!viewer.jobId) return
+          try {
+            await v2Api.retagPhoto(viewer.jobId, { image_url: url, type, ...(type !== 'Detail' && { view }) })
+            toast({ title: 'Photo retagged' })
+            refetchSelection(); refetchTags(); queue.refetch()
+          } catch (e) {
+            toast({ title: 'Retag failed', description: e instanceof Error ? e.message : undefined, variant: 'destructive' })
+          }
+        }}
+        onDeletePhoto={async (url) => {
+          if (!viewer.jobId) return
+          try {
+            const res = await v2Api.deletePhoto(viewer.jobId, url)
+            toast(res.warning === 'no_usable_image'
+              ? { title: 'Photo deleted', description: 'No usable photo left — re-scrape this item.' }
+              : { title: 'Photo deleted' })
+            refetchSelection(); refetchTags(); queue.refetch()
+            setViewer(v => {
+              const imgs = v.images.filter(i => i.url !== url)
+              return imgs.length ? { ...v, images: imgs, index: Math.min(v.index, imgs.length - 1) } : { ...v, images: [], open: false }
+            })
+          } catch (e) {
+            toast({ title: 'Delete failed', description: e instanceof Error ? e.message : undefined, variant: 'destructive' })
+          }
+        }}
       />
     </AppShellLayout>
   )
