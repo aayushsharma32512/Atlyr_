@@ -17,19 +17,19 @@ import { rowStateOf, isPushed, canProceed, attentionNote, type RowState, type St
 import { PhotoCard } from './PhotoCard'
 import type { ViewerImage } from './PhotoViewerDialog'
 import { useNotWiredDialog } from './NotWiredDialog'
+import { ConfirmDialog } from './ConfirmDialog'
+import { PhotoTileActions } from './PhotoTileActions'
 import type { ProductMeta } from './useProductMeta'
 import type { ImageTag, View, PhotoType } from './useImageClassification'
 import { EMPTY_SLOTS, type VtonSelection } from './useVtonSelection'
 import type { GarmentSummaryData } from './useGarmentSummary'
 
-const VIEW_OPTIONS: View[] = ['Front', 'Back', 'Side']
-const TYPE_OPTIONS: PhotoType[] = ['Model', 'Flat', 'Detail']
-
-// Side / Detail never fill a slot (see slotKeyFor in siglip.ts) — only Front/Back x
-// Model/Flat combinations do.
-const SLOT_KEY_FOR: Partial<Record<`${View}:${PhotoType}`, 'frontModel' | 'frontFlat' | 'backModel' | 'backFlat'>> = {
-  'Front:Model': 'frontModel', 'Front:Flat': 'frontFlat',
-  'Back:Model':  'backModel',  'Back:Flat':  'backFlat',
+// The view/type each of the 4 slots represents — used to prefill the inline retag popover.
+const SLOT_TAG: Record<'frontModel' | 'frontFlat' | 'backModel' | 'backFlat', { view: View; type: PhotoType }> = {
+  frontModel: { view: 'Front', type: 'Model' },
+  frontFlat:  { view: 'Front', type: 'Flat' },
+  backModel:  { view: 'Back',  type: 'Model' },
+  backFlat:   { view: 'Back',  type: 'Flat' },
 }
 
 // Row + status-pill tones mirror the design handoff palette (RowItem.dc.html PAL / SB).
@@ -82,7 +82,7 @@ type Props = {
   catalogStatus: 'live' | 'staged' | undefined
   onPublished: () => void
   highlighted?: boolean
-  onOpenViewer: (images: ViewerImage[], index: number) => void
+  onOpenViewer: (images: ViewerImage[], index: number, jobId?: string) => void
   onOpenEraser: (jobId: string) => void
   refetch: () => void
   refetchSelection: () => void
@@ -102,9 +102,9 @@ export function RowItem({
     if (highlighted) rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [highlighted])
   const [busy, setBusy] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [photoDeleteUrl, setPhotoDeleteUrl] = useState<string | null>(null)
   const [retagging, setRetagging] = useState(false)
-  const [draftView, setDraftView] = useState<View>('Front')
-  const [draftType, setDraftType] = useState<PhotoType>('Model')
 
   // Details form — Name/Brand/Price come from crawl_meta; the rest are real job columns.
   const [draftName, setDraftName] = useState(product?.name ?? '')
@@ -219,7 +219,6 @@ export function RowItem({
   }
 
   const runDelete = async () => {
-    if (!window.confirm('Delete this job and all its data (images, artifacts, and any catalog entry)? This cannot be undone.')) return
     setBusy('delete')
     try {
       await v2Api.deleteJob(job.job_id)
@@ -277,26 +276,11 @@ export function RowItem({
   const currentTag = tags.find(t => t.url === currentSrcUrl)
   const srcViewerImages: ViewerImage[] = sourceImages.map((url, i) => ({ url, label: `Scraped ${i + 1}/${sourceImages.length}` }))
 
-  // Which of the 4 slots this image's current tag would fill (if any), and whether it's
-  // actually the one currently winning that slot.
-  const currentBucketKey = currentTag?.view && currentTag.type !== 'Detail'
-    ? SLOT_KEY_FOR[`${currentTag.view}:${currentTag.type}`]
-    : undefined
-  const isPrimary = !!currentBucketKey && slots[currentBucketKey]?.url === currentSrcUrl
-
-  // Reset the retag draft to this image's effective tag whenever the carousel moves.
-  useEffect(() => {
-    setDraftView(currentTag?.view === 'Side' ? 'Front' : currentTag?.view ?? 'Front')
-    setDraftType(currentTag?.type ?? 'Model')
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSrcUrl])
-
-  const applyTag = async (view: View, type: PhotoType) => {
-    if (!currentSrcUrl) return
+  const applyTagForUrl = async (url: string, view: View, type: PhotoType) => {
     setRetagging(true)
     try {
       const res = await v2Api.retagPhoto(job.job_id, {
-        image_url: currentSrcUrl,
+        image_url: url,
         type,
         ...(type !== 'Detail' && { view }),
       })
@@ -313,6 +297,24 @@ export function RowItem({
       toast({ title: 'Retag failed', description: e instanceof Error ? e.message : undefined, variant: 'destructive' })
     } finally {
       setRetagging(false)
+    }
+  }
+
+  // Inline photo delete (from a tile's trash icon) — soft-removes the photo + recomputes slots.
+  const confirmPhotoDelete = async () => {
+    const url = photoDeleteUrl
+    if (!url) return
+    setPhotoDeleteUrl(null)
+    try {
+      const res = await v2Api.deletePhoto(job.job_id, url)
+      toast(res.warning === 'no_usable_image'
+        ? { title: 'Photo deleted', description: 'No usable photo left — re-scrape this item.' }
+        : { title: 'Photo deleted' })
+      refetchSelection()
+      refetchTags()
+      refetch()
+    } catch (e) {
+      toast({ title: 'Delete failed', description: e instanceof Error ? e.message : undefined, variant: 'destructive' })
     }
   }
 
@@ -355,7 +357,7 @@ export function RowItem({
         >
           <ArrowUpRight className="h-3.5 w-3.5" />
         </button>
-        <button onClick={runDelete} disabled={busy !== null} title="Delete job" className="text-muted-foreground hover:text-destructive disabled:opacity-30">
+        <button onClick={() => setConfirmDelete(true)} disabled={busy !== null} title="Delete job" className="text-muted-foreground hover:text-destructive disabled:opacity-30">
           {busy === 'delete' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
         </button>
       </div>
@@ -477,6 +479,11 @@ export function RowItem({
                 <Button size="sm" variant="outline" className="h-6 px-2 text-[10.5px] font-semibold" disabled={rowState === 'processing' || pushed || busy !== null} onClick={() => runRestart('segmenting', 'resegment')}>
                   ↻ Segment
                 </Button>
+                {/* Placement-only redo — stays enabled on completed/Live items (re-runs the Modal
+                    placement pipeline, e.g. to regenerate the editor transform). */}
+                <Button size="sm" variant="outline" className="h-6 px-2 text-[10.5px] font-semibold" disabled={rowState === 'processing' || busy !== null || !job.segmented_image_url} onClick={() => runRestart('placement', 'replace')}>
+                  ↻ Place
+                </Button>
               </>
             )}
             <div className="w-1.5" />
@@ -582,7 +589,16 @@ export function RowItem({
                     : 'Not scraped yet'
                   ) : undefined}
                   size="xl"
-                  onExpand={slot ? () => onOpenViewer(slotViewerImages, viewerIdx) : undefined}
+                  onExpand={slot ? () => onOpenViewer(slotViewerImages, viewerIdx, job.job_id) : undefined}
+                  overlay={slot ? (
+                    <PhotoTileActions
+                      defaultView={SLOT_TAG[key].view}
+                      defaultType={SLOT_TAG[key].type}
+                      onRetag={(v, t) => applyTagForUrl(slot.url, v, t)}
+                      onDelete={() => setPhotoDeleteUrl(slot.url)}
+                      busy={retagging}
+                    />
+                  ) : undefined}
                 />
               )
             })}
@@ -594,57 +610,22 @@ export function RowItem({
                 badge={sourceImages.length > 1 ? `${srcIdxClamped + 1}/${sourceImages.length}` : undefined}
                 note={sourceImages.length === 0 ? (rowState === 'processing' ? 'Scraping…' : rowState === 'error' ? 'No output' : 'Not scraped yet') : undefined}
                 size="xl"
-                onExpand={sourceImages.length > 0 ? () => onOpenViewer(srcViewerImages, srcIdxClamped) : undefined}
+                onExpand={sourceImages.length > 0 ? () => onOpenViewer(srcViewerImages, srcIdxClamped, job.job_id) : undefined}
                 actions={sourceImages.length > 1 ? [
                   { icon: <ChevronLeft className="h-3 w-3" />, label: 'Previous', onClick: () => setSrcIdx((srcIdxClamped - 1 + sourceImages.length) % sourceImages.length) },
                   { icon: <ChevronRight className="h-3 w-3" />, label: 'Next', onClick: () => setSrcIdx((srcIdxClamped + 1) % sourceImages.length) },
                 ] : undefined}
+                overlay={currentSrcUrl ? (
+                  <PhotoTileActions
+                    key={currentSrcUrl}
+                    defaultView={currentTag?.view && currentTag.view !== 'Side' ? currentTag.view : 'Front'}
+                    defaultType={currentTag?.type ?? 'Model'}
+                    onRetag={(v, t) => applyTagForUrl(currentSrcUrl, v, t)}
+                    onDelete={() => setPhotoDeleteUrl(currentSrcUrl)}
+                    busy={retagging}
+                  />
+                ) : undefined}
               />
-
-              {/* Retag this photo — toggling here is what recomputes the 4 slots above */}
-              {sourceImages.length > 0 && (
-                <div className="flex flex-col gap-1 rounded-md border border-border bg-muted/40 p-1.5">
-                  <div className="flex gap-1">
-                    {draftType !== 'Detail' && (
-                      <Select value={draftView} onValueChange={v => setDraftView(v as View)}>
-                        <SelectTrigger className="h-6 flex-1 px-1.5 text-[10px] [&>svg]:h-3 [&>svg]:w-3"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {VIEW_OPTIONS.map(o => <SelectItem key={o} value={o} className="text-xs">{o}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    )}
-                    <Select value={draftType} onValueChange={v => setDraftType(v as PhotoType)}>
-                      <SelectTrigger className="h-6 flex-1 px-1.5 text-[10px] [&>svg]:h-3 [&>svg]:w-3"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {TYPE_OPTIONS.map(o => <SelectItem key={o} value={o} className="text-xs">{o}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <p className="truncate text-[9.5px] text-muted-foreground">
-                    {!currentTag ? 'Not classified yet'
-                      : !currentBucketKey ? `${currentTag.manual ? 'Manual' : 'Auto'}: ${currentTag.type === 'Detail' ? 'Detail' : `${currentTag.view} · ${currentTag.type}`} (excluded from VTON)`
-                      : isPrimary ? `★ Primary — ${currentTag.view} · ${currentTag.type}`
-                      : `${currentTag.manual ? 'Manual' : 'Auto'}: ${currentTag.view} · ${currentTag.type} (not primary)`}
-                  </p>
-                  <div className="flex gap-1">
-                    {currentBucketKey && !isPrimary && (
-                      <Button
-                        size="sm" variant="outline"
-                        className="h-6 flex-1 px-1.5 text-[10px] font-semibold"
-                        disabled={retagging}
-                        onClick={() => applyTag(currentTag!.view!, currentTag!.type!)}
-                        title="Make this the primary photo for its slot"
-                      >
-                        ★ Make Primary
-                      </Button>
-                    )}
-                    <Button size="sm" className="h-6 flex-1 px-1.5 text-[10px] font-semibold" disabled={retagging} onClick={() => applyTag(draftView, draftType)}>
-                      {retagging && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
-                      Apply
-                    </Button>
-                  </div>
-                </div>
-              )}
             </div>
           </>
         ) : (
@@ -683,6 +664,24 @@ export function RowItem({
         )}
       </div>
       {dialog}
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title="Delete this item?"
+        description="This removes the job and all its data — scraped images, artifacts, and any catalog entry. It cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={runDelete}
+      />
+      <ConfirmDialog
+        open={photoDeleteUrl !== null}
+        onOpenChange={(o) => !o && setPhotoDeleteUrl(null)}
+        title="Delete this photo?"
+        description="Removes this photo from the item and recomputes the try-on slots. If it's just mis-classified, retag it instead. This cannot be undone."
+        confirmLabel="Delete photo"
+        destructive
+        onConfirm={confirmPhotoDelete}
+      />
     </div>
   )
 }

@@ -67,7 +67,9 @@ export async function registerRetagRoute(app: FastifyInstance): Promise<void> {
     // else SigLIP's own winner, ranked by score) — a correction on a non-primary image
     // can still flip which image wins its slot, even if that slot isn't the preferred one.
     const allClassifications = await getArtifacts(jobId, 'image_classification');
-    const items: ClassificationInput[] = allClassifications.map((a) => {
+    const items: ClassificationInput[] = allClassifications
+      .filter((a) => !((a.data ?? {}) as Record<string, unknown>).excluded)
+      .map((a) => {
       const d = (a.data ?? {}) as Record<string, unknown>;
       const override = d.user_override as { stage1_verdict: string; stage2_verdict: string | null; overridden_at: string } | undefined;
       // Use `override ? ... : ...`, not `override?.x ?? d.x` — a Detail/Side override's

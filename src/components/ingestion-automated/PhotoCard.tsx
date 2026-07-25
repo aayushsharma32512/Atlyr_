@@ -15,6 +15,9 @@ type Props = {
   size?: 'sm' | 'md' | 'xl' | 'lg'
   onExpand?: () => void
   actions?: TileAction[]
+  // Extra controls overlaid at the bottom-left of the tile, shown on hover (e.g. the inline
+  // retag/delete actions). Kept generic so PhotoCard stays decoupled from what they do.
+  overlay?: ReactNode
 }
 
 const SIZE_CLASS: Record<NonNullable<Props['size']>, string> = {
@@ -31,7 +34,7 @@ const STATE_BORDER: Record<TileState, string> = {
   empty: 'border-dashed border-border',
 }
 
-export function PhotoCard({ label, state, url, badge, note, size = 'md', onExpand, actions }: Props) {
+export function PhotoCard({ label, state, url, badge, note, size = 'md', onExpand, actions, overlay }: Props) {
   return (
     <div className="flex flex-col gap-1">
       <div
@@ -76,6 +79,12 @@ export function PhotoCard({ label, state, url, badge, note, size = 'md', onExpan
                 {a.icon}
               </button>
             ))}
+          </div>
+        )}
+
+        {overlay && (
+          <div className="absolute bottom-1 left-1 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            {overlay}
           </div>
         )}
       </div>

@@ -1,8 +1,17 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { config } from '../../config/index';
-import { withRetry } from '../../utils/retry';
+import { withRetry, errorHttpStatus, isTransientUpstreamError } from '../../utils/retry';
+import { createLogger } from '../../utils/logger';
 import type { TryonInput, TryonOutput, TryonProvider } from '../../domain/types';
+
+const logger = createLogger({ stage: 'adapter:gemini-vton' });
+
+// Primary image model + fallbacks, tried in order when one is overloaded (503) or missing (404).
+function imageModelCandidates(): string[] {
+  const fallbacks = config.GEMINI_IMAGE_MODEL_FALLBACKS.split(',').map((m) => m.trim()).filter(Boolean);
+  return [...new Set([config.GEMINI_IMAGE_MODEL, ...fallbacks])];
+}
 
 // ponytail: gender-specific mannequin avatars (from vton_intern_pack/avatars/gemini_seedream/).
 // No 'unisex' avatar exists in that pack — falls back to the female asset.
@@ -135,10 +144,10 @@ function buildPrompt(
   return { system, prompt };
 }
 
-async function callGemini(systemInstruction: string, prompt: string, avatarB64: string, avatarMime: string, garmentB64: string, garmentMime: string): Promise<{ b64: string; mimeType: string }> {
+async function callGemini(modelName: string, systemInstruction: string, prompt: string, avatarB64: string, avatarMime: string, garmentB64: string, garmentMime: string): Promise<{ b64: string; mimeType: string }> {
   if (!config.GOOGLE_API_KEY) throw new Error('GOOGLE_API_KEY is not set');
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${config.GEMINI_IMAGE_MODEL}:generateContent?key=${config.GOOGLE_API_KEY}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${config.GOOGLE_API_KEY}`;
   const resp = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -156,7 +165,7 @@ async function callGemini(systemInstruction: string, prompt: string, avatarB64: 
     signal: AbortSignal.timeout(120_000),
   });
 
-  if (!resp.ok) throw new Error(`gemini_nano_banana ${resp.status}: ${await resp.text()}`);
+  if (!resp.ok) throw new Error(`${modelName} ${resp.status}: ${await resp.text()}`);
   const data = (await resp.json()) as {
     candidates?: { content?: { parts?: { inlineData?: { mimeType: string; data: string } }[] }; finishReason?: string }[];
   };
@@ -165,7 +174,7 @@ async function callGemini(systemInstruction: string, prompt: string, avatarB64: 
   const imagePart = parts.find((p) => p.inlineData)?.inlineData;
   if (!imagePart) {
     const finishReason = data.candidates?.[0]?.finishReason ?? 'unknown';
-    throw new Error(`gemini_nano_banana: no image in response (finishReason=${finishReason})`);
+    throw new Error(`${modelName}: no image in response (finishReason=${finishReason})`);
   }
   return { b64: imagePart.data, mimeType: imagePart.mimeType };
 }
@@ -197,16 +206,43 @@ export const geminiVtonProvider: TryonProvider = {
     );
 
     const start = Date.now();
-    const image = await withRetry(
-      () => callGemini(system, prompt, avatar.b64, avatar.mimeType, garment.b64, garment.mimeType),
-      { retries: 3, backoffMs: 1000 },
-    );
+
+    // A single image model can be overloaded for a while (sustained 503 "high demand"), so
+    // after per-model retries are exhausted we move down the fallback chain. A non-transient
+    // error (e.g. 400 bad request) fails fast without trying the rest.
+    const candidates = imageModelCandidates();
+    let image: { b64: string; mimeType: string } | undefined;
+    let usedModel = candidates[0];
+    let lastErr: unknown;
+
+    for (const modelName of candidates) {
+      try {
+        image = await withRetry(
+          () => callGemini(modelName, system, prompt, avatar.b64, avatar.mimeType, garment.b64, garment.mimeType),
+          { retries: 2, backoffMs: 1000, shouldRetry: isTransientUpstreamError },
+        );
+        usedModel = modelName;
+        break;
+      } catch (err) {
+        lastErr = err;
+        const status = errorHttpStatus(err);
+        if (isTransientUpstreamError(err) || status === 404) {
+          logger.warn({ model: modelName, status, error: (err as Error).message }, 'vton image model unavailable, trying next fallback');
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    if (!image) {
+      throw lastErr instanceof Error ? lastErr : new Error(`All Gemini image models failed: ${candidates.join(', ')}`);
+    }
 
     return {
       bytes: Buffer.from(image.b64, 'base64'),
       mimeType: image.mimeType,
       inferenceMs: Date.now() - start,
-      modelUsed: 'gemini_nano_banana',
+      modelUsed: usedModel,
     };
   },
 };

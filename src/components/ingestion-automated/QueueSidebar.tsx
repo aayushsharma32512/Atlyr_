@@ -18,6 +18,7 @@ import { v2Api } from '@/utils/ingestionV2Api'
 import type { useQueueState, FilterKey, RowsPerPage, SortKey } from './useQueueState'
 import type { RowState, Stage } from './stateMapping'
 import { useNotWiredDialog } from './NotWiredDialog'
+import { ConfirmDialog } from './ConfirmDialog'
 
 const STATE_META: { key: RowState; icon: string; label: string }[] = [
   { key: 'attention',  icon: '⚑', label: 'Needs review' },
@@ -52,6 +53,8 @@ export function QueueSidebar({ queue, onAddItem }: Props) {
   const { model, actions, visible } = queue
   const [restarting, setRestarting] = useState(false)
   const [pushing, setPushing] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
   const { toast } = useToast()
   const { notify, dialog } = useNotWiredDialog()
 
@@ -86,6 +89,20 @@ export function QueueSidebar({ queue, onAddItem }: Props) {
     }
     toast({ title: `Pushed ${ok}/${targets.length}`, description: skipped > 0 ? `${skipped} skipped — not awaiting review` : undefined })
     setPushing(false)
+    queue.refetch()
+  }
+
+  const handleBulkDelete = async () => {
+    const targets = visible.filter(v => model.selected.has(v.job.job_id))
+    if (targets.length === 0) return
+    setDeleting(true)
+    let ok = 0
+    for (const { job } of targets) {
+      try { await v2Api.deleteJob(job.job_id); ok++ } catch { /* aggregate below */ }
+    }
+    toast({ title: `Deleted ${ok}/${targets.length}`, description: ok < targets.length ? 'Some jobs could not be deleted.' : undefined })
+    setDeleting(false)
+    actions.clearSelection()
     queue.refetch()
   }
 
@@ -159,7 +176,7 @@ export function QueueSidebar({ queue, onAddItem }: Props) {
           <Button variant="ghost" size="icon" className="h-6 w-6" disabled={!selectedCount || restarting} onClick={handleBulkRestart} title="Restart selected">
             <RefreshCcw className="h-3 w-3" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-6 w-6" disabled={!selectedCount} onClick={() => notify('Bulk delete')} title="Delete selected">
+          <Button variant="ghost" size="icon" className="h-6 w-6" disabled={!selectedCount || deleting} onClick={() => setConfirmBulkDelete(true)} title="Delete selected">
             <Trash2 className="h-3 w-3" />
           </Button>
           <Button variant="ghost" size="icon" className="h-6 w-6" disabled={!selectedCount || pushing} onClick={handleBulkPush} title="Push selected">
@@ -296,6 +313,15 @@ export function QueueSidebar({ queue, onAddItem }: Props) {
         <Button size="sm" className="h-7 text-xs w-full" onClick={onAddItem}>+ Add items</Button>
       </div>
       {dialog}
+      <ConfirmDialog
+        open={confirmBulkDelete}
+        onOpenChange={setConfirmBulkDelete}
+        title={`Delete ${selectedCount} item${selectedCount === 1 ? '' : 's'}?`}
+        description="This removes each selected job and all its data — scraped images, artifacts, and any catalog entry. It cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={handleBulkDelete}
+      />
     </div>
   )
 }

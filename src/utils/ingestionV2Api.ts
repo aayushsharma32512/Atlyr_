@@ -176,6 +176,14 @@ export const v2Api = {
       body: JSON.stringify(body),
     }),
 
+  // Soft-deletes one scraped photo (excludes it + recomputes the 4 slots server-side).
+  // warning === 'no_usable_image' when the deleted photo was the last VTON-eligible one.
+  deletePhoto: (jobId: string, image_url: string) =>
+    call<{ job_id: string; slots: SlotMapResult; preferred_slot: SlotKey | null; warning?: string }>(`/jobs/${jobId}/photos/delete`, {
+      method: 'POST',
+      body: JSON.stringify({ image_url }),
+    }),
+
   // Overwrite the segmented image in place (service-role upload happens server-side —
   // the browser anon key can't write to the storage bucket). imageBase64 is a PNG data URL.
   saveSegmentedImage: (jobId: string, imageBase64: string) =>

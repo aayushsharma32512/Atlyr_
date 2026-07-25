@@ -23,6 +23,9 @@ const EnvSchema = z.object({
   // Comma-separated models tried in order when the primary is unavailable (503/404).
   GEMINI_TEXT_MODEL_FALLBACKS: z.string().default('gemini-3.6-flash,gemini-flash-latest'),
   GEMINI_IMAGE_MODEL: z.string().default('gemini-3-pro-image'),
+  // Comma-separated image models tried in order when the primary is overloaded (503) or
+  // missing (404) — same fallback pattern as GEMINI_TEXT_MODEL_FALLBACKS.
+  GEMINI_IMAGE_MODEL_FALLBACKS: z.string().default('gemini-3-flash-image,gemini-3-flash-image-lite,gemini-2.5-flash-image'),
   SIGLIP_ENDPOINT: optUrl,
   SIGLIP_API_KEY: optStr,
 

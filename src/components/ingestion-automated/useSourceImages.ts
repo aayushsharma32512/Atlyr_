@@ -20,18 +20,33 @@ export function useSourceImages(jobs: PipelineJob[]): Record<string, string[]> {
     ;(async () => {
       // pipeline_step_artifacts is not in generated types — cast to any
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase as any)
-        .from('pipeline_step_artifacts')
-        .select('job_id, storage_path, data')
-        .in('job_id', ids)
-        .eq('artifact_type', 'raw_image')
-        .order('created_at', { ascending: true })
-      if (cancelled || error || !data) return
+      const sb = supabase as any
+      const [raw, cls] = await Promise.all([
+        sb.from('pipeline_step_artifacts')
+          .select('job_id, storage_path, data')
+          .in('job_id', ids)
+          .eq('artifact_type', 'raw_image')
+          .order('created_at', { ascending: true }),
+        // Excluded photos (soft-deleted via POST .../photos/delete) — hide them from the
+        // scraped list too, keyed by job + public_url.
+        sb.from('pipeline_step_artifacts')
+          .select('job_id, data')
+          .in('job_id', ids)
+          .eq('artifact_type', 'image_classification'),
+      ])
+      if (cancelled || raw.error || !raw.data) return
+
+      const excluded = new Set<string>()
+      for (const row of (cls.data ?? []) as { job_id: string; data: Record<string, unknown> | null }[]) {
+        const url = row.data?.public_url as string | undefined
+        if (row.data?.excluded && url) excluded.add(`${row.job_id}::${url}`)
+      }
 
       const next: Record<string, string[]> = {}
-      for (const row of data as { job_id: string; storage_path: string | null; data: Record<string, unknown> | null }[]) {
+      for (const row of raw.data as { job_id: string; storage_path: string | null; data: Record<string, unknown> | null }[]) {
         const url = (row.data?.public_url as string | undefined) ?? storageUrl(row.storage_path)
         if (!url) continue
+        if (excluded.has(`${row.job_id}::${url}`)) continue
         ;(next[row.job_id] ??= []).push(url)
       }
       setMap(next)

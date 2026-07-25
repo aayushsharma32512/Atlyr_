@@ -7,6 +7,7 @@ import { registerStatusRoutes } from './routes/status';
 import { registerProceedRoute } from './routes/proceed';
 import { registerRestartRoute } from './routes/restart';
 import { registerRetagRoute } from './routes/retag';
+import { registerDeletePhotoRoute } from './routes/delete-photo';
 import { registerDetailsRoute } from './routes/details';
 import { registerSegmentedImageRoute } from './routes/segmented-image';
 import { registerPlacementRoute } from './routes/placement';
@@ -42,6 +43,7 @@ export async function buildApp(boss: PgBoss) {
   await registerProceedRoute(app, boss);
   await registerRestartRoute(app, boss);
   await registerRetagRoute(app);
+  await registerDeletePhotoRoute(app);
   await registerDetailsRoute(app);
   await registerSegmentedImageRoute(app);
   await registerPlacementRoute(app);
