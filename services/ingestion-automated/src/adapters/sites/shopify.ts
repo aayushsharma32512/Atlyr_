@@ -148,6 +148,30 @@ export function extractShopifyCareAndAccordions(html: string): { care: string | 
   return { care, accordions };
 }
 
+// Fallback currency guess from the domain TLD (used only when the page HTML doesn't
+// expose the real store currency).
+function currencyFromTld(host: string): string {
+  if (host.endsWith('.in') || host.includes('.in.')) return 'INR';
+  if (host.endsWith('.uk') || host.endsWith('.gb') || host.includes('.uk.')) return 'GBP';
+  if (host.endsWith('.ca')) return 'CAD';
+  if (host.endsWith('.au')) return 'AUD';
+  if (host.endsWith('.eu')) return 'EUR';
+  return 'USD';
+}
+
+// The authoritative store currency from a Shopify product page. Tries, in order:
+// the `Shopify.currency.active` global, JSON-LD `priceCurrency`, then og/product price
+// currency meta tags. Returns a 3-letter ISO code or null if none present.
+function extractShopifyCurrency(html: string): string | null {
+  let m = html.match(/Shopify\.currency\s*=\s*\{[^}]*?["']active["']\s*:\s*["']([A-Za-z]{3})["']/);
+  if (m) return m[1].toUpperCase();
+  m = html.match(/["']priceCurrency["']\s*:\s*["']([A-Za-z]{3})["']/);
+  if (m) return m[1].toUpperCase();
+  m = html.match(/(?:property|name)=["'](?:og:price:currency|product:price:currency)["']\s+content=["']([A-Za-z]{3})["']/i);
+  if (m) return m[1].toUpperCase();
+  return null;
+}
+
 /**
  * Attempts to fetch the Shopify product .js endpoint.
  * Returns structured metadata and images if successful, otherwise null.
@@ -206,21 +230,13 @@ export async function scrapeShopifyApi(url: string): Promise<ShopifyApiResult | 
     // We divide by 100 to convert to standard units (e.g. 1999) matching the database schema.
     const price = typeof data.price === 'number' ? Math.round(data.price / 100) : null;
     
-    // Infer currency code based on the domain TLD
+    // Currency: the .js endpoint doesn't carry the shop currency, so start from a TLD guess
+    // and override it with the store's REAL currency parsed from the product-page HTML below
+    // (Shopify.currency.active / JSON-LD priceCurrency). Fixes .com stores that sell in non-USD
+    // (e.g. bluorng.com → INR), which the TLD guess wrongly defaulted to USD.
     const host = parsed.hostname.toLowerCase();
-    let currency = 'USD';
-    if (host.endsWith('.in') || host.includes('.in.')) {
-      currency = 'INR';
-    } else if (host.endsWith('.uk') || host.endsWith('.gb') || host.includes('.uk.')) {
-      currency = 'GBP';
-    } else if (host.endsWith('.ca')) {
-      currency = 'CAD';
-    } else if (host.endsWith('.au')) {
-      currency = 'AUD';
-    } else if (host.endsWith('.eu')) {
-      currency = 'EUR';
-    }
-    
+    let currency = currencyFromTld(host);
+
     // Derive brand dynamically via multi-signal cross-validation (zero hardcoded junk lists)
     const brand = resolveDynamicShopifyBrand(data.vendor, host);
 
@@ -237,6 +253,9 @@ export async function scrapeShopifyApi(url: string): Promise<ShopifyApiResult | 
         const extracted = extractShopifyCareAndAccordions(html);
         care = extracted.care;
         accordions = extracted.accordions;
+        // Real store currency from the page — overrides the TLD guess when found.
+        const detected = extractShopifyCurrency(html);
+        if (detected) currency = detected;
       }
     } catch {
       // Non-blocking: continue if HTML fetch times out
