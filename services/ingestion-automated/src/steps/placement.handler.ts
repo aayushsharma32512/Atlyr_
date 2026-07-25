@@ -39,7 +39,14 @@ export class PlacementHandler implements StepHandler {
       throw new Error(`Modal placement request failed (${res.status}): ${errText}`);
     }
 
-    const modalResult = (await res.json()) as { status: string; final_image_url: string; selected_mannequin?: string };
+    const modalResult = (await res.json()) as {
+      status: string;
+      final_image_url: string;
+      selected_mannequin?: string;
+      // Affine the pipeline used, in the mesh editor's 1800x3072 space — lets the editor
+      // reconstruct this auto-placement instead of defaulting the garment to canvas-centre.
+      transform?: { scale: number; rotationDeg: number; tx: number; ty: number };
+    };
     if (modalResult.status !== 'success' && modalResult.status !== 'completed' || !modalResult.final_image_url) {
       throw new Error(`Modal placement pipeline failed: ${JSON.stringify(modalResult)}`);
     }
@@ -58,6 +65,9 @@ export class PlacementHandler implements StepHandler {
         placedImageUrl: modalResult.final_image_url,
         selectedMannequin: modalResult.selected_mannequin,
         createdAt: new Date().toISOString(),
+        // Present once the Modal pipeline is redeployed with the transform export; the mesh
+        // editor reads this (usePlacementImage.ts) to reopen on the already-placed cloth.
+        ...(modalResult.transform ? { transform: modalResult.transform } : {}),
       },
     });
 
