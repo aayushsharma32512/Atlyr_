@@ -1,6 +1,7 @@
 import type { StepHandler, IngestionPipelineJob } from '../domain/types';
 import { saveArtifact } from '../domain/artifacts';
 import { updateState } from '../domain/job-catalog';
+import { upsertIngestedProduct } from '../domain/catalog';
 import { createLogger } from '../utils/logger';
 
 const logger = createLogger({ stage: 'placement' });
@@ -61,5 +62,14 @@ export class PlacementHandler implements StepHandler {
     });
 
     await updateState(job_id, 'completed');
+
+    // Stage the finished item into the catalog (ingested_products). Best-effort: placement itself
+    // has already succeeded, and the Go-Live button re-stages via its own upsert if this fails.
+    try {
+      await upsertIngestedProduct({ ...job, current_state: 'completed', ingested_product_id: job.ingested_product_id ?? null });
+      logger.info({ jobId: job_id }, 'staged into ingested_products');
+    } catch (err) {
+      logger.error({ jobId: job_id, err: err instanceof Error ? err.message : String(err) }, 'catalog staging failed (non-fatal)');
+    }
   }
 }

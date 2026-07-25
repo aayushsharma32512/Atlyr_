@@ -86,6 +86,8 @@ export class ScrapingHandler implements StepHandler {
         price:           result.meta.price,
         currency:        result.meta.currency,
         color:           result.meta.color,
+        care:            result.meta.care ?? null,
+        accordions:      result.meta.accordions ?? [],
         raw_image_urls:  result.imageUrls,
         uploaded_count:  uploadedCount,
         scraped_at:      new Date().toISOString(),

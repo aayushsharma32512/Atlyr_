@@ -12,6 +12,31 @@ export interface ShopifyApiResult {
 }
 
 /**
+ * Converts Shopify body_html into clean plain text. Shopify's .js endpoint returns
+ * `description` as raw HTML (e.g. <p class="p1">…</p><br>), so we strip tags, decode
+ * common entities, and preserve line breaks from block/br boundaries.
+ */
+export function stripHtmlToText(html: string | null | undefined): string | null {
+  if (!html) return null;
+  const text = html
+    .replace(/<!--[\s\S]*?-->/g, '')                 // drop comments like <!---->
+    .replace(/<\s*br\s*\/?\s*>/gi, '\n')             // <br> -> newline
+    .replace(/<\/(p|div|li|ul|ol|h[1-6]|tr)\s*>/gi, '\n') // block close -> newline
+    .replace(/<[^>]+>/g, '')                          // strip remaining tags
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/[ \t]+/g, ' ')                          // collapse runs of spaces
+    .replace(/[ \t]*\n[ \t]*/g, '\n')                 // trim spaces around newlines
+    .replace(/\n{3,}/g, '\n\n')                       // cap blank lines
+    .trim();
+  return text || null;
+}
+
+/**
  * Extracts the primary store name from a domain host, stripping common subdomains.
  * e.g. "www.toffle.in" -> "Toffle", "row.nishorama.com" -> "Nishorama"
  */
@@ -220,7 +245,7 @@ export async function scrapeShopifyApi(url: string): Promise<ShopifyApiResult | 
     return {
       brand,
       product_name: data.title || null,
-      description: data.description || null,
+      description: stripHtmlToText(data.description),
       price,
       currency,
       imageUrls,

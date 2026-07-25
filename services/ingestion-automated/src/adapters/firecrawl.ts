@@ -16,6 +16,7 @@ export interface FirecrawlProductResult {
     currency: string | null;
     color: string | null;
     care?: string | null;
+    accordions?: Array<{ title: string; content: string }>;
   };
   imageUrls: string[];
 }
@@ -56,6 +57,7 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
         currency:     shopifyResult.currency,
         color:        null,
         care:         shopifyResult.care ?? null,
+        accordions:   shopifyResult.accordions ?? [],
       },
       imageUrls: shopifyResult.imageUrls,
     };

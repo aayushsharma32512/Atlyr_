@@ -9,6 +9,9 @@ import { registerRestartRoute } from './routes/restart';
 import { registerRetagRoute } from './routes/retag';
 import { registerDetailsRoute } from './routes/details';
 import { registerSegmentedImageRoute } from './routes/segmented-image';
+import { registerPlacementRoute } from './routes/placement';
+import { registerPublishRoute } from './routes/publish';
+import { registerDeleteRoute } from './routes/delete';
 
 function bearerAuth(req: { headers: Record<string, string | string[] | undefined> }, token: string): boolean {
   const header = req.headers['authorization'] ?? '';
@@ -16,7 +19,8 @@ function bearerAuth(req: { headers: Record<string, string | string[] | undefined
 }
 
 export async function buildApp(boss: PgBoss) {
-  const app = Fastify({ logger: false, bodyLimit: 25 * 1024 * 1024 }); // 25MB — base64 PNG edits
+  // 25 MB: manual placement saves POST a full 1800x3072 PNG as base64, which inflates ~33%.
+  const app = Fastify({ logger: false, bodyLimit: 25 * 1024 * 1024 });
 
   await app.register(fastifyCors, {
     origin: true,
@@ -40,6 +44,9 @@ export async function buildApp(boss: PgBoss) {
   await registerRetagRoute(app);
   await registerDetailsRoute(app);
   await registerSegmentedImageRoute(app);
+  await registerPlacementRoute(app);
+  await registerPublishRoute(app);
+  await registerDeleteRoute(app);
 
   return app;
 }
