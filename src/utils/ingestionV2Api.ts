@@ -116,6 +116,14 @@ export const v2Api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
+  // Overwrite the segmented image in place (service-role upload happens server-side —
+  // the browser anon key can't write to the storage bucket). imageBase64 is a PNG data URL.
+  saveSegmentedImage: (jobId: string, imageBase64: string) =>
+    call<{ job_id: string; segmented_image_url: string }>(`/jobs/${jobId}/segmented-image`, {
+      method: 'POST',
+      body: JSON.stringify({ image_base64: imageBase64 }),
+    }),
 }
 
 export const V2_STORAGE_BUCKET = 'ingestion-automated'

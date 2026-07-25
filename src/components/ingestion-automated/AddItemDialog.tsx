@@ -20,7 +20,8 @@ const EMPTY: SubmitJobBody = {
   product_sub_type: '',
   product_complexity: 'simple',
   hitl_post_identification: false,
-  hitl_post_segmentation: false,
+  // On by default — operators verify/erase the segmented garment before placement.
+  hitl_post_segmentation: true,
 }
 
 type Props = {

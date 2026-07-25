@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { format } from 'date-fns'
 import {
   ExternalLink, Info, RefreshCcw, ArrowUpRight, Trash2, ChevronLeft, ChevronRight, Loader2,
-  ChevronDown, ChevronUp,
+  ChevronDown, ChevronUp, Eraser,
 } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
@@ -78,13 +78,14 @@ type Props = {
   onOpenError: (jobId: string) => void
   onOpenPlacement: (jobId: string) => void
   onOpenViewer: (images: ViewerImage[], index: number) => void
+  onOpenEraser: (jobId: string) => void
   refetch: () => void
   refetchSelection: () => void
   refetchTags: () => void
 }
 
 export function RowItem({
-  job, stage, tags, selection, sourceImages, product, refetchProduct, garmentSummary, selected, onToggleSelect, onOpenDetail, onOpenError, onOpenPlacement, onOpenViewer, refetch, refetchSelection, refetchTags,
+  job, stage, tags, selection, sourceImages, product, refetchProduct, garmentSummary, selected, onToggleSelect, onOpenDetail, onOpenError, onOpenPlacement, onOpenViewer, onOpenEraser, refetch, refetchSelection, refetchTags,
 }: Props) {
   const [expanded, setExpanded] = useState(false)
   const [packOpen, setPackOpen] = useState(false)
@@ -599,9 +600,12 @@ export function RowItem({
               label="Sgmtd"
               state={job.segmented_image_url ? 'available' : rowState === 'processing' ? 'processing' : 'empty'}
               url={job.segmented_image_url}
-              note={!job.segmented_image_url ? 'Waiting on Gen' : undefined}
+              note={!job.segmented_image_url ? 'Waiting on Gen' : 'Click ✎ to erase (HITL)'}
               size="xl"
-              onExpand={job.segmented_image_url ? () => onOpenViewer([{ url: job.segmented_image_url!, label: 'Segmented' }], 0) : undefined}
+              onExpand={job.segmented_image_url ? () => onOpenEraser(job.job_id) : undefined}
+              actions={job.segmented_image_url ? [
+                { icon: <Eraser className="h-3 w-3" />, label: 'AI eraser', onClick: () => onOpenEraser(job.job_id) },
+              ] : undefined}
             />
             <PhotoCard
               label="Placed"

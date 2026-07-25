@@ -17,7 +17,8 @@ const EMPTY: SubmitJobBody = {
   product_complexity: 'simple',
   v_ton_model: '',
   hitl_post_identification: false,
-  hitl_post_segmentation: false,
+  // On by default — operators verify/erase the segmented garment before placement.
+  hitl_post_segmentation: true,
 }
 
 type Props = { onSuccess: (jobId: string) => void }
