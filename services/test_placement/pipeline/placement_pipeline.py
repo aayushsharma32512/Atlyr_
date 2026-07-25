@@ -138,6 +138,38 @@ def run_placement_pipeline_e2e(
         print(f"   -> Selected Mannequin: {best_name}")
         print(f"   -> Final Image URL:    {final_url}\n")
 
+        # --- Editor-space transform export ---------------------------------------------------
+        # So the mesh editor (PlacementMeshEditor.tsx) can reconstruct this exact auto-placement
+        # instead of defaulting the garment to canvas-centre. Both sides live in the same
+        # 1800x3072 standardize_to_canvas space, and warp_matrix is a similarity, so it decomposes
+        # into {scale, rotationDeg, tx, ty}. We reproduce warp_garment's internal matrix here (it
+        # re-applies the 1.03 scale + 0.7% Y-offset on top of warp_matrix) so the exported
+        # transform matches the composited pixels, not the pre-warp matrix.
+        eff = warp_matrix.copy()
+        _k = garment_scale_multiplier
+        _cx, _cy = w_av / 2.0, h_av / 2.0
+        eff[0, 0] *= _k; eff[0, 1] *= _k
+        eff[0, 2] = _k * warp_matrix[0, 2] + _cx * (1.0 - _k)
+        eff[1, 0] *= _k; eff[1, 1] *= _k
+        eff[1, 2] = _k * warp_matrix[1, 2] + _cy * (1.0 - _k)
+        eff[1, 2] += h_av * garment_y_offset_percent
+
+        # Cloth-centre of the standardized garment == the editor's `home` (offset maths match).
+        _gy, _gx = np.where(garment_rgba[:, :, 3] > 0)
+        if _gx.size and _gy.size:
+            home_x = float((int(_gx.min()) + int(_gx.max())) / 2.0)
+            home_y = float((int(_gy.min()) + int(_gy.max())) / 2.0)
+        else:
+            home_x, home_y = _cx, _cy
+        placed_x = eff[0, 0] * home_x + eff[0, 1] * home_y + eff[0, 2]
+        placed_y = eff[1, 0] * home_x + eff[1, 1] * home_y + eff[1, 2]
+        editor_transform = {
+            "scale": float(np.hypot(eff[0, 0], eff[1, 0])),
+            "rotationDeg": float(np.degrees(np.arctan2(eff[1, 0], eff[0, 0]))),
+            "tx": float(placed_x - home_x),
+            "ty": float(placed_y - home_y),
+        }
+
         return {
             "status": "completed",
             "pipeline_job_id": pipeline_job_id,
@@ -146,6 +178,8 @@ def run_placement_pipeline_e2e(
             "scale": float(best_reg.scale),
             "inliers": int(best_reg.n_inliers),
             "scores": scores,
+            # Consumed by placement.handler.ts -> persisted so the mesh editor reconstructs placement.
+            "transform": editor_transform,
         }
 
     except Exception as e:
