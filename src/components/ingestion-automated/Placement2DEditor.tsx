@@ -4,8 +4,6 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Slider } from '@/components/ui/slider'
 import { AvatarRenderer, type AvatarRenderMetrics } from '@/features/studio/components/AvatarRenderer'
 import { useMannequinConfig } from '@/features/studio/hooks/useMannequinConfig'
 import type { StudioRenderedItem, StudioRenderedZone } from '@/features/studio/types'
@@ -70,40 +68,8 @@ function round(v: number, dp = 1): number {
   return Math.round(v * f) / f
 }
 
-function Row({ label, unit, value, min, max, step, onChange }: {
-  label: string
-  unit: string
-  value: number
-  min: number
-  max: number
-  step: number
-  onChange: (v: number) => void
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="w-14 shrink-0 text-[10.5px] text-muted-foreground">{label}</span>
-      <Slider
-        value={[value]}
-        min={min}
-        max={max}
-        step={step}
-        onValueChange={([v]) => onChange(v)}
-        className="flex-1"
-      />
-      <Input
-        type="number"
-        value={value}
-        step={step}
-        onChange={(e) => {
-          const n = Number(e.target.value)
-          if (Number.isFinite(n)) onChange(clamp(n, min, max))
-        }}
-        className="h-6 w-16 px-1.5 text-[10.5px]"
-      />
-      <span className="w-6 shrink-0 text-[10px] text-muted-foreground">{unit}</span>
-    </div>
-  )
-}
+/** The garment's on-screen rect — exactly what the renderer lays out, so the gizmo tracks it 1:1. */
+type Rect = { left: number; top: number; w: number; h: number }
 
 /**
  * Legacy 2D placement editor for a catalog product.
@@ -117,7 +83,12 @@ function Row({ label, unit, value, min, max, step, onChange }: {
  *   placement_x  = % of the GARMENT's own rendered width         → dx / garmentWidthPx * 100
  *   image_length = garment length in cm                          → renders at pxPerCm * image_length
  *
- * Saves only those three columns. The 3D `placement` map is never read or written here.
+ * Direct manipulation mirrors the 3D mesh editor: drag anywhere to move, corner handles scale about
+ * the garment's centre. There is deliberately NO rotate handle and no warp lattice — the 2D avatar
+ * renders a plain <img> positioned by top/left/width/height, and the catalog has no columns for a
+ * rotation or a per-vertex mesh, so those controls would silently do nothing on save.
+ *
+ * Saves only the three 2D columns. The 3D `placement` map is never read or written here.
  */
 export function Placement2DEditor({ product, open, onOpenChange, onSaved }: Props) {
   const zone = zoneOf(product?.type)
@@ -129,6 +100,10 @@ export function Placement2DEditor({ product, open, onOpenChange, onSaved }: Prop
   const [error, setError] = useState<string | null>(null)
   const [metrics, setMetrics] = useState<AvatarRenderMetrics | null>(null)
   const [aspect, setAspect] = useState<number | null>(null)
+  const [hovering, setHovering] = useState(false)
+  // The interaction surface, so pointer coordinates are always resolved against the canvas box —
+  // never against a 12px handle that happens to be the event target.
+  const surfaceRef = useRef<HTMLDivElement | null>(null)
 
   const { data: mannequinConfig, isLoading: mannequinLoading } = useMannequinConfig({ gender })
 
@@ -191,9 +166,21 @@ export function Placement2DEditor({ product, open, onOpenChange, onSaved }: Prop
 
   const items = useMemo(() => (item ? [item] : []), [item])
 
-  // Rendered garment width in px, which placement_x is measured against.
-  const garmentWidthPx = metrics && aspect ? metrics.pxPerCm * values.len * aspect : null
-  const canDrag = Boolean(metrics && garmentWidthPx)
+  // The garment's rect on screen — recomputed from the SAME formulas the renderer lays out with
+  // (AvatarRenderer's buildLayer), so the gizmo sits exactly on the garment at every scale.
+  const rect = useMemo<Rect | null>(() => {
+    if (!metrics || !aspect) return null
+    const h = metrics.pxPerCm * values.len
+    const w = h * aspect
+    return {
+      w,
+      h,
+      top: metrics.globalTopOffsetPx + metrics.chinOffsetPx + (values.y / 100) * metrics.userHeightPx,
+      left: VIEW_W / 2 + (values.x / 100) * w - w / 2,
+    }
+  }, [metrics, aspect, values])
+
+  const canEdit = rect !== null
 
   const update = useCallback((next: Partial<Values>) => {
     setValues((v) => ({
@@ -204,22 +191,70 @@ export function Placement2DEditor({ product, open, onOpenChange, onSaved }: Prop
     setDirty(true)
   }, [])
 
-  // Drag on the avatar → placement_x / placement_y. Values are captured at pointer-down so the
-  // garment tracks the cursor 1:1 instead of accelerating as the deltas compound.
-  const dragRef = useRef<{ px: number; py: number; start: Values; widthPx: number } | null>(null)
+  // One gesture at a time. Start values are captured at pointer-down so the garment tracks the
+  // cursor 1:1 instead of accelerating as deltas compound.
+  const dragRef = useRef<
+    | { kind: 'move'; px: number; py: number; start: Values; widthPx: number }
+    | { kind: 'scale'; startDist: number; start: Values; centerX: number; centerY: number }
+    | null
+  >(null)
 
-  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!canDrag || !garmentWidthPx) return
+  const beginMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!rect) return
     e.currentTarget.setPointerCapture(e.pointerId)
-    dragRef.current = { px: e.clientX, py: e.clientY, start: values, widthPx: garmentWidthPx }
+    dragRef.current = { kind: 'move', px: e.clientX, py: e.clientY, start: values, widthPx: rect.w }
+  }
+
+  /**
+   * Corner scale, same feel as the 3D editor's handles: the pointer's distance from the garment
+   * centre drives the scale ratio. Scaling is about the CENTRE, so x/y are re-derived to hold the
+   * centre still — otherwise the garment would creep down-right as it grew (the layout anchors on
+   * the top edge and on a fraction of the garment's own width).
+   */
+  const beginScale = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!rect) return
+    e.stopPropagation()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const box = surfaceRef.current?.getBoundingClientRect()
+    if (!box) return
+    const centerX = rect.left + rect.w / 2
+    const centerY = rect.top + rect.h / 2
+    const px = e.clientX - box.left
+    const py = e.clientY - box.top
+    dragRef.current = {
+      kind: 'scale',
+      startDist: Math.hypot(px - centerX, py - centerY) || 1,
+      start: values,
+      centerX,
+      centerY,
+    }
   }
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const d = dragRef.current
     if (!d || !metrics) return
+
+    if (d.kind === 'move') {
+      update({
+        x: d.start.x + ((e.clientX - d.px) / d.widthPx) * 100,
+        y: d.start.y + ((e.clientY - d.py) / metrics.userHeightPx) * 100,
+      })
+      return
+    }
+
+    const box = surfaceRef.current?.getBoundingClientRect()
+    if (!box) return
+    const dist = Math.hypot(e.clientX - box.left - d.centerX, e.clientY - box.top - d.centerY)
+    const k = dist / d.startDist
+    if (!Number.isFinite(k) || k <= 0) return
+    const len = clamp(d.start.len * k, LIMITS.len.min, LIMITS.len.max)
+    // Re-derive x/y from the actual applied length so hitting a clamp doesn't drift the centre.
+    const kApplied = len / d.start.len
+    const newH = metrics.pxPerCm * len
     update({
-      x: d.start.x + ((e.clientX - d.px) / d.widthPx) * 100,
-      y: d.start.y + ((e.clientY - d.py) / metrics.userHeightPx) * 100,
+      len,
+      x: d.start.x / kApplied,
+      y: ((d.centerY - newH / 2) - metrics.globalTopOffsetPx - metrics.chinOffsetPx) / metrics.userHeightPx * 100,
     })
   }
 
@@ -230,6 +265,7 @@ export function Placement2DEditor({ product, open, onOpenChange, onSaved }: Prop
   }
 
   // Arrow keys nudge, Shift = larger step — same interaction as the 3D mesh editor.
+  const garmentWidthPx = rect?.w ?? null
   useEffect(() => {
     if (!open || !metrics || !garmentWidthPx) return
     const onKey = (e: KeyboardEvent) => {
@@ -288,7 +324,7 @@ export function Placement2DEditor({ product, open, onOpenChange, onSaved }: Prop
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
           <div className="flex items-center justify-between gap-2">
             <p className="min-w-0 text-[10px] text-muted-foreground">
-              Drag the garment to position · arrow keys nudge (Shift = bigger) · {zone} on the {gender} avatar
+              Drag to move · corners scale · arrow keys nudge (Shift = bigger) · {zone} on the {gender} avatar
             </p>
             <button
               onClick={() => { setValues(seed); setDirty(false) }}
@@ -313,14 +349,42 @@ export function Placement2DEditor({ product, open, onOpenChange, onSaved }: Prop
                   placementMode="2d"
                   onMetrics={handleMetrics}
                 />
-                {/* Transparent drag surface over the avatar. */}
+                {/* Interaction surface: drag anywhere to move, corners to scale. The gizmo only
+                    shows while the cursor is over the canvas, so the garment reads cleanly. */}
                 <div
-                  className={`absolute inset-0 ${canDrag ? 'cursor-move' : 'cursor-default'}`}
-                  onPointerDown={onPointerDown}
+                  ref={surfaceRef}
+                  className={`absolute inset-0 ${canEdit ? 'cursor-move' : 'cursor-default'}`}
+                  onPointerDown={beginMove}
                   onPointerMove={onPointerMove}
                   onPointerUp={endDrag}
                   onPointerCancel={endDrag}
-                />
+                  onMouseEnter={() => setHovering(true)}
+                  onMouseLeave={() => setHovering(false)}
+                >
+                  {rect && hovering && (
+                    <div
+                      className="pointer-events-none absolute border border-[#2563eb]/70"
+                      style={{ left: rect.left, top: rect.top, width: rect.w, height: rect.h }}
+                    >
+                      {([
+                        ['nwse-resize', { left: -6, top: -6 }],
+                        ['nesw-resize', { left: rect.w - 6, top: -6 }],
+                        ['nesw-resize', { left: -6, top: rect.h - 6 }],
+                        ['nwse-resize', { left: rect.w - 6, top: rect.h - 6 }],
+                      ] as const).map(([cursor, pos], i) => (
+                        <div
+                          key={i}
+                          className="pointer-events-auto absolute h-3 w-3 rounded-[2px] border-[1.5px] border-[#2563eb] bg-white"
+                          style={{ ...pos, cursor }}
+                          onPointerDown={beginScale}
+                          onPointerMove={onPointerMove}
+                          onPointerUp={endDrag}
+                          onPointerCancel={endDrag}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
               </>
             ) : (
               <div className="absolute inset-0 flex items-center justify-center p-4">
@@ -335,14 +399,9 @@ export function Placement2DEditor({ product, open, onOpenChange, onSaved }: Prop
             )}
           </div>
 
-          <div className="flex flex-col gap-2 px-1">
-            <Row label="X" unit="%" value={values.x} min={LIMITS.x.min} max={LIMITS.x.max} step={0.5}
-              onChange={(v) => update({ x: v })} />
-            <Row label="Y" unit="%" value={values.y} min={LIMITS.y.min} max={LIMITS.y.max} step={0.5}
-              onChange={(v) => update({ y: v })} />
-            <Row label="Length" unit="cm" value={values.len} min={LIMITS.len.min} max={LIMITS.len.max} step={0.5}
-              onChange={(v) => update({ len: v })} />
-          </div>
+          <p className="px-1 text-center font-mono text-[10.5px] text-muted-foreground">
+            x {values.x}% · y {values.y}% · {values.len} cm
+          </p>
 
           {error && <p className="px-1 text-[11px] text-destructive">{error}</p>}
         </div>
