@@ -116,6 +116,19 @@ export interface SavePlacementForProductBody {
   body_type?: string
 }
 
+/**
+ * Legacy 2D placement — the columns the SVG avatar renders from. Entirely separate from the 3D
+ * transform above: different units, different renderer, saved through a different route.
+ */
+export interface SavePlacement2DForProductBody {
+  /** Horizontal offset as a percentage of the garment's own rendered width. */
+  placement_x: number
+  /** Vertical offset as a percentage of the avatar's body height, measured from the chin. */
+  placement_y: number
+  /** Garment length in cm. */
+  image_length: number
+}
+
 export interface SubmitJobBody {
   product_url: string
   product_gender_type: 'male' | 'female' | 'unisex'
@@ -189,6 +202,14 @@ export const v2Api = {
   // catalog rows for this product id, on whichever of products / ingested_products holds it.
   savePlacementForProduct: (productId: string, body: SavePlacementForProductBody) =>
     call<{ product_id: string; key: string; placement: PlacementEntry; placed_image_url: string | null }>(`/products/${productId}/placement`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  // Legacy 2D placement save (dashboard /admin/placement in 2D mode). Writes only placement_x,
+  // placement_y and image_length — the 3D `placement` map is untouched by this route.
+  savePlacement2DForProduct: (productId: string, body: SavePlacement2DForProductBody) =>
+    call<{ product_id: string; placement_x: number; placement_y: number; image_length: number }>(`/products/${productId}/placement-2d`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),

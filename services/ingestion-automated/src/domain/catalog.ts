@@ -106,6 +106,35 @@ export async function writePlacementEntry(productId: string, key: string, entry:
   }
 }
 
+/** The three legacy 2D columns that drive the SVG avatar. Units differ from the 3D transform. */
+export type Placement2D = {
+  /** Horizontal offset as a percentage of the GARMENT's rendered width (not the canvas). */
+  placement_x: number;
+  /** Vertical offset as a percentage of the avatar's body height, measured from the chin. */
+  placement_y: number;
+  /** Garment length in cm — the renderer scales the image to pxPerCm * image_length. */
+  image_length: number;
+};
+
+/**
+ * Write the legacy 2D placement columns for a product id, on both products / ingested_products
+ * (they share the deterministic id, so the UPDATE is a no-op on whichever lacks the row).
+ *
+ * Deliberately touches ONLY these three columns — the 3D `placement` JSONB map is never read or
+ * written here, so editing a garment's 2D placement can never disturb its mesh transform.
+ */
+export async function writePlacement2D(productId: string, values: Placement2D): Promise<void> {
+  const pool = pgPool();
+  for (const table of ['ingested_products', 'products'] as const) {
+    await pool.query(
+      `UPDATE public.${table}
+         SET placement_x = $1, placement_y = $2, image_length = $3
+       WHERE id = $4`,
+      [values.placement_x, values.placement_y, values.image_length, productId],
+    );
+  }
+}
+
 /**
  * Pure mapping from a completed job + its artifacts to a catalog row. NOT-NULL columns
  * (id, type, brand, size, price, currency, image_url, description, color) always get a value.

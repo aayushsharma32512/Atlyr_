@@ -99,6 +99,22 @@ type HairStyleConfig = {
   zIndex: number
 } | null
 
+/**
+ * The resolved pixel scale of a legacy (SVG) avatar render. Everything the layout math in
+ * `buildLayer` depends on, so a caller can go the other way — from a pixel delta on screen back to
+ * the stored placement_x / placement_y / image_length values.
+ */
+export interface AvatarRenderMetrics {
+  /** Body height in px, excluding the head above the chin. placement_y is a % of this. */
+  userHeightPx: number
+  /** Pixels per cm. A garment's rendered height is pxPerCm * image_length. */
+  pxPerCm: number
+  /** Distance from the container top to the chin — the origin placement_y measures from. */
+  chinOffsetPx: number
+  /** Extra top padding added only when a hairstyle overflows above the head; 0 otherwise. */
+  globalTopOffsetPx: number
+}
+
 interface AvatarRendererProps {
   mannequinConfig: MannequinConfig | null
   items: StudioRenderedItem[]
@@ -134,6 +150,13 @@ interface AvatarRendererProps {
    * '3d' prefers 3D (identical to auto — 3D still requires the placement data to exist).
    */
   placementMode?: "auto" | "2d" | "3d"
+  /**
+   * Reports the legacy renderer's resolved layout scale so a caller can invert its placement math
+   * (pixel drag → placement_x / placement_y / image_length). Only fires on the 2D SVG path, and
+   * only once the head asset has loaded — the metrics depend on its dimensions. Used by the admin
+   * 2D placement editor; the studio ignores it.
+   */
+  onMetrics?: (metrics: AvatarRenderMetrics) => void
 }
 
 interface LoadedItemData {
@@ -197,6 +220,7 @@ function LegacyAvatarRenderer({
   onReady,
   avatarRef,
   fetchPriority = "auto",
+  onMetrics,
 }: AvatarRendererProps) {
   const [segmentMarkup, setSegmentMarkup] = useState<SegmentSvgMap>({} as SegmentSvgMap)
   const [segmentDimensions, setSegmentDimensions] = useState<SegmentDimMap>({} as SegmentDimMap)
@@ -489,6 +513,14 @@ function LegacyAvatarRenderer({
     // Add a small buffer to avoid pixel-rounding clipping at the top edge.
     return Math.ceil(-hairTop) + 1
   }, [chinOffsetPx, hairStyle, resolvedSegments, userHeightPx])
+
+  // Report layout scale to callers that need to invert the placement math (admin 2D editor).
+  // Gated on assetsReady because chinOffsetPx/pxPerCm are meaningless until the head SVG's real
+  // dimensions replace the {width:1,height:1} placeholder.
+  useEffect(() => {
+    if (!onMetrics || !assetsReady) return
+    onMetrics({ userHeightPx, pxPerCm, chinOffsetPx, globalTopOffsetPx })
+  }, [onMetrics, assetsReady, userHeightPx, pxPerCm, chinOffsetPx, globalTopOffsetPx])
 
   const clothingLayers = useMemo(() => {
     if (!items.length) return []
