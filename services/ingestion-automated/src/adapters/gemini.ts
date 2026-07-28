@@ -325,3 +325,233 @@ async function fetchImageAsInlineData(url: string): Promise<{ mimeType: string; 
   const buf = await resp.arrayBuffer();
   return { mimeType, data: Buffer.from(buf).toString('base64') };
 }
+
+// ─── Enrichment (merchandising metadata) ─────────────────────────────────────
+// Ported from services/ingestion/src/orchestration/nodes.ts `enrichNode` so the automated
+// pipeline populates the same catalog columns (fit, feel, vibes, description_text, color_group,
+// occasion, material_type, product_specifications, type_category) the old HITL pipeline did.
+
+export const ENRICH_PROMPT_VERSION = 'v3';
+
+const ENRICH_SYSTEM_INSTRUCTION = `You are an expert E-commerce Merchandiser and a Gen-Z Fashion Stylist. Your objective is to analyze product inputs and images to generate structured metadata and a stylist-written description.
+
+1) VISUAL ANALYSIS LOGIC
+- Source of Truth: Use provided text for Brand/Material. Use Images for Fit, Drapes, and Details. Cross check against text attributes available.
+- Flatlay: Prioritize for color, fabric texture, construction details (buttons, stitching).
+- Model Shot: Prioritize for fit, silhouette, and drape.
+
+    "*2. PRODUCT NAMING RULES (Strict Adherence Required)*\n"
+    "Generate a clean, SEO-friendly ⁠ enriched_product_name ⁠ using this formula: *[Key Feature/Silhouette] + [Fabric (optional)] + [Exact Product Type]*\n"
+    "- *Length:* 3–5 words maximum.\n"
+    "- *Format:* Title Case (Capitalize Each Word).\n"
+    "- *Rules:*\n"
+    "   1. *No Noise:* Remove '100%', 'Premium', 'Comfort', 'Limited Edition', 'Regular Fit', or marketing fluff.\n"
+    "   2. *No Brands:* NEVER include the brand name (e.g., remove 'Nike', 'Zara').\n"
+    "   3. *Specificity:* Use specific types (e.g., 'Derby Shoes' not 'Formal Shoes'; 'Polo Shirt' not 'T-Shirt').\n"
+    "   4. *Visual Truth:* If text says 'Jeans' but image shows flared hem, name it 'Flared Denim Jeans'.\n"
+    "   5. *Fabric:* Include fabric ONLY if distinct (e.g., 'Linen', 'Suede', 'Leather', 'Corduroy'). Skip generic 'Cotton' unless it's a key texture (e.g., 'Waffle Knit').\n"
+    "   6. *Fallback:* If specific visual details (like silhouette or texture) are unclear in the image, simply OMIT that part of the name. Do NOT output 'INSUFFICIENT DATA'. Instead, generate a simpler name (e.g., if you can't see the fit, output 'Cotton T-Shirt' instead of 'Boxy Cotton T-Shirt').\n"
+    "   Examples:\n"
+    "   - '100% Cotton Regular Fit Polo' -> 'Textured Cotton Polo'\n"
+    "   - 'Men's Formal Shoes' (Image: Open lacing) -> 'Leather Derby Shoes'\n"
+    "   - 'Summer Dress' (Image: Satin, thin straps) -> 'Satin Slip Dress'\n\n"
+
+3) STANDARDIZED VOCABULARY (Strictly select from these attributes)
+FIT (Select 1-2 which are most appropriate based on the specific category):
+- Tops: Fitted, Slim, Regular, Relaxed, Oversized, Boxy, Cropped, Longline, Peplum, Asymmetric, Dropped shoulder, Tunic.
+- Bottoms: Skinny, Slim, Straight, Tapered, Regular, Relaxed, Wide-leg, Baggy, Bootcut, Flare, Cargo, High-rise, Mid-rise, Low-rise.
+- Skirts: Mini, Midi, Maxi, A-Line, Pencil, Pleated, Bias-cut, Tiered, Wrap, Asymmetric.
+- Dresses & Jumpsuits: Bodycon, A-Line, Shift, Wrap, Slip, Empire, Sheath, Fit & Flare, Smock, Shirt-style, T-Shirt style, Maxi, Midi, Mini, Strapless, Off-shoulder.
+- Outerwear: Tailored, Regular, Relaxed, Oversized, Boxy, Cropped, Longline, Belted, Puffer, Cape-style.
+- Activewear & Swimwear: Compression, Fitted, Regular, Relaxed, High-support, Low-support, High-leg, Racerback.
+- Footwear: TTS, Wide-fit, Narrow-fit, Wide-calf, Narrow-calf, Roomy toe box, Snug toe box.
+
+FEEL (Select 1-2 which are most appropriate based on category):
+- Apparel: Soft, Buttery, Crisp, Suede, Structured, Flowing, Slinky, Stiff, Stretchy, Rigid, Lightweight, Heavyweight, Cozy, Plush, Brushed, Breathable, Technical, Sheer, Textured, Smooth, Ribbed, Satin, Metallic, Distressed, Vintage-wash, Dry-touch, Waffle, Airy, Thermal.
+- Footwear & Accessories: Cushioned, Supportive, Rugged, Flexible, Sturdy, Lightweight, Airy, Plush, Polished, Matte, Glossy, Suede-touch, Grainy, Grippy, Chunky, Sleek, Moulded, Padded, Slouchy (bags), Structured (bags).
+
+VIBES (Select 1-3 tags based on category; abstract associations only):
+- Apparel: streetwear, old money, quiet luxury, athleisure, y2k, gorpcore, cottagecore, coquette (fem), clean girl, blokecore (masc), dark academia, light academia, grunge, punk, boho-chic, preppy, avant-garde, minimalist, maximalist, retro, vintage, utility, military, resortwear, festival, night luxe, date night, office siren, executive chic, loungewear, off-duty model, summer-ready, winter-layering, transitional, everyday basics, statement piece.
+- Footwear: sneakerhead, hypebeast, skate culture, court classic, terrace culture, retro runner, dad-core, gorpcore, combat-ready, rugged utility, sartorial, boardroom, heritage, party-ready, poolside, beach-club, runway, minimalist, statement, futuristic, cozy-core.
+
+4) DESCRIPTION WRITING GUIDELINES
+Write a casual, conversational, Gen-Z friendly description.
+Structure: Exactly 4 sentences. Each sentence must be separated by a newline character (\\n).
+(Line 1) Mood hook.
+(Line 2) Fit & silhouette details (mention fabric/cut).
+(Line 3) Seasonality + Occasion.
+(Line 4) Styling tip / Accessory pairing.
+
+5) JSON OUTPUT FORMAT
+Return strictly valid JSON with no markdown formatting. Output must be a JSON object that contains ALL of the keys below (do not omit keys). If a value cannot be inferred with high confidence, set it to null.
+1. "type_category": string, lower case, max 2 words.
+2. "color_group": string, lower case, max 2 words.
+3. "fit": array of 1-2 strings, lower case (from the standardized fit list).
+4. "feel": array of 1-2 strings, lower case (from the standardized feel list).
+5. "vibes": array of 1-3 strings, lower case (from the standardized vibes list).
+6. "occasion": string, lower case, max 2 words.
+7. "care": string, lower case, max 2 words.
+8. "material type": string, lower case, max 3 words.
+9. "description_text": string, lower case, exactly 4 sentences separated by newline characters (\\n).
+10. "product_specifications": object of string key-value pairs for visual features.
+11. "product_name_suggestion": String) The 3-5 word clean display name (e.g., 'Flared Denim Jeans')`;
+
+export interface EnrichmentContext {
+  brand?: string | null;
+  productName?: string | null;
+  material?: string | null;
+  color?: string | null;
+  fit?: string | null;
+  feel?: string | null;
+  care?: string | null;
+  description?: string | null;
+}
+
+export interface EnrichmentResult {
+  type_category: string | null;
+  color_group: string | null;
+  fit: string | null;
+  feel: string | null;
+  vibes: string[] | null;
+  occasion: string | null;
+  care: string | null;
+  material_type: string | null;
+  description_text: string | null;
+  product_specifications: Record<string, unknown> | null;
+  product_name_suggestion: string | null;
+  model_used: string;
+  prompt_version: string;
+  raw: string;
+}
+
+function asStringOrNull(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+}
+
+// Same normalization the old enrichNode used: accept array or comma string, lowercase, dedupe, cap.
+function normalizeTagList(value: unknown, maxItems: number): string[] | null {
+  if (!value) return null;
+  const items: string[] = [];
+  if (Array.isArray(value)) {
+    for (const entry of value) if (typeof entry === 'string') items.push(entry);
+  } else if (typeof value === 'string') {
+    const raw = value.trim();
+    if (raw) (raw.includes(',') ? raw.split(',') : [raw]).forEach((t) => items.push(t));
+  }
+  const deduped = Array.from(new Set(items.map((i) => i.trim().toLowerCase()).filter(Boolean)));
+  if (!deduped.length) return null;
+  return maxItems > 0 ? deduped.slice(0, maxItems) : deduped;
+}
+
+function stripJsonFences(text: string): string {
+  return text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+}
+
+function mapEnrichment(json: Record<string, unknown>, modelUsed: string, raw: string): EnrichmentResult {
+  const materialType =
+    asStringOrNull((json as Record<string, unknown>)['material type']) ?? asStringOrNull(json.material_type);
+  const specs = json.product_specifications;
+  return {
+    type_category:           asStringOrNull(json.type_category),
+    color_group:             asStringOrNull(json.color_group),
+    fit:                     normalizeTagList(json.fit, 2)?.join(', ') ?? null,
+    feel:                    normalizeTagList(json.feel, 2)?.join(', ') ?? null,
+    vibes:                   normalizeTagList(json.vibes, 3),
+    occasion:                asStringOrNull(json.occasion),
+    care:                    asStringOrNull(json.care),
+    material_type:           materialType,
+    description_text:        asStringOrNull(json.description_text),
+    product_specifications:
+      specs && typeof specs === 'object' && !Array.isArray(specs) ? (specs as Record<string, unknown>) : null,
+    product_name_suggestion: asStringOrNull(json.product_name_suggestion),
+    model_used:              modelUsed,
+    prompt_version:          ENRICH_PROMPT_VERSION,
+    raw,
+  };
+}
+
+/**
+ * Multimodal merchandising enrichment for one product image + scraped context. Mirrors the old
+ * HITL `enrichNode`: same system instruction, same JSON schema, same fallback-model chain.
+ */
+export async function generateEnrichment(
+  imageUrl: string,
+  ctx: EnrichmentContext,
+): Promise<EnrichmentResult> {
+  const client = getClient();
+  const inlineImage = await withRetry(() => fetchImageAsInlineData(imageUrl), {
+    retries: 3,
+    backoffMs: 1000,
+  });
+
+  const sf = (v: unknown) => asStringOrNull(v) ?? 'N/A';
+  const prompt = [
+    'Perform a multimodal analysis of the attached images and the context below to generate the enriched merchandising JSON.',
+    '',
+    '**Input Product Context:**',
+    '<product_context>',
+    `Brand: ${sf(ctx.brand)}`,
+    `Product Name: ${sf(ctx.productName)}`,
+    `Material: ${sf(ctx.material)}`,
+    `Color: ${sf(ctx.color)}`,
+    `Fit: ${sf(ctx.fit)}`,
+    `Feel: ${sf(ctx.feel)}`,
+    `Care: ${sf(ctx.care)}`,
+    `Product Description: ${sf(ctx.description)}`,
+    '</product_context>',
+    '',
+    '**Instructions:**',
+    "1. *NAMING:* Generate the 'enriched_product_name' first. Check the image to confirm the exact Product Type (e.g., Polo vs Tee) and Key Feature (e.g., Flared vs Straight). Apply the naming formula strictly.\n",
+    "2. Treat the Product Context as factual unless explicitly marked 'N/A'.",
+    '3. Use the flatlay image(s) to confirm construction, hardware, and fabric qualities.',
+    '4. Use the model image(s), when present, to infer silhouette, drape, and on-body styling.',
+    "5. Fill any 'N/A' inputs strictly from visual evidence. If the attribute cannot be inferred, return null.",
+    '6. Produce JSON that matches the schema. Do not include any additional text or markdown formatting.',
+  ].join('\n');
+
+  const candidates = textModelCandidates();
+  let lastErr: unknown;
+
+  for (const modelName of candidates) {
+    const model = client.getGenerativeModel({
+      model: modelName,
+      systemInstruction: ENRICH_SYSTEM_INSTRUCTION,
+      generationConfig: { responseMimeType: 'application/json' },
+    });
+
+    try {
+      return await withRetry(async () => {
+        const result = await model.generateContent([
+          { text: prompt },
+          { inlineData: inlineImage },
+        ]);
+        const text = result.response.text();
+        let json: unknown = JSON.parse(stripJsonFences(text));
+        if (Array.isArray(json) && json.length > 0) json = json[0];
+        if (!json || typeof json !== 'object') throw new Error('enrichment: non-object JSON response');
+        return mapEnrichment(json as Record<string, unknown>, modelName, text);
+      }, {
+        retries: 4,
+        backoffMs: 2000,
+        maxBackoffMs: 30_000,
+        shouldRetry: isTransientUpstreamError,
+        onRetry: (err, attempt, delayMs) =>
+          logger.warn({ model: modelName, attempt, delayMs, error: (err as Error).message }, 'enrichment call failed, retrying'),
+      });
+    } catch (err) {
+      lastErr = err;
+      const status = errorHttpStatus(err);
+      if (isTransientUpstreamError(err) || status === 404) {
+        logger.warn({ model: modelName, status, error: (err as Error).message }, 'model unavailable, trying next fallback');
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error(`All Gemini models failed for enrichment: ${candidates.join(', ')}`);
+}
