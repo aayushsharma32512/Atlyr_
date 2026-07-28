@@ -26,7 +26,9 @@ export function toTrayItem(slot: StudioProductTraySlot, product: StudioAlternati
     productUrl: product.productUrl ?? null,
     rating: null,
     reviewCount: null,
-    imageUrl: product.imageSrc ?? null,
+    // Use the raw garment image for rendering (the placement transform is measured against it),
+    // not the cropped grid thumbnail (imageSrc).
+    imageUrl: product.imageUrl || product.imageSrc || null,
     placementX: product.placementX,
     placementY: product.placementY,
     imageLength: product.imageLength,
@@ -40,6 +42,7 @@ export function toTrayItem(slot: StudioProductTraySlot, product: StudioAlternati
     care: null,
     materialType: null,
     bodyPartsVisible: product.bodyPartsVisible ?? null,
+    placement: product.placement ?? null,
   }
 }
 

@@ -11,6 +11,7 @@ import { registerDeletePhotoRoute } from './routes/delete-photo';
 import { registerDetailsRoute } from './routes/details';
 import { registerSegmentedImageRoute } from './routes/segmented-image';
 import { registerPlacementRoute } from './routes/placement';
+import { registerProductPlacementRoute } from './routes/product-placement';
 import { registerPublishRoute } from './routes/publish';
 import { registerDeleteRoute } from './routes/delete';
 
@@ -47,6 +48,7 @@ export async function buildApp(boss: PgBoss) {
   await registerDetailsRoute(app);
   await registerSegmentedImageRoute(app);
   await registerPlacementRoute(app);
+  await registerProductPlacementRoute(app);
   await registerPublishRoute(app);
   await registerDeleteRoute(app);
 

@@ -16,6 +16,7 @@ import {
   getSegmentLengthPx,
 } from "@/features/studio/utils/avatarMath"
 import { DEFAULT_VISIBLE_SEGMENTS, MANNEQUIN_SKIN_HEXES } from "@/features/studio/constants"
+import { PlacementAvatarRenderer } from "@/features/studio/components/PlacementAvatarRenderer"
 
 const BODY_SEGMENTS: MannequinSegmentName[] = ["neck", "torso", "arm_left", "arm_right", "legs", "feet"]
 
@@ -127,6 +128,12 @@ interface AvatarRendererProps {
   avatarRef?: React.Ref<HTMLDivElement>
   /** Hint to the browser for image loading priority */
   fetchPriority?: "high" | "low" | "auto"
+  /**
+   * Which mannequin to render on. 'auto' (default) prefers the 3D placement mannequin whenever all
+   * renderable items have 3D placement, else the 2D SVG avatar. '2d' forces the legacy SVG avatar;
+   * '3d' prefers 3D (identical to auto — 3D still requires the placement data to exist).
+   */
+  placementMode?: "auto" | "2d" | "3d"
 }
 
 interface LoadedItemData {
@@ -135,7 +142,37 @@ interface LoadedItemData {
   dimensions: { width: number; height: number }
 }
 
-export function AvatarRenderer({
+/**
+ * Entry point: outfits whose renderable items ALL carry a canvas-transform `placement` render on the
+ * new 1800x3072 placement mannequin (PlacementAvatarRenderer). Anything else — including outfits
+ * mid-migration where some items aren't placed yet — falls back to the legacy SVG avatar below.
+ */
+export function AvatarRenderer(props: AvatarRendererProps) {
+  const renderable = props.items.filter((it) => it.imageUrl)
+  const has3DAll = renderable.length > 0 && renderable.every((it) => it.placement)
+  const has3DSome = renderable.some((it) => it.placement)
+  // auto: 3D only when EVERY item is placed (else a mixed outfit would drop the unplaced garments).
+  // '3d': force 3D — render just the placed items on the mannequin. '2d': force the legacy SVG avatar.
+  const usePlacement =
+    props.placementMode === "2d" ? false : props.placementMode === "3d" ? has3DSome : has3DAll
+  if (usePlacement) {
+    return (
+      <PlacementAvatarRenderer
+        items={props.items}
+        gender={props.gender}
+        containerHeight={props.containerHeight}
+        containerWidth={props.containerWidth}
+        itemOpacity={props.itemOpacity}
+        avatarRef={props.avatarRef}
+        onReady={props.onReady}
+        fetchPriority={props.fetchPriority}
+      />
+    )
+  }
+  return <LegacyAvatarRenderer {...props} />
+}
+
+function LegacyAvatarRenderer({
   mannequinConfig,
   items,
   containerHeight = 460,

@@ -95,6 +95,27 @@ export interface SavePlacementBody {
   warp: { x: number; y: number }[]
 }
 
+/** One entry inside the product's `placement` JSONB map (value of a "gender:body_type" key). */
+export interface PlacementEntry {
+  tx: number
+  ty: number
+  scale: number
+  rotationDeg: number
+  warp: { x: number; y: number }[]
+}
+
+/** Product-keyed placement save — works for both pipeline jobs and legacy catalog-only products. */
+export interface SavePlacementForProductBody {
+  /** Optional preview composite (1800x3072 PNG), base64 without the data: prefix. */
+  image_base64?: string
+  transform: { scale: number; rotationDeg: number; tx: number; ty: number }
+  warp: { x: number; y: number }[]
+  /** Mannequin the transform targets; falls back to the product's gender server-side if omitted. */
+  mannequin?: 'male' | 'female'
+  /** Body-type key inside the placement map; defaults to 'bodytype1' server-side. */
+  body_type?: string
+}
+
 export interface SubmitJobBody {
   product_url: string
   product_gender_type: 'male' | 'female' | 'unisex'
@@ -157,7 +178,15 @@ export const v2Api = {
     }),
 
   savePlacement: (jobId: string, body: SavePlacementBody) =>
-    call<{ job_id: string; placed_image_url: string }>(`/jobs/${jobId}/placement`, {
+    call<{ job_id: string; product_id?: string; placed_image_url: string }>(`/jobs/${jobId}/placement`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  // Product-keyed placement save (dashboard /admin/placement). Writes placement_* columns onto the
+  // catalog rows for this product id, on whichever of products / ingested_products holds it.
+  savePlacementForProduct: (productId: string, body: SavePlacementForProductBody) =>
+    call<{ product_id: string; key: string; placement: PlacementEntry; placed_image_url: string | null }>(`/products/${productId}/placement`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),

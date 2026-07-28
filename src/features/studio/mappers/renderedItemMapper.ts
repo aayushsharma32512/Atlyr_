@@ -6,11 +6,55 @@ import type {
   MannequinSegmentName,
   StudioRenderedItem,
   StudioRenderedZone,
+  StudioPlacementTransform,
   ZoneVisibilityMap,
   StudioOutfitDTO,
   SupabaseOutfitWithProducts,
   SupabaseProductLike,
 } from "@/features/studio/types"
+
+/**
+ * Build the canvas-transform placement from the new placement_* columns. Returns null when the
+ * product has not been placed on the new mannequin yet (→ item renders via the legacy SVG path).
+ */
+type PlacementMapEntry = { tx?: number; ty?: number; scale?: number; rotationDeg?: number; warp?: unknown }
+
+export function toPlacementTransform(product: {
+  placement?: unknown
+  gender?: string | null
+}): StudioPlacementTransform | null {
+  const map = product.placement
+  if (!map || typeof map !== "object") return null
+  const rec = map as Record<string, PlacementMapEntry>
+
+  // Pick the entry for the product's mannequin (male|female); unisex prefers male, then female.
+  const order = product.gender === "female" ? ["female", "male"] : ["male", "female"]
+  let entry: PlacementMapEntry | undefined
+  let mannequin: "male" | "female" = "male"
+  for (const g of order) {
+    const e = rec[`${g}:bodytype1`]
+    if (e && typeof e.scale === "number" && typeof e.tx === "number" && typeof e.ty === "number") {
+      entry = e
+      mannequin = g as "male" | "female"
+      break
+    }
+  }
+  if (!entry) return null
+
+  const warp = Array.isArray(entry.warp)
+    ? (entry.warp as unknown[]).filter(
+        (w): w is { x: number; y: number } => !!w && typeof (w as { x?: unknown }).x === "number" && typeof (w as { y?: unknown }).y === "number",
+      )
+    : []
+  return {
+    scale: entry.scale as number,
+    rotationDeg: entry.rotationDeg ?? 0,
+    tx: entry.tx as number,
+    ty: entry.ty as number,
+    warp,
+    mannequin,
+  }
+}
 
 const LEGACY_TYPE_TO_ZONE: Record<string, StudioRenderedZone> = {
   top: "top",
@@ -48,9 +92,11 @@ export function mapSupabaseProductToStudioItem(
     return null
   }
 
+  // Render uses the raw garment image (image_url) — the placement transform is measured against it,
+  // so a cropped thumbnail_url would shift the on-mannequin garment. thumbnail is a display-only fallback.
   const imageUrl = (
-    (typeof product.thumbnail_url === "string" && product.thumbnail_url.trim()) ||
-    (typeof product.image_url === "string" ? product.image_url.trim() : "")
+    (typeof product.image_url === "string" && product.image_url.trim()) ||
+    (typeof product.thumbnail_url === "string" ? product.thumbnail_url.trim() : "")
   )
   if (!imageUrl) {
     if (import.meta.env?.DEV) {
@@ -93,6 +139,7 @@ export function mapSupabaseProductToStudioItem(
     placementX,
     placementY,
     imageLengthCm,
+    placement: toPlacementTransform(product),
     brand: product.brand ?? null,
     productName: product.product_name ?? null,
     description: product.description ?? null,
@@ -140,6 +187,7 @@ export function mapTrayItemToStudioRenderedItem(item: StudioProductTrayItem | nu
     placementX: ensurePlacementValue(item.placementX),
     placementY: ensurePlacementValue(item.placementY),
     imageLengthCm: ensurePlacementValue(item.imageLength),
+    placement: item.placement ?? null,
     brand: item.brand ?? null,
     productName: item.title ?? null,
     description: null,
