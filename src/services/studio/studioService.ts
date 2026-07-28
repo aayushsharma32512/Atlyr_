@@ -2,8 +2,8 @@ import { supabase } from "@/integrations/supabase/client"
 import type { Database } from "@/integrations/supabase/types"
 import type { PostgrestError } from "@supabase/supabase-js"
 import type { Outfit } from "@/types"
-import type { StudioOutfitDTO } from "@/features/studio/types"
-import { mapDbOutfitToStudioOutfit } from "@/features/studio/mappers/renderedItemMapper"
+import type { StudioOutfitDTO, StudioPlacementTransform } from "@/features/studio/types"
+import { mapDbOutfitToStudioOutfit, toPlacementTransform } from "@/features/studio/mappers/renderedItemMapper"
 
 import { mapDbOutfitToOutfit } from "@/services/shared/transformers/outfitTransformers"
 import { reportStudioDataIssue } from "@/features/studio/utils/reportDataIssue"
@@ -34,6 +34,8 @@ export interface StudioProductTrayItem {
   placementX: number
   placementY: number
   imageLength: number
+  /** Canvas-transform placement (new mannequin) — null when the product hasn't been placed yet. */
+  placement?: StudioPlacementTransform | null
   color?: string | null
   size?: string | null
   itemType?: Database["public"]["Enums"]["item_type"] | null
@@ -71,7 +73,11 @@ export interface StudioAlternativeProduct {
   brand: string | null
   price: number
   currency: string
+  /** Display image for the grid tile (cropped thumbnail when available). */
   imageSrc: string
+  /** Raw garment image (image_url) for on-mannequin RENDERING — the placement transform is measured
+   *  against this padded image, so the avatar must use it, not the cropped thumbnail. */
+  imageUrl?: string
   productUrl: string | null
   placementX: number
   placementY: number
@@ -82,6 +88,8 @@ export interface StudioAlternativeProduct {
   gender?: Gender
   metadataSource: "product" | "default"
   bodyPartsVisible?: string[] | null
+  /** 3D placement transform, so equipping this alternative keeps its 3D data. */
+  placement?: StudioPlacementTransform | null
 }
 
 export interface StudioComplementaryProduct {
@@ -144,6 +152,7 @@ const OUTFIT_SELECT = `
     placement_x,
     placement_y,
     image_length,
+    placement,
     type_category,
     body_parts_visible,
     care,
@@ -170,6 +179,7 @@ const OUTFIT_SELECT = `
     placement_x,
     placement_y,
     image_length,
+    placement,
     type_category,
     body_parts_visible,
     care,
@@ -196,6 +206,7 @@ const OUTFIT_SELECT = `
     placement_x,
     placement_y,
     image_length,
+    placement,
     type_category,
     body_parts_visible,
     care,
@@ -284,6 +295,7 @@ const OUTFIT_TRAY_SELECT = `
     placement_x,
     placement_y,
     image_length,
+    placement,
     size,
     color,
     type,
@@ -304,6 +316,7 @@ const OUTFIT_TRAY_SELECT = `
     placement_x,
     placement_y,
     image_length,
+    placement,
     size,
     color,
     type,
@@ -324,6 +337,7 @@ const OUTFIT_TRAY_SELECT = `
     placement_x,
     placement_y,
     image_length,
+    placement,
     size,
     color,
     type,
@@ -376,6 +390,7 @@ function toTrayItem(slot: StudioProductTraySlot, product: Database["public"]["Ta
     placementX: placement.placementX,
     placementY: placement.placementY,
     imageLength: placement.imageLength,
+    placement: toPlacementTransform(product as unknown as Parameters<typeof toPlacementTransform>[0]),
     color: product.color ?? null,
     size: product.size ?? null,
     itemType: product.type ?? null,
@@ -643,6 +658,7 @@ function mapProductRowToAlternative(
       price: row.price ?? 0,
       currency: row.currency ?? "INR",
       imageSrc,
+      imageUrl: row.image_url ?? "",
       productUrl: row.product_url ?? null,
       placementX: defaults.placementX,
       placementY: defaults.placementY,
@@ -653,6 +669,7 @@ function mapProductRowToAlternative(
       gender,
       metadataSource: "default",
       bodyPartsVisible: (Array.isArray(row.body_parts_visible) ? row.body_parts_visible : null) as string[] | null,
+      placement: toPlacementTransform(row as unknown as Parameters<typeof toPlacementTransform>[0]),
     }
   }
 
@@ -663,6 +680,7 @@ function mapProductRowToAlternative(
     price: row.price ?? 0,
     currency: row.currency ?? "INR",
     imageSrc,
+    imageUrl: row.image_url ?? "",
     productUrl: row.product_url ?? null,
     placementX: placementX!,
     placementY: placementY!,
@@ -673,6 +691,7 @@ function mapProductRowToAlternative(
     gender,
     metadataSource: "product",
     bodyPartsVisible: (Array.isArray(row.body_parts_visible) ? row.body_parts_visible : null) as string[] | null,
+    placement: toPlacementTransform(row as unknown as Parameters<typeof toPlacementTransform>[0]),
   }
 }
 
@@ -748,6 +767,7 @@ export function mapTrayItemToAlternative(item: StudioProductTrayItem): StudioAlt
     price: item.price,
     currency: item.currency,
     imageSrc: item.imageUrl ?? "",
+    imageUrl: item.imageUrl ?? "",
     productUrl: item.productUrl ?? null,
     placementX: item.placementX,
     placementY: item.placementY,
@@ -757,6 +777,7 @@ export function mapTrayItemToAlternative(item: StudioProductTrayItem): StudioAlt
     itemType: item.slot,
     metadataSource: item.metadataSource,
     bodyPartsVisible: item.bodyPartsVisible ?? null,
+    placement: item.placement ?? null,
   }
 }
 
@@ -828,7 +849,7 @@ async function getAlternatives({ slot, gender, limit = 24, filters }: GetAlterna
   let query = supabase
     .from("products")
     .select(
-      "id, product_name, brand, price, image_url, thumbnail_url, product_url, gender, type, placement_x, placement_y, image_length, size, currency, color, fit, feel, vibes, body_parts_visible",
+      "id, product_name, brand, price, image_url, thumbnail_url, product_url, gender, type, placement_x, placement_y, image_length, placement, size, currency, color, fit, feel, vibes, body_parts_visible",
     )
     .eq("type", itemType)
     .not("gender", "is", null)
@@ -891,7 +912,7 @@ async function getProductById(productId: string): Promise<StudioProductTrayItem 
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, product_name, brand, price, image_url, product_url, gender, type, placement_x, placement_y, image_length, size, currency, color, fit, feel, vibes, body_parts_visible, care, material_type",
+      "id, product_name, brand, price, image_url, product_url, gender, type, placement_x, placement_y, image_length, placement, size, currency, color, fit, feel, vibes, body_parts_visible, care, material_type",
     )
     .eq("id", productId)
     .maybeSingle()
@@ -921,6 +942,7 @@ async function getProductById(productId: string): Promise<StudioProductTrayItem 
     placementX: placement.placementX,
     placementY: placement.placementY,
     imageLength: placement.imageLength,
+    placement: toPlacementTransform(data as unknown as Parameters<typeof toPlacementTransform>[0]),
     color: data.color ?? null,
     size: data.size ?? null,
     itemType: data.type ?? null,
@@ -1179,7 +1201,7 @@ async function getComplementaryProductsByProductId({
   const query = supabase
     .from("products")
     .select(
-      "id, product_name, brand, price, image_url, thumbnail_url, product_url, gender, type, placement_x, placement_y, image_length, size, currency, color, fit, feel, vibes, body_parts_visible",
+      "id, product_name, brand, price, image_url, thumbnail_url, product_url, gender, type, placement_x, placement_y, image_length, placement, size, currency, color, fit, feel, vibes, body_parts_visible",
     )
     .in("type", complementarySlots)
     .neq("id", productId)

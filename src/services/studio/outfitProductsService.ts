@@ -17,6 +17,7 @@ const OUTFIT_PRODUCTS_SELECT = `
     placement_x,
     placement_y,
     image_length,
+    placement,
     body_parts_visible
   ),
   bottom:products!outfits_bottom_id_fkey(
@@ -27,6 +28,7 @@ const OUTFIT_PRODUCTS_SELECT = `
     placement_x,
     placement_y,
     image_length,
+    placement,
     body_parts_visible
   ),
   shoes:products!outfits_shoes_id_fkey(
@@ -37,6 +39,7 @@ const OUTFIT_PRODUCTS_SELECT = `
     placement_x,
     placement_y,
     image_length,
+    placement,
     body_parts_visible
   )
 `

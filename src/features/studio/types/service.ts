@@ -46,6 +46,8 @@ export type SupabaseProductLike =
       placement_x?: number | null
       placement_y?: number | null
       image_length?: number | null
+      // Canvas-transform placement map: { "gender:body_type": {tx,ty,scale,rotationDeg,warp} }.
+      placement?: unknown
       body_parts_visible?: unknown
     }
   | null
