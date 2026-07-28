@@ -222,16 +222,15 @@ export function StudioAlternativesView() {
 
   // --- INITIALIZATION FLOW: Auto-search on mount or tab change ---
   useEffect(() => {
+    // Auto image-similarity (embedding) search is disabled for now — we always seed with no image so
+    // the grid shows all products for the slot (fallback query) instead of the "N results for image
+    // search" set. Re-enable later by passing `currentSlotImageUrl` again. Manual text search still works.
     if (prevSlotRef.current !== slot) {
-      // Tab changed - restore existing state or initialize with current slot's image
-      // In admin mode, we initialize as draft (no auto-search) AND no auto-image (empty search bar).
-      search.resetForSlot(slot, isAdminMode ? null : currentSlotImageUrl, isAdminMode)
-
+      search.resetForSlot(slot, null, isAdminMode)
       prevSlotRef.current = slot
     } else if (!isInitializedRef.current) {
-      // Initial load only — initialize even on cold start (no outfit yet)
       isInitializedRef.current = true
-      search.resetForSlot(slot, isAdminMode ? null : currentSlotImageUrl, isAdminMode)
+      search.resetForSlot(slot, null, isAdminMode)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slot, currentSlotImageUrl, isAdminMode])
