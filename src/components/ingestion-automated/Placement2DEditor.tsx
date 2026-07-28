@@ -6,6 +6,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { AvatarRenderer, type AvatarRenderMetrics } from '@/features/studio/components/AvatarRenderer'
 import { useMannequinConfig } from '@/features/studio/hooks/useMannequinConfig'
+import { probeAlphaBounds, FULL_BOUNDS, type AlphaBounds } from '@/features/studio/utils/imageAlphaBounds'
 import type { StudioRenderedItem, StudioRenderedZone } from '@/features/studio/types'
 import { v2Api } from '@/utils/ingestionV2Api'
 
@@ -101,6 +102,7 @@ export function Placement2DEditor({ product, open, onOpenChange, onSaved }: Prop
   const [metrics, setMetrics] = useState<AvatarRenderMetrics | null>(null)
   const [aspect, setAspect] = useState<number | null>(null)
   const [hovering, setHovering] = useState(false)
+  const [bounds, setBounds] = useState<AlphaBounds>(FULL_BOUNDS)
   // The interaction surface, so pointer coordinates are always resolved against the canvas box —
   // never against a 12px handle that happens to be the event target.
   const surfaceRef = useRef<HTMLDivElement | null>(null)
@@ -142,6 +144,17 @@ export function Placement2DEditor({ product, open, onOpenChange, onSaved }: Prop
     return () => { cancelled = true }
   }, [open, product?.image_url])
 
+  // Where the garment actually is inside its padded PNG. Without this the gizmo wraps the image
+  // rect — metres of empty space around a t-shirt — and the handles sit off in the void.
+  useEffect(() => {
+    const url = product?.image_url
+    if (!open || !url) { setBounds(FULL_BOUNDS); return }
+    let cancelled = false
+    setBounds(FULL_BOUNDS)
+    probeAlphaBounds(url).then((b) => { if (!cancelled) setBounds(b) })
+    return () => { cancelled = true }
+  }, [open, product?.image_url])
+
   // Identity-stable so the renderer's metrics effect doesn't re-fire every render.
   const handleMetrics = useCallback((m: AvatarRenderMetrics) => {
     setMetrics((prev) =>
@@ -166,9 +179,9 @@ export function Placement2DEditor({ product, open, onOpenChange, onSaved }: Prop
 
   const items = useMemo(() => (item ? [item] : []), [item])
 
-  // The garment's rect on screen — recomputed from the SAME formulas the renderer lays out with
-  // (AvatarRenderer's buildLayer), so the gizmo sits exactly on the garment at every scale.
-  const rect = useMemo<Rect | null>(() => {
+  // The IMAGE's rect on screen — recomputed from the SAME formulas the renderer lays out with
+  // (AvatarRenderer's buildLayer), so the overlay tracks the garment exactly at every scale.
+  const imageRect = useMemo<Rect | null>(() => {
     if (!metrics || !aspect) return null
     const h = metrics.pxPerCm * values.len
     const w = h * aspect
@@ -179,6 +192,18 @@ export function Placement2DEditor({ product, open, onOpenChange, onSaved }: Prop
       left: VIEW_W / 2 + (values.x / 100) * w - w / 2,
     }
   }, [metrics, aspect, values])
+
+  // The garment's VISIBLE rect — the image rect narrowed to the opaque pixels. This is what the
+  // gizmo wraps and what scaling pivots around, so the handles land on the garment's corners.
+  const rect = useMemo<Rect | null>(() => {
+    if (!imageRect) return null
+    return {
+      left: imageRect.left + bounds.x * imageRect.w,
+      top: imageRect.top + bounds.y * imageRect.h,
+      w: bounds.w * imageRect.w,
+      h: bounds.h * imageRect.h,
+    }
+  }, [imageRect, bounds])
 
   const canEdit = rect !== null
 
@@ -200,16 +225,38 @@ export function Placement2DEditor({ product, open, onOpenChange, onSaved }: Prop
   >(null)
 
   const beginMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!rect) return
+    if (!imageRect) return
     e.currentTarget.setPointerCapture(e.pointerId)
-    dragRef.current = { kind: 'move', px: e.clientX, py: e.clientY, start: values, widthPx: rect.w }
+    // widthPx is the IMAGE width — placement_x is a percentage of that, not of the visible garment.
+    dragRef.current = { kind: 'move', px: e.clientX, py: e.clientY, start: values, widthPx: imageRect.w }
   }
 
   /**
+   * Resize to `len` while holding the garment's visible centre on `anchor`.
+   *
+   * placement_x/placement_y position the padded IMAGE, not the garment, so changing the length
+   * moves the visible garment unless x/y are re-derived. Inverting the layout for a fixed anchor:
+   *
+   *   cx = VIEW_W/2 + imageW * (x/100 + A)          A = -0.5 + bounds.x + bounds.w/2
+   *   cy = chin + (y/100) * userHeightPx + imageH*B  B = bounds.y + bounds.h/2
+   */
+  const resizeAround = useCallback((rawLen: number, anchor: { cx: number; cy: number }) => {
+    if (!metrics || !aspect) return
+    const len = clamp(round(rawLen), LIMITS.len.min, LIMITS.len.max)
+    const imageH = metrics.pxPerCm * len
+    const imageW = imageH * aspect
+    const A = -0.5 + bounds.x + bounds.w / 2
+    const B = bounds.y + bounds.h / 2
+    update({
+      len,
+      x: ((anchor.cx - VIEW_W / 2) / imageW - A) * 100,
+      y: ((anchor.cy - metrics.globalTopOffsetPx - metrics.chinOffsetPx - imageH * B) / metrics.userHeightPx) * 100,
+    })
+  }, [metrics, aspect, bounds, update])
+
+  /**
    * Corner scale, same feel as the 3D editor's handles: the pointer's distance from the garment
-   * centre drives the scale ratio. Scaling is about the CENTRE, so x/y are re-derived to hold the
-   * centre still — otherwise the garment would creep down-right as it grew (the layout anchors on
-   * the top edge and on a fraction of the garment's own width).
+   * centre drives the ratio, pivoting on the centre so the garment grows in place.
    */
   const beginScale = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!rect) return
@@ -230,6 +277,17 @@ export function Placement2DEditor({ product, open, onOpenChange, onSaved }: Prop
     }
   }
 
+  // Wheel over the canvas scales about the garment's centre — the quickest way to size a garment
+  // without going near a handle.
+  const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (!rect) return
+    e.preventDefault()
+    resizeAround(values.len * (1 - e.deltaY * 0.0015), {
+      cx: rect.left + rect.w / 2,
+      cy: rect.top + rect.h / 2,
+    })
+  }
+
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const d = dragRef.current
     if (!d || !metrics) return
@@ -247,15 +305,7 @@ export function Placement2DEditor({ product, open, onOpenChange, onSaved }: Prop
     const dist = Math.hypot(e.clientX - box.left - d.centerX, e.clientY - box.top - d.centerY)
     const k = dist / d.startDist
     if (!Number.isFinite(k) || k <= 0) return
-    const len = clamp(d.start.len * k, LIMITS.len.min, LIMITS.len.max)
-    // Re-derive x/y from the actual applied length so hitting a clamp doesn't drift the centre.
-    const kApplied = len / d.start.len
-    const newH = metrics.pxPerCm * len
-    update({
-      len,
-      x: d.start.x / kApplied,
-      y: ((d.centerY - newH / 2) - metrics.globalTopOffsetPx - metrics.chinOffsetPx) / metrics.userHeightPx * 100,
-    })
+    resizeAround(d.start.len * k, { cx: d.centerX, cy: d.centerY })
   }
 
   const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -264,12 +314,25 @@ export function Placement2DEditor({ product, open, onOpenChange, onSaved }: Prop
     try { e.currentTarget.releasePointerCapture(e.pointerId) } catch { /* already released */ }
   }
 
-  // Arrow keys nudge, Shift = larger step — same interaction as the 3D mesh editor.
-  const garmentWidthPx = rect?.w ?? null
+  // Arrow keys nudge, +/- resize, Shift = larger step — same feel as the 3D mesh editor.
+  // NOTE: placement_x is a % of the IMAGE's width, not the visible garment's, so nudges divide by
+  // imageRect.w. Using the (narrower) visible width here would make every nudge overshoot.
+  const imageWidthPx = imageRect?.w ?? null
   useEffect(() => {
-    if (!open || !metrics || !garmentWidthPx) return
+    if (!open || !metrics || !imageWidthPx || !rect) return
     const onKey = (e: KeyboardEvent) => {
       const stepPx = e.shiftKey ? 10 : 2
+
+      if (e.key === '+' || e.key === '=' || e.key === '-' || e.key === '_') {
+        e.preventDefault()
+        const factor = e.key === '+' || e.key === '=' ? 1.02 : 1 / 1.02
+        resizeAround(values.len * (e.shiftKey ? factor ** 4 : factor), {
+          cx: rect.left + rect.w / 2,
+          cy: rect.top + rect.h / 2,
+        })
+        return
+      }
+
       let dx = 0, dy = 0
       if (e.key === 'ArrowLeft') dx = -stepPx
       else if (e.key === 'ArrowRight') dx = stepPx
@@ -281,14 +344,14 @@ export function Placement2DEditor({ product, open, onOpenChange, onSaved }: Prop
         setDirty(true)
         return {
           ...v,
-          x: clamp(round(v.x + (dx / garmentWidthPx) * 100), LIMITS.x.min, LIMITS.x.max),
+          x: clamp(round(v.x + (dx / imageWidthPx) * 100), LIMITS.x.min, LIMITS.x.max),
           y: clamp(round(v.y + (dy / metrics.userHeightPx) * 100), LIMITS.y.min, LIMITS.y.max),
         }
       })
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [open, metrics, garmentWidthPx])
+  }, [open, metrics, imageWidthPx, rect, values.len, resizeAround])
 
   const handleSave = async () => {
     if (!product) return
@@ -324,7 +387,7 @@ export function Placement2DEditor({ product, open, onOpenChange, onSaved }: Prop
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
           <div className="flex items-center justify-between gap-2">
             <p className="min-w-0 text-[10px] text-muted-foreground">
-              Drag to move · corners scale · arrow keys nudge (Shift = bigger) · {zone} on the {gender} avatar
+              Drag to move · corners or scroll to scale · arrows nudge, +/− resize (Shift = bigger) · {zone} on the {gender} avatar
             </p>
             <button
               onClick={() => { setValues(seed); setDirty(false) }}
@@ -358,6 +421,7 @@ export function Placement2DEditor({ product, open, onOpenChange, onSaved }: Prop
                   onPointerMove={onPointerMove}
                   onPointerUp={endDrag}
                   onPointerCancel={endDrag}
+                  onWheel={onWheel}
                   onMouseEnter={() => setHovering(true)}
                   onMouseLeave={() => setHovering(false)}
                 >
