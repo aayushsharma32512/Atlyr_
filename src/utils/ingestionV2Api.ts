@@ -128,8 +128,10 @@ export interface SubmitJobBody {
 }
 
 export const v2Api = {
+  // ponytail: fixed high limit, the dashboard filters/pages client-side. Add server-side
+  // paging when the queue outgrows ~1000 jobs.
   listJobs: (state?: string) =>
-    call<{ jobs: PipelineJob[]; count: number }>(`/jobs${state ? `?state=${state}` : ''}`),
+    call<{ jobs: PipelineJob[]; count: number }>(`/jobs?limit=1000${state ? `&state=${state}` : ''}`),
 
   getJob: (jobId: string) =>
     call<PipelineJob>(`/jobs/${jobId}`),
