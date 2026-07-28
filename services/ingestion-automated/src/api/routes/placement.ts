@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { getJob } from '../../domain/job-catalog';
 import { getLatestArtifact, saveArtifact } from '../../domain/artifacts';
+import { catalogId, placementEntryFrom, writePlacementEntry } from '../../domain/catalog';
 import { uploadToSupabase } from '../../utils/storage';
 import { createLogger } from '../../utils/logger';
 
@@ -71,9 +72,13 @@ export async function registerPlacementRoute(app: FastifyInstance): Promise<void
       },
     });
 
-    // Deliberately no updateState here: editing a placement never advances or resets the job,
-    // so an already-pushed row stays pushed.
-    logger.info({ jobId, storagePath, bytes: bytes.length }, 'manual placement saved');
-    return reply.send({ job_id: jobId, placed_image_url: placedImageUrl });
+    // Persist the transform into the `placement` map so the studio renders it immediately.
+    // Deliberately no updateState: editing a placement never advances or resets the job.
+    const productId = catalogId(jobId);
+    const placement = placementEntryFrom({ transform, warp, mannequin: selectedMannequin }, job.product_gender_type);
+    if (placement) await writePlacementEntry(productId, placement.key, placement.entry);
+
+    logger.info({ jobId, productId, storagePath, bytes: bytes.length }, 'manual placement saved');
+    return reply.send({ job_id: jobId, product_id: productId, placed_image_url: placedImageUrl });
   });
 }
