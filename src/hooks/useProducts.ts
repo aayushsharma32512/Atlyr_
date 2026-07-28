@@ -18,6 +18,14 @@ interface UseProductsOptions {
   maxPrice?: number;
   limit?: number;
   searchQuery?: string;
+  // ISO timestamps for a created_at range (admin browse/filter).
+  createdAfter?: string;
+  createdBefore?: string;
+  // Exact product id match (admin placement dashboard).
+  productId?: string;
+  // Restrict the selected columns (e.g. a lightweight browse that must NOT pull vector_embedding /
+  // large JSONB). When set, the exact row-count is also skipped. Defaults to '*'.
+  columns?: string;
 }
 
 interface UseProductsReturn {
@@ -56,7 +64,7 @@ interface ProductWithImages {
 }
 
 export function useProducts(options: UseProductsOptions = {}): UseProductsReturn {
-  const { gender, category, genders, typeCategories, brands, fits, feels, colorGroups, sizes, minPrice, maxPrice, limit = 20, searchQuery } = options;
+  const { gender, category, genders, typeCategories, brands, fits, feels, colorGroups, sizes, minPrice, maxPrice, limit = 20, searchQuery, createdAfter, createdBefore, productId, columns } = options;
   
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,10 +76,10 @@ export function useProducts(options: UseProductsOptions = {}): UseProductsReturn
       setLoading(true);
       setError(null);
 
-      let query = supabase
-        .from('products')
-        .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false });
+      // Lightweight browses (columns set) skip vector_embedding + the expensive exact count.
+      let query = columns
+        ? supabase.from('products').select(columns).order('created_at', { ascending: false })
+        : supabase.from('products').select('*', { count: 'exact' }).order('created_at', { ascending: false });
 
       // Gender filters (multi-select takes precedence if provided)
       if (genders && genders.length > 0) {
@@ -116,6 +124,18 @@ export function useProducts(options: UseProductsOptions = {}): UseProductsReturn
         query = query.lte('price', maxPrice);
       }
 
+      if (productId) {
+        query = query.eq('id', productId);
+      }
+
+      if (createdAfter) {
+        query = query.gte('created_at', createdAfter);
+      }
+
+      if (createdBefore) {
+        query = query.lte('created_at', createdBefore);
+      }
+
       if (searchQuery) {
         query = query.or(`product_name.ilike.%${searchQuery}%,brand.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`);
       }
@@ -157,7 +177,7 @@ export function useProducts(options: UseProductsOptions = {}): UseProductsReturn
     } finally {
       setLoading(false);
     }
-  }, [gender, genders, category, typeCategories, brands, fits, feels, colorGroups, sizes, minPrice, maxPrice, limit, searchQuery]);
+  }, [gender, genders, category, typeCategories, brands, fits, feels, colorGroups, sizes, minPrice, maxPrice, limit, searchQuery, createdAfter, createdBefore, productId, columns]);
 
   useEffect(() => {
     fetchProducts();

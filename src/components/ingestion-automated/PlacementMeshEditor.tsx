@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Application, Assets, Container, Graphics, MeshPlane, Rectangle, Sprite, type Texture, type PointData } from 'pixi.js'
+import { Application, Container, Graphics, MeshPlane, Rectangle, Sprite, Texture, type PointData } from 'pixi.js'
 import { RotateCcw, Undo2, Loader2 } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
 import { v2Api } from '@/utils/ingestionV2Api'
 import type { PipelineJob } from '@/utils/ingestionV2Api'
-import type { PlacementInfo } from './usePlacementImage'
+import type { PlacementInfo, PlacementTransform } from './usePlacementImage'
 
 // The placement pipeline standardizes everything onto a fixed 1800x3072 canvas
 // (services/test_placement/pipeline/camera_registration.py :: standardize_to_canvas).
@@ -49,14 +49,59 @@ type Drag =
   | { kind: 'scale'; startDist: number; startScale: number }
   | { kind: 'rotate'; startAngle: number; startRotation: number }
   | { kind: 'vertex'; index: number; startPtr: PointData; startOffsets: Float32Array }
+  // Grab-anywhere warp: the pull centers on the pressed point (not a fixed vertex), with per-vertex
+  // Gaussian weights computed from that point at pointerdown.
+  | { kind: 'warpPoint'; startPtr: PointData; weights: Float32Array; startOffsets: Float32Array }
   | null
 
-type Props = {
-  job: PipelineJob | null
-  placement: PlacementInfo | undefined
+/**
+ * A normalized placement source — the editor is agnostic to whether it's editing a pipeline job
+ * (segmented garment) or a legacy catalog product (image_url). Both provide a garment image, the
+ * mannequin to place onto, an optional prior transform to restore, and a save callback.
+ */
+export type PlacementEditorSource = {
+  /** Stable key for the load effect (garment + mannequin). Re-inits when it changes. */
+  key: string
+  garmentUrl: string | null
+  mannequin: 'male' | 'female'
+  transform: PlacementTransform | null
+  /** Saved mesh warp to restore on open, so a re-edit continues from the deformed shape. */
+  warp?: { x: number; y: number }[] | null
+  onSave: (payload: { image_base64: string; transform: PlacementTransform; warp: { x: number; y: number }[] }) => Promise<void>
+  /** Shown as the header subtitle (e.g. the product / job label). */
+  label?: string
+}
+
+type CoreProps = {
+  source: PlacementEditorSource | null
   open: boolean
   onOpenChange: (open: boolean) => void
   onSaved?: () => void
+}
+
+/** Decode an image once (CORS-enabled). Shared by the Pixi texture AND the pixel probes, so each
+ *  image is decoded a single time instead of twice (Assets.load + a separate probe Image). */
+function loadImage(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const el = new Image()
+    el.crossOrigin = 'anonymous'
+    el.onload = () => resolve(el)
+    el.onerror = () => reject(new Error(`image load failed: ${url}`))
+    el.src = url
+  })
+}
+
+// The mannequin never changes for a given gender, so decode it + compute its figure bounds ONCE and
+// reuse across every editor open (keyed by url). Eliminates the biggest per-open cost on reopen.
+const mannequinCache = new Map<string, { img: HTMLImageElement; bounds: Bounds }>()
+async function loadMannequin(url: string): Promise<{ img: HTMLImageElement; bounds: Bounds }> {
+  const cached = mannequinCache.get(url)
+  if (cached) return cached
+  const img = await loadImage(url)
+  const bounds = await probeMannequinBounds(img, CANVAS_W, CANVAS_H)
+  const entry = { img, bounds }
+  mannequinCache.set(url, entry)
+  return entry
 }
 
 /**
@@ -64,20 +109,12 @@ type Props = {
  * learn both the opaque bounding box and a point-in-cloth test, so the whole gizmo — grid,
  * vertex handles, hit area — can live on the cloth itself.
  */
-async function probeGarment(url: string, texW: number, texH: number): Promise<GarmentProbe> {
+async function probeGarment(img: HTMLImageElement, texW: number, texH: number): Promise<GarmentProbe> {
   const fallback: GarmentProbe = {
     bounds: { x: 0, y: 0, w: texW, h: texH },
     isOpaque: () => true,
   }
   try {
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const el = new Image()
-      el.crossOrigin = 'anonymous'
-      el.onload = () => resolve(el)
-      el.onerror = () => reject(new Error('garment probe failed'))
-      el.src = url
-    })
-
     const scale = Math.min(1, BOUNDS_SAMPLE / Math.max(img.width, img.height))
     const cw = Math.max(1, Math.round(img.width * scale))
     const ch = Math.max(1, Math.round(img.height * scale))
@@ -131,16 +168,9 @@ async function probeGarment(url: string, texW: number, texH: number): Promise<Ga
  * fills the canvas rather than being shrunk into a corner. Content = opaque AND not near-white,
  * so it works for both the white-bg male and the transparent female.
  */
-async function probeMannequinBounds(url: string, texW: number, texH: number): Promise<Bounds> {
+async function probeMannequinBounds(img: HTMLImageElement, texW: number, texH: number): Promise<Bounds> {
   const fallback: Bounds = { x: 0, y: 0, w: texW, h: texH }
   try {
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const el = new Image()
-      el.crossOrigin = 'anonymous'
-      el.onload = () => resolve(el)
-      el.onerror = () => reject(new Error('mannequin probe failed'))
-      el.src = url
-    })
     const scale = Math.min(1, BOUNDS_SAMPLE / Math.max(img.width, img.height))
     const cw = Math.max(1, Math.round(img.width * scale))
     const ch = Math.max(1, Math.round(img.height * scale))
@@ -181,13 +211,22 @@ async function probeMannequinBounds(url: string, texW: number, texH: number): Pr
   }
 }
 
-function mannequinUrl(placement: PlacementInfo | undefined, job: PipelineJob | null): string {
-  const picked = placement?.mannequin?.toLowerCase()
-  if (picked === 'male' || picked === 'female') return `/mannequins/${picked}.png`
-  return job?.product_gender_type === 'male' ? '/mannequins/male.png' : '/mannequins/female.png'
+/** Placement mannequin base image for a normalized gender. */
+export function mannequinAssetUrl(mannequin: 'male' | 'female'): string {
+  return `/mannequins/${mannequin}.png`
 }
 
-export function PlacementMeshEditor({ job, placement, open, onOpenChange, onSaved }: Props) {
+function normalizeMannequin(picked: string | null | undefined, gender: string | null | undefined): 'male' | 'female' {
+  const p = picked?.toLowerCase()
+  if (p === 'male' || p === 'female') return p
+  return gender === 'male' ? 'male' : 'female'
+}
+
+/**
+ * Source-agnostic mesh placement editor. Renders the 1800x3072 mannequin + a warpable garment mesh
+ * and saves the affine transform + warp lattice via source.onSave.
+ */
+function PlacementMeshEditorCore({ source, open, onOpenChange, onSaved }: CoreProps) {
   // Callback ref, not useRef: this div lives inside a Radix portal, so on the render where
   // `open` flips true the node may not be attached yet when the effect fires. Driving the
   // effect off state guarantees we initialise exactly when the node actually exists.
@@ -216,6 +255,10 @@ export function PlacementMeshEditor({ job, placement, open, onOpenChange, onSave
   // Actual on-screen scale applied to the world (frames the mannequin, not the full canvas).
   const viewScaleRef = useRef(VIEW_SCALE)
   const dragRef = useRef<Drag>(null)
+  // Rotation-handle position + grab radius in geometry space, refreshed each drawGizmo. The grab is
+  // detected at the stage level (below) rather than via the tiny per-frame-recreated handle graphic,
+  // which was unreliable to click.
+  const rotHandleRef = useRef<{ x: number; y: number; r: number } | null>(null)
   // Undo history — one snapshot per gesture (captured at pointerdown, before the change).
   const historyRef = useRef<Snapshot[]>([])
 
@@ -226,7 +269,10 @@ export function PlacementMeshEditor({ job, placement, open, onOpenChange, onSave
   const [canUndo, setCanUndo] = useState(false)
   const { toast } = useToast()
 
-  const segmentedUrl = job?.segmented_image_url ?? null
+  const garmentUrl = source?.garmentUrl ?? null
+  const mannequin = source?.mannequin ?? 'female'
+  const transform = source?.transform ?? null
+  const savedWarp = source?.warp ?? null
 
   // Snapshot the current garment transform + warp before a gesture, so Undo can restore it.
   const pushHistory = useCallback(() => {
@@ -360,28 +406,21 @@ export function PlacementMeshEditor({ job, placement, open, onOpenChange, onSave
     stem.moveTo(midX, b.y).lineTo(midX, rotY).stroke({ width: lw, color: 0x2563eb, alpha: 0.9 })
     gizmo.addChild(stem)
 
+    // Purely visual — the grab is handled at the stage level via rotHandleRef (reliable clicking).
     const rot = new Graphics()
-    rot.circle(midX, rotY, r).fill(0x2563eb).stroke({ width: lw, color: 0xffffff })
-    rot.eventMode = 'static'
-    rot.cursor = 'grab'
-    rot.hitArea = { contains: (qx: number, qy: number) => Math.hypot(qx - midX, qy - rotY) < hit }
-    rot.on('pointerdown', (e) => {
-      e.stopPropagation()
-      pushHistory()
-      const p = garment.parent.toLocal(e.global)
-      dragRef.current = {
-        kind: 'rotate',
-        startAngle: Math.atan2(p.y - garment.y, p.x - garment.x),
-        startRotation: garment.rotation,
-      }
-    })
+    rot.circle(midX, rotY, r * 1.15).fill(0x2563eb).stroke({ width: lw, color: 0xffffff })
+    rot.eventMode = 'none'
     gizmo.addChild(rot)
+
+    // Record the handle's grab region (geometry space) so the stage pointerdown can catch it. Kept
+    // below the ~46*inv gap to the cloth-top vertex dots so it never steals their clicks.
+    rotHandleRef.current = { x: midX, y: rotY, r: hit * 1.5 }
   }, [])
 
   const resetAll = useCallback(() => {
     const garment = garmentRef.current
     if (!garment) return
-    const t = placement?.transform
+    const t = transform
     const home = homeRef.current
     garment.position.set(home.x + (t?.tx ?? 0), home.y + (t?.ty ?? 0))
     garment.scale.set(fitRef.current * (t?.scale ?? 1))
@@ -392,7 +431,7 @@ export function PlacementMeshEditor({ job, placement, open, onOpenChange, onSave
     applyWarp()
     drawGizmo()
     setDirty(false)
-  }, [placement, applyWarp, drawGizmo])
+  }, [transform, applyWarp, drawGizmo])
 
   const handleSave = useCallback(async () => {
     const app = appRef.current
@@ -400,7 +439,7 @@ export function PlacementMeshEditor({ job, placement, open, onOpenChange, onSave
     const garment = garmentRef.current
     const gizmo = gizmoRef.current
     const offsets = vertOffsetsRef.current
-    if (!app || !world || !garment || !gizmo || !offsets || !job) return
+    if (!app || !world || !garment || !gizmo || !offsets || !source) return
 
     setSaving(true)
     try {
@@ -420,7 +459,7 @@ export function PlacementMeshEditor({ job, placement, open, onOpenChange, onSave
         warp.push({ x: offsets[i * 2], y: offsets[i * 2 + 1] })
       }
 
-      await v2Api.savePlacement(job.job_id, {
+      await source.onSave({
         image_base64: base64.replace(/^data:image\/\w+;base64,/, ''),
         transform: {
           scale: garment.scale.x / (fitRef.current || 1),
@@ -445,11 +484,12 @@ export function PlacementMeshEditor({ job, placement, open, onOpenChange, onSave
     } finally {
       setSaving(false)
     }
-  }, [job, toast, onSaved, onOpenChange])
+  }, [source, toast, onSaved, onOpenChange])
 
   useEffect(() => {
-    if (!open || !segmentedUrl || !host) return
+    if (!open || !garmentUrl || !host) return
 
+    const mannequinUrl = mannequinAssetUrl(mannequin)
     let disposed = false
     historyRef.current = []
     setCanUndo(false)
@@ -474,11 +514,15 @@ export function PlacementMeshEditor({ job, placement, open, onOpenChange, onSave
         appRef.current = app
         host.appendChild(app.canvas)
 
-        const [mannequinTex, garmentTex] = await Promise.all([
-          Assets.load(mannequinUrl(placement, job)) as Promise<Texture>,
-          Assets.load(segmentedUrl) as Promise<Texture>,
+        // Decode each image ONCE (in parallel), reused for both the Pixi texture and the pixel probe.
+        // The mannequin (decode + bounds) is cached per gender across opens.
+        const [man, garImg] = await Promise.all([
+          loadMannequin(mannequinUrl),
+          loadImage(garmentUrl),
         ])
         if (disposed) return
+        const mannequinTex = Texture.from(man.img)
+        const garmentTex = Texture.from(garImg)
 
         // Everything lives in world space (1800x3072); the world is scaled/panned so the mannequin
         // figure fills the view (see framing below). Save exports the world's own local frame, so
@@ -492,9 +536,8 @@ export function PlacementMeshEditor({ job, placement, open, onOpenChange, onSave
         base.height = CANVAS_H
         world.addChild(base)
 
-        // Frame the mannequin figure (crop the blank margin around it) so it fills the canvas.
-        const mb = await probeMannequinBounds(mannequinUrl(placement, job), CANVAS_W, CANVAS_H)
-        if (disposed) return
+        // Mannequin figure bounds (crop the blank margin so it fills the canvas) — cached per gender.
+        const mb = man.bounds
         const displayScale = Math.min((VIEW_W - MARGIN * 2) / mb.w, (VIEW_H - MARGIN * 2) / mb.h)
         viewScaleRef.current = displayScale
         world.scale.set(displayScale)
@@ -506,13 +549,13 @@ export function PlacementMeshEditor({ job, placement, open, onOpenChange, onSave
         // Replicate standardize_to_canvas: aspect-preserving fit, centred on the canvas. The fit
         // factor goes on the container, NOT on the mesh — the mesh stays at geometry scale so
         // vertex maths and pointer deltas share one coordinate space.
-        const texW = garmentTex.width
-        const texH = garmentTex.height
+        const texW = garImg.width
+        const texH = garImg.height
         const fit = Math.min(CANVAS_W / texW, CANVAS_H / texH)
         fitRef.current = fit
 
-        // Learn where the cloth actually is inside its mostly-transparent frame.
-        const probe = await probeGarment(segmentedUrl, texW, texH)
+        // Learn where the cloth actually is inside its mostly-transparent frame (reuses the decode).
+        const probe = await probeGarment(garImg, texW, texH)
         if (disposed) return
         const bounds = probe.bounds
         boundsRef.current = bounds
@@ -580,18 +623,57 @@ export function PlacementMeshEditor({ job, placement, open, onOpenChange, onSave
         mesh.addChild(gizmo)
         gizmoRef.current = gizmo
 
-        // Body drag → translate.
+        // Body drag → GRAB-ANYWHERE WARP (temp trial): press on the cloth where you want to reshape
+        // (e.g. a sleeve cuff) and drag — the pull centers on the pressed point with soft falloff, so
+        // you're not limited to the grid dots. Whole-garment MOVE lives on the top dot + arrow keys.
         mesh.on('pointerdown', (e) => {
-          pushHistory()
-          dragRef.current = {
-            kind: 'move',
-            startPtr: garment.parent.toLocal(e.global),
-            startPos: { x: garment.x, y: garment.y },
+          const base = baseVertsRef.current
+          const offsets = vertOffsetsRef.current
+          if (!base || !offsets) return
+          const b = boundsRef.current
+          const p = mesh.toLocal(e.global) // geometry space, same as the vertex-drag path
+          const cu = (p.x - b.x) / (b.w || 1)
+          const cv = (p.y - b.y) / (b.h || 1)
+          const n = base.length / 2
+          const weights = new Float32Array(n)
+          for (let i = 0; i < n; i++) {
+            const u = (base[i * 2] - b.x) / (b.w || 1)
+            const v = (base[i * 2 + 1] - b.y) / (b.h || 1)
+            const du = u - cu
+            const dv = v - cv
+            const w = Math.exp(-(du * du + dv * dv) / (2 * FALLOFF * FALLOFF))
+            weights[i] = w < 0.01 ? 0 : w
           }
+          pushHistory()
+          dragRef.current = { kind: 'warpPoint', startPtr: p, weights, startOffsets: new Float32Array(offsets) }
         })
 
         app.stage.eventMode = 'static'
         app.stage.hitArea = app.screen
+
+        // Top handle grab (rotation / Shift-move) — detected here rather than on the handle graphic,
+        // which sits outside the mesh hit-area and is recreated every frame. Fires after the mesh's
+        // own pointerdown for cloth clicks, but only acts when the pointer is on the handle region.
+        app.stage.on('pointerdown', (e) => {
+          const rh = rotHandleRef.current
+          const g = garmentRef.current
+          const m = meshRef.current
+          if (!rh || !g || !m || dragRef.current) return
+          const local = m.toLocal(e.global)
+          if (Math.hypot(local.x - rh.x, local.y - rh.y) > rh.r) return
+          pushHistory()
+          const p = g.parent.toLocal(e.global)
+          if (e.shiftKey) {
+            dragRef.current = { kind: 'move', startPtr: p, startPos: { x: g.x, y: g.y } }
+          } else {
+            dragRef.current = {
+              kind: 'rotate',
+              startAngle: Math.atan2(p.y - g.y, p.x - g.x),
+              startRotation: g.rotation,
+            }
+          }
+        })
+
         app.stage.on('pointermove', (e) => {
           const drag = dragRef.current
           const g = garmentRef.current
@@ -626,6 +708,20 @@ export function PlacementMeshEditor({ job, placement, open, onOpenChange, onSave
               offsets[i * 2 + 1] = drag.startOffsets[i * 2 + 1] + dy * w
             }
             applyWarp()
+          } else if (drag.kind === 'warpPoint') {
+            const p = m.toLocal(e.global)
+            const dx = p.x - drag.startPtr.x
+            const dy = p.y - drag.startPtr.y
+            const offsets = vertOffsetsRef.current
+            if (!offsets) return
+            const n = offsets.length / 2
+            for (let i = 0; i < n; i++) {
+              const w = drag.weights[i]
+              if (w === 0) continue
+              offsets[i * 2] = drag.startOffsets[i * 2] + dx * w
+              offsets[i * 2 + 1] = drag.startOffsets[i * 2 + 1] + dy * w
+            }
+            applyWarp()
           }
           setDirty(true)
           drawGizmo()
@@ -635,12 +731,23 @@ export function PlacementMeshEditor({ job, placement, open, onOpenChange, onSave
         app.stage.on('pointerup', endDrag)
         app.stage.on('pointerupoutside', endDrag)
 
-        // Apply the stored placement transform, if the pipeline persisted one.
-        const t = placement?.transform
+        // Apply the stored placement transform, if one was persisted.
+        const t = transform
         if (t) {
           garment.position.set(home.x + t.tx, home.y + t.ty)
           garment.scale.set(fit * t.scale)
           garment.rotation = (t.rotationDeg * Math.PI) / 180
+        }
+
+        // Restore the saved mesh warp so re-editing continues from the deformed shape.
+        if (savedWarp && savedWarp.length && vertOffsetsRef.current) {
+          const off = vertOffsetsRef.current
+          const n = Math.min(savedWarp.length, off.length / 2)
+          for (let i = 0; i < n; i++) {
+            off[i * 2] = savedWarp[i].x
+            off[i * 2 + 1] = savedWarp[i].y
+          }
+          applyWarp()
         }
 
         drawGizmo()
@@ -668,21 +775,46 @@ export function PlacementMeshEditor({ job, placement, open, onOpenChange, onSave
       try { app.destroy(true, { children: true }) } catch { /* already torn down */ }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, segmentedUrl, placement?.mannequin, host])
+  }, [open, source?.key, host])
 
-  if (!job) return null
+  // Arrow keys nudge the whole cloth up/down/left/right; Shift = larger step. (Canvas-px units.)
+  useEffect(() => {
+    if (!open) return
+    const STEP = 12
+    const BIG = 60
+    const onKey = (e: KeyboardEvent) => {
+      const g = garmentRef.current
+      if (!g) return
+      const step = e.shiftKey ? BIG : STEP
+      let dx = 0, dy = 0
+      if (e.key === 'ArrowLeft') dx = -step
+      else if (e.key === 'ArrowRight') dx = step
+      else if (e.key === 'ArrowUp') dy = -step
+      else if (e.key === 'ArrowDown') dy = step
+      else return
+      e.preventDefault()
+      if (!e.repeat) pushHistory()
+      g.position.set(g.x + dx, g.y + dy)
+      setDirty(true)
+      drawGizmo()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, pushHistory, drawGizmo])
+
+  if (!source) return null
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[560px] max-h-[92vh] flex flex-col">
         <DialogHeader className="shrink-0">
-          <DialogTitle className="text-sm">Placement mesh editor</DialogTitle>
+          <DialogTitle className="text-sm">Placement mesh editor{source.label ? ` · ${source.label}` : ''}</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto">
           <div className="flex items-center justify-between gap-2">
             <p className="text-[10px] text-muted-foreground min-w-0">
-              Drag grid dots to warp the cloth · drag cloth to move · corners scale · top handle rotates
+              Drag the cloth anywhere to reshape (warp) · arrow keys to move (Shift = bigger) · corners scale · top dot: drag rotates, Shift-drag moves
             </p>
             <div className="flex items-center gap-3 shrink-0">
               <button onClick={undo} disabled={!canUndo} className="flex items-center gap-1 text-[10.5px] text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:hover:text-muted-foreground">
@@ -694,9 +826,16 @@ export function PlacementMeshEditor({ job, placement, open, onOpenChange, onSave
             </div>
           </div>
 
-          <div className="relative self-center rounded-lg border border-border overflow-hidden bg-white" style={{ width: VIEW_W, height: VIEW_H }}>
+          <div
+            className="relative self-center rounded-lg border border-border overflow-hidden bg-white"
+            style={{ width: VIEW_W, height: VIEW_H }}
+            // Only reveal the mesh gizmo (dots / wireframe / handles) while the cursor is over the
+            // canvas; hide it otherwise so the mannequin + placed cloth read cleanly.
+            onMouseEnter={() => { if (gizmoRef.current) gizmoRef.current.visible = true }}
+            onMouseLeave={() => { if (gizmoRef.current) gizmoRef.current.visible = false }}
+          >
             <div ref={setHost} className="absolute inset-0" />
-            {loading && segmentedUrl && (
+            {loading && garmentUrl && (
               <div className="absolute inset-0 flex items-center justify-center bg-background/70">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
@@ -706,9 +845,9 @@ export function PlacementMeshEditor({ job, placement, open, onOpenChange, onSave
                 <p className="text-[11px] text-destructive text-center">{error}</p>
               </div>
             )}
-            {!segmentedUrl && (
+            {!garmentUrl && (
               <div className="absolute inset-0 flex items-center justify-center p-4">
-                <p className="text-[11px] text-muted-foreground text-center">No segmented garment on this job yet.</p>
+                <p className="text-[11px] text-muted-foreground text-center">No garment image available.</p>
               </div>
             )}
           </div>
@@ -717,7 +856,7 @@ export function PlacementMeshEditor({ job, placement, open, onOpenChange, onSave
 
         <DialogFooter className="shrink-0">
           <Button size="sm" variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
-          <Button size="sm" disabled={!dirty || saving || !segmentedUrl} onClick={handleSave}>
+          <Button size="sm" disabled={!dirty || saving || !garmentUrl} onClick={handleSave}>
             {saving && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
             Save placement
           </Button>
@@ -725,4 +864,83 @@ export function PlacementMeshEditor({ job, placement, open, onOpenChange, onSave
       </DialogContent>
     </Dialog>
   )
+}
+
+// ─── Wrapper 1: pipeline job (existing ingestion dashboard — unchanged API) ────────────────────
+
+type JobProps = {
+  job: PipelineJob | null
+  placement: PlacementInfo | undefined
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSaved?: () => void
+}
+
+export function PlacementMeshEditor({ job, placement, open, onOpenChange, onSaved }: JobProps) {
+  const source: PlacementEditorSource | null = job
+    ? {
+        key: `job:${job.job_id}:${job.segmented_image_url ?? ''}:${placement?.mannequin ?? ''}`,
+        garmentUrl: job.segmented_image_url ?? null,
+        mannequin: normalizeMannequin(placement?.mannequin, job.product_gender_type),
+        transform: placement?.transform ?? null,
+        onSave: (payload) => v2Api.savePlacement(job.job_id, payload).then(() => undefined),
+      }
+    : null
+  return <PlacementMeshEditorCore source={source} open={open} onOpenChange={onOpenChange} onSaved={onSaved} />
+}
+
+// ─── Wrapper 2: legacy catalog product (/admin/placement — product-keyed save) ─────────────────
+
+const DEFAULT_BODY_TYPE = 'bodytype1'
+
+/** One entry inside a product's `placement` JSONB map (value of a "gender:body_type" key). */
+export type PlacementMapEntry = {
+  tx: number
+  ty: number
+  scale: number
+  rotationDeg: number
+  warp?: { x: number; y: number }[]
+}
+
+export type PlacementProduct = {
+  id: string
+  image_url: string | null
+  gender: string | null
+  product_name?: string | null
+  /** The full placement map: { "gender:body_type": {tx,ty,scale,rotationDeg,warp} }. */
+  placement?: Record<string, PlacementMapEntry> | null
+}
+
+type ProductProps = {
+  product: PlacementProduct | null
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSaved?: () => void
+}
+
+export function ProductPlacementEditor({ product, open, onOpenChange, onSaved }: ProductProps) {
+  const source: PlacementEditorSource | null = product
+    ? (() => {
+        // Mannequin comes from the product's own gender (unisex → male default).
+        const mannequin = normalizeMannequin(null, product.gender)
+        const entry = product.placement?.[`${mannequin}:${DEFAULT_BODY_TYPE}`] ?? null
+        return {
+          key: `product:${product.id}:${product.image_url ?? ''}:${mannequin}`,
+          garmentUrl: product.image_url ?? null,
+          mannequin,
+          transform: entry
+            ? { scale: entry.scale, rotationDeg: entry.rotationDeg, tx: entry.tx, ty: entry.ty }
+            : null,
+          warp: entry?.warp ?? null,
+          label: product.product_name ?? product.id.slice(0, 8),
+          // Skip the composite upload: the studio renders from the transform map, not a preview image,
+          // so a product save is just a fast JSONB merge (no multi-MB PNG round-trip).
+          onSave: ({ transform, warp }) =>
+            v2Api
+              .savePlacementForProduct(product.id, { transform, warp, mannequin })
+              .then(() => undefined),
+        }
+      })()
+    : null
+  return <PlacementMeshEditorCore source={source} open={open} onOpenChange={onOpenChange} onSaved={onSaved} />
 }
