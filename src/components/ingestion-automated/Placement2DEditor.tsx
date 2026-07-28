@@ -414,8 +414,14 @@ export function Placement2DEditor({ product, open, onOpenChange, onSaved }: Prop
                 />
                 {/* Interaction surface: drag anywhere to move, corners to scale. The gizmo only
                     shows while the cursor is over the canvas, so the garment reads cleanly. */}
+                {/* z-index matters: AvatarRenderer's root is position:relative with z-index auto,
+                    so it does NOT create a stacking context — the mannequin segments and clothing
+                    layers inside it (explicit zIndex from the mannequin config, 4+ for garments)
+                    compete with this overlay directly. Without a higher z-index the gizmo paints
+                    behind the avatar. */}
                 <div
                   ref={surfaceRef}
+                  style={{ zIndex: 100 }}
                   className={`absolute inset-0 ${canEdit ? 'cursor-move' : 'cursor-default'}`}
                   onPointerDown={beginMove}
                   onPointerMove={onPointerMove}
