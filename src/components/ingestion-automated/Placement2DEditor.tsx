@@ -9,6 +9,7 @@ import { useMannequinConfig } from '@/features/studio/hooks/useMannequinConfig'
 import { probeAlphaBounds, FULL_BOUNDS, type AlphaBounds } from '@/features/studio/utils/imageAlphaBounds'
 import type { StudioRenderedItem, StudioRenderedZone } from '@/features/studio/types'
 import { v2Api } from '@/utils/ingestionV2Api'
+import { supabase } from '@/integrations/supabase/client'
 
 const VIEW_W = 300
 const VIEW_H = 460
@@ -64,6 +65,71 @@ function clamp(v: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, v))
 }
 
+const ALL_ZONES: StudioRenderedZone[] = ['top', 'bottom', 'shoes']
+
+/**
+ * One already-placed garment per OTHER zone, to preview the edited garment in context.
+ *
+ * A placement tuned against a lone garment on a bare mannequin routinely reads wrong in the studio,
+ * where a bottom overlaps the top's hem and shoes meet the trouser break — the layering is invisible
+ * while you are placing. These stand-ins are picked as the most recently placed product of each zone
+ * for the same avatar, so the preview shows the real composite instead of a floating garment.
+ *
+ * They are display-only: the gizmo, the drag math and the save all target the edited garment alone.
+ */
+function useOutfitContext(
+  open: boolean,
+  enabled: boolean,
+  zone: StudioRenderedZone,
+  gender: 'male' | 'female',
+): StudioRenderedItem[] {
+  const [items, setItems] = useState<StudioRenderedItem[]>([])
+
+  useEffect(() => {
+    if (!open || !enabled) { setItems([]); return }
+    let cancelled = false
+
+    void (async () => {
+      const others = ALL_ZONES.filter((z) => z !== zone)
+      const rows = await Promise.all(
+        others.map(async (z): Promise<StudioRenderedItem | null> => {
+          // `placement` is absent from the generated types — cast, as usePlacementImage does.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data } = await (supabase as any)
+            .from('products')
+            .select('id, image_url, placement_x, placement_y, image_length')
+            .eq('type', z)
+            .in('gender', [gender, 'unisex'])
+            .not('image_url', 'is', null)
+            .not('placement_y', 'is', null)
+            .not('image_length', 'is', null)
+            .order('created_at', { ascending: false })
+            .limit(1)
+
+          const row = (data as Array<Record<string, unknown>> | null)?.[0]
+          if (!row) return null
+          return {
+            id: String(row.id),
+            zone: z,
+            imageUrl: String(row.image_url),
+            placementX: Number(row.placement_x ?? 0),
+            placementY: Number(row.placement_y ?? 0),
+            imageLengthCm: Number(row.image_length ?? 0),
+            // Force the 2D path for the stand-ins too, so context can never render on a different
+            // mannequin than the garment being edited.
+            placement: null,
+          }
+        }),
+      )
+      if (!cancelled) setItems(rows.filter((r): r is StudioRenderedItem => r !== null))
+    })()
+
+    return () => { cancelled = true }
+  }, [open, enabled, zone, gender])
+
+  return items
+}
+
 function round(v: number, dp = 1): number {
   const f = 10 ** dp
   return Math.round(v * f) / f
@@ -103,6 +169,7 @@ export function Placement2DEditor({ product, open, onOpenChange, onSaved }: Prop
   const [aspect, setAspect] = useState<number | null>(null)
   const [hovering, setHovering] = useState(false)
   const [bounds, setBounds] = useState<AlphaBounds>(FULL_BOUNDS)
+  const [showOutfit, setShowOutfit] = useState(true)
   // The interaction surface, so pointer coordinates are always resolved against the canvas box —
   // never against a 12px handle that happens to be the event target.
   const surfaceRef = useRef<HTMLDivElement | null>(null)
@@ -177,7 +244,13 @@ export function Placement2DEditor({ product, open, onOpenChange, onSaved }: Prop
     }
   }, [product?.id, product?.image_url, zone, values])
 
-  const items = useMemo(() => (item ? [item] : []), [item])
+  // Stand-ins render first; AvatarRenderer groups by zone and applies its own z-order, so the
+  // edited garment still layers exactly as it will in the studio.
+  const outfitContext = useOutfitContext(open, showOutfit, zone, gender)
+  const items = useMemo(
+    () => (item ? [...outfitContext, item] : outfitContext),
+    [item, outfitContext],
+  )
 
   // The IMAGE's rect on screen — recomputed from the SAME formulas the renderer lays out with
   // (AvatarRenderer's buildLayer), so the overlay tracks the garment exactly at every scale.
@@ -389,12 +462,23 @@ export function Placement2DEditor({ product, open, onOpenChange, onSaved }: Prop
             <p className="min-w-0 text-[10px] text-muted-foreground">
               Drag to move · corners or scroll to scale · arrows nudge, +/− resize (Shift = bigger) · {zone} on the {gender} avatar
             </p>
-            <button
-              onClick={() => { setValues(seed); setDirty(false) }}
-              className="flex shrink-0 items-center gap-1 text-[10.5px] text-muted-foreground hover:text-foreground"
-            >
-              <RotateCcw className="h-3 w-3" /> Reset
-            </button>
+            <div className="flex shrink-0 items-center gap-3">
+              <label className="flex cursor-pointer items-center gap-1.5 text-[10.5px] text-muted-foreground hover:text-foreground">
+                <input
+                  type="checkbox"
+                  checked={showOutfit}
+                  onChange={(e) => setShowOutfit(e.target.checked)}
+                  className="h-3 w-3 cursor-pointer accent-primary"
+                />
+                Show outfit
+              </label>
+              <button
+                onClick={() => { setValues(seed); setDirty(false) }}
+                className="flex items-center gap-1 text-[10.5px] text-muted-foreground hover:text-foreground"
+              >
+                <RotateCcw className="h-3 w-3" /> Reset
+              </button>
+            </div>
           </div>
 
           <div
