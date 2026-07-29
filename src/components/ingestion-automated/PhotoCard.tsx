@@ -44,7 +44,9 @@ export function PhotoCard({ label, state, url, badge, note, size = 'md', onExpan
         )}
       >
         {state === 'available' && url && (
-          <img src={url} alt={label} className="w-full h-full object-contain" />
+          // Lazy + async: these grids run to hundreds of tiles, and eagerly fetching every one
+          // saturates the connection before the tile you actually clicked can load.
+          <img src={url} alt={label} loading="lazy" decoding="async" className="w-full h-full object-contain" />
         )}
         {state === 'available' && !url && (
           <span className="text-[10px] text-muted-foreground text-center px-1">No image</span>

@@ -14,6 +14,8 @@ type CatalogRow = PlacementProduct & Placement2DProduct & {
   brand?: string | null
   type_category?: string | null
   created_at?: string
+  /** Small webp preview. Grid tiles only — see the note on the tile below. */
+  thumbnail_url?: string | null
 }
 
 const GENDERS = ['male', 'female', 'unisex'] as const
@@ -57,7 +59,7 @@ export default function PlacementDashboard() {
   const { products, loading, error, refetch } = useProducts({
     // Only what the tiles + both editors need — skips vector_embedding / big JSONB and the exact
     // count. `type` gives the 2D editor its zone; placement_x/y + image_length are the 2D values.
-    columns: 'id, product_name, brand, image_url, gender, type, type_category, placement, placement_x, placement_y, image_length, created_at',
+    columns: 'id, product_name, brand, image_url, thumbnail_url, gender, type, type_category, placement, placement_x, placement_y, image_length, created_at',
     productId: productIdArg,
     genders: gendersArg,
     typeCategories: typeCategoriesArg,
@@ -161,7 +163,10 @@ export default function PlacementDashboard() {
                     key={r.id}
                     label={r.product_name ?? r.id.slice(0, 8)}
                     state="available"
-                    url={r.image_url}
+                    // Thumbnail for the tile — the full ghost-mannequin PNG is ~2.5MB vs ~14KB for
+                    // the webp, and a few hundred of those stall the whole page. Both editors keep
+                    // reading `image_url`: the placement math is measured against that exact image.
+                    url={r.thumbnail_url ?? r.image_url}
                     size="lg"
                     badge={placed ? `Placed ${mode.toUpperCase()}` : `Needs ${mode.toUpperCase()}`}
                     note={[r.brand, r.gender, r.type_category].filter(Boolean).join(' · ')}
