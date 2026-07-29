@@ -155,6 +155,11 @@ supabase/seed.sql
 
 # Deployment config
 !vercel.json
+# Package manifests are never generated output. The blanket *.json above silently
+# dropped services/ingestion/package.json, leaving that service unrunnable from a
+# fresh clone ("bun run start" -> Script not found).
+!**/package.json
+!**/tsconfig*.json
 # Local scratch notes
 frontendissue.md
 
