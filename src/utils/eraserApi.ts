@@ -1,13 +1,12 @@
-// Modal LaMa eraser endpoint. Swap VITE_MODAL_ERASER_URL for a self-hosted/prod link later.
-const MODAL_ERASER_URL =
-  (import.meta.env as Record<string, string>).VITE_MODAL_ERASER_URL ??
-  'https://nikunjgupta2136--atlyr-lama-eraser-lamaeraser-web.modal.run'
+// Modal LaMa eraser endpoint — configured entirely via VITE_MODAL_ERASER_URL, no fallback.
+const MODAL_ERASER_URL = (import.meta.env as Record<string, string>).VITE_MODAL_ERASER_URL
 
 /**
  * Wake + warm the Modal container (cold start loads big-lama onto the GPU, ~20–30s).
  * Fire-and-forget when the editor opens so the first real Erase is fast. Errors ignored.
  */
 export function warmUpEraser(): void {
+  if (!MODAL_ERASER_URL) return
   fetch(`${MODAL_ERASER_URL}/health`, { method: 'GET' }).catch(() => {})
 }
 
@@ -16,6 +15,9 @@ export function warmUpEraser(): void {
  * big-lama endpoint and get an inpainted PNG back. Same multipart contract as /inpaint.
  */
 export async function magicErase(image: Blob, mask: Blob): Promise<Blob> {
+  if (!MODAL_ERASER_URL) {
+    throw new Error('Eraser endpoint not configured — set VITE_MODAL_ERASER_URL and restart the dev server.')
+  }
   const fd = new FormData()
   fd.append('image', image, 'image.png')
   fd.append('mask', mask, 'mask.png')

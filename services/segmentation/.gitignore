@@ -31,6 +31,7 @@ __pycache__/
 *.pth
 *.onnx
 *.bin
+*.pt
 
 # Older pipelines & alternate scripts
 experiment_full_pipeline.py
