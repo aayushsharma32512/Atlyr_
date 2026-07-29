@@ -560,6 +560,13 @@ function LegacyAvatarRenderer({
           height,
           zIndex: baseZ + index,
           objectFit: "contain" as const,
+          // Tailwind preflight sets `img { max-width: 100% }`. A garment whose laid-out width
+          // exceeds the avatar container — a long top on a narrow canvas — would be clamped to the
+          // container, and `object-fit: contain` would then shrink the whole garment to fit and
+          // re-centre it, silently rendering a different placement than the one that was saved.
+          // The width above is the placement; nothing may override it.
+          maxWidth: "none" as const,
+          maxHeight: "none" as const,
           pointerEvents: "auto" as const,
           opacity: Math.max(0, Math.min(1, itemOpacity)),
         },
