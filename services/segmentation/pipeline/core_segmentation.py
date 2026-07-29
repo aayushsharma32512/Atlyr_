@@ -753,6 +753,7 @@ def punch_vneck_skin_final(
     garment_mask: np.ndarray,
     head_neck_mask: np.ndarray = None,
     schp_map: np.ndarray = None,
+    garment_is_skin_colored: bool = False,
 ) -> np.ndarray:
     """
     Final V-neck skin removal. Three-layer approach:
@@ -844,18 +845,38 @@ def punch_vneck_skin_final(
 
     skin_candidates = skin_color & (result > 127) & neck_zone
 
+    # Size ceiling. The colour test above is a Kovac-style skin rule, so warm
+    # hues (yellow / mustard / tan / peach) score as skin across the whole
+    # garment — and `neck_zone` is 85% of the garment box, not a neckline. A
+    # real neckline opening is a small fraction of the garment, so refuse to
+    # punch a component that is a meaningful share of it. When the garment's
+    # own mean colour reads as skin the colour test carries no signal at all,
+    # so the ceiling drops to "necklines only".
+    garment_area = int((garment_mask > 127).sum())
+    max_punch_frac = 0.02 if garment_is_skin_colored else 0.15
+    max_punch_px = int(max_punch_frac * garment_area) if garment_area else 0
+
     if skin_candidates.any():
         labeled, n = ndimage.label(skin_candidates)
         for cid in range(1, n + 1):
             comp = labeled == cid
-            if comp.sum() < 50:
+            comp_px = int(comp.sum())
+            if comp_px < 50:
+                continue
+            comp_frac = comp_px / garment_area if garment_area else 0.0
+            if max_punch_px and comp_px > max_punch_px:
+                print(f"  [L2-Color] SKIPPED {comp_px}px component "
+                      f"({comp_frac:.1%} of garment > {max_punch_frac:.0%} ceiling"
+                      f"{', skin-hued garment' if garment_is_skin_colored else ''}) "
+                      f"— too large to be a neckline")
                 continue
             # Cross-check: FASHN/SCHP must agree >40% is non-garment
             non_garment_frac = combined_non_garment[comp].mean()
             if non_garment_frac > 0.4:
                 result[comp] = 0
-                print(f"  [L2-Color] Punched {comp.sum()}px "
-                      f"neck-zone skin (non_garment_conf={non_garment_frac:.2f})")
+                print(f"  [L2-Color] Punched {comp_px}px "
+                      f"neck-zone skin (non_garment_conf={non_garment_frac:.2f}, "
+                      f"{comp_frac:.1%} of garment)")
 
     # ════════════════════════════════════════
     # LAYER 3: Head/neck mask ceiling
@@ -1137,6 +1158,7 @@ def refine_garment_mask(
     flags: Optional[dict] = None,
     sam2_variant: str = "sam2_large",
     output_dir: Optional[str] = None,
+    garment_is_skin_colored: bool = False,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Run FASHN Parser + SAM Point Prompts (constrained by FASHN body exclusion points)
@@ -1299,7 +1321,8 @@ def refine_garment_mask(
             category=category,
             garment_mask=coarse_garment_mask,
             head_neck_mask=head_neck_mask,
-            schp_map=schp_map
+            schp_map=schp_map,
+            garment_is_skin_colored=garment_is_skin_colored,
         )
     
     # Trapped background hole detection (run pre-polish)

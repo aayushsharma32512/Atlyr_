@@ -229,6 +229,7 @@ def run_green_screen_pipeline_e2e(
             is_garment_skin_colored = (r_mean > 95) and (g_mean > 40) and (b_mean > 20) and (r_mean > g_mean) and (r_mean > b_mean) and (r_mean - g_mean > 10) and (r_mean - b_mean > 10)
         else:
             is_garment_skin_colored = False
+        print(f"  Garment reads as skin-coloured: {bool(is_garment_skin_colored)}")
 
         if not is_garment_skin_colored:
             b_ch = img_bgr[:, :, 0].astype(np.float32)
@@ -268,6 +269,7 @@ def run_green_screen_pipeline_e2e(
             seg_map=seg_map,
             schp_map=schp_map,
             output_dir=output_dir,
+            garment_is_skin_colored=bool(is_garment_skin_colored),
         )
         sam_path = os.path.join(output_dir, "03_sam_and_fashn.png")
         cv2.imwrite(sam_path, sam_refined_mask)
