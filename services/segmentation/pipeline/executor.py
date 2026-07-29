@@ -75,7 +75,8 @@ def run_segmentation_pipeline(
         if image_path:
             output_dir = os.path.dirname(image_path)
         else:
-            output_dir = os.path.join(os.getcwd(), "output_segmentation_pipeline")
+            # Keep jobs in separate dirs — the result_store is keyed by output_dir.
+            output_dir = os.path.join(os.getcwd(), "output_segmentation_pipeline", seg_job_id or "local")
         
     os.makedirs(output_dir, exist_ok=True)
     

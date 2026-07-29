@@ -1,5 +1,6 @@
 import os
 import json
+import hashlib
 import threading
 import urllib.request
 from typing import Dict, Optional
@@ -32,8 +33,12 @@ def ensure_local_file(path_or_url: str, output_dir: str) -> str:
     if not path_or_url:
         return path_or_url
     if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
-        filename = path_or_url.split("/")[-1]
-        local_path = os.path.join(output_dir, filename)
+        # Basenames collide across jobs (every VTON image is `front.jpg`), so key
+        # the cached copy on the full URL — otherwise the exists() check below
+        # silently returns another job's image.
+        filename = path_or_url.split("/")[-1].split("?")[0] or "download"
+        digest = hashlib.sha1(path_or_url.encode("utf-8")).hexdigest()[:12]
+        local_path = os.path.join(output_dir, f"{digest}_{filename}")
         if not os.path.exists(local_path):
             os.makedirs(output_dir, exist_ok=True)
             print(f"[result_store] Downloading {path_or_url} to {local_path}...")

@@ -77,14 +77,25 @@ def segment(seg_job_id: str, pipeline_job_id: str, category: str = "top"):
     job = db_store.fetch_job(seg_job_id)
     vton_image_url = job.get("vton_image_url")
     
-    result = run_green_screen_pipeline_e2e(
-        seg_job_id=seg_job_id,
-        pipeline_job_id=pipeline_job_id,
-        vton_image_url=vton_image_url,
-        category=category,
-        output_dir="/tmp/output_segmentation_pipeline",
-        skip_intermediate_uploads=False
-    )
-    
+    # Per-job scratch dir. Containers are reused across invocations, so a shared
+    # dir makes job N re-use job N-1's cached files (every VTON image is named
+    # front.jpg) and segment the wrong garment.
+    output_dir = f"/tmp/output_segmentation_pipeline/{seg_job_id}"
+
+    try:
+        result = run_green_screen_pipeline_e2e(
+            seg_job_id=seg_job_id,
+            pipeline_job_id=pipeline_job_id,
+            vton_image_url=vton_image_url,
+            category=category,
+            output_dir=output_dir,
+            skip_intermediate_uploads=False
+        )
+    finally:
+        # Everything worth keeping is already in Supabase Storage; drop the
+        # scratch files so a warm container doesn't fill its disk.
+        import shutil
+        shutil.rmtree(output_dir, ignore_errors=True)
+
     print("--- Pipeline execution completed inside Modal container ---")
     return result

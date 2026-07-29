@@ -99,7 +99,7 @@ def run_green_screen_pipeline_e2e(
     syncing steps and output directly to Supabase DB and Storage.
     """
     if not output_dir:
-        output_dir = os.path.join(os.getcwd(), "output_green_screen_pipeline")
+        output_dir = os.path.join(os.getcwd(), "output_green_screen_pipeline", seg_job_id or "local")
     os.makedirs(output_dir, exist_ok=True)
 
     try:
