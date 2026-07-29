@@ -883,6 +883,7 @@ export function PlacementMeshEditor({ job, placement, open, onOpenChange, onSave
         garmentUrl: job.segmented_image_url ?? null,
         mannequin: normalizeMannequin(placement?.mannequin, job.product_gender_type),
         transform: placement?.transform ?? null,
+        warp: placement?.warp ?? null,
         onSave: (payload) => v2Api.savePlacement(job.job_id, payload).then(() => undefined),
       }
     : null
