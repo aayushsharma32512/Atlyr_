@@ -10,6 +10,11 @@ export type PlacementInfo = {
   mannequin: string | null
   /** Affine fit from camera_registration.py. Absent on jobs placed before it was persisted. */
   transform: PlacementTransform | null
+  /**
+   * Mesh warp lattice offsets in garment geometry space, written by a manual save in the
+   * placement editor. Null on automated placements — the Modal pipeline never produces one.
+   */
+  warp: { x: number; y: number }[] | null
 }
 
 // Final placement, written by the placement step (services/ingestion-automated/src/steps/
@@ -39,6 +44,12 @@ export function usePlacementImage(jobs: PipelineJob[]): { placements: Record<str
       const url = row.data?.placedImageUrl as string | undefined
       if (!url) continue
       const t = row.data?.transform as Partial<PlacementTransform> | undefined
+      // The editor restores this on open, so a re-edit continues from the deformed shape instead
+      // of snapping back to the undeformed default (and re-saving zeros over the saved lattice).
+      const w = row.data?.warp as { x?: unknown; y?: unknown }[] | undefined
+      const warp = Array.isArray(w) && w.length && w.every(p => typeof p?.x === 'number' && typeof p?.y === 'number')
+        ? (w as { x: number; y: number }[])
+        : null
       // later row wins — latest placement
       next[row.job_id] = {
         url,
@@ -46,6 +57,7 @@ export function usePlacementImage(jobs: PipelineJob[]): { placements: Record<str
         transform: t && typeof t.scale === 'number'
           ? { scale: t.scale, rotationDeg: t.rotationDeg ?? 0, tx: t.tx ?? 0, ty: t.ty ?? 0 }
           : null,
+        warp,
       }
     }
     setMap(next)
