@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Application, Container, Graphics, MeshPlane, Rectangle, Sprite, Texture, type PointData } from 'pixi.js'
-import { RotateCcw, Undo2, Loader2 } from 'lucide-react'
+import { RotateCcw, Undo2, Loader2, ExternalLink } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { ColumnLabel, ControlSection, NumberStepper } from './PlacementControls'
 import { useToast } from '@/hooks/use-toast'
 import { v2Api } from '@/utils/ingestionV2Api'
 import type { PipelineJob } from '@/utils/ingestionV2Api'
@@ -44,6 +45,35 @@ type GarmentProbe = {
 
 type Snapshot = { x: number; y: number; scale: number; rotation: number; offsets: Float32Array }
 
+/**
+ * The saved transform, mirrored into React so the control rail can display and drive it. Units are
+ * exactly the ones `handleSave` persists — canvas px for tx/ty, a multiple of the auto-fit for
+ * scale, degrees for rotation — so what the panel reads is what the pipeline will get.
+ */
+type Xform = { tx: number; ty: number; scale: number; rotationDeg: number }
+
+// Step sizes for the rail. tx/ty match the arrow-key STEP/BIG contract below, so a click and a
+// keypress move the garment by the same amount.
+const XFORM_STEPS = {
+  translate: { step: 12, big: 60 },
+  scale: { step: 0.02, big: 0.1 },
+  rotate: { step: 0.5, big: 5 },
+} as const
+
+const SCALE_MIN = 0.1
+const SCALE_MAX = 4
+
+function clampNum(v: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, v))
+}
+
+/** True for elements that own their keystrokes — the global key handlers must leave them alone. */
+function isEditableTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  if (!el || typeof el.tagName !== 'string') return false
+  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable
+}
+
 type Drag =
   | { kind: 'move'; startPtr: PointData; startPos: PointData }
   | { kind: 'scale'; startDist: number; startScale: number }
@@ -65,6 +95,12 @@ export type PlacementEditorSource = {
   garmentUrl: string | null
   mannequin: 'male' | 'female'
   transform: PlacementTransform | null
+  /**
+   * Read-only "this is how it should fit" photo shown beside the canvas — the generated VTON
+   * try-on, so the operator places against the real drape instead of from memory. Null hides the
+   * column's image and shows a placeholder.
+   */
+  reference?: { url: string; label: string } | null
   /** Saved mesh warp to restore on open, so a re-edit continues from the deformed shape. */
   warp?: { x: number; y: number }[] | null
   onSave: (payload: { image_base64: string; transform: PlacementTransform; warp: { x: number; y: number }[] }) => Promise<void>
@@ -267,12 +303,47 @@ function PlacementMeshEditorCore({ source, open, onOpenChange, onSaved }: CorePr
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [canUndo, setCanUndo] = useState(false)
+  // React mirror of the Pixi transform, for the control rail to read. Everything else stays in
+  // refs so dragging never re-renders React.
+  const [xform, setXform] = useState<Xform>({ tx: 0, ty: 0, scale: 1, rotationDeg: 0 })
+  const syncFrameRef = useRef<number | null>(null)
   const { toast } = useToast()
 
   const garmentUrl = source?.garmentUrl ?? null
   const mannequin = source?.mannequin ?? 'female'
   const transform = source?.transform ?? null
   const savedWarp = source?.warp ?? null
+  const reference = source?.reference ?? null
+
+  /**
+   * Push the garment's live transform into React for the rail to display.
+   *
+   * Coalesced onto one animation frame: this is called from the same places as setDirty, including
+   * the per-move pointer handler, and a setState per pointer event would re-render the panel far
+   * more often than the screen updates.
+   *
+   * The four expressions MUST stay identical to the ones in handleSave — the whole point of the
+   * readout is that it shows the numbers that would actually be persisted.
+   */
+  const syncXform = useCallback(() => {
+    if (syncFrameRef.current !== null) return
+    syncFrameRef.current = requestAnimationFrame(() => {
+      syncFrameRef.current = null
+      const g = garmentRef.current
+      if (!g) return
+      setXform({
+        tx: g.x - homeRef.current.x,
+        ty: g.y - homeRef.current.y,
+        scale: g.scale.x / (fitRef.current || 1),
+        rotationDeg: (g.rotation * 180) / Math.PI,
+      })
+    })
+  }, [])
+
+  useEffect(() => () => {
+    if (syncFrameRef.current !== null) cancelAnimationFrame(syncFrameRef.current)
+    syncFrameRef.current = null
+  }, [])
 
   // Snapshot the current garment transform + warp before a gesture, so Undo can restore it.
   const pushHistory = useCallback(() => {
@@ -295,6 +366,7 @@ function PlacementMeshEditorCore({ source, open, onOpenChange, onSaved }: CorePr
     o.set(snap.offsets)
     applyWarp()
     drawGizmo()
+    syncXform()
     setCanUndo(historyRef.current.length > 0)
     setDirty(true)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -417,6 +489,30 @@ function PlacementMeshEditorCore({ source, open, onOpenChange, onSaved }: CorePr
     rotHandleRef.current = { x: midX, y: rotY, r: hit * 1.5 }
   }, [])
 
+  /**
+   * The control rail's single write path into Pixi.
+   *
+   * Safe by construction: the container's pivot is already the cloth centre (see the init effect),
+   * and the corner-scale / rotate drags likewise write only `scale` / `rotation` with no positional
+   * compensation — so a typed value pivots exactly where a dragged one does. Warp offsets are never
+   * touched here, which is why applyWarp isn't called.
+   *
+   * `history: false` suppresses the undo snapshot for auto-repeat ticks, so press-and-hold on a
+   * stepper collapses into the one entry taken when the button went down.
+   */
+  const applyXform = useCallback((patch: Partial<Xform>, opts?: { history?: boolean }) => {
+    const g = garmentRef.current
+    if (!g) return
+    if (opts?.history !== false) pushHistory()
+    if (patch.tx !== undefined) g.x = homeRef.current.x + clampNum(patch.tx, -CANVAS_W, CANVAS_W)
+    if (patch.ty !== undefined) g.y = homeRef.current.y + clampNum(patch.ty, -CANVAS_H, CANVAS_H)
+    if (patch.scale !== undefined) g.scale.set(fitRef.current * clampNum(patch.scale, SCALE_MIN, SCALE_MAX))
+    if (patch.rotationDeg !== undefined) g.rotation = (clampNum(patch.rotationDeg, -180, 180) * Math.PI) / 180
+    setDirty(true)
+    drawGizmo()
+    syncXform()
+  }, [pushHistory, drawGizmo, syncXform])
+
   const resetAll = useCallback(() => {
     const garment = garmentRef.current
     if (!garment) return
@@ -430,8 +526,9 @@ function PlacementMeshEditorCore({ source, open, onOpenChange, onSaved }: CorePr
     setCanUndo(false)
     applyWarp()
     drawGizmo()
+    syncXform()
     setDirty(false)
-  }, [transform, applyWarp, drawGizmo])
+  }, [transform, applyWarp, drawGizmo, syncXform])
 
   const handleSave = useCallback(async () => {
     const app = appRef.current
@@ -725,6 +822,7 @@ function PlacementMeshEditorCore({ source, open, onOpenChange, onSaved }: CorePr
           }
           setDirty(true)
           drawGizmo()
+          syncXform()
         })
 
         const endDrag = () => { dragRef.current = null }
@@ -751,6 +849,8 @@ function PlacementMeshEditorCore({ source, open, onOpenChange, onSaved }: CorePr
         }
 
         drawGizmo()
+        // After the restore, not before — the rail must open showing the saved numbers.
+        syncXform()
         setLoading(false)
       } catch (err) {
         if (!disposed) {
@@ -783,6 +883,9 @@ function PlacementMeshEditorCore({ source, open, onOpenChange, onSaved }: CorePr
     const STEP = 12
     const BIG = 60
     const onKey = (e: KeyboardEvent) => {
+      // The control rail's numeric fields are real inputs inside this dialog; without this guard an
+      // arrow key inside one would move the caret AND nudge the garment.
+      if (isEditableTarget(e.target)) return
       const g = garmentRef.current
       if (!g) return
       const step = e.shiftKey ? BIG : STEP
@@ -797,61 +900,156 @@ function PlacementMeshEditorCore({ source, open, onOpenChange, onSaved }: CorePr
       g.position.set(g.x + dx, g.y + dy)
       setDirty(true)
       drawGizmo()
+      syncXform()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [open, pushHistory, drawGizmo])
+  }, [open, pushHistory, drawGizmo, syncXform])
 
   if (!source) return null
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[560px] max-h-[92vh] flex flex-col">
+      <DialogContent className="max-w-[900px] max-h-[92vh] flex flex-col">
         <DialogHeader className="shrink-0">
           <DialogTitle className="text-sm">Placement mesh editor{source.label ? ` · ${source.label}` : ''}</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[10px] text-muted-foreground min-w-0">
-              Drag the cloth anywhere to reshape (warp) · arrow keys to move (Shift = bigger) · corners scale · top dot: drag rotates, Shift-drag moves
-            </p>
-            <div className="flex items-center gap-3 shrink-0">
-              <button onClick={undo} disabled={!canUndo} className="flex items-center gap-1 text-[10.5px] text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:hover:text-muted-foreground">
-                <Undo2 className="h-3 w-3" /> Undo
-              </button>
-              <button onClick={resetAll} className="flex items-center gap-1 text-[10.5px] text-muted-foreground hover:text-foreground">
-                <RotateCcw className="h-3 w-3" /> Reset
-              </button>
+          {/* One aligned row: every column opens with the same ColumnLabel line and closes level
+              with the previews (see the rail's `mt-auto`), so the rail, the canvas and the
+              reference photo read as one band instead of three staggered blocks. The interaction
+              hint lives under the row, full width — inside a 270px column it wrapped to three
+              lines and pushed the dialog into a scroll. */}
+          <div className="flex flex-wrap items-stretch justify-center gap-4">
+            {/* Control rail — everything the canvas can do by hand, typeable to an exact value. */}
+            <div className="flex w-[176px] shrink-0 flex-col gap-2.5">
+              <ControlSection label="Position" first>
+                <NumberStepper
+                  label="X" value={xform.tx} unit="px" precision={0}
+                  step={XFORM_STEPS.translate.step} bigStep={XFORM_STEPS.translate.big}
+                  min={-CANVAS_W} max={CANVAS_W} disabled={!garmentUrl || loading}
+                  onGestureStart={pushHistory}
+                  onCommit={(tx) => applyXform({ tx }, { history: false })}
+                />
+                <NumberStepper
+                  label="Y" value={xform.ty} unit="px" precision={0}
+                  step={XFORM_STEPS.translate.step} bigStep={XFORM_STEPS.translate.big}
+                  min={-CANVAS_H} max={CANVAS_H} disabled={!garmentUrl || loading}
+                  onGestureStart={pushHistory}
+                  onCommit={(ty) => applyXform({ ty }, { history: false })}
+                />
+              </ControlSection>
+
+              <ControlSection label="Size">
+                <NumberStepper
+                  value={xform.scale} unit="×" precision={2}
+                  step={XFORM_STEPS.scale.step} bigStep={XFORM_STEPS.scale.big}
+                  min={SCALE_MIN} max={SCALE_MAX} disabled={!garmentUrl || loading}
+                  onGestureStart={pushHistory}
+                  onCommit={(scale) => applyXform({ scale }, { history: false })}
+                />
+                <p className="text-[9.5px] leading-tight text-muted-foreground">1.00 = pipeline default fit</p>
+              </ControlSection>
+
+              <ControlSection label="Rotation">
+                <NumberStepper
+                  value={xform.rotationDeg} unit="°" precision={1}
+                  step={XFORM_STEPS.rotate.step} bigStep={XFORM_STEPS.rotate.big}
+                  min={-180} max={180} disabled={!garmentUrl || loading}
+                  onGestureStart={pushHistory}
+                  onCommit={(rotationDeg) => applyXform({ rotationDeg }, { history: false })}
+                />
+              </ControlSection>
+
+              {/* mt-auto: the row stretches this column to the previews' height, so pinning
+                  History to the bottom lands it on their bottom edge. */}
+              <ControlSection label="History" className="mt-auto">
+                <Button size="sm" variant="outline" className="h-7 justify-start text-[11px]" onClick={undo} disabled={!canUndo}>
+                  <Undo2 className="mr-1.5 h-3.5 w-3.5" /> Undo
+                </Button>
+                <Button size="sm" variant="outline" className="h-7 justify-start text-[11px]" onClick={resetAll} disabled={!garmentUrl || loading}>
+                  <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Reset
+                </Button>
+              </ControlSection>
+            </div>
+
+            <div className="flex shrink-0 flex-col gap-1.5" style={{ width: VIEW_W }}>
+              <ColumnLabel><span>Placement · {mannequin}</span></ColumnLabel>
+              <div
+                className="relative rounded-lg border border-border overflow-hidden bg-white"
+                style={{ height: VIEW_H }}
+                // Only reveal the mesh gizmo (dots / wireframe / handles) while the cursor is over the
+                // canvas; hide it otherwise so the mannequin + placed cloth read cleanly.
+                onMouseEnter={() => { if (gizmoRef.current) gizmoRef.current.visible = true }}
+                onMouseLeave={() => { if (gizmoRef.current) gizmoRef.current.visible = false }}
+              >
+                <div ref={setHost} className="absolute inset-0" />
+                {loading && garmentUrl && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-background/70">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  </div>
+                )}
+                {error && (
+                  <div className="absolute inset-0 flex items-center justify-center p-4">
+                    <p className="text-[11px] text-destructive text-center">{error}</p>
+                  </div>
+                )}
+                {!garmentUrl && (
+                  <div className="absolute inset-0 flex items-center justify-center p-4">
+                    <p className="text-[11px] text-muted-foreground text-center">No garment image available.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Reference fit — the generated try-on, so placement aims at the real drape. Same box
+                as the canvas, so the two mannequins are compared at one scale. */}
+            <div className="flex shrink-0 flex-col gap-1.5" style={{ width: VIEW_W }}>
+              <ColumnLabel>
+                <span>Reference fit</span>
+                {reference && (
+                  // The provenance label doubles as the open-full-size link, keeping it out of a
+                  // caption below the image — that caption is what broke the shared bottom edge.
+                  <a
+                    href={reference.url} target="_blank" rel="noreferrer"
+                    title={`${reference.label} · open full size`}
+                    className="flex min-w-0 items-center gap-1 hover:text-foreground"
+                  >
+                    <span className="truncate">{reference.label}</span>
+                    <ExternalLink className="h-2.5 w-2.5 shrink-0" />
+                  </a>
+                )}
+              </ColumnLabel>
+              {reference ? (
+                <a
+                  href={reference.url} target="_blank" rel="noreferrer"
+                  className="block overflow-hidden rounded-lg border border-border bg-white"
+                  style={{ height: VIEW_H }}
+                  title="Open full size"
+                >
+                  <img
+                    src={reference.url}
+                    alt={reference.label}
+                    loading="lazy"
+                    decoding="async"
+                    className="h-full w-full object-contain"
+                  />
+                </a>
+              ) : (
+                <div
+                  className="flex items-center justify-center rounded-lg border border-dashed border-border p-4"
+                  style={{ height: VIEW_H }}
+                >
+                  <p className="text-center text-[11px] text-muted-foreground">No try-on reference for this item.</p>
+                </div>
+              )}
             </div>
           </div>
 
-          <div
-            className="relative self-center rounded-lg border border-border overflow-hidden bg-white"
-            style={{ width: VIEW_W, height: VIEW_H }}
-            // Only reveal the mesh gizmo (dots / wireframe / handles) while the cursor is over the
-            // canvas; hide it otherwise so the mannequin + placed cloth read cleanly.
-            onMouseEnter={() => { if (gizmoRef.current) gizmoRef.current.visible = true }}
-            onMouseLeave={() => { if (gizmoRef.current) gizmoRef.current.visible = false }}
-          >
-            <div ref={setHost} className="absolute inset-0" />
-            {loading && garmentUrl && (
-              <div className="absolute inset-0 flex items-center justify-center bg-background/70">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              </div>
-            )}
-            {error && (
-              <div className="absolute inset-0 flex items-center justify-center p-4">
-                <p className="text-[11px] text-destructive text-center">{error}</p>
-              </div>
-            )}
-            {!garmentUrl && (
-              <div className="absolute inset-0 flex items-center justify-center p-4">
-                <p className="text-[11px] text-muted-foreground text-center">No garment image available.</p>
-              </div>
-            )}
-          </div>
-
+          <p className="text-center text-[10px] text-muted-foreground">
+            Drag the cloth anywhere to reshape (warp) · arrow keys to move (Shift = bigger) · corners scale · top dot: drag rotates, Shift-drag moves
+          </p>
         </div>
 
         <DialogFooter className="shrink-0">
@@ -884,6 +1082,14 @@ export function PlacementMeshEditor({ job, placement, open, onOpenChange, onSave
         mannequin: normalizeMannequin(placement?.mannequin, job.product_gender_type),
         transform: placement?.transform ?? null,
         warp: placement?.warp ?? null,
+        // Same fallback the row tile uses (RowItem's `vton`). The two are labelled differently on
+        // purpose: v_ton_preferred_image is the scraped photo that was fed INTO try-on generation,
+        // not a render of this garment being worn, so it's a much weaker reference.
+        reference: job.vton_image_url
+          ? { url: job.vton_image_url, label: 'Generated try-on' }
+          : job.v_ton_preferred_image
+            ? { url: job.v_ton_preferred_image, label: 'Source photo · no try-on generated' }
+            : null,
         onSave: (payload) => v2Api.savePlacement(job.job_id, payload).then(() => undefined),
       }
     : null
@@ -910,6 +1116,12 @@ export type PlacementProduct = {
   product_name?: string | null
   /** The full placement map: { "gender:body_type": {tx,ty,scale,rotationDeg,warp} }. */
   placement?: Record<string, PlacementMapEntry> | null
+  /**
+   * Try-on shown read-only beside the canvas so the operator places against the real drape. Not a
+   * products column — resolved from ingestion_pipeline_jobs (see useProductVton), so it's absent
+   * for catalog items that predate the automated pipeline and for footwear, which has no VTON.
+   */
+  vton?: { url: string; label: string } | null
 }
 
 type ProductProps = {
@@ -933,6 +1145,7 @@ export function ProductPlacementEditor({ product, open, onOpenChange, onSaved }:
             ? { scale: entry.scale, rotationDeg: entry.rotationDeg, tx: entry.tx, ty: entry.ty }
             : null,
           warp: entry?.warp ?? null,
+          reference: product.vton ?? null,
           label: product.product_name ?? product.id.slice(0, 8),
           // Skip the composite upload: the studio renders from the transform map, not a preview image,
           // so a product save is just a fast JSONB merge (no multi-MB PNG round-trip).

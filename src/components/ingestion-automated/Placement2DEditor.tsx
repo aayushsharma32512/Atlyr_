@@ -394,6 +394,10 @@ export function Placement2DEditor({ product, open, onOpenChange, onSaved }: Prop
   useEffect(() => {
     if (!open || !metrics || !imageWidthPx || !rect) return
     const onKey = (e: KeyboardEvent) => {
+      // Never steal keystrokes from a focused field — arrows and +/- belong to the input, not the
+      // garment. (Matches the guard in PlacementMeshEditor; this editor gets numeric controls next.)
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
       const stepPx = e.shiftKey ? 10 : 2
 
       if (e.key === '+' || e.key === '=' || e.key === '-' || e.key === '_') {
