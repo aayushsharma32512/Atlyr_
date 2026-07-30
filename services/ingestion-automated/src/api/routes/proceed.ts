@@ -5,6 +5,7 @@ import type { PipelineState } from '../../domain/types';
 import { getJob, updateJob } from '../../domain/job-catalog';
 import { nextState, HITL_STATES } from '../../orchestration/state-machine';
 import { updateState } from '../../domain/job-catalog';
+import { sendPipelineStep } from '../../queue/send-step';
 import { createLogger } from '../../utils/logger';
 
 const logger = createLogger({ stage: 'api:proceed' });
@@ -61,7 +62,7 @@ export async function registerProceedRoute(app: FastifyInstance, boss: PgBoss): 
 
     // Enqueue step execution if not paused on HITL
     if (!HITL_STATES.includes(next)) {
-      await boss.send('run-pipeline-step', { jobId });
+      await sendPipelineStep(boss, jobId, next);
     }
 
     logger.info({ jobId, from: job.current_state, to: next }, 'HITL proceed / trigger');

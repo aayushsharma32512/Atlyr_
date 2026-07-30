@@ -44,7 +44,28 @@ const EnvSchema = z.object({
 
   BOSS_SCHEMA: z.string().default('pgboss_ingestion_v2'),
   BOSS_TEAM_SIZE: z.string().default('5'),
+  // How long COMPLETED pg-boss rows are kept before being archived. Housekeeping only —
+  // this has never governed how long a running step may take (see BOSS_STEP_TIMEOUT_SECONDS).
   BOSS_EXPIRE_AFTER: z.string().default('PT2H'),
+  // How long ONE pipeline step may stay active before pg-boss expires the job. Previously unset,
+  // which silently meant pg-boss's 15-minute default — shorter than a cold-start Modal segmentation.
+  // Note expiry does NOT cancel the in-flight handler; it only stops the queue tracking it.
+  BOSS_STEP_TIMEOUT_SECONDS: z.string().default('1800'),
+  // Same, for steps that block on a Modal call (segmenting, placement). Expiry does not cancel the
+  // handler, so this must comfortably exceed the slowest Modal run or a retry will execute
+  // concurrently with the original.
+  BOSS_MODAL_STEP_TIMEOUT_SECONDS: z.string().default('5400'),
+  // Retries exist only to recover steps interrupted by the worker process dying. Ordinary step
+  // failures are already terminal by the time a retry runs, so they are not re-executed.
+  BOSS_STEP_RETRY_LIMIT: z.string().default('3'),
+  BOSS_STEP_RETRY_DELAY_SECONDS: z.string().default('60'),
+  // Extra idle time on top of the step timeout before the reaper will call a job stranded.
+  // Must stay > 0 so a step that is legitimately still running is never reaped.
+  BOSS_REAP_GRACE_SECONDS: z.string().default('300'),
+  // What the boot reaper does with rows it considers stranded. Defaults to 'log' — report only,
+  // mutate nothing. Flip to 'fail' once the logged candidates have proven to be genuinely stuck;
+  // a false positive here fails work that is actually still running.
+  REAPER_MODE: z.enum(['off', 'log', 'fail']).default('log'),
   BOSS_RESTART_BASE_MS: z.string().default('1000'),
   BOSS_RESTART_MAX_MS: z.string().default('15000'),
   BOSS_RESTART_MAX_ATTEMPTS: z.string().default('5'),
@@ -62,6 +83,11 @@ export const config = {
   ...parsed.data,
   PORT: Number(parsed.data.PORT),
   BOSS_TEAM_SIZE: Number(parsed.data.BOSS_TEAM_SIZE),
+  BOSS_STEP_TIMEOUT_SECONDS: Number(parsed.data.BOSS_STEP_TIMEOUT_SECONDS),
+  BOSS_MODAL_STEP_TIMEOUT_SECONDS: Number(parsed.data.BOSS_MODAL_STEP_TIMEOUT_SECONDS),
+  BOSS_STEP_RETRY_LIMIT: Number(parsed.data.BOSS_STEP_RETRY_LIMIT),
+  BOSS_STEP_RETRY_DELAY_SECONDS: Number(parsed.data.BOSS_STEP_RETRY_DELAY_SECONDS),
+  BOSS_REAP_GRACE_SECONDS: Number(parsed.data.BOSS_REAP_GRACE_SECONDS),
   BOSS_RESTART_BASE_MS: Number(parsed.data.BOSS_RESTART_BASE_MS),
   BOSS_RESTART_MAX_MS: Number(parsed.data.BOSS_RESTART_MAX_MS),
   BOSS_RESTART_MAX_ATTEMPTS: Number(parsed.data.BOSS_RESTART_MAX_ATTEMPTS),

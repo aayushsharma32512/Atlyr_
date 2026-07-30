@@ -5,6 +5,7 @@ import { getJob, updateState } from '../../domain/job-catalog';
 import { deleteArtifactsForSteps } from '../../domain/artifacts';
 import { hasTransition, HITL_STATES, TERMINAL_STATES } from '../../orchestration/state-machine';
 import { supabaseAdmin } from '../../db/supabase';
+import { sendPipelineStep } from '../../queue/send-step';
 import { createLogger } from '../../utils/logger';
 
 const logger = createLogger({ stage: 'api:restart' });
@@ -103,7 +104,7 @@ export async function registerRestartRoute(app: FastifyInstance, boss: PgBoss): 
       })
       .eq('job_id', jobId);
 
-    await boss.send('run-pipeline-step', { jobId });
+    await sendPipelineStep(boss, jobId, from_state);
 
     logger.info({ jobId, from_state }, 'job restarted');
     return reply.send({

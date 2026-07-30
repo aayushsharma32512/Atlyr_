@@ -22,6 +22,8 @@ export async function initBoss(
   const boss = new PgBoss({
     connectionString: config.DATABASE_URL_DIRECT,
     schema: config.BOSS_SCHEMA,
+    // Retention for COMPLETED rows, not a step timeout. The per-step limit is set at send time
+    // via expireInSeconds (see queue/send-step.ts) — BOSS_EXPIRE_AFTER has never governed it.
     archiveCompletedAfterSeconds: parseExpireAfter(config.BOSS_EXPIRE_AFTER),
   });
 

@@ -2,6 +2,7 @@ import type PgBoss from 'pg-boss';
 import { updateState } from '../domain/job-catalog';
 import type { IngestionPipelineJob } from '../domain/types';
 import { nextState, HITL_STATES } from './state-machine';
+import { sendPipelineStep } from '../queue/send-step';
 
 let _boss: PgBoss;
 
@@ -15,5 +16,5 @@ export async function advanceAndTrigger(job: IngestionPipelineJob): Promise<void
 
   if (HITL_STATES.includes(next)) return;
 
-  await _boss.send('run-pipeline-step', { jobId: job.job_id });
+  await sendPipelineStep(_boss, job.job_id, next);
 }
