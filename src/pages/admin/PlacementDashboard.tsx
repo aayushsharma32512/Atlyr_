@@ -4,6 +4,7 @@ import { PhotoCard } from '@/components/ingestion-automated/PhotoCard'
 import { ProductPlacementEditor, type PlacementProduct } from '@/components/ingestion-automated/PlacementMeshEditor'
 import { Placement2DEditor, type Placement2DProduct } from '@/components/ingestion-automated/Placement2DEditor'
 import { useProducts } from '@/hooks/useProducts'
+import { useProductVton } from '@/components/ingestion-automated/useProductVton'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -34,6 +35,8 @@ export default function PlacementDashboard() {
   const [category, setCategory] = useState('')
   const [createdAfter, setCreatedAfter] = useState('') // yyyy-mm-dd
   const [createdBefore, setCreatedBefore] = useState('')
+  // The 3D backlog: already placed in 2D, still missing a 3D placement entry.
+  const [needs3D, setNeeds3D] = useState(false)
   const [openProduct, setOpenProduct] = useState<CatalogRow | null>(null)
 
   // Memoize the array/derived args: useProducts refetches whenever these change *identity*, so a
@@ -65,6 +68,9 @@ export default function PlacementDashboard() {
     typeCategories: typeCategoriesArg,
     createdAfter: createdAfterArg,
     createdBefore: createdBeforeArg,
+    // Server-side half of the "needs 3D" filter. The page has no pagination, so narrowing here
+    // keeps the backlog from hiding behind Supabase's default row cap.
+    hasPlacement2D: needs3D || undefined,
   })
 
   const rows = products as unknown as CatalogRow[]
@@ -78,13 +84,21 @@ export default function PlacementDashboard() {
 
   const clearFilters = () => {
     setProductId(''); setGender(''); setCategory(''); setCreatedAfter(''); setCreatedBefore('')
+    setNeeds3D(false)
   }
 
   // Placement status for the ACTIVE mode only — a product can be placed in one and not the other.
   const isPlaced3D = (r: CatalogRow) => !!r.placement && Object.keys(r.placement).length > 0
   const isPlaced2D = (r: CatalogRow) => r.image_length != null && r.placement_y != null
   const isPlaced = (r: CatalogRow) => (mode === '3d' ? isPlaced3D(r) : isPlaced2D(r))
-  const placedCount = rows.filter(isPlaced).length
+
+  // The query already restricted to 2D-placed rows when the toggle is on, so only the 3D half of
+  // the predicate is left to apply here (a jsonb `= '{}'` comparison is awkward over PostgREST).
+  const visibleRows = needs3D ? rows.filter(r => !isPlaced3D(r)) : rows
+  const placedCount = visibleRows.filter(isPlaced).length
+
+  // Try-on references for what's on screen — resolved from the pipeline jobs, not the products row.
+  const vtonByProduct = useProductVton(useMemo(() => visibleRows.map(r => r.id), [visibleRows]))
 
   return (
     <AppShellLayout>
@@ -135,10 +149,32 @@ export default function PlacementDashboard() {
               <label className="text-[10px] uppercase tracking-wide text-muted-foreground">To</label>
               <Input type="date" value={createdBefore} onChange={(e) => setCreatedBefore(e.target.value)} className="h-8 w-36 text-xs" />
             </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] uppercase tracking-wide text-muted-foreground">Backlog</label>
+              <button
+                type="button"
+                // Turning this on switches to 3D as well — otherwise clicking a card would open the
+                // 2D editor, which is the opposite of what this filter is for.
+                onClick={() => {
+                  const next = !needs3D
+                  setNeeds3D(next)
+                  setOpenProduct(null)
+                  if (next) setMode('3d')
+                }}
+                title="Only products already placed in 2D that still have no 3D placement"
+                className={`h-8 rounded-md border border-input px-3 text-xs font-medium transition-colors ${
+                  needs3D ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Needs 3D
+              </button>
+            </div>
             <Button variant="outline" size="sm" className="h-8" onClick={clearFilters}>Clear</Button>
             <Button variant="ghost" size="sm" className="h-8" onClick={refetch}>Refresh</Button>
             <div className="ml-auto text-[11px] text-muted-foreground">
-              {loading ? 'Loading…' : `${rows.length} products · ${placedCount} placed in ${mode.toUpperCase()}`}
+              {loading ? 'Loading…'
+                : needs3D ? `${visibleRows.length} placed in 2D · need 3D placement`
+                : `${visibleRows.length} products · ${placedCount} placed in ${mode.toUpperCase()}`}
             </div>
           </div>
         </div>
@@ -150,13 +186,15 @@ export default function PlacementDashboard() {
             <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
               {Array.from({ length: 12 }).map((_, i) => <Skeleton key={i} className="aspect-[3/4] w-full rounded-lg" />)}
             </div>
-          ) : rows.length === 0 ? (
+          ) : visibleRows.length === 0 ? (
             <div className="flex h-full items-center justify-center">
-              <p className="text-sm text-muted-foreground">No products match these filters.</p>
+              <p className="text-sm text-muted-foreground">
+                {needs3D ? 'Nothing waiting on 3D placement.' : 'No products match these filters.'}
+              </p>
             </div>
           ) : (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
-              {rows.map((r) => {
+              {visibleRows.map((r) => {
                 const placed = isPlaced(r)
                 return (
                   <PhotoCard
@@ -181,7 +219,7 @@ export default function PlacementDashboard() {
 
       {mode === '3d' ? (
         <ProductPlacementEditor
-          product={openProduct}
+          product={openProduct && { ...openProduct, vton: vtonByProduct[openProduct.id] ?? null }}
           open={openProduct !== null}
           onOpenChange={(o) => { if (!o) setOpenProduct(null) }}
           onSaved={refetch}

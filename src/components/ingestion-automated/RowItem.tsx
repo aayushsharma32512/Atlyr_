@@ -20,9 +20,9 @@ import { useNotWiredDialog } from './NotWiredDialog'
 import { ConfirmDialog } from './ConfirmDialog'
 import { PhotoTileActions } from './PhotoTileActions'
 import type { ProductMeta } from './useProductMeta'
+import type { EnrichmentData } from './useEnrichment'
 import type { ImageTag, View, PhotoType } from './useImageClassification'
 import { EMPTY_SLOTS, type VtonSelection } from './useVtonSelection'
-import type { GarmentSummaryData } from './useGarmentSummary'
 
 // The view/type each of the 4 slots represents — used to prefill the inline retag popover.
 const SLOT_TAG: Record<'frontModel' | 'frontFlat' | 'backModel' | 'backFlat', { view: View; type: PhotoType }> = {
@@ -52,16 +52,26 @@ const FIELD_SELECT = 'h-7 w-full min-w-0 rounded-md border-transparent bg-muted 
 
 const CATEGORY_OPTIONS = ['topwear', 'bottomwear', 'dress']
 const GENDER_OPTIONS = ['female', 'male', 'unisex']
-const COMPLEXITY_OPTIONS = ['simple', 'complex']
-// Drives pickPreferredSlot server-side — 'auto' (null) defaults to 'model' priority.
-const PREFERENCE_OPTIONS: { value: string; label: string }[] = [
-  { value: 'auto', label: 'Auto (Model)' },
-  { value: 'model', label: 'Model' },
-  { value: 'flat_lay', label: 'Flat Lay' },
-]
 
 // Keep the job's actual value selectable even when it isn't one of the standard enums.
 const withCurrent = (std: string[], cur: string) => (!cur || std.includes(cur) ? std : [cur, ...std])
+
+// A cell in the expand strip: either a static read-out, or one of the fields that has a write
+// path (PATCH /jobs/:jobId/details) and so renders as a live control bound to the draft state.
+type EditableKey = 'brand' | 'price' | 'gender' | 'category' | 'sub'
+type ExpansionField =
+  | { label: string; value: string | null; edit?: undefined }
+  | { label: string; edit: EditableKey; value?: undefined }
+
+// A pipeline-derived value with no write path, styled to sit flush with the editable inputs
+// beside it. leading-7 centres the text in the same h-7 box an input would occupy.
+function ReadBox({ value }: { value: string | null }) {
+  return (
+    <span className={cn(FIELD_BOX, 'block truncate leading-7')} title={value ?? undefined}>
+      {value ?? '—'}
+    </span>
+  )
+}
 
 type Props = {
   job: PipelineJob
@@ -70,9 +80,9 @@ type Props = {
   selection: VtonSelection | undefined
   sourceImages: string[]
   product: ProductMeta | undefined
+  enrichment: EnrichmentData | undefined
   refetchProduct: () => void
   placementImage: string | undefined
-  garmentSummary: GarmentSummaryData | undefined
   selected: boolean
   onToggleSelect: (jobId: string) => void
   onOpenDetail: (jobId: string) => void
@@ -90,10 +100,10 @@ type Props = {
 }
 
 export function RowItem({
-  job, stage, tags, selection, sourceImages, product, refetchProduct, placementImage, garmentSummary, selected, onToggleSelect, onOpenDetail, onOpenError, onOpenPlacement, onOpenMesh, catalogStatus, onPublished, highlighted, onOpenViewer, onOpenEraser, refetch, refetchSelection, refetchTags,
+  job, stage, tags, selection, sourceImages, product, enrichment, refetchProduct, placementImage, selected, onToggleSelect, onOpenDetail, onOpenError, onOpenPlacement, onOpenMesh, catalogStatus, onPublished, highlighted, onOpenViewer, onOpenEraser, refetch, refetchSelection, refetchTags,
 }: Props) {
   const [expanded, setExpanded] = useState(false)
-  const [packOpen, setPackOpen] = useState(false)
+  const [detailOpen, setDetailOpen] = useState(false)
   const [srcIdx, setSrcIdx] = useState(0)
   const rootRef = useRef<HTMLDivElement>(null)
 
@@ -111,10 +121,8 @@ export function RowItem({
   const [draftBrand, setDraftBrand] = useState(product?.brand ?? '')
   const [draftPrice, setDraftPrice] = useState(product?.price != null ? String(product.price) : '')
   const [draftCategory, setDraftCategory] = useState(job.product_type)
-  const [draftComplexity, setDraftComplexity] = useState(job.product_complexity)
   const [draftGender, setDraftGender] = useState(job.product_gender_type)
   const [draftSub, setDraftSub] = useState(job.product_sub_type ?? '')
-  const [draftPreference, setDraftPreference] = useState(job.v_ton_image_preference?.type ?? 'auto')
   const [updatingDetails, setUpdatingDetails] = useState(false)
 
   const { toast } = useToast()
@@ -131,12 +139,10 @@ export function RowItem({
 
   useEffect(() => {
     setDraftCategory(job.product_type)
-    setDraftComplexity(job.product_complexity)
     setDraftGender(job.product_gender_type)
     setDraftSub(job.product_sub_type ?? '')
-    setDraftPreference(job.v_ton_image_preference?.type ?? 'auto')
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [job.product_type, job.product_complexity, job.product_gender_type, job.product_sub_type, job.v_ton_image_preference?.type])
+  }, [job.product_type, job.product_gender_type, job.product_sub_type])
 
   const buildDetailsPatch = (): UpdateJobDetailsBody => {
     const patch: UpdateJobDetailsBody = {}
@@ -148,13 +154,8 @@ export function RowItem({
       if (draftPrice.trim() !== '' && !Number.isNaN(n)) patch.price = n
     }
     if (draftCategory !== job.product_type) patch.product_type = draftCategory as UpdateJobDetailsBody['product_type']
-    if (draftComplexity !== job.product_complexity) patch.product_complexity = draftComplexity
     if (draftGender !== job.product_gender_type) patch.product_gender_type = draftGender as UpdateJobDetailsBody['product_gender_type']
     if (draftSub !== (job.product_sub_type ?? '')) patch.product_sub_type = draftSub
-    const currentPreference = job.v_ton_image_preference?.type ?? 'auto'
-    if (draftPreference !== currentPreference) {
-      patch.v_ton_image_preference = draftPreference === 'auto' ? null : { type: draftPreference as 'model' | 'flat_lay' }
-    }
     return patch
   }
   const detailsDirty = Object.keys(buildDetailsPatch()).length > 0
@@ -250,6 +251,38 @@ export function RowItem({
 
   const vton = job.vton_image_url ?? job.v_ton_preferred_image
 
+  // Expand panel — what the scraper actually pulled off the source page (crawl_meta).
+  // Name/Brand/Price are dropped on Stage 1 because the left panel already renders them as
+  // editable inputs; on Stage 2 that block is hidden, so they belong here.
+  // Fields are never filtered out: the proto's strip is a fixed set of boxes, and an empty
+  // box ("this wasn't scraped") reads better than a field that silently vanishes. Anything
+  // free-form (description, accordions, source link) lives behind the More disclosure
+  // so the default panel stays one tight grid.
+  //
+  // Split strictly by provenance: S1 is the scrape surface and shows ONLY scraped data, so its
+  // expansion carries the rest of crawl_meta. Gemini output appears exclusively on S2 — its left
+  // panel is the enrichment read, so its expansion carries the scraped identity + taxonomy.
+  // (This deviates from the proto, whose S1 expansion mixes in Fit/Feel/Matrl.)
+  // Rendered 4-rows-then-wrap, so order defines the columns.
+  const expansionFields: ExpansionField[] = stage === 1 ? [
+    { label: 'Colour',  value: product?.color ?? null },
+    { label: 'Instr',   value: product?.care ?? null },
+    { label: 'Site',    value: product?.siteProfile ?? null },
+    { label: 'Scraped', value: product?.scrapedAt ? format(new Date(product.scrapedAt), 'd MMM HH:mm') : null },
+    { label: 'Images',  value: product?.uploadedCount != null
+      ? `${product.uploadedCount}${product.rawImageCount != null ? ` of ${product.rawImageCount}` : ''}`
+      : null },
+  ] : [
+    { label: 'Brand', edit: 'brand' },
+    { label: 'Price', edit: 'price' },
+    { label: 'Gendr', edit: 'gender' },
+    { label: 'Catgy', edit: 'category' },
+    { label: 'Sub',   edit: 'sub' },
+    { label: 'Matrl', value: enrichment?.materialType ?? null },
+    { label: 'Care',  value: product?.care ?? null },
+    { label: 'Other', value: enrichment?.other ?? null },
+  ]
+
   // The 4 named slots the design calls for — resolved server-side (see
   // services/ingestion-automated/src/adapters/siglip.ts buildSlots/pickPreferredSlot),
   // including any manual retag overrides. Side / Macro Detail shots don't map to any of
@@ -317,6 +350,37 @@ export function RowItem({
       toast({ title: 'Delete failed', description: e instanceof Error ? e.message : undefined, variant: 'destructive' })
     }
   }
+
+  // The scraped-photo carousel. The proto keeps this in its own column and does NOT hide it on
+  // expand (RowItem.dc.html:109-114) — only the slot tiles go — so it's rendered as a sibling of
+  // the tiles/strip branch rather than inside it, keeping an image reference while editing.
+  const sourceCard = (
+    <div className="flex w-32 shrink-0 flex-col gap-1.5">
+      <PhotoCard
+        label="Source"
+        state={sourceImages.length > 0 ? 'available' : rowState === 'processing' ? 'processing' : rowState === 'error' ? 'error' : 'empty'}
+        url={sourceImages[srcIdxClamped]}
+        badge={sourceImages.length > 1 ? `${srcIdxClamped + 1}/${sourceImages.length}` : undefined}
+        note={sourceImages.length === 0 ? (rowState === 'processing' ? 'Scraping…' : rowState === 'error' ? 'No output' : 'Not scraped yet') : undefined}
+        size="xl"
+        onExpand={sourceImages.length > 0 ? () => onOpenViewer(srcViewerImages, srcIdxClamped, job.job_id) : undefined}
+        actions={sourceImages.length > 1 ? [
+          { icon: <ChevronLeft className="h-3 w-3" />, label: 'Previous', onClick: () => setSrcIdx((srcIdxClamped - 1 + sourceImages.length) % sourceImages.length) },
+          { icon: <ChevronRight className="h-3 w-3" />, label: 'Next', onClick: () => setSrcIdx((srcIdxClamped + 1) % sourceImages.length) },
+        ] : undefined}
+        overlay={currentSrcUrl ? (
+          <PhotoTileActions
+            key={currentSrcUrl}
+            defaultView={currentTag?.view && currentTag.view !== 'Side' ? currentTag.view : 'Front'}
+            defaultType={currentTag?.type ?? 'Model'}
+            onRetag={(v, t) => applyTagForUrl(currentSrcUrl, v, t)}
+            onDelete={() => setPhotoDeleteUrl(currentSrcUrl)}
+            busy={retagging}
+          />
+        ) : undefined}
+      />
+    </div>
+  )
 
   return (
     <div
@@ -395,50 +459,63 @@ export function RowItem({
                 />
               </div>
             </div>
-            <div className="grid grid-cols-[40px_1fr] items-center gap-1.5">
-              <span className="text-[10.5px] text-muted-foreground">VTon</span>
-              <Select value={draftPreference} onValueChange={setDraftPreference}>
-                <SelectTrigger className={FIELD_SELECT} title="Which type of photo wins the VTON pick when nothing's been manually retagged">
-                  <SelectValue />
-                </SelectTrigger>
+            <div className="grid grid-cols-[40px_1fr_40px_1fr] items-center gap-1.5">
+              <span className="text-[10.5px] text-muted-foreground">Catgy</span>
+              <Select value={draftCategory} onValueChange={setDraftCategory}>
+                <SelectTrigger className={FIELD_SELECT}><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {PREFERENCE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>)}
+                  {withCurrent(CATEGORY_OPTIONS, job.product_type).map(o => <SelectItem key={o} value={o} className="text-xs">{o}</SelectItem>)}
                 </SelectContent>
               </Select>
+              <span className="text-[10.5px] text-muted-foreground">Gendr</span>
+              <Select value={draftGender} onValueChange={setDraftGender}>
+                <SelectTrigger className={FIELD_SELECT}><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {withCurrent(GENDER_OPTIONS, job.product_gender_type).map(o => <SelectItem key={o} value={o} className="text-xs">{o}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-[40px_1fr] items-center gap-1.5">
+              <span className="text-[10.5px] text-muted-foreground">Sub</span>
+              <input value={draftSub} onChange={e => setDraftSub(e.target.value)} placeholder="—" className={cn(FIELD_BOX, 'truncate')} />
             </div>
           </>
         )}
 
-        <div className="grid grid-cols-[40px_1fr_40px_1fr] items-center gap-1.5">
-          <span className="text-[10.5px] text-muted-foreground">Catgy</span>
-          <Select value={draftCategory} onValueChange={setDraftCategory}>
-            <SelectTrigger className={FIELD_SELECT}><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {withCurrent(CATEGORY_OPTIONS, job.product_type).map(o => <SelectItem key={o} value={o} className="text-xs">{o}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <span className="text-[10.5px] text-muted-foreground">Cmplx</span>
-          <Select value={draftComplexity} onValueChange={setDraftComplexity}>
-            <SelectTrigger className={FIELD_SELECT}><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {withCurrent(COMPLEXITY_OPTIONS, job.product_complexity).map(o => <SelectItem key={o} value={o} className="text-xs">{o}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
+        {/* Stage 2 — the Gemini read of the garment. Read-only: no route writes the enrichment
+            artifact, so the scraped identity + taxonomy move into the expand strip instead. */}
+        {stage === 2 && (
+          <>
+            <div className="grid grid-cols-[40px_1fr_40px_1fr] items-center gap-1.5">
+              <span className="text-[10.5px] text-muted-foreground">Name</span>
+              <ReadBox value={product?.name ?? null} />
+              <span className="text-[10.5px] text-muted-foreground">Occn</span>
+              <ReadBox value={enrichment?.occasion ?? null} />
+            </div>
+            <div className="grid grid-cols-[40px_1fr_28px_1fr_28px_1fr] items-center gap-1.5">
+              <span className="text-[10.5px] text-muted-foreground">Colour</span>
+              <ReadBox value={enrichment?.colorGroup ?? null} />
+              <span className="text-[10.5px] text-muted-foreground">Fit</span>
+              <ReadBox value={enrichment?.fit ?? null} />
+              <span className="text-[10.5px] text-muted-foreground">Feel</span>
+              <ReadBox value={enrichment?.feel ?? null} />
+            </div>
+            <div className="grid grid-cols-[40px_1fr_44px_1.3fr] items-center gap-1.5">
+              <span className="text-[10.5px] text-muted-foreground">Vibe</span>
+              <ReadBox value={enrichment?.vibes ?? null} />
+              <span className="text-[10.5px] text-muted-foreground">Styling</span>
+              <ReadBox value={enrichment?.styling ?? null} />
+            </div>
+            <div className="grid grid-cols-[40px_1fr] items-center gap-1.5">
+              <span className="text-[10.5px] text-muted-foreground">Smry</span>
+              <ReadBox value={enrichment?.summary ?? null} />
+            </div>
+          </>
+        )}
 
-        <div className="grid grid-cols-[40px_1fr_40px_1fr] items-center gap-1.5">
-          <span className="text-[10.5px] text-muted-foreground">Gendr</span>
-          <Select value={draftGender} onValueChange={setDraftGender}>
-            <SelectTrigger className={FIELD_SELECT}><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {withCurrent(GENDER_OPTIONS, job.product_gender_type).map(o => <SelectItem key={o} value={o} className="text-xs">{o}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <span className="text-[10.5px] text-muted-foreground">Sub</span>
-          <input value={draftSub} onChange={e => setDraftSub(e.target.value)} placeholder="—" className={cn(FIELD_BOX, 'truncate')} />
-        </div>
-
-        {detailsDirty && (
+        {/* Save button follows the editable fields — they're on this panel for S1, but in the
+            expand strip for S2 (see below). */}
+        {detailsDirty && stage === 1 && (
           <Button size="sm" className="h-6 w-full text-[10.5px] font-semibold" disabled={updatingDetails} onClick={updateDetails}>
             {updatingDetails && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
             Update Details
@@ -523,52 +600,105 @@ export function RowItem({
       {/* Tiles — or, when expanded, the extra-fields strip in their place */}
       <div className="flex min-w-0 flex-1 items-start gap-2 overflow-x-auto border-l border-black/5 dark:border-white/5 px-3">
         {expanded ? (
-          <div className="flex w-full flex-col gap-2 overflow-y-auto pt-[26px] pb-1 pr-1 text-[10.5px] text-muted-foreground">
-            {garmentSummary ? (
-              <>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                  {garmentSummary.techPack.map(entry => (
-                    <span key={entry.key} className="truncate capitalize">
-                      {entry.label.toLowerCase()} <span className="font-medium text-foreground normal-case">{entry.value}</span>
-                    </span>
-                  ))}
-                  {garmentSummary.techPack.length === 0 && <span>Tech pack not parsed</span>}
-                </div>
-                {garmentSummary.physics && (
-                  <p className="leading-relaxed">
-                    <span className="font-semibold text-foreground">Feel</span> — {garmentSummary.physics.replace(/^\[GARMENT_PHYSICS\]\s*/, '')}
-                  </p>
-                )}
-                <div className="flex gap-4">
-                  <span>Care <span className="italic">not tracked by this pipeline</span></span>
-                  <span>Other <span className="italic">not tracked by this pipeline</span></span>
-                </div>
-                <div>
-                  <button
-                    onClick={() => setPackOpen(o => !o)}
-                    className="flex items-center gap-1 font-mono text-foreground hover:underline"
-                  >
-                    {packOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                    {'{ }'} Pack JSON
-                  </button>
-                  {packOpen && (
-                    <pre className="mt-1 max-h-40 overflow-auto rounded-md bg-muted p-2 text-[9.5px] leading-relaxed">
-                      {JSON.stringify(garmentSummary.raw, null, 2)}
-                    </pre>
+          <div className="flex min-w-0 flex-1 flex-col gap-2 overflow-y-auto pt-[26px] pb-1 pr-1 text-[10.5px] text-muted-foreground">
+            {/* Four rows flowing into columns, label + box — the proto's expanded field strip
+                (RowItem.dc.html). Order defines the columns. */}
+            <div className="grid grid-flow-col grid-rows-4 gap-x-3 gap-y-1 overflow-x-auto">
+              {expansionFields.map(f => (
+                <div key={f.label} className="flex min-w-[180px] items-center gap-1.5">
+                  <span className="w-12 shrink-0">{f.label}</span>
+                  {f.edit === 'brand' ? (
+                    <input value={draftBrand} onChange={e => setDraftBrand(e.target.value)} placeholder="—" className={cn(FIELD_BOX, 'truncate')} />
+                  ) : f.edit === 'price' ? (
+                    <div className="flex min-w-0 items-center gap-1">
+                      {product?.currency && <span className="shrink-0">{product.currency}</span>}
+                      <input type="number" value={draftPrice} onChange={e => setDraftPrice(e.target.value)} placeholder="—" className={cn(FIELD_BOX, 'truncate')} />
+                    </div>
+                  ) : f.edit === 'gender' ? (
+                    <Select value={draftGender} onValueChange={setDraftGender}>
+                      <SelectTrigger className={FIELD_SELECT}><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {withCurrent(GENDER_OPTIONS, job.product_gender_type).map(o => <SelectItem key={o} value={o} className="text-xs">{o}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  ) : f.edit === 'category' ? (
+                    <Select value={draftCategory} onValueChange={setDraftCategory}>
+                      <SelectTrigger className={FIELD_SELECT}><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {withCurrent(CATEGORY_OPTIONS, job.product_type).map(o => <SelectItem key={o} value={o} className="text-xs">{o}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  ) : f.edit === 'sub' ? (
+                    <input value={draftSub} onChange={e => setDraftSub(e.target.value)} placeholder="—" className={cn(FIELD_BOX, 'truncate')} />
+                  ) : (
+                    <ReadBox value={f.value ?? null} />
                   )}
                 </div>
-              </>
-            ) : (
-              <p>No garment summary yet — runs after identification (↻ Summary).</p>
-            )}
-            <div className="grid grid-cols-[repeat(3,auto)] gap-x-6 gap-y-1.5 border-t border-border/60 pt-1.5">
-              <span>VTon model <span className="font-medium text-foreground">{job.v_ton_model ?? 'auto'}</span></span>
-              <span>HITL ID <span className="font-medium text-foreground">{job.hitl_post_identification ? 'on' : 'off'}</span></span>
-              <span>HITL Seg <span className="font-medium text-foreground">{job.hitl_post_segmentation ? 'on' : 'off'}</span></span>
-              <span>Errors <span className="font-medium text-foreground">{job.error_count}</span></span>
-              <span>State <span className="font-medium text-foreground">{job.current_state}</span></span>
-              {job.ingested_product_id && <span>Product ID <span className="font-mono font-medium text-foreground">{job.ingested_product_id}</span></span>}
+              ))}
             </div>
+
+            {detailsDirty && stage === 2 && (
+              <Button size="sm" className="h-6 w-fit px-3 text-[10.5px] font-semibold" disabled={updatingDetails} onClick={updateDetails}>
+                {updatingDetails && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+                Update Details
+              </Button>
+            )}
+
+            {/* Everything long-form or diagnostic hides behind here so the default panel is
+                just the field grid. */}
+            <button
+              onClick={() => setDetailOpen(o => !o)}
+              className="flex w-fit items-center gap-1 hover:text-foreground"
+            >
+              {detailOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              {detailOpen ? 'Less' : 'More'}
+            </button>
+
+            {detailOpen && (
+              <div className="flex flex-col gap-2">
+                {product?.care && (
+                  <div>
+                    <span className="font-medium text-foreground">Care</span> {product.care}
+                  </div>
+                )}
+                {product?.description && (
+                  <div>
+                    <div className="mb-1">Description</div>
+                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-2 font-sans text-[10.5px] leading-relaxed text-foreground">
+                      {product.description}
+                    </pre>
+                  </div>
+                )}
+                {product && product.accordions.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    {product.accordions.map(a => (
+                      <div key={a.title}>
+                        <span className="font-medium text-foreground">{a.title}</span>{' '}
+                        <span className="whitespace-pre-wrap">{a.content}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {product?.finalUrl && (
+                  <a
+                    href={product.finalUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="truncate font-medium text-[#2a78d6] hover:underline dark:text-sky-400"
+                  >
+                    ↗ {product.finalUrl}
+                  </a>
+                )}
+                <div className="grid grid-cols-[repeat(3,auto)] gap-x-6 gap-y-1.5 border-t border-border/60 pt-1.5">
+                  <span>VTon model <span className="font-medium text-foreground">{job.v_ton_model ?? 'auto'}</span></span>
+                  <span>HITL ID <span className="font-medium text-foreground">{job.hitl_post_identification ? 'on' : 'off'}</span></span>
+                  <span>HITL Seg <span className="font-medium text-foreground">{job.hitl_post_segmentation ? 'on' : 'off'}</span></span>
+                  <span>Errors <span className="font-medium text-foreground">{job.error_count}</span></span>
+                  <span>State <span className="font-medium text-foreground">{job.current_state}</span></span>
+                  {job.ingested_product_id && <span>Product ID <span className="font-mono font-medium text-foreground">{job.ingested_product_id}</span></span>}
+                </div>
+              </div>
+            )}
           </div>
         ) : stage === 1 ? (
           <>
@@ -602,31 +732,6 @@ export function RowItem({
                 />
               )
             })}
-            <div className="flex w-32 shrink-0 flex-col gap-1.5">
-              <PhotoCard
-                label="Source"
-                state={sourceImages.length > 0 ? 'available' : rowState === 'processing' ? 'processing' : rowState === 'error' ? 'error' : 'empty'}
-                url={sourceImages[srcIdxClamped]}
-                badge={sourceImages.length > 1 ? `${srcIdxClamped + 1}/${sourceImages.length}` : undefined}
-                note={sourceImages.length === 0 ? (rowState === 'processing' ? 'Scraping…' : rowState === 'error' ? 'No output' : 'Not scraped yet') : undefined}
-                size="xl"
-                onExpand={sourceImages.length > 0 ? () => onOpenViewer(srcViewerImages, srcIdxClamped, job.job_id) : undefined}
-                actions={sourceImages.length > 1 ? [
-                  { icon: <ChevronLeft className="h-3 w-3" />, label: 'Previous', onClick: () => setSrcIdx((srcIdxClamped - 1 + sourceImages.length) % sourceImages.length) },
-                  { icon: <ChevronRight className="h-3 w-3" />, label: 'Next', onClick: () => setSrcIdx((srcIdxClamped + 1) % sourceImages.length) },
-                ] : undefined}
-                overlay={currentSrcUrl ? (
-                  <PhotoTileActions
-                    key={currentSrcUrl}
-                    defaultView={currentTag?.view && currentTag.view !== 'Side' ? currentTag.view : 'Front'}
-                    defaultType={currentTag?.type ?? 'Model'}
-                    onRetag={(v, t) => applyTagForUrl(currentSrcUrl, v, t)}
-                    onDelete={() => setPhotoDeleteUrl(currentSrcUrl)}
-                    busy={retagging}
-                  />
-                ) : undefined}
-              />
-            </div>
           </>
         ) : (
           <>
@@ -662,6 +767,8 @@ export function RowItem({
             </div>
           </>
         )}
+        {/* Own column, outside the branch above — survives expand on S1, per the proto. */}
+        {stage === 1 && sourceCard}
       </div>
       {dialog}
       <ConfirmDialog

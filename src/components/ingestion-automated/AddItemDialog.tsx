@@ -13,12 +13,19 @@ import { useToast } from '@/hooks/use-toast'
 import { v2Api, DuplicateJobError, type SubmitJobBody } from '@/utils/ingestionV2Api'
 import { useNotWiredDialog } from './NotWiredDialog'
 
+// Complexity and the VTON model are no longer operator choices — every job is submitted as
+// complex and routed to gemini_nano_banana. product_complexity is still required by
+// POST /jobs (submit.ts: z.string().min(1)), so it's pinned here rather than dropped.
+const FIXED_COMPLEXITY = 'complex'
+const FIXED_VTON_MODEL = 'gemini_nano_banana'
+
 const EMPTY: SubmitJobBody = {
   product_url: '',
   product_gender_type: 'female',
   product_type: 'topwear',
   product_sub_type: '',
-  product_complexity: 'simple',
+  product_complexity: FIXED_COMPLEXITY,
+  v_ton_model: FIXED_VTON_MODEL,
   hitl_post_identification: false,
   // On by default — operators verify/erase the segmented garment before placement.
   hitl_post_segmentation: true,
@@ -43,9 +50,7 @@ export function AddItemDialog({ open, onOpenChange, onSuccess, onDuplicate }: Pr
     if (!form.product_url.trim()) return
     setLoading(true)
     try {
-      const payload = { ...form }
-      if (!payload.v_ton_model) delete payload.v_ton_model
-      const res = await v2Api.submit(payload)
+      const res = await v2Api.submit({ ...form })
       toast({ title: 'Job submitted', description: res.job_id })
       setForm(EMPTY)
       onOpenChange(false)
@@ -99,16 +104,6 @@ export function AddItemDialog({ open, onOpenChange, onSuccess, onDuplicate }: Pr
                 </Select>
               </div>
               <div className="grid gap-1.5">
-                <Label className="text-xs uppercase tracking-wide text-muted-foreground">Complexity *</Label>
-                <Select value={form.product_complexity} onValueChange={v => set('product_complexity', v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent className="z-[200]">
-                    <SelectItem value="simple">Simple</SelectItem>
-                    <SelectItem value="complex">Complex</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-1.5">
                 <Label className="text-xs uppercase tracking-wide text-muted-foreground">Category *</Label>
                 <Select value={form.product_type} onValueChange={v => set('product_type', v as SubmitJobBody['product_type'])}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -131,22 +126,6 @@ export function AddItemDialog({ open, onOpenChange, onSuccess, onDuplicate }: Pr
                 <p className="text-xs text-muted-foreground">Pause after identification for review</p>
               </div>
               <Switch checked={!!form.hitl_post_identification} onCheckedChange={v => set('hitl_post_identification', v)} />
-            </div>
-
-            <div className="border-t border-dashed border-border pt-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Optional</p>
-              <div className="grid gap-1.5">
-                <Label className="text-xs uppercase tracking-wide text-muted-foreground">VTon model override</Label>
-                <Select value={form.v_ton_model || 'auto'} onValueChange={v => set('v_ton_model', v === 'auto' ? '' : v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent className="z-[200]">
-                    <SelectItem value="auto">Auto (from complexity)</SelectItem>
-                    <SelectItem value="fashn_vton">fashn_vton</SelectItem>
-                    <SelectItem value="seedream">seedream</SelectItem>
-                    <SelectItem value="gemini_nano_banana">gemini_nano_banana</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
 
             <DialogFooter>

@@ -23,6 +23,10 @@ interface UseProductsOptions {
   createdBefore?: string;
   // Exact product id match (admin placement dashboard).
   productId?: string;
+  // Only rows that already have a 2D placement. placement_x is deliberately NOT part of the
+  // predicate — legacy rows default it to 0, so it doesn't distinguish placed from unplaced.
+  // Same filter as Placement2DEditor's outfit-context lookup.
+  hasPlacement2D?: boolean;
   // Restrict the selected columns (e.g. a lightweight browse that must NOT pull vector_embedding /
   // large JSONB). When set, the exact row-count is also skipped. Defaults to '*'.
   columns?: string;
@@ -64,7 +68,7 @@ interface ProductWithImages {
 }
 
 export function useProducts(options: UseProductsOptions = {}): UseProductsReturn {
-  const { gender, category, genders, typeCategories, brands, fits, feels, colorGroups, sizes, minPrice, maxPrice, limit = 20, searchQuery, createdAfter, createdBefore, productId, columns } = options;
+  const { gender, category, genders, typeCategories, brands, fits, feels, colorGroups, sizes, minPrice, maxPrice, limit = 20, searchQuery, createdAfter, createdBefore, productId, hasPlacement2D, columns } = options;
   
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -128,6 +132,10 @@ export function useProducts(options: UseProductsOptions = {}): UseProductsReturn
         query = query.eq('id', productId);
       }
 
+      if (hasPlacement2D) {
+        query = query.not('placement_y', 'is', null).not('image_length', 'is', null);
+      }
+
       if (createdAfter) {
         query = query.gte('created_at', createdAfter);
       }
@@ -177,7 +185,7 @@ export function useProducts(options: UseProductsOptions = {}): UseProductsReturn
     } finally {
       setLoading(false);
     }
-  }, [gender, genders, category, typeCategories, brands, fits, feels, colorGroups, sizes, minPrice, maxPrice, limit, searchQuery, createdAfter, createdBefore, productId, columns]);
+  }, [gender, genders, category, typeCategories, brands, fits, feels, colorGroups, sizes, minPrice, maxPrice, limit, searchQuery, createdAfter, createdBefore, productId, hasPlacement2D, columns]);
 
   useEffect(() => {
     fetchProducts();

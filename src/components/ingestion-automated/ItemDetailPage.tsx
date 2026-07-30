@@ -28,7 +28,6 @@ const SLOT_DEFS: { key: keyof SlotMap; label: string }[] = [
 
 const GENDER_OPTS = [{ value: 'female', label: 'female' }, { value: 'male', label: 'male' }, { value: 'unisex', label: 'unisex' }]
 const CATEGORY_OPTS = [{ value: 'topwear', label: 'topwear' }, { value: 'bottomwear', label: 'bottomwear' }, { value: 'dress', label: 'dress' }]
-const COMPLEXITY_OPTS = [{ value: 'simple', label: 'simple' }, { value: 'complex', label: 'complex' }]
 
 // Keep the job's actual value selectable even when it isn't one of the standard enums.
 const withCurrent = (opts: { value: string; label: string }[], cur: string) =>
@@ -95,7 +94,6 @@ export function ItemDetailPage({ jobId, onClose }: Props) {
     { kind: 'select', key: 'product_gender_type', label: 'Gender', value: job.product_gender_type, options: withCurrent(GENDER_OPTS, job.product_gender_type) },
     { kind: 'select', key: 'product_type', label: 'Category', value: job.product_type, options: withCurrent(CATEGORY_OPTS, job.product_type) },
     { kind: 'text', key: 'product_sub_type', label: 'Sub-category', value: job.product_sub_type ?? '' },
-    { kind: 'select', key: 'product_complexity', label: 'Complexity', value: job.product_complexity, options: withCurrent(COMPLEXITY_OPTS, job.product_complexity) },
   ]
 
   const name = productMeta?.name || job.product_url
@@ -119,7 +117,6 @@ export function ItemDetailPage({ jobId, onClose }: Props) {
       case 'product_gender_type': patch.product_gender_type = value as UpdateJobDetailsBody['product_gender_type']; break
       case 'product_type': patch.product_type = value as UpdateJobDetailsBody['product_type']; break
       case 'product_sub_type': patch.product_sub_type = value; break
-      case 'product_complexity': patch.product_complexity = value; break
       default: return
     }
     if (Object.keys(patch).length === 0) return
