@@ -177,7 +177,16 @@ const anchorCache = new Map<AnchorKey, Promise<number[]>>();
 
 function getAnchor(phrases: string[]): Promise<number[]> {
   const key = phrases.join('|');
-  if (!anchorCache.has(key)) anchorCache.set(key, embedTexts(phrases));
+  if (!anchorCache.has(key)) {
+    // Evict on failure. Caching the promise means caching a REJECTED one too, which would pin the
+    // first error to this key for the whole process lifetime — one Modal blip (or a bad endpoint at
+    // boot) would then fail every later job for the same category+gender instantly, with no retry
+    // and no way back short of a restart. Only successes are worth keeping.
+    anchorCache.set(key, embedTexts(phrases).catch((err) => {
+      anchorCache.delete(key);
+      throw err;
+    }));
+  }
   return anchorCache.get(key)!;
 }
 

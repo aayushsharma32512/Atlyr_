@@ -3,6 +3,7 @@ import type PgBoss from 'pg-boss';
 import { z } from 'zod';
 import { insertJob, findJobByDedupeKey, findLatestJobByDedupeKey } from '../../domain/job-catalog';
 import { computeDedupeKey } from '../../domain/dedup';
+import { sendPipelineStep } from '../../queue/send-step';
 import { createLogger } from '../../utils/logger';
 
 const logger = createLogger({ stage: 'api:submit' });
@@ -67,7 +68,7 @@ export async function registerSubmitRoute(app: FastifyInstance, boss: PgBoss): P
       created_by:               body.created_by ?? null,
     });
 
-    await boss.send('run-pipeline-step', { jobId: job.job_id });
+    await sendPipelineStep(boss, job.job_id);
 
     logger.info({ jobId: job.job_id }, 'job submitted');
     return reply.status(201).send({ job_id: job.job_id, current_state: job.current_state });

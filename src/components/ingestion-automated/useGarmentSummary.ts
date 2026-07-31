@@ -10,14 +10,14 @@ export type GarmentSummaryData = {
   colorAndFabric: string | null
   itemName: string | null
   complexity: string | null
-  raw: Record<string, unknown> // the full artifact data, for the Pack JSON viewer
+  raw: Record<string, unknown> // the full artifact data, kept for raw-JSON inspection
 }
 
 // The Gemini prompt (services/ingestion-automated/src/adapters/gemini.ts) returns tech_pack
 // as one string like "[TECH_PACK]\nMaterial_Physics: ...\nFit_Silhouette: ...\nColor: ...".
 // parseStage1 already strips it down to "[TECH_PACK]\n<lines>" — drop that header line, then
 // split each remaining line on its first ':'.
-function parseTechPack(techPack: string | null | undefined): TechPackEntry[] {
+export function parseTechPack(techPack: string | null | undefined): TechPackEntry[] {
   if (!techPack) return []
   return techPack
     .split('\n')
