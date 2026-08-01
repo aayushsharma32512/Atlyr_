@@ -57,10 +57,15 @@ export async function registerRestartRoute(app: FastifyInstance, boss: PgBoss): 
     }
 
     // Prevent restart if job is mid-flight on a non-terminal, non-HITL state
-    // (it could be actively processing — let it finish or fail first)
+    // (it could be actively processing — let it finish or fail first).
+    // 'segmented' is a stable RESTING state (segmentation done, awaiting the placement
+    // dispatch), not active work — so it must be restartable. Otherwise a job orphaned at
+    // 'segmented' (e.g. the service restarted before the segmented→placement dispatch fired)
+    // is unrecoverable: neither restart nor proceed accepts it.
     const isActive = !TERMINAL_STATES.includes(job.current_state as never)
       && !HITL_STATES.includes(job.current_state as never)
       && job.current_state !== 'pending'
+      && job.current_state !== 'segmented'
       && !STEP_ORDER.includes(job.current_state as RestartableState);
 
     if (isActive) {

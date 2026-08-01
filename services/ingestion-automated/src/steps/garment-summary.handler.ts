@@ -51,6 +51,7 @@ export class GarmentSummaryHandler implements StepHandler {
         raw:              summary.raw,
         model:            summary.model_used,
         prompt_version:   GHOST_PROMPT_VERSION,
+        usage:            summary.usage,
       },
     });
 
@@ -86,6 +87,7 @@ export class GarmentSummaryHandler implements StepHandler {
           product_name_suggestion: enrichment.product_name_suggestion,
           model:                   enrichment.model_used,
           prompt_version:          enrichment.prompt_version,
+          usage:                   enrichment.usage,
         },
       });
       logger.info({ jobId: job_id, model: enrichment.model_used }, 'enrichment saved');

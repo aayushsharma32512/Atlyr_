@@ -184,6 +184,28 @@ Product page URL: {PRODUCT_LINK}`,
 
 // ─── Output types ─────────────────────────────────────────────────────────────
 
+/**
+ * Token counts returned by the Gemini API (`usageMetadata`). Persisted per call so spend can
+ * be computed exactly rather than estimated — `thoughtsTokenCount` is billed as output, so
+ * total_tokens (not prompt+candidates) is the figure to price against.
+ */
+export interface TokenUsage {
+  prompt_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+}
+
+export function readUsage(meta: unknown): TokenUsage | null {
+  const m = meta as Record<string, number> | undefined;
+  if (!m || typeof m.totalTokenCount !== 'number') return null;
+  const prompt = m.promptTokenCount ?? 0;
+  return {
+    prompt_tokens: prompt,
+    output_tokens: (m.candidatesTokenCount ?? 0) + (m.thoughtsTokenCount ?? 0),
+    total_tokens: m.totalTokenCount,
+  };
+}
+
 export interface GarmentSummary {
   tech_pack: string | null;
   garment_physics: string | null;
@@ -192,6 +214,7 @@ export interface GarmentSummary {
   complexity_level: 'simple' | 'complex';
   raw: string;
   model_used: string;
+  usage: TokenUsage | null;
 }
 
 // ─── Parser (ported from nodes.ts parseStage1) ───────────────────────────────
@@ -291,6 +314,7 @@ export async function generateGarmentSummary(
           ...parsed,
           complexity_level: deriveComplexity(parsed),
           model_used: modelName,
+          usage: readUsage(result.response.usageMetadata),
         };
       }, {
         retries: 4,
@@ -422,6 +446,7 @@ export interface EnrichmentResult {
   model_used: string;
   prompt_version: string;
   raw: string;
+  usage: TokenUsage | null;
 }
 
 function asStringOrNull(value: unknown): string | null {
@@ -449,7 +474,7 @@ function stripJsonFences(text: string): string {
   return text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
 }
 
-function mapEnrichment(json: Record<string, unknown>, modelUsed: string, raw: string): EnrichmentResult {
+function mapEnrichment(json: Record<string, unknown>, modelUsed: string, raw: string, usage: TokenUsage | null): EnrichmentResult {
   const materialType =
     asStringOrNull((json as Record<string, unknown>)['material type']) ?? asStringOrNull(json.material_type);
   const specs = json.product_specifications;
@@ -469,6 +494,7 @@ function mapEnrichment(json: Record<string, unknown>, modelUsed: string, raw: st
     model_used:              modelUsed,
     prompt_version:          ENRICH_PROMPT_VERSION,
     raw,
+    usage,
   };
 }
 
@@ -531,7 +557,7 @@ export async function generateEnrichment(
         let json: unknown = JSON.parse(stripJsonFences(text));
         if (Array.isArray(json) && json.length > 0) json = json[0];
         if (!json || typeof json !== 'object') throw new Error('enrichment: non-object JSON response');
-        return mapEnrichment(json as Record<string, unknown>, modelName, text);
+        return mapEnrichment(json as Record<string, unknown>, modelName, text, readUsage(result.response.usageMetadata));
       }, {
         retries: 4,
         backoffMs: 2000,
