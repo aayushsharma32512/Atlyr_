@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react"
-import { Application, Assets, Container, MeshPlane, Sprite, type Texture } from "pixi.js"
+import { Application, Assets, Container, MeshPlane, Sprite, Texture } from "pixi.js"
 import type { StudioRenderedItem, StudioRenderedZone } from "@/features/studio/types"
 import { mannequinAssetUrl } from "@/components/ingestion-automated/PlacementMeshEditor"
+import { headCropRect } from "@/features/studio/constants/mannequinAnchors"
+import { recolorHair, recolorSkin } from "@/features/studio/utils/recolor"
 
 // Fixed placement canvas — identical to the mesh editor / Modal placement engine
 // (services/test_placement/pipeline/camera_registration.py :: standardize_to_canvas). Rendering in
@@ -105,6 +107,18 @@ function draw(img: HTMLImageElement, cw: number, ch: number): CanvasRenderingCon
   return ctx
 }
 
+/** Where the baked photoreal hair cutouts live. Full-canvas RGBA frames, positioned by baking. */
+function bakedHairAssetUrl(mannequin: "male" | "female", styleKey: string): string {
+  return `/hair-baked/${mannequin}/${styleKey}.png`
+}
+
+type PlacementHairStyle = {
+  /** Selects the baked cutout, e.g. 'bob'. */
+  styleKey: string
+  /** Which mannequin the cutout was baked against; hair is skipped on a mismatch. */
+  gender: "male" | "female"
+}
+
 type Props = {
   items: StudioRenderedItem[]
   gender?: "male" | "female"
@@ -114,6 +128,16 @@ type Props = {
   avatarRef?: React.Ref<HTMLDivElement>
   onReady?: (ready: boolean) => void
   fetchPriority?: "high" | "low" | "auto"
+  /** The user's hairstyle. null renders the mannequin bald. */
+  hairStyle?: PlacementHairStyle | null
+  hairColorHex?: string | null
+  /** Position on the melanin axis (see shared/skin/melanin). null keeps the photograph as shot. */
+  skinTone?: number | null
+  /**
+   * 'figure' (default) frames the whole body. 'head' frames head-and-shoulders, for pickers where
+   * the face is what's being chosen and a full figure would render the detail too small.
+   */
+  crop?: "figure" | "head"
 }
 
 /**
@@ -121,6 +145,10 @@ type Props = {
  * its saved affine transform + warp lattice — the exact output of the mesh editor / Modal engine.
  * Only items carrying a `.placement` are drawn; the caller decides when to use this vs the legacy
  * SVG AvatarRenderer.
+ *
+ * Also carries the user's identity — hairstyle, hair colour and skin tone. Those were previously
+ * honoured only by the legacy SVG avatar, so switching an outfit to this renderer silently dropped
+ * all three.
  */
 export function PlacementAvatarRenderer({
   items,
@@ -130,18 +158,44 @@ export function PlacementAvatarRenderer({
   itemOpacity = 1,
   avatarRef,
   onReady,
+  hairStyle = null,
+  hairColorHex = null,
+  skinTone = null,
+  crop = "figure",
 }: Props) {
   const [host, setHost] = useState<HTMLDivElement | null>(null)
   const appRef = useRef<Application | null>(null)
 
-  // Placement items only, back-to-front (shoes → bottom → top).
+  /**
+   * The mannequin to draw: the VIEWER'S, whenever any garment can be rendered on it.
+   *
+   * This used to follow the garment — whichever body it happened to be placed on — so a unisex item
+   * showed everyone the same mannequin regardless of their own gender. The viewer wins now.
+   *
+   * The fallback matters: a product placed on only one mannequin (older rows, or a runner-up
+   * registration that failed the acceptance bar) still renders on that one rather than vanishing.
+   * That is today's behaviour, and it retires product-by-product as the backfill lands.
+   */
+  const mannequin: "male" | "female" =
+    items.some((it) => it.placement?.[gender] && it.imageUrl)
+      ? gender
+      : items.find((it) => it.placement && it.imageUrl)?.placement?.male
+        ? "male"
+        : items.some((it) => it.placement?.female && it.imageUrl)
+          ? "female"
+          : gender
+
+  // Garments renderable on THAT mannequin, back-to-front (shoes → bottom → top).
   const placed = items
-    .filter((it) => it.placement && it.imageUrl)
+    .filter((it) => it.placement?.[mannequin] && it.imageUrl)
     .sort((a, b) => (ZONE_Z[a.zone] ?? 0) - (ZONE_Z[b.zone] ?? 0))
   // Stable signature so the effect re-runs when the outfit / transforms change.
   const sig = placed
-    .map((it) => `${it.id}:${it.imageUrl}:${JSON.stringify(it.placement)}`)
-    .join("|") + `#${gender}#${containerWidth}x${containerHeight}`
+    .map((it) => `${it.id}:${it.imageUrl}:${JSON.stringify(it.placement?.[mannequin])}`)
+    .join("|") +
+    `#${mannequin}#${containerWidth}x${containerHeight}#${crop}` +
+    `#${hairStyle?.styleKey ?? "bald"}:${hairStyle?.gender ?? ""}#${hairColorHex ?? ""}` +
+    `#${skinTone == null ? "" : skinTone.toFixed(4)}`
 
   useEffect(() => {
     if (!host) return
@@ -163,11 +217,15 @@ export function PlacementAvatarRenderer({
         appRef.current = app
         host.appendChild(app.canvas)
 
-        // Base mannequin: prefer the mannequin the transforms target, else the avatar gender.
-        const mannequin = placed[0]?.placement?.mannequin ?? gender
         const mannequinUrl = mannequinAssetUrl(mannequin)
-        const mannequinTex = (await Assets.load(mannequinUrl)) as Texture
+        // Loaded via loadImage rather than Assets.load because the skin retone needs CPU-side pixel
+        // access, which a GPU texture does not give.
+        const mannequinImg = await loadImage(mannequinUrl)
         if (disposed) return
+        const mannequinSource = skinTone == null
+          ? mannequinImg
+          : recolorSkin(mannequinImg, skinTone) ?? mannequinImg
+        const mannequinTex = Texture.from(mannequinSource)
 
         const world = new Container()
         app.stage.addChild(world)
@@ -177,8 +235,27 @@ export function PlacementAvatarRenderer({
         base.height = CANVAS_H
         world.addChild(base)
 
-        // Frame the mannequin figure into the container (same as the editor).
-        const mb = await probeMannequinBounds(mannequinUrl, CANVAS_W, CANVAS_H)
+        // Hair sits over the mannequin but UNDER the garments, so a collar can occlude it. The
+        // cutout is a full-canvas frame with the hair already in position, so it draws at the origin
+        // — there is no positioning maths.
+        if (hairStyle && hairStyle.gender === mannequin) {
+          try {
+            const hairImg = await loadImage(bakedHairAssetUrl(mannequin, hairStyle.styleKey))
+            if (disposed) return
+            const source = hairColorHex ? recolorHair(hairImg, hairColorHex) ?? hairImg : hairImg
+            const hair = new Sprite(Texture.from(source))
+            hair.width = CANVAS_W
+            hair.height = CANVAS_H
+            world.addChild(hair)
+          } catch {
+            // A missing cutout must render a bald mannequin, never break the whole avatar.
+          }
+        }
+
+        // Frame either the whole figure or a head-and-shoulders crop.
+        const mb = crop === "head"
+          ? headCropRect(mannequin)
+          : await probeMannequinBounds(mannequinUrl, CANVAS_W, CANVAS_H)
         if (disposed) return
         const displayScale = Math.min(containerWidth / mb.w, containerHeight / mb.h)
         world.scale.set(displayScale)
@@ -189,7 +266,7 @@ export function PlacementAvatarRenderer({
 
         // Each garment: replicate the editor's fit/home/pivot, then apply transform + warp.
         for (const item of placed) {
-          const t = item.placement!
+          const t = item.placement![mannequin]!
           const tex = (await Assets.load(item.imageUrl)) as Texture
           if (disposed) return
           const texW = tex.width

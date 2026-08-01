@@ -17,23 +17,28 @@ import {
 } from "@/features/studio/utils/avatarMath"
 import { DEFAULT_VISIBLE_SEGMENTS, MANNEQUIN_SKIN_HEXES } from "@/features/studio/constants"
 import { PlacementAvatarRenderer } from "@/features/studio/components/PlacementAvatarRenderer"
+import {
+  applyHairColorToSvg,
+  extractSvgDimensions,
+  fetchHairSvg,
+  normalizeHex,
+  peekHairSvg,
+} from "@/features/studio/utils/hairSvg"
+import { projectHexToTone } from "@/shared/skin/melanin"
 
 const BODY_SEGMENTS: MannequinSegmentName[] = ["neck", "torso", "arm_left", "arm_right", "legs", "feet"]
 
-// In-memory cache for SVG assets
+// In-memory cache for SVG assets. The hair-side equivalent lives in utils/hairSvg.ts, which owns
+// hair loading for both this renderer and the Pixi placement one.
 const segmentAssetCache = new Map<string, { markup: string; dimensions: SegmentDimensions }>()
-const hairAssetCache = new Map<string, { markup: string; dimensions: SegmentDimensions }>()
 
 // localStorage key for persisting SVG cache across page reloads
 const SVG_CACHE_VERSION = 5
 const SVG_CACHE_KEY = `landing-mannequin-svg-cache-v${SVG_CACHE_VERSION}`
 const SVG_CACHE_PREVIOUS_KEY = `landing-mannequin-svg-cache-v${SVG_CACHE_VERSION - 1}`
-const HAIR_SVG_CACHE_KEY = `landing-mannequin-hair-svg-cache-v${SVG_CACHE_VERSION}`
-const HAIR_SVG_CACHE_PREVIOUS_KEY = `landing-mannequin-hair-svg-cache-v${SVG_CACHE_VERSION - 1}`
 
 try {
   localStorage.removeItem(SVG_CACHE_PREVIOUS_KEY)
-  localStorage.removeItem(HAIR_SVG_CACHE_PREVIOUS_KEY)
 } catch {
   // Ignore localStorage errors (private browsing, etc.)
 }
@@ -45,18 +50,6 @@ try {
     const parsed = JSON.parse(stored) as Record<string, { markup: string; dimensions: SegmentDimensions }>
     Object.entries(parsed).forEach(([key, value]) => {
       segmentAssetCache.set(key, value)
-    })
-  }
-} catch {
-  // Ignore localStorage errors (private browsing, etc.)
-}
-
-try {
-  const stored = localStorage.getItem(HAIR_SVG_CACHE_KEY)
-  if (stored) {
-    const parsed = JSON.parse(stored) as Record<string, { markup: string; dimensions: SegmentDimensions }>
-    Object.entries(parsed).forEach(([key, value]) => {
-      hairAssetCache.set(key, value)
     })
   }
 } catch {
@@ -76,18 +69,6 @@ function saveCacheToStorage() {
   }
 }
 
-function saveHairCacheToStorage() {
-  try {
-    const obj: Record<string, { markup: string; dimensions: SegmentDimensions }> = {}
-    hairAssetCache.forEach((value, key) => {
-      obj[key] = value
-    })
-    localStorage.setItem(HAIR_SVG_CACHE_KEY, JSON.stringify(obj))
-  } catch {
-    // Ignore localStorage errors
-  }
-}
-
 type SegmentSvgMap = Record<MannequinSegmentName, string>
 type SegmentDimMap = Record<MannequinSegmentName, SegmentDimensions>
 
@@ -97,6 +78,14 @@ type HairStyleConfig = {
   yOffsetPct: number
   xOffsetPct: number
   zIndex: number
+  /**
+   * Which baked photoreal cutout to use on the placement mannequin, and which mannequin it was baked
+   * against. The legacy SVG path ignores both and uses assetUrl + the percentage fields; hair is
+   * skipped on the placement path if `gender` doesn't match the mannequin being drawn, rather than
+   * dropping a female wig on the male figure.
+   */
+  styleKey?: string
+  gender?: "male" | "female"
 } | null
 
 /**
@@ -145,11 +134,15 @@ interface AvatarRendererProps {
   /** Hint to the browser for image loading priority */
   fetchPriority?: "high" | "low" | "auto"
   /**
-   * Which mannequin to render on. 'auto' (default) prefers the 3D placement mannequin whenever all
-   * renderable items have 3D placement, else the 2D SVG avatar. '2d' forces the legacy SVG avatar;
-   * '3d' prefers 3D (identical to auto — 3D still requires the placement data to exist).
+   * Which mannequin to render on. 'auto' (default) decides from the data — see the note on
+   * `AvatarRenderer` below. '2d' forces the legacy SVG avatar, which the admin 2D placement editor
+   * needs because it edits the legacy placement_x / placement_y / image_length values and must see
+   * the renderer they drive.
+   *
+   * There is no '3d' option and no user-facing toggle: garments with a placement always render on
+   * the placement mannequin.
    */
-  placementMode?: "auto" | "2d" | "3d"
+  placementMode?: "auto" | "2d"
   /**
    * Reports the legacy renderer's resolved layout scale so a caller can invert its placement math
    * (pixel drag → placement_x / placement_y / image_length). Only fires on the 2D SVG path, and
@@ -166,18 +159,25 @@ interface LoadedItemData {
 }
 
 /**
- * Entry point: outfits whose renderable items ALL carry a canvas-transform `placement` render on the
- * new 1800x3072 placement mannequin (PlacementAvatarRenderer). Anything else — including outfits
- * mid-migration where some items aren't placed yet — falls back to the legacy SVG avatar below.
+ * Entry point: the renderer is chosen by the data, with no toggle.
+ *
+ * A garment that HAS a canvas-transform `placement` renders on the 1800x3072 placement mannequin
+ * (PlacementAvatarRenderer); an outfit renders on the legacy SVG avatar only when none of its
+ * garments carry one. Where a garment has both a placement and the legacy
+ * placement_x / placement_y / image_length values, the placement wins.
+ *
+ * This previously required EVERY garment to be placed before using the placement mannequin, which
+ * meant one unplaced item in an outfit dragged the whole look back to the SVG avatar — and a
+ * placement-only garment (no legacy values) then rendered at the wrong size, or not at all.
+ *
+ * The trade-off is deliberate: in a part-placed outfit the unplaced garments are not drawn, because
+ * the two renderers use different mannequins and different coordinate systems and only one can own
+ * the frame. Placement coverage is the fix for that, not a fallback.
  */
 export function AvatarRenderer(props: AvatarRendererProps) {
   const renderable = props.items.filter((it) => it.imageUrl)
-  const has3DAll = renderable.length > 0 && renderable.every((it) => it.placement)
-  const has3DSome = renderable.some((it) => it.placement)
-  // auto: 3D only when EVERY item is placed (else a mixed outfit would drop the unplaced garments).
-  // '3d': force 3D — render just the placed items on the mannequin. '2d': force the legacy SVG avatar.
-  const usePlacement =
-    props.placementMode === "2d" ? false : props.placementMode === "3d" ? has3DSome : has3DAll
+  const hasPlacement = renderable.some((it) => it.placement)
+  const usePlacement = props.placementMode === "2d" ? false : hasPlacement
   if (usePlacement) {
     return (
       <PlacementAvatarRenderer
@@ -189,6 +189,16 @@ export function AvatarRenderer(props: AvatarRendererProps) {
         avatarRef={props.avatarRef}
         onReady={props.onReady}
         fetchPriority={props.fetchPriority}
+        hairStyle={
+          props.hairStyle?.styleKey && props.hairStyle.gender
+            ? { styleKey: props.hairStyle.styleKey, gender: props.hairStyle.gender }
+            : null
+        }
+        hairColorHex={props.hairColorHex}
+        // The stored value is a hex (profiles.selected_skin_tone). The placement path needs a
+        // position on the melanin axis, so project it — which also means a hex saved under any
+        // previous palette still resolves to a sensible tone, with no migration.
+        skinTone={props.skinToneHex ? projectHexToTone(props.skinToneHex) : null}
       />
     )
   }
@@ -314,10 +324,9 @@ function LegacyAvatarRenderer({
       return
     }
 
-    let cancelled = false
-    setHairReady(false)
-
-    const cached = hairAssetCache.get(assetUrl)
+    // Synchronous cache hit stays synchronous — going through the async path would render one frame
+    // with hairReady=false and flash the loading skeleton on every re-mount.
+    const cached = peekHairSvg(assetUrl)
     if (cached) {
       setHairMarkup(cached.markup)
       setHairDimensions(cached.dimensions)
@@ -325,17 +334,15 @@ function LegacyAvatarRenderer({
       return
     }
 
-    fetch(assetUrl)
-      .then((response) => response.text())
-      .then((raw) => {
+    let cancelled = false
+    setHairReady(false)
+
+    fetchHairSvg(assetUrl)
+      .then((entry) => {
         if (cancelled) return
-        const sanitized = sanitizeHairSvgMarkup(raw)
-        const dims = extractSvgDimensions(raw)
-        hairAssetCache.set(assetUrl, { markup: sanitized, dimensions: dims })
-        setHairMarkup(sanitized)
-        setHairDimensions(dims)
+        setHairMarkup(entry.markup)
+        setHairDimensions(entry.dimensions)
         setHairReady(true)
-        saveHairCacheToStorage()
       })
       .catch(() => {
         if (cancelled) return
@@ -791,103 +798,6 @@ function sanitizeSvgMarkup(raw: string): string {
     result = result.replace(/<svg/i, '<svg preserveAspectRatio="xMidYMid meet"')
   }
   return result
-}
-
-function extractSvgDimensions(markup: string): SegmentDimensions {
-  const viewBoxMatch = markup.match(/viewBox="([^"]+)"/i)
-  if (viewBoxMatch) {
-    const [, values] = viewBoxMatch
-    const parts = values.split(/\s+/).map(Number)
-    if (parts.length === 4) {
-      const width = parts[2]
-      const height = parts[3]
-      if (Number.isFinite(width) && Number.isFinite(height)) {
-        return { width, height }
-      }
-    }
-  }
-  const widthMatch = markup.match(/width="([^"]+)"/i)
-  const heightMatch = markup.match(/height="([^"]+)"/i)
-  const width = widthMatch ? Number(widthMatch[1].replace(/[^0-9.]/g, "")) : 100
-  const height = heightMatch ? Number(heightMatch[1].replace(/[^0-9.]/g, "")) : 100
-  return {
-    width: Number.isFinite(width) && width > 0 ? width : 100,
-    height: Number.isFinite(height) && height > 0 ? height : 100,
-  }
-}
-
-function sanitizeHairSvgMarkup(raw: string): string {
-  let result = raw
-  result = result.replace(/<rect[^>]*fill="#ffffff"[^>]*>/gi, "")
-  result = result.replace(/width="[^"]*"/i, 'width="100%"')
-  result = result.replace(/height="[^"]*"/i, 'height="100%"')
-  if (!/preserveAspectRatio/i.test(result)) {
-    result = result.replace(/<svg/i, '<svg preserveAspectRatio="xMidYMid meet"')
-  }
-  return result
-}
-
-function applyHairColorToSvg(svgMarkup: string, hairColorHex: string) {
-  const normalized = normalizeHex(hairColorHex)
-  if (!normalized) {
-    return svgMarkup
-  }
-
-  let updated = svgMarkup
-
-  updated = updated.replace(/fill="([^"]+)"/gi, (match, value) => {
-    const normalizedValue = normalizeHairFill(value)
-    if (!normalizedValue) {
-      return match
-    }
-    return `fill="${normalized}"`
-  })
-
-  updated = updated.replace(/fill:\s*([^;"]+)/gi, (match, value) => {
-    const normalizedValue = normalizeHairFill(value)
-    if (!normalizedValue) {
-      return match
-    }
-    return `fill:${normalized}`
-  })
-
-  return updated
-}
-
-function normalizeHairFill(value: string) {
-  const raw = value.trim().toLowerCase()
-  if (raw === "none" || raw === "transparent" || raw === "currentcolor" || raw.startsWith("url(")) {
-    return null
-  }
-  if (raw === "black") {
-    return "#000000"
-  }
-  const normalized = normalizeHex(raw)
-  if (normalized === "#000000") {
-    return normalized
-  }
-  return null
-}
-
-function normalizeHex(value: string | null | undefined) {
-  if (!value) {
-    return null
-  }
-  let hex = value.trim().toLowerCase()
-  if (!hex) {
-    return null
-  }
-  if (!hex.startsWith("#")) {
-    hex = `#${hex}`
-  }
-  if (hex.length === 4) {
-    const [r, g, b] = hex.slice(1).split("")
-    hex = `#${r}${r}${g}${g}${b}${b}`
-  }
-  if (!/^#[0-9a-f]{6}$/.test(hex)) {
-    return null
-  }
-  return hex
 }
 
 function darkenHex(hex: string, factor: number) {

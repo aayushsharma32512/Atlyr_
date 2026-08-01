@@ -67,14 +67,8 @@ export function BasicInformationCard({
               gender={resolvedGender}
               skinToneHex={resolvedSkinTone}
               hairStyle={
-                resolvedHairStyle
-                  ? {
-                      assetUrl: resolvedHairStyle.assetUrl,
-                      lengthPct: resolvedHairStyle.lengthPct,
-                      yOffsetPct: resolvedHairStyle.yOffsetPct,
-                      xOffsetPct: resolvedHairStyle.xOffsetPct,
-                      zIndex: resolvedHairStyle.zIndex,
-                    }
+                resolvedHairStyle && resolvedGender
+                  ? { styleKey: resolvedHairStyle.styleKey, gender: resolvedGender }
                   : null
               }
               hairColorHex={resolvedHairColorHex}

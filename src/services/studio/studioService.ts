@@ -2,7 +2,7 @@ import { supabase } from "@/integrations/supabase/client"
 import type { Database } from "@/integrations/supabase/types"
 import type { PostgrestError } from "@supabase/supabase-js"
 import type { Outfit } from "@/types"
-import type { StudioOutfitDTO, StudioPlacementTransform } from "@/features/studio/types"
+import type { StudioOutfitDTO, StudioPlacementByMannequin } from "@/features/studio/types"
 import { mapDbOutfitToStudioOutfit, toPlacementTransform } from "@/features/studio/mappers/renderedItemMapper"
 
 import { mapDbOutfitToOutfit } from "@/services/shared/transformers/outfitTransformers"
@@ -35,7 +35,7 @@ export interface StudioProductTrayItem {
   placementY: number
   imageLength: number
   /** Canvas-transform placement (new mannequin) — null when the product hasn't been placed yet. */
-  placement?: StudioPlacementTransform | null
+  placement?: StudioPlacementByMannequin | null
   color?: string | null
   size?: string | null
   itemType?: Database["public"]["Enums"]["item_type"] | null
@@ -89,7 +89,7 @@ export interface StudioAlternativeProduct {
   metadataSource: "product" | "default"
   bodyPartsVisible?: string[] | null
   /** 3D placement transform, so equipping this alternative keeps its 3D data. */
-  placement?: StudioPlacementTransform | null
+  placement?: StudioPlacementByMannequin | null
 }
 
 export interface StudioComplementaryProduct {
