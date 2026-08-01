@@ -86,6 +86,47 @@ export function placementEntryFrom(
 }
 
 /**
+ * Map a placement artifact to EVERY placement entry it carries.
+ *
+ * The Modal pipeline registers the garment against both mannequins on every run and now returns a
+ * transform for each one that passed the acceptance bar (`transforms`, keyed "Female"/"Male").
+ * Storing them all is what lets the studio show a user their own body instead of whichever mannequin
+ * the garment happened to score best against — a unisex top gets both entries, so either user sees
+ * themselves.
+ *
+ * Falls back to the single `transform` when `transforms` is absent, so artifacts written before the
+ * pipeline was redeployed keep working unchanged.
+ */
+export function placementEntriesFrom(
+  input:
+    | {
+        transform?: { scale?: number; rotationDeg?: number; tx?: number; ty?: number } | null;
+        transforms?: Record<string, { scale?: number; rotationDeg?: number; tx?: number; ty?: number }> | null;
+        warp?: unknown;
+        selectedMannequin?: unknown;
+        mannequin?: unknown;
+      }
+    | null
+    | undefined,
+  gender?: IngestionPipelineJob['product_gender_type'] | string | null,
+  bodyType: string = DEFAULT_BODY_TYPE,
+): { key: string; entry: PlacementEntry }[] {
+  const many = input?.transforms;
+  if (many && typeof many === 'object' && Object.keys(many).length > 0) {
+    const out: { key: string; entry: PlacementEntry }[] = [];
+    for (const [mannequin, transform] of Object.entries(many)) {
+      // Reuse the singular mapper so the warp/validation rules stay in exactly one place; the
+      // mannequin name from the pipeline overrides the product gender for the key.
+      const one = placementEntryFrom({ ...input, transform, mannequin }, gender, bodyType);
+      if (one) out.push(one);
+    }
+    if (out.length) return out;
+  }
+  const single = placementEntryFrom(input, gender, bodyType);
+  return single ? [single] : [];
+}
+
+/**
  * Merge ONE placement entry into the `placement` JSONB map for a product id, on whichever of
  * products / ingested_products the row exists (both share the deterministic id). The `||` merge
  * preserves other keys (e.g. a female placement isn't clobbered when saving the male one).
@@ -337,8 +378,11 @@ export async function upsertIngestedProduct(job: IngestionPipelineJob): Promise<
 
   // Placement (auto from Modal, or a prior manual edit) → merge into the `placement` map so it
   // survives re-stage and doesn't clobber other body-type keys.
-  const placementEntry = placementEntryFrom(placement?.data as never, job.product_gender_type);
-  if (placementEntry) await writePlacementEntry(id, placementEntry.key, placementEntry.entry);
+  // One entry per mannequin the garment registered against — the merge is per key, so writing male
+  // never clobbers female (or a manual edit to either).
+  for (const e of placementEntriesFrom(placement?.data as never, job.product_gender_type)) {
+    await writePlacementEntry(id, e.key, e.entry);
+  }
 
   if (job.ingested_product_id !== id) {
     await updateJob(job.job_id, { ingested_product_id: id });

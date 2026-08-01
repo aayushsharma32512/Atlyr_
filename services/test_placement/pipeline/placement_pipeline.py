@@ -12,6 +12,7 @@ if base_dir not in sys.path:
     sys.path.insert(0, base_dir)
 
 from .camera_registration import (
+    SCALE_RANGE,
     load_image,
     standardize_to_canvas,
     remove_background,
@@ -33,6 +34,71 @@ def download_image_from_url(url: str) -> np.ndarray:
     if img is None:
         raise ValueError(f"Failed to decode image from URL: {url}")
     return img
+
+
+GARMENT_SCALE_MULTIPLIER = 1.01
+GARMENT_Y_OFFSET_PERCENT = 0.0035
+
+
+def apply_garment_calibration(matrix: np.ndarray, w_av: int, h_av: int) -> np.ndarray:
+    """
+    Apply the fixed garment scale + Y nudge about the canvas centre.
+
+    Kept in one place because it has to match `warp_garment`'s internal maths exactly -- the exported
+    transform must describe the pixels that were actually composited, not the pre-warp matrix.
+    """
+    out = matrix.copy()
+    k = GARMENT_SCALE_MULTIPLIER
+    cx, cy = w_av / 2.0, h_av / 2.0
+    if k != 1.0:
+        out[0, 0] *= k
+        out[0, 1] *= k
+        out[0, 2] = k * matrix[0, 2] + cx * (1.0 - k)
+        out[1, 0] *= k
+        out[1, 1] *= k
+        out[1, 2] = k * matrix[1, 2] + cy * (1.0 - k)
+    if GARMENT_Y_OFFSET_PERCENT != 0.0:
+        out[1, 2] += h_av * GARMENT_Y_OFFSET_PERCENT
+    return out
+
+
+def editor_transform_from(
+    reg_matrix: np.ndarray,
+    garment_rgba: np.ndarray,
+    w_av: int,
+    h_av: int,
+) -> Dict[str, float]:
+    """
+    Decompose a REGISTRATION matrix into the mesh editor's {scale, rotationDeg, tx, ty}.
+
+    Both sides live in the same 1800x3072 standardize_to_canvas space and the matrix is a similarity,
+    so it decomposes cleanly. Translation is expressed relative to the garment's alpha-bbox centre
+    ("home"), which is the editor's own origin convention.
+
+    Note the calibration is applied TWICE, and that is deliberate: the pipeline calibrates the matrix
+    before handing it to `warp_garment`, and `warp_garment` then applies its own identical defaults
+    (scale_multiplier=1.01, y_offset_percent=0.0035) on top. The effective values in the composited
+    pixels are therefore 1.01^2 and 0.007 -- so the exported transform has to match that, or the mesh
+    editor would reopen a garment slightly off from where it was actually drawn.
+    """
+    eff = apply_garment_calibration(apply_garment_calibration(reg_matrix, w_av, h_av), w_av, h_av)
+    cx, cy = w_av / 2.0, h_av / 2.0
+
+    ys, xs = np.where(garment_rgba[:, :, 3] > 0)
+    if xs.size and ys.size:
+        home_x = float((int(xs.min()) + int(xs.max())) / 2.0)
+        home_y = float((int(ys.min()) + int(ys.max())) / 2.0)
+    else:
+        home_x, home_y = cx, cy
+
+    placed_x = eff[0, 0] * home_x + eff[0, 1] * home_y + eff[0, 2]
+    placed_y = eff[1, 0] * home_x + eff[1, 1] * home_y + eff[1, 2]
+    return {
+        "scale": float(np.hypot(eff[0, 0], eff[1, 0])),
+        "rotationDeg": float(np.degrees(np.arctan2(eff[1, 0], eff[0, 0]))),
+        "tx": float(placed_x - home_x),
+        "ty": float(placed_y - home_y),
+    }
 
 
 def run_placement_pipeline_e2e(
@@ -96,26 +162,12 @@ def run_placement_pipeline_e2e(
         gen_avatar = remove_background(std_gen)
         garment_rgba = standardize_to_canvas(garment_raw, w_av, h_av)
 
-        best_name, best_avatar, best_reg, scores = select_best_mannequin(gen_avatar, candidates)
+        best_name, best_avatar, best_reg, scores, all_regs = select_best_mannequin(gen_avatar, candidates)
 
-        warp_matrix = best_reg.matrix.copy() if best_reg.matrix is not None else np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype=np.float64)
-
-        garment_scale_multiplier = 1.03
-        garment_y_offset_percent = 0.007
-
-        if garment_scale_multiplier != 1.0 and best_reg.matrix is not None:
-            k = garment_scale_multiplier
-            cx, cy = w_av / 2.0, h_av / 2.0
-            warp_matrix[0, 0] *= k
-            warp_matrix[0, 1] *= k
-            warp_matrix[0, 2] = k * best_reg.matrix[0, 2] + cx * (1.0 - k)
-            warp_matrix[1, 0] *= k
-            warp_matrix[1, 1] *= k
-            warp_matrix[1, 2] = k * best_reg.matrix[1, 2] + cy * (1.0 - k)
-
-        if garment_y_offset_percent != 0.0:
-            y_shift = h_av * garment_y_offset_percent
-            warp_matrix[1, 2] += y_shift
+        if best_reg.matrix is not None:
+            warp_matrix = apply_garment_calibration(best_reg.matrix, w_av, h_av)
+        else:
+            warp_matrix = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype=np.float64)
 
         garment_warped = warp_garment(garment_rgba, warp_matrix, (w_av, h_av))
         alpha = garment_warped[:, :, 3]
@@ -140,35 +192,43 @@ def run_placement_pipeline_e2e(
 
         # --- Editor-space transform export ---------------------------------------------------
         # So the mesh editor (PlacementMeshEditor.tsx) can reconstruct this exact auto-placement
-        # instead of defaulting the garment to canvas-centre. Both sides live in the same
-        # 1800x3072 standardize_to_canvas space, and warp_matrix is a similarity, so it decomposes
-        # into {scale, rotationDeg, tx, ty}. We reproduce warp_garment's internal matrix here (it
-        # re-applies the 1.03 scale + 0.7% Y-offset on top of warp_matrix) so the exported
-        # transform matches the composited pixels, not the pre-warp matrix.
-        eff = warp_matrix.copy()
-        _k = garment_scale_multiplier
-        _cx, _cy = w_av / 2.0, h_av / 2.0
-        eff[0, 0] *= _k; eff[0, 1] *= _k
-        eff[0, 2] = _k * warp_matrix[0, 2] + _cx * (1.0 - _k)
-        eff[1, 0] *= _k; eff[1, 1] *= _k
-        eff[1, 2] = _k * warp_matrix[1, 2] + _cy * (1.0 - _k)
-        eff[1, 2] += h_av * garment_y_offset_percent
+        # instead of defaulting the garment to canvas-centre.
+        editor_transform = editor_transform_from(best_reg.matrix, garment_rgba, w_av, h_av) \
+            if best_reg.matrix is not None else None
 
-        # Cloth-centre of the standardized garment == the editor's `home` (offset maths match).
-        _gy, _gx = np.where(garment_rgba[:, :, 3] > 0)
-        if _gx.size and _gy.size:
-            home_x = float((int(_gx.min()) + int(_gx.max())) / 2.0)
-            home_y = float((int(_gy.min()) + int(_gy.max())) / 2.0)
-        else:
-            home_x, home_y = _cx, _cy
-        placed_x = eff[0, 0] * home_x + eff[0, 1] * home_y + eff[0, 2]
-        placed_y = eff[1, 0] * home_x + eff[1, 1] * home_y + eff[1, 2]
-        editor_transform = {
-            "scale": float(np.hypot(eff[0, 0], eff[1, 0])),
-            "rotationDeg": float(np.degrees(np.arctan2(eff[1, 0], eff[0, 0]))),
-            "tx": float(placed_x - home_x),
-            "ty": float(placed_y - home_y),
-        }
+        # Every mannequin this garment registered against acceptably, not just the winner.
+        #
+        # Both registrations always ran -- select_best_mannequin loops over Female and Male -- so this
+        # costs nothing extra and is what lets the studio show a user THEIR OWN body instead of
+        # whichever mannequin the garment happened to score best against. A unisex top registers
+        # against both, so both entries get stored and either user sees themselves.
+        #
+        # The loser is a real registration, not a guess, but it scored lower -- so it has to clear the
+        # same acceptance bar as the winner before being persisted. Where it does not, only one entry
+        # is returned and behaviour is exactly as it was.
+        transforms: Dict[str, Dict[str, float]] = {}
+
+        # The winner always goes in, accepted or not, so `transforms` is a strict superset of
+        # `transform`. Gating it would be a regression: today the winner is persisted regardless of
+        # `accepted`, and an empty `transforms` would leave the caller with nothing to write.
+        if editor_transform is not None:
+            transforms[best_name] = editor_transform
+
+        for name, reg in all_regs.items():
+            if name == best_name or reg.matrix is None:
+                continue
+            # `accepted` covers inliers, inlier ratio and reprojection error, but NOT scale -- so
+            # check the scale band too. A runner-up that squeaks past the match quality bar with an
+            # implausible scale would place the garment at the wrong size on that mannequin.
+            if not reg.accepted:
+                print(f"  [Skip] {name}: {reg.rejection_reason}")
+                continue
+            if not (SCALE_RANGE[0] <= reg.scale <= SCALE_RANGE[1]):
+                print(f"  [Skip] {name}: scale {reg.scale:.3f} outside {SCALE_RANGE}")
+                continue
+            transforms[name] = editor_transform_from(reg.matrix, garment_rgba, w_av, h_av)
+
+        print(f"   -> Transforms stored for: {', '.join(transforms.keys()) or 'none'}")
 
         return {
             "status": "completed",
@@ -179,7 +239,10 @@ def run_placement_pipeline_e2e(
             "inliers": int(best_reg.n_inliers),
             "scores": scores,
             # Consumed by placement.handler.ts -> persisted so the mesh editor reconstructs placement.
+            # Unchanged on purpose: usePlacementImage.ts, the mesh editor and the backfill read it.
             "transform": editor_transform,
+            # Keyed by mannequin name ("Female" / "Male"). Superset of `transform`.
+            "transforms": transforms,
         }
 
     except Exception as e:

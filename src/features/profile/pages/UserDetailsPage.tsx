@@ -11,15 +11,10 @@ import { ExpandableDetailCard } from "@/features/profile/components/ExpandableDe
 import type { Option } from "@/features/profile/components/OptionSelector"
 import { useProfileUpdateMutation } from "@/features/profile/hooks/useProfileQuery"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
-import { useMannequinHead } from "@/features/profile/hooks/useMannequinHead"
 import { useAvatarHairStyles } from "@/features/profile/hooks/useAvatarHairStyles"
-import {
-  applySkinToneToSvg,
-  buildSvgDataUrl,
-} from "@/features/profile/utils/mannequin"
 import { AppShellLayout } from "@/layouts/AppShellLayout"
+import { SKIN_TONE_STEPS, skinToneChipColor } from "@/shared/skin/melanin"
 
-const SKIN_TONE_SWATCHES = ["#F5D7C2", "#E9C4A6", "#D3A17B", "#B8875F", "#8D5A3A", "#5C3A2E"]
 const HAIR_COLOR_SWATCHES = [
   "#000000",
   "#2B1B12",
@@ -67,7 +62,6 @@ export function UserDetailsPage() {
   const [hasInitialized, setHasInitialized] = useState(false)
   const previousGenderRef = useRef<"male" | "female" | null>(null)
   const resolvedGender = gender === "male" || gender === "female" ? gender : null
-  const { baseSvg } = useMannequinHead({ gender: resolvedGender, skinTone: null })
   const hairStylesQuery = useAvatarHairStyles(resolvedGender)
   const resolvedHairStyleForPreview = useMemo(() => {
     if (!hairStylesQuery.data.length) {
@@ -113,21 +107,18 @@ export function UserDetailsPage() {
     }
     previousGenderRef.current = resolvedGender
 
-    if (!baseSvg) {
-      setSkinToneOptions([])
-      return
-    }
-
-    const options = SKIN_TONE_SWATCHES.map((hex, index) => {
-      const tintedSvg = applySkinToneToSvg(baseSvg, hex)
+    // Each chip shows the MANNEQUIN'S OWN skin retoned, not the raw reference colour — the reference
+    // chips are flat patches measured under controlled light, so showing them directly means the
+    // swatch you pick looks nothing like the body you get. Pure arithmetic, so no image decoding.
+    const options = SKIN_TONE_STEPS.map((step) => {
       return {
-        id: hex,
-        label: `Tone ${index + 1}`,
-        imageUrl: buildSvgDataUrl(tintedSvg),
+        id: step.hex,
+        label: step.label,
+        color: skinToneChipColor(resolvedGender, step.tone),
       }
     })
     setSkinToneOptions(options)
-  }, [baseSvg, resolvedGender])
+  }, [resolvedGender])
 
   const trimmedName = name.trim()
   const parsedAge = Number.parseInt(age, 10)
@@ -280,14 +271,8 @@ export function UserDetailsPage() {
                   gender={resolvedGender}
                   skinToneHex={selectedSkinTone}
                   hairStyle={
-                    resolvedHairStyleForPreview
-                      ? {
-                          assetUrl: resolvedHairStyleForPreview.assetUrl,
-                          lengthPct: resolvedHairStyleForPreview.lengthPct,
-                          yOffsetPct: resolvedHairStyleForPreview.yOffsetPct,
-                          xOffsetPct: resolvedHairStyleForPreview.xOffsetPct,
-                          zIndex: resolvedHairStyleForPreview.zIndex,
-                        }
+                    resolvedHairStyleForPreview && resolvedGender
+                      ? { styleKey: resolvedHairStyleForPreview.styleKey, gender: resolvedGender }
                       : null
                   }
                   hairColorHex={selectedHairColorHex}

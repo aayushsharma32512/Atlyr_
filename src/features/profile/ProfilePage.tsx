@@ -131,14 +131,8 @@ function ProfilePageView() {
                     gender={gender}
                     skinToneHex={skinTone}
                     hairStyle={
-                      resolvedHairStyle
-                        ? {
-                            assetUrl: resolvedHairStyle.assetUrl,
-                            lengthPct: resolvedHairStyle.lengthPct,
-                            yOffsetPct: resolvedHairStyle.yOffsetPct,
-                            xOffsetPct: resolvedHairStyle.xOffsetPct,
-                            zIndex: resolvedHairStyle.zIndex,
-                          }
+                      resolvedHairStyle && gender
+                        ? { styleKey: resolvedHairStyle.styleKey, gender }
                         : null
                     }
                     hairColorHex={hairColorHex}

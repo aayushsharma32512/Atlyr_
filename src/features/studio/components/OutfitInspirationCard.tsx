@@ -202,13 +202,9 @@ export function OutfitInspirationCard({
     }
     return []
   }, [hasExplicitRenderedItems, hookDerivedItems, renderedItems])
-  // 3D placement mannequin. `has3DAll` = every item placed (auto renders 3D); `has3DSome` = at least
-  // one placed (so we still offer a manual 3D toggle for a partially-placed outfit — it renders the
-  // placed items on the mannequin). Users can flip 2D↔3D for comparison / showcase.
-  const has3DAll = resolvedRenderedItems.length > 0 && resolvedRenderedItems.every((it) => it.placement)
-  const has3DSome = resolvedRenderedItems.some((it) => it.placement)
-  const [placementMode, setPlacementMode] = useState<"auto" | "2d" | "3d">("auto")
-  const showing3D = placementMode === "3d" || (placementMode === "auto" && has3DAll)
+  // Which mannequin gets used is decided by the data alone — see AvatarRenderer. There is no
+  // user-facing 2D/3D toggle: an outfit renders on the placement mannequin whenever its garments
+  // carry a placement, and on the legacy SVG avatar only when none do.
   const visibleSegments = useMemo(() => {
     if (hookDerivedItems.length) {
       return computeOutfitVisibleSegments(hookDerivedItems)
@@ -444,6 +440,10 @@ export function OutfitInspirationCard({
                   yOffsetPct: resolvedHairStyle.yOffsetPct,
                   xOffsetPct: resolvedHairStyle.xOffsetPct,
                   zIndex: resolvedHairStyle.zIndex,
+                  // styleKey + gender select the baked photoreal cutout on the placement mannequin.
+                  // Without them the placement path resolves hairStyle to null and renders bald.
+                  styleKey: resolvedHairStyle.styleKey,
+                  gender: avatarGender,
                 } : null}
                 hairColorHex={hairColorHex}
                 visibleSegments={visibleSegments}
@@ -454,7 +454,6 @@ export function OutfitInspirationCard({
                 onReady={onAvatarReady}
                 avatarRef={avatarRef}
                 fetchPriority={isHighPriority ? "high" : "low"}
-                placementMode={placementMode}
               />
             </div>
           ) : (
@@ -471,6 +470,10 @@ export function OutfitInspirationCard({
                 yOffsetPct: resolvedHairStyle.yOffsetPct,
                 xOffsetPct: resolvedHairStyle.xOffsetPct,
                 zIndex: resolvedHairStyle.zIndex,
+                // styleKey + gender select the baked photoreal cutout on the placement mannequin.
+                // Without them the placement path resolves hairStyle to null and renders bald.
+                styleKey: resolvedHairStyle.styleKey,
+                gender: avatarGender,
               } : null}
               hairColorHex={hairColorHex}
               visibleSegments={visibleSegments}
@@ -480,7 +483,6 @@ export function OutfitInspirationCard({
               onReady={onAvatarReady}
               avatarRef={avatarRef}
               fetchPriority={isHighPriority ? "high" : "low"}
-              placementMode={placementMode}
             />
           )
         ) : shouldRenderFallbackImage ? (
@@ -501,20 +503,6 @@ export function OutfitInspirationCard({
         ) : (
           <div className="h-full w-full" />
         )}
-
-        {has3DSome && onItemSelect ? (
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation()
-              setPlacementMode(showing3D ? "2d" : "3d")
-            }}
-            className="absolute left-2 top-2 z-10 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm hover:bg-black/75"
-            aria-label="Toggle 2D / 3D mannequin"
-          >
-            {showing3D ? "View 2D" : "View 3D"}
-          </button>
-        ) : null}
 
         {showSaveButton ? (
           <IconButton

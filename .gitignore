@@ -171,6 +171,10 @@ services/ingestion/.env
 services/ingestion-automated/assets/old-gemini-avatar-female.png
 services/ingestion-automated/assets/old-gemini-avatar-male.png
 
+# Working output of scripts/bake-hair-cutouts.ts — raw generations kept locally so --reextract can
+# retune the cutouts without re-billing Gemini. The finished cutouts under public/hair-baked/ ARE
+# committed: they are product assets the app serves.
+.hair-bake/
 # Local scratch tools and image datasets (~112 MB, not part of the app)
 image-drop/
 manual-erase/

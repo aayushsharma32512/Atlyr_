@@ -7,6 +7,7 @@ import type {
   StudioRenderedItem,
   StudioRenderedZone,
   StudioPlacementTransform,
+  StudioPlacementByMannequin,
   ZoneVisibilityMap,
   StudioOutfitDTO,
   SupabaseOutfitWithProducts,
@@ -19,41 +20,52 @@ import type {
  */
 type PlacementMapEntry = { tx?: number; ty?: number; scale?: number; rotationDeg?: number; warp?: unknown }
 
-export function toPlacementTransform(product: {
-  placement?: unknown
-  gender?: string | null
-}): StudioPlacementTransform | null {
-  const map = product.placement
-  if (!map || typeof map !== "object") return null
-  const rec = map as Record<string, PlacementMapEntry>
-
-  // Pick the entry for the product's mannequin (male|female); unisex prefers male, then female.
-  const order = product.gender === "female" ? ["female", "male"] : ["male", "female"]
-  let entry: PlacementMapEntry | undefined
-  let mannequin: "male" | "female" = "male"
-  for (const g of order) {
-    const e = rec[`${g}:bodytype1`]
-    if (e && typeof e.scale === "number" && typeof e.tx === "number" && typeof e.ty === "number") {
-      entry = e
-      mannequin = g as "male" | "female"
-      break
-    }
+function readEntry(
+  rec: Record<string, PlacementMapEntry>,
+  mannequin: "male" | "female",
+): StudioPlacementTransform | null {
+  const entry = rec[`${mannequin}:bodytype1`]
+  if (!entry || typeof entry.scale !== "number" || typeof entry.tx !== "number" || typeof entry.ty !== "number") {
+    return null
   }
-  if (!entry) return null
-
   const warp = Array.isArray(entry.warp)
     ? (entry.warp as unknown[]).filter(
         (w): w is { x: number; y: number } => !!w && typeof (w as { x?: unknown }).x === "number" && typeof (w as { y?: unknown }).y === "number",
       )
     : []
   return {
-    scale: entry.scale as number,
+    scale: entry.scale,
     rotationDeg: entry.rotationDeg ?? 0,
-    tx: entry.tx as number,
-    ty: entry.ty as number,
+    tx: entry.tx,
+    ty: entry.ty,
     warp,
     mannequin,
   }
+}
+
+/**
+ * Every mannequin this product can be rendered on.
+ *
+ * This used to resolve to ONE transform here, preferring the product's own gender. That decided
+ * which BODY the user saw — and this runs in the service layer at fetch time, which has no idea who
+ * is looking, so a unisex garment showed everyone the same mannequin regardless of their gender. By
+ * the time the renderer knows the viewer, the other entry had already been discarded.
+ *
+ * Returning both defers the choice to the renderer, which does know. Returns null when neither
+ * mannequin has a usable entry, so the item falls back to the legacy SVG path exactly as before.
+ */
+export function toPlacementTransform(product: {
+  placement?: unknown
+  gender?: string | null
+}): StudioPlacementByMannequin | null {
+  const map = product.placement
+  if (!map || typeof map !== "object") return null
+  const rec = map as Record<string, PlacementMapEntry>
+
+  const male = readEntry(rec, "male")
+  const female = readEntry(rec, "female")
+  if (!male && !female) return null
+  return { ...(male ? { male } : {}), ...(female ? { female } : {}) }
 }
 
 const LEGACY_TYPE_TO_ZONE: Record<string, StudioRenderedZone> = {
