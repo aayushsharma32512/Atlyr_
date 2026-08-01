@@ -495,13 +495,28 @@ export function SegmentEraserDialog({ job, open, onOpenChange, onSaved }: Props)
       const x1 = Math.min(sc.width, Math.ceil(Math.max(prev.x, p.x) + pad))
       const y1 = Math.min(sc.height, Math.ceil(Math.max(prev.y, p.y) + pad))
       const bw = x1 - x0, bh = y1 - y0
-      // Cheapest possible record of "did this stroke reach anything restorable" — one lookup per
-      // segment, read by onPointerUp to explain a stroke that deposited nothing.
+      // Record whether this segment reached anything restorable, read by onPointerUp to explain a
+      // stroke that deposited nothing. It has to sample the whole brush footprint, not just the
+      // pointer: painting along the edge of a blocked region deposits real pixels while the centre
+      // sits on a blocked one, and treating that as a no-op would skip pushHistory and leave those
+      // pixels out of the undo stack. Grid over the segment's bbox, rejecting samples outside the
+      // round-capped line so the test matches what actually gets drawn.
       const gate = gateRef.current
       if (gate) {
-        const gx = Math.min(sc.width - 1, Math.max(0, p.x | 0))
-        const gy = Math.min(sc.height - 1, Math.max(0, p.y | 0))
-        strokeMaxGate.current = Math.max(strokeMaxGate.current, gate[gy * sc.width + gx])
+        const r = lineWidth / 2
+        const step = Math.max(1, Math.floor(r / 2))
+        const dx = p.x - prev.x, dy = p.y - prev.y
+        const len2 = dx * dx + dy * dy
+        for (let sy = y0; sy < y1 && strokeMaxGate.current < 255; sy += step) {
+          for (let sx = x0; sx < x1; sx += step) {
+            // Distance from the sample to the segment, via the closest point on it.
+            const t = len2 ? Math.max(0, Math.min(1, ((sx - prev.x) * dx + (sy - prev.y) * dy) / len2)) : 0
+            const cx = prev.x + t * dx - sx, cy = prev.y + t * dy - sy
+            if (cx * cx + cy * cy > r * r) continue
+            const g = gate[sy * sc.width + sx]
+            if (g > strokeMaxGate.current) strokeMaxGate.current = g
+          }
+        }
       } else {
         strokeMaxGate.current = 255
       }
