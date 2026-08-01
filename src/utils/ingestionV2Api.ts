@@ -138,6 +138,8 @@ export interface SubmitJobBody {
   v_ton_model?: string
   hitl_post_identification?: boolean
   hitl_post_segmentation?: boolean
+  /** Bulk uploads set this to `bulk:<sheet name>` so a batch can be tracked as a unit. */
+  created_by?: string
 }
 
 export const v2Api = {

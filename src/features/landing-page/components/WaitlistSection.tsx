@@ -513,16 +513,6 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
                         </form>
                       </Form>
                     </div>
-
-                    <div className="rounded-xl border border-border/60 bg-background/60 p-4 shadow-sm sm:p-5">
-                      <Button
-                        type="button"
-                        onClick={() => navigate("/auth/login")}
-                        className="h-10 w-full rounded-lg font-semibold shadow-sm hover:bg-primary/90"
-                      >
-                        Have an invite / Login
-                      </Button>
-                    </div>
                   </div>
                 )}
 

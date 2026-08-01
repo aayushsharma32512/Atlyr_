@@ -27,6 +27,8 @@ export class PlacementHandler implements StepHandler {
 
     const triggerUrl = `${modalUrl}/?pipeline_job_id=${job_id}&segmented_image_url=${encodeURIComponent(segmented_image_url!)}&vton_image_url=${encodeURIComponent(vton_image_url!)}`;
 
+    // Wall-clock of the Modal call — the billing proxy for GPU time (see cost accounting).
+    const modalStart = Date.now();
     const res = await fetch(triggerUrl, {
       method: 'POST',
       headers: {
@@ -69,6 +71,7 @@ export class PlacementHandler implements StepHandler {
         placedImageUrl: modalResult.final_image_url,
         selectedMannequin: modalResult.selected_mannequin,
         createdAt: new Date().toISOString(),
+        duration_ms: Date.now() - modalStart,
         // Present once the Modal pipeline is redeployed with the transform export; the mesh
         // editor reads this (usePlacementImage.ts) to reopen on the already-placed cloth.
         ...(modalResult.transform ? { transform: modalResult.transform } : {}),
