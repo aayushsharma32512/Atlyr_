@@ -85,6 +85,11 @@ export class ScrapingHandler implements StepHandler {
         description:     result.meta.description,
         price:           result.meta.price,
         currency:        result.meta.currency,
+        // Where the currency came from, and whether it disagrees with the storefront's TLD.
+        // A mismatch means the page was probably served a geo-localised price — worth a look
+        // before the row is promoted.
+        currency_source:   result.meta.currency_source ?? null,
+        currency_mismatch: result.meta.currency_mismatch ?? false,
         color:           result.meta.color,
         care:            result.meta.care ?? null,
         accordions:      result.meta.accordions ?? [],

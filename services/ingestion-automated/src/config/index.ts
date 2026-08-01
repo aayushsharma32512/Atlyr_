@@ -17,6 +17,13 @@ const EnvSchema = z.object({
 
   FIRECRAWL_API_KEY: optStr,
   FIRECRAWL_MAX_CONCURRENCY: z.string().default('3'),
+  // Country whose storefront the scrape should see. Firecrawl's proxies exit in the US by default,
+  // and geo-localised stores then serve a converted price in the local currency. The catalogue is
+  // Indian, so render as an Indian visitor unless told otherwise.
+  FIRECRAWL_COUNTRY: z.string().length(2).default('IN'),
+  FIRECRAWL_LANGUAGE: z.string().default('en-IN'),
+  // Currency recorded when a page declares none and its TLD implies none (the .com case).
+  DEFAULT_CURRENCY: z.string().length(3).default('INR'),
 
   GOOGLE_API_KEY: optStr,
   GEMINI_TEXT_MODEL: z.string().default('gemini-3.5-flash'),

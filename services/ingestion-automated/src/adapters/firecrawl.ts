@@ -4,6 +4,10 @@ import { selectProfile } from './sites/registry';
 import { isShopifySite, extractShopifyGenericImages } from './sites/shopify-generic';
 import { applyGenericImageFilter } from './sites/generic-filter';
 import { scrapeShopifyApi } from './sites/shopify';
+import { resolveCurrency, extractOfferFromHtml, type CurrencySource } from './sites/currency';
+import { createLogger } from '../utils/logger';
+
+const logger = createLogger({ stage: 'firecrawl' });
 
 export interface FirecrawlProductResult {
   finalUrl: string;
@@ -14,6 +18,8 @@ export interface FirecrawlProductResult {
     description: string | null;
     price: number | null;
     currency: string | null;
+    currency_source?: CurrencySource;
+    currency_mismatch?: boolean;
     color: string | null;
     care?: string | null;
     accordions?: Array<{ title: string; content: string }>;
@@ -70,10 +76,10 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
 
   return withRetry(
     async () => {
-      const formats: string[] = ['json', 'html'];
-      if (profile?.needsRawHtml) {
-        formats.push('rawHtml');
-      }
+      // rawHtml is always requested now, not just for profiles that parse it directly: the cleaned
+      // `html` drops <head> and <script>, which is where client-rendered PDPs keep their gallery
+      // and their structured price/currency data. The generic filter uses it only as a fallback.
+      const formats: string[] = ['json', 'html', 'rawHtml'];
       const prompt = profile?.buildScrapePrompt ? `${PRODUCT_PROMPT}\n\n${profile.buildScrapePrompt(targetUrl)}` : PRODUCT_PROMPT;
       const actions = profile?.extraActions ?? [
         { type: 'wait', milliseconds: 1500 },
@@ -92,6 +98,10 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
           formats,
           jsonOptions: { prompt },
           actions,
+          // Render from the catalogue's home market. Firecrawl's default proxies exit in the US,
+          // and multi-currency storefronts (Fabindia, Tasva, Shopify Markets) localise off the
+          // visitor IP — so an unpinned scrape returns a converted USD price for an INR product.
+          location: { country: config.FIRECRAWL_COUNTRY, languages: [config.FIRECRAWL_LANGUAGE] },
         }),
         signal: AbortSignal.timeout(120_000),
       });
@@ -104,9 +114,9 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
       const payload = await resp.json() as Record<string, unknown>;
       const data = (payload['data'] ?? payload) as Record<string, unknown>;
       const json = (data['json'] ?? {}) as Record<string, unknown>;
-      const html = profile?.needsRawHtml
-        ? (typeof data['rawHtml'] === 'string' ? data['rawHtml'] : undefined)
-        : (typeof data['html'] === 'string' ? data['html'] : undefined);
+      const cleanedHtml = typeof data['html'] === 'string' ? data['html'] : undefined;
+      const rawHtml = typeof data['rawHtml'] === 'string' ? data['rawHtml'] : undefined;
+      const html = profile?.needsRawHtml ? rawHtml : cleanedHtml;
       const metadata = (data['metadata'] ?? {}) as Record<string, unknown>;
 
       const finalUrl = (metadata['sourceURL'] ?? metadata['sourceUrl'] ?? targetUrl) as string;
@@ -119,7 +129,7 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
       } else if (isShopifySite(jsonImages)) {
         imageUrls = extractShopifyGenericImages(jsonImages);
       } else {
-        imageUrls = applyGenericImageFilter(html, targetUrl, jsonImages);
+        imageUrls = applyGenericImageFilter(html, targetUrl, jsonImages, rawHtml);
       }
 
       if (imageUrls.length === 0 && jsonImages.length > 0) {
@@ -139,6 +149,46 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
         price = Math.round(price / 100);
       }
 
+      const pageHtml = rawHtml ?? cleanedHtml;
+      const llmCurrency = (json['currency'] as string | null) ?? null;
+
+      // Price and currency must come from ONE source or they can contradict each other. A JSON-LD
+      // Offer carries both, so when the page has one it wins outright — including over the model's
+      // price. That is what makes this robust to a geo-localised render: if the proxy was served
+      // the US storefront, the model reads "$89" while the server-side Offer still declares
+      // INR 2899, and taking the Offer whole keeps the amount and the code consistent.
+      //
+      // Scoped to the generic path: Shopify pages state prices in subunits, which the branch above
+      // already compensates for, and mixing the two corrections would double-count.
+      const offer = detectedProfile === null && pageHtml ? extractOfferFromHtml(pageHtml) : null;
+
+      const resolved = resolveCurrency({
+        html: pageHtml,
+        host: new URL(finalUrl || targetUrl).hostname,
+        llmCurrency,
+        defaultCurrency: config.DEFAULT_CURRENCY,
+      });
+
+      const currency = offer ? offer.currency : resolved.currency;
+      const currencySource = offer ? ('json-ld' as const) : resolved.source;
+      if (offer && price != null && Math.abs(offer.price - price) > 0.01) {
+        logger.warn(
+          { url: targetUrl, modelPrice: price, offerPrice: offer.price, currency },
+          'model price disagrees with the page Offer — using the Offer (page was likely rendered for another market)'
+        );
+      }
+      if (offer) price = Math.round(offer.price);
+
+      // A model that read a different currency than the page declares is the signature of a
+      // localised render. Worth surfacing even when the Offer let us recover the right numbers.
+      const localised = llmCurrency != null && llmCurrency.toUpperCase() !== currency;
+      if (localised || resolved.mismatch) {
+        logger.warn(
+          { url: targetUrl, currency, modelCurrency: llmCurrency, source: currencySource, price },
+          'scraped currency disagrees with the page or its storefront TLD — check for a localised price'
+        );
+      }
+
       return {
         finalUrl,
         siteProfile: detectedProfile,
@@ -147,7 +197,9 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
           product_name: (json['product_name'] as string | null) ?? null,
           description:  (json['description'] as string | null)  ?? null,
           price,
-          currency:     (json['currency'] as string | null)     ?? null,
+          currency,
+          currency_source:   currencySource,
+          currency_mismatch: localised || resolved.mismatch,
           color:        (json['color'] as string | null)        ?? null,
         },
         imageUrls,

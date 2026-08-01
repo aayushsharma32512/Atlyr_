@@ -6,6 +6,7 @@ import { isNykaa, extractNykaaImages } from './nykaa';
 import { isPuma, extractPumaImages } from './puma';
 import { isNishorama, extractNishoramaImages } from './nishorama';
 import { isBonkerscorner, extractBonkerscornerImages } from './bonkerscorner';
+import { isManyavar, extractManyavarImages } from './manyavar';
 
 export interface PostProcessParams {
   originalUrl: string;
@@ -167,6 +168,26 @@ const PROFILES: Array<{
       ],
       postProcess({ originalUrl, html, jsonImages }) {
         return extractNishoramaImages(html ?? '', originalUrl, jsonImages);
+      },
+    },
+  },
+  {
+    match: isManyavar,
+    profile: {
+      id: 'manyavar',
+      needsHtml: true,
+      buildScrapePrompt(originalUrl) {
+        return `MANYAVAR OVERRIDE (images only):\nProduct URL: ${originalUrl}\n\nThe product gallery is a lazy-loaded carousel backed by the Scene7 CDN (manyavar.scene7.com/is/image/manyavar/...).\n\nEXTRACT:\n- ALL gallery views for THIS product, including ones further along the carousel.\n- Prefer the largest rendered size (e.g. :650x900 over :100x125).\n\nEXCLUDE:\n- Mega-menu and navigation banners (e.g. Kids_Mega_Menu_D, MOHEY_WOMEN, New_Mega_Menu_...).\n- "You may also like" / recommendations / recently viewed.\n- Size charts, payment icons, logos.`;
+      },
+      extraActions: [
+        { type: 'wait', milliseconds: 1500 },
+        { type: 'scroll', direction: 'down' },
+        { type: 'wait', milliseconds: 1200 },
+        { type: 'scroll', direction: 'down' },
+        { type: 'wait', milliseconds: 1200 },
+      ],
+      postProcess({ originalUrl, html, jsonImages }) {
+        return extractManyavarImages(html ?? '', originalUrl, jsonImages);
       },
     },
   },
