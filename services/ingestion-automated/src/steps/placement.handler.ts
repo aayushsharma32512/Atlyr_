@@ -46,6 +46,10 @@ export class PlacementHandler implements StepHandler {
       // Affine the pipeline used, in the mesh editor's 1800x3072 space — lets the editor
       // reconstruct this auto-placement instead of defaulting the garment to canvas-centre.
       transform?: { scale: number; rotationDeg: number; tx: number; ty: number };
+      // One transform per mannequin the garment registered against acceptably, keyed
+      // "Female"/"Male". Superset of `transform`. Storing every one is what lets the studio put a
+      // garment on the viewer's own body rather than whichever mannequin scored best.
+      transforms?: Record<string, { scale: number; rotationDeg: number; tx: number; ty: number }>;
     };
     if (modalResult.status !== 'success' && modalResult.status !== 'completed' || !modalResult.final_image_url) {
       throw new Error(`Modal placement pipeline failed: ${JSON.stringify(modalResult)}`);
@@ -68,6 +72,11 @@ export class PlacementHandler implements StepHandler {
         // Present once the Modal pipeline is redeployed with the transform export; the mesh
         // editor reads this (usePlacementImage.ts) to reopen on the already-placed cloth.
         ...(modalResult.transform ? { transform: modalResult.transform } : {}),
+        // Every mannequin this garment placed acceptably on. upsertIngestedProduct writes one
+        // `placement` entry per key, so a unisex garment ends up renderable on either body.
+        ...(modalResult.transforms && Object.keys(modalResult.transforms).length
+          ? { transforms: modalResult.transforms }
+          : {}),
       },
     });
 

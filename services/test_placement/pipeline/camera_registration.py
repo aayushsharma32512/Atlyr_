@@ -321,12 +321,19 @@ def compute_registration(
 def select_best_mannequin(
     generated_avatar: np.ndarray,
     candidate_mannequins: Dict[str, np.ndarray]
-) -> Tuple[str, np.ndarray, RegistrationResult, Dict[str, Any]]:
+) -> Tuple[str, np.ndarray, RegistrationResult, Dict[str, Any], Dict[str, RegistrationResult]]:
     """
     Runs LoFTR registration against candidate mannequin avatars (Female vs Male)
     and picks the winner based on inliers, ratio, and reprojection error.
+
+    Returns the winner AND every candidate's RegistrationResult. Both registrations are computed
+    either way -- this loop has always run over both candidates -- and the loser's matrix used to be
+    discarded. Keeping it is what lets a garment be placed on BOTH mannequins for the price of one
+    run, so a user is shown their own body rather than whichever one the garment happened to score
+    best against. Callers decide which results clear their acceptance bar.
     """
     scores = {}
+    results: Dict[str, RegistrationResult] = {}
     best_name = None
     best_avatar = None
     best_result = None
@@ -343,6 +350,8 @@ def select_best_mannequin(
         if not reg_result.accepted:
             cand_fg = extract_foreground_mask(candidate_avatar)
             reg_result = compute_registration(candidate_avatar, generated_avatar, cand_fg, gen_fg)
+
+        results[name] = reg_result
 
         score = (reg_result.n_inliers * reg_result.inlier_ratio) if reg_result.accepted else 0.0
         scores[name] = {
@@ -365,17 +374,17 @@ def select_best_mannequin(
         best_avatar = candidate_mannequins[first_name]
         best_result = RegistrationResult(accepted=False, rejection_reason="No candidate accepted")
 
-    return best_name, best_avatar, best_result, scores
+    return best_name, best_avatar, best_result, scores, results
 
 
 def warp_garment(
     garment_rgba: np.ndarray,
     matrix: np.ndarray,
     target_size: Tuple[int, int],
-    scale_multiplier: float = 1.03,
-    y_offset_percent: float = 0.007
+    scale_multiplier: float = 1.01,
+    y_offset_percent: float = 0.0035
 ) -> np.ndarray:
-    """Warp garment RGBA with affine matrix, applying 1.03x scale and 0.7% Y-offset down."""
+    """Warp garment RGBA with affine matrix, applying 1.01x scale and 0.35% Y-offset down."""
     w, h = target_size
     warp_m = matrix.copy() if matrix is not None else np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype=np.float64)
 
