@@ -365,6 +365,12 @@ function upgradeGenericResolution(url: string): string {
   if (lower.includes('ajio.com') || lower.includes('sheinindia.in')) {
     return url.replace(/\d+Wx\d+H/gi, '1000Wx1250H');
   }
+  // imgix-backed CDN (Tasva). Gallery URLs appear at w=200 (nav tiles) or w=387 (og:image);
+  // the origin serves up to at least w=2000, so ask for a size worth segmenting.
+  if (lower.includes('imagescdn.tasva.com')) {
+    const base = url.split('?')[0] ?? url;
+    return `${base}?q=90&auto=format&w=1500`;
+  }
   return url;
 }
 
@@ -411,30 +417,69 @@ function deduplicateImagesByKey(urls: string[]): string[] {
     .map((entry) => entry.url);
 }
 
+/**
+ * Rescues galleries from the unmodified page source, for pages where the normal path found almost
+ * nothing. Firecrawl's cleaned `html` drops <head> and <script>, which on a client-rendered PDP
+ * (Next.js flight data, hydration payloads) is exactly where the gallery lives — so the filter has
+ * nothing to check the model's output against and ships whatever single stray image it returned.
+ *
+ * Matching image URLs against the product ID in the page URL is precise, but not perfect: some
+ * platforms also expose a feed/share thumbnail under that ID (Demandware's
+ * `images/feeds/<ID>.jpg`), and on Manyavar that lone thumbnail displaced a correct gallery. So
+ * this is deliberately scoped as a rescue — the caller only applies it when the normal path came
+ * back with one image or none, and only when it strictly beats that. A site that already scrapes
+ * properly is never routed through here.
+ */
+function rescueImagesFromRawHtml(rawHtml: string, originalUrl: string, baseOrigin: string): string[] {
+  const found = extractProductIdImagesFromHtml(rawHtml, originalUrl, baseOrigin)
+    .filter(url => !looksLikeUnrelatedImage(url))
+    .map(upgradeGenericResolution);
+  return deduplicateImagesByKey(found);
+}
+
 // Core Generic Image Filter Function
 export function applyGenericImageFilter(
   html: string | undefined,
   originalUrl: string,
-  jsonImages: string[]
+  jsonImages: string[],
+  rawHtml?: string
 ): string[] {
   const baseOrigin = safeOriginFromUrl(originalUrl, new URL(originalUrl).origin);
-  
+  const selected = selectImages(html, originalUrl, jsonImages, baseOrigin);
+
+  // Only a page the normal path effectively failed on is eligible for the raw-source rescue, and
+  // only if the rescue finds strictly more. This keeps the change inert for every site that
+  // already works: at worst it returns what it would have returned anyway.
+  if (selected.length <= 1 && rawHtml) {
+    const rescued = rescueImagesFromRawHtml(rawHtml, originalUrl, baseOrigin);
+    if (rescued.length > selected.length) return rescued;
+  }
+
+  return selected;
+}
+
+function selectImages(
+  html: string | undefined,
+  originalUrl: string,
+  jsonImages: string[],
+  baseOrigin: string
+): string[] {
   // Clean raw LLM extracted images
   const cleanJsonImages = jsonImages
     .map(url => normalizeUrl(url, baseOrigin))
     .filter((url): url is string => typeof url === 'string' && !looksLikeUnrelatedImage(url))
     .map(upgradeGenericResolution);
-    
+
   if (!html) {
     return deduplicateImagesByKey(filterByUrlNumericId(cleanJsonImages, originalUrl));
   }
-  
+
   // Signal 0 (highest trust): Product-ID-tagged grid containers or any image URLs containing product-ID in HTML
   const productIdGridImages = extractProductIdGridImages(html, originalUrl, baseOrigin)
     .filter(url => typeof url === 'string' && !looksLikeUnrelatedImage(url));
-    
+
   const productIdHtmlImages = extractProductIdImagesFromHtml(html, originalUrl, baseOrigin);
-  
+
   const combinedIdImages = [...new Set([...productIdGridImages, ...productIdHtmlImages])]
     .map(upgradeGenericResolution);
 
@@ -443,15 +488,18 @@ export function applyGenericImageFilter(
     if (ordered.length > 0) return ordered;
   }
 
-  // Extract trusted images from JSON-LD and OG tags
+  // Extract trusted images from JSON-LD and OG tags. Deliberately NOT read from rawHtml: og:image
+  // is a single share thumbnail, and admitting it here makes `trustedImages` non-empty on pages
+  // that legitimately have no gallery signal, which then narrows a correct multi-image LLM result
+  // down to that one thumbnail. Raw source is trusted only for the product-ID match above.
   const jsonLdImages = extractJsonLdProductImages(html)
     .map(url => normalizeUrl(url, baseOrigin))
     .filter((url): url is string => typeof url === 'string' && !looksLikeUnrelatedImage(url));
-    
+
   const ogImages = extractOgImages(html)
     .map(url => normalizeUrl(url, baseOrigin))
     .filter((url): url is string => typeof url === 'string' && !looksLikeUnrelatedImage(url));
-    
+
   const galleryImages = extractGenericGalleryImages(html, baseOrigin)
     .map(url => normalizeUrl(url, baseOrigin))
     .filter((url): url is string => typeof url === 'string' && !looksLikeUnrelatedImage(url));
