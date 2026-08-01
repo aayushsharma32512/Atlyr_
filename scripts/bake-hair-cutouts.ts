@@ -1,9 +1,12 @@
 /**
  * Approach B asset pipeline: bake photoreal hair onto the placement mannequins, then cut it out.
  *
- *   bun run scripts/bake-hair-cutouts.ts                 # dry run, writes to .hair-bake/
- *   bun run scripts/bake-hair-cutouts.ts --apply         # also uploads to Supabase Storage
+ *   bun run scripts/bake-hair-cutouts.ts                 # bake every gender/style
  *   bun run scripts/bake-hair-cutouts.ts --gender female --style bob
+ *   bun run scripts/bake-hair-cutouts.ts --reextract     # recut the kept generations, no new billing
+ *
+ * Cutouts land in public/hair-baked/{gender}/{styleKey}.png, which is what the app serves; working
+ * files (raw generations, proof composites) land in the gitignored .hair-bake/.
  *
  * Output is a full 1800x3072 RGBA frame per (gender, style): transparent everywhere except the hair,
  * with the hair already sitting where it belongs. That is what makes Approach B need no head anchor
@@ -19,8 +22,7 @@
  * same discipline on the generated frames.
  * ─────────────────────────────────────────────────────────────────────────────────────────────────
  *
- * Env: GOOGLE_API_KEY (required), GEMINI_IMAGE_MODEL / GEMINI_IMAGE_MODEL_FALLBACKS (optional),
- *      SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (only for --apply).
+ * Env: GOOGLE_API_KEY (required), GEMINI_IMAGE_MODEL / GEMINI_IMAGE_MODEL_FALLBACKS (optional).
  */
 import sharp from 'sharp'
 import { join } from 'node:path'
@@ -339,29 +341,12 @@ async function extractHair(originalRaw: Buffer, generated: Buffer, chinY: number
     .toBuffer()
 }
 
-async function upload(path: string, body: Buffer) {
-  const base = process.env.SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!base || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required for --apply')
-  const resp = await fetch(`${base}/storage/v1/object/mannequin/${path}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'image/png',
-      'x-upsert': 'true',
-    },
-    body: new Uint8Array(body),
-  })
-  if (!resp.ok) throw new Error(`upload ${resp.status}: ${(await resp.text()).slice(0, 200)}`)
-}
-
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`)
   return i >= 0 ? process.argv[i + 1] : undefined
 }
 
 async function main() {
-  const apply = process.argv.includes('--apply')
   const reextract = process.argv.includes('--reextract')
   const onlyGender = arg('gender') as Gender | undefined
   const onlyStyle = arg('style')
@@ -439,9 +424,10 @@ async function main() {
       const cutout = await extractHair(originalRaw, accepted, chinY)
       await writeFile(join(outDir, `${gender}-${styleKey}.png`), cutout)
 
-      // Also drop it where Vite serves it, so /admin/hair-lab picks it up with no upload. Approach B
-      // has not been chosen yet — publishing to Supabase Storage is a --apply decision, not a
-      // side effect of looking at the output.
+      // public/ is where these SHIP from, not just a preview: PlacementAvatarRenderer reads
+      // /hair-baked/{gender}/{styleKey}.png, so writing here is the publish step. Committed to git
+      // alongside public/mannequins/, which the cutouts are calibrated against pixel for pixel —
+      // splitting the pair across git and object storage is how they drift apart.
       const publicDir = join(process.cwd(), 'public', 'hair-baked', gender)
       await mkdir(publicDir, { recursive: true })
       await writeFile(join(publicDir, `${styleKey}.png`), cutout)
@@ -455,16 +441,11 @@ async function main() {
         await sharp(proof).resize(500).png().toBuffer(),
       )
 
-      if (apply) {
-        await upload(`${gender}/hairtype3d/${styleKey}.png`, cutout)
-        console.log(`    uploaded mannequin/${gender}/hairtype3d/${styleKey}.png`)
-      }
       ok++
     }
   }
 
-  console.log(`\n${ok} baked, ${failed} failed. Output in .hair-bake/`)
-  if (!apply) console.log('Dry run — pass --apply to upload to Supabase Storage.')
+  console.log(`\n${ok} baked, ${failed} failed. Working files in .hair-bake/, cutouts in public/hair-baked/.`)
 }
 
 main().catch((err) => { console.error(err); process.exit(1) })
