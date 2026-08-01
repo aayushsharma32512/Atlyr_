@@ -201,8 +201,9 @@ async function probeGarment(img: HTMLImageElement, texW: number, texH: number): 
  * Bounding box of the mannequin figure inside its frame (world/texture space). The base image
  * has a lot of empty margin (male: ~5% blank at top, feet at the very bottom; female: blank all
  * round), so we frame this box in the view instead of the whole 1800x3072 canvas — the figure
- * fills the canvas rather than being shrunk into a corner. Content = opaque AND not near-white,
- * so it works for both the white-bg male and the transparent female.
+ * fills the canvas rather than being shrunk into a corner. Content = opaque AND not near-white.
+ * Both mannequins are transparent-backed now, so alpha alone would do; the near-white half is kept
+ * as free insurance against an asset that ships on white again.
  */
 async function probeMannequinBounds(img: HTMLImageElement, texW: number, texH: number): Promise<Bounds> {
   const fallback: Bounds = { x: 0, y: 0, w: texW, h: texH }

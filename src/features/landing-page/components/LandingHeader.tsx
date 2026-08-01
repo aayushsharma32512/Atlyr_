@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import logoImage from "/assets/logo.png";
+import { WordmarkLockup } from "@/design-system/primitives";
 
 type LandingHeaderProps = {
   isAuthenticated: boolean;
@@ -20,13 +20,13 @@ export function LandingHeader({ isAuthenticated, onWaitlistScroll, onSignInClick
       transition={{ type: "spring", stiffness: 100, damping: 20 }}
       className={cn(
         "fixed top-0 left-0 right-0 z-50 flex h-16 items-center justify-between px-6 transition-all duration-300 md:px-12",
-        "bg-white/80 backdrop-blur-xl supports-[backdrop-filter]:bg-white/80",
-        "border-b border-black/5 "
+        "bg-background/85 backdrop-blur-xl supports-[backdrop-filter]:bg-background/80",
+        "border-b border-hairline"
       )}
     >
 
       <div className="flex items-center justify-between max-w-7xl mx-auto w-full">
-        {/* Left: Logo */}
+        {/* Left: the mark. Small here — the gate below carries the full lockup. */}
         <div className="flex items-center">
           <Link
             to="/"
@@ -36,27 +36,23 @@ export function LandingHeader({ isAuthenticated, onWaitlistScroll, onSignInClick
               window.scrollTo({ top: 0, behavior: "smooth" });
             }}
           >
-            <img
-              src={logoImage}
-              alt="ATLYR"
-              className="h-12 w-auto transition-opacity duration-300 group-hover:opacity-80"
+            <WordmarkLockup
+              size="header"
+              className="transition-opacity duration-300 group-hover:opacity-70"
             />
           </Link>
         </div>
 
-        {/* Right: Actions */}
+        {/* Right: Actions. Outlined, not filled — the gate's CTA is the screen's
+            one terracotta and this must not compete with it. */}
         <div className="flex items-center gap-6">
-          {/* Optional: Keep 'Waitlist' as a subtle link if not authenticated */}
-
-
-          {/* Hero Element: Log In Button */}
           <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
             onClick={isAuthenticated ? () => navigate('/app') : onSignInClick}
-            className="relative overflow-hidden rounded-full bg-foreground px-8 py-3 text-xs font-bold uppercase tracking-widest text-white shadow-sm transition-shadow hover:shadow-md"
+            className="rounded-[3px] border border-foreground px-6 py-2.5 text-[10px] font-bold uppercase tracking-[0.14em] text-foreground transition-colors hover:bg-foreground hover:text-background"
           >
-            {isAuthenticated ? "Enter App" : "Log In"}
+            {isAuthenticated ? "Enter app" : "Log in"}
           </motion.button>
         </div>
       </div>

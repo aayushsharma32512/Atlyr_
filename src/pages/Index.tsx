@@ -6,6 +6,7 @@ import { SearchScreen } from '@/components/search/SearchScreen';
 import { CollectionsScreen } from '@/components/collections/CollectionsScreen';
 import { ProfileScreen } from '@/components/profile/ProfileScreen';
 import { CheckoutScreen } from '@/components/checkout/CheckoutScreen';
+import { FIRST_RUN_ENTRY_PATH, needsFirstRun } from '@/features/profile/constants/firstRun';
 import { ProductDetailScreen } from '@/components/product/ProductDetailScreen';
 import { BottomNavigation } from '@/components/layout/BottomNavigation';
 import { PageLayout } from '@/components/layout/PageLayout';
@@ -255,9 +256,9 @@ export default function Index() {
     );
   }
 
-  // Redirect to new onboarding flow if profile doesn't exist or onboarding not complete
-  if (!profile || !profile.onboarding_complete) {
-    return <Navigate to="/profile/user-details" replace />;
+  // Redirect to first run if profile doesn't exist or onboarding not complete
+  if (needsFirstRun(profile)) {
+    return <Navigate to={FIRST_RUN_ENTRY_PATH} replace />;
   }
 
   if (isCheckoutRoute) {

@@ -13,6 +13,8 @@ import { LikenessDrawerHost } from "@/features/likeness/LikenessDrawerHost";
 import { PostHogIdentitySync } from "@/integrations/posthog/PostHogIdentitySync";
 import { PostHogRouteSync } from "@/integrations/posthog/PostHogRouteSync";
 import { EngagementAnalyticsProvider } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsProvider";
+import { isDesignPreviewPath, useSurfaceTheme } from "@/hooks/useSurfaceTheme";
+import { needsFirstRun } from "@/features/profile/constants/firstRun";
 import { Suspense, lazy, type ReactNode } from "react";
 // Simple loading component
 const LoadingSpinner = () => (
@@ -44,6 +46,9 @@ const IngestionAutomatedDashboard = lazy(() => import("./pages/admin/IngestionAu
 const PlacementDashboard = lazy(() => import("./pages/admin/PlacementDashboard.tsx"));
 const AvatarPreview = lazy(() => import("./pages/AvatarPreview.tsx"));
 const UserDetailsPreview = lazy(() => import("./pages/UserDetailsPreview.tsx"));
+const TastePage = lazy(() => import("@/features/profile/pages/TastePage"));
+const FigurePreview = lazy(() => import("./pages/FigurePreview.tsx"));
+const AdminHome = lazy(() => import("./pages/admin/AdminHome.tsx"));
 const LoginPage = lazy(() => import("./pages/LoginPage.tsx"));
 const AuthCallback = lazy(() => import("./pages/AuthCallback.tsx"));
 
@@ -108,11 +113,23 @@ function AdminAccessGuard({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * Applies `data-surface` to <html> so /admin and /hitl keep the pre-Kalagriha
+ * stone theme while the rest of the app uses the Tantu palette. Renders
+ * nothing; must live inside BrowserRouter.
+ */
+function SurfaceTheme() {
+  useSurfaceTheme();
+  return null;
+}
+
 // Component to conditionally show FloatingProgressHub only for authenticated users
 function AuthenticatedProgressHub() {
   const { user, loading } = useAuth();
   const { guestState } = useGuest();
   const location = useLocation();
+
+  const { profile } = useProfileContext();
 
   // Don't show on public pages
   const publicPaths = ['/', '/waitlist', '/landing', '/marketing', '/auth/login', '/auth/signup', '/auth/callback'];
@@ -121,7 +138,16 @@ function AuthenticatedProgressHub() {
   // Only show for authenticated (non-guest) users on non-public paths
   const isAuthenticated = Boolean(user) && !guestState.isGuest;
 
-  if (loading || isPublicPath || !isAuthenticated) {
+  // Not during first run, and not over a design-system preview. The hub is a
+  // floating panel anchored bottom-left; on the onboarding screens it lands on
+  // top of the primary CTA, and there is nothing to report anyway — you can't
+  // have a generation in flight before you've finished signing up.
+  const isSuppressedSurface =
+    needsFirstRun(profile) ||
+    location.pathname.startsWith('/design-system') ||
+    isDesignPreviewPath(location.pathname);
+
+  if (loading || isPublicPath || !isAuthenticated || isSuppressedSurface) {
     return null;
   }
 
@@ -146,6 +172,7 @@ const App = () => (
             <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
               <EngagementAnalyticsProvider>
                 <JobsProvider>
+                  <SurfaceTheme />
                   <CollectionsPrefetcher />
                   <PostHogIdentitySync />
                   <AuthenticatedProgressHub />
@@ -219,6 +246,27 @@ const App = () => (
                         </ShareAccessGuard>
                       }
                     />
+                    {/* First run, step 1 of 2 — taste (6c). Step 2 is the
+                        figure at /profile/user-details (6c2). */}
+                    <Route
+                      path="/onboarding/taste"
+                      element={
+                        <ShareAccessGuard>
+                          <TastePage />
+                        </ShareAccessGuard>
+                      }
+                    />
+                    {/* The admin index. React Router ranks by specificity, not
+                        declaration order, so an exact "/admin" does not shadow
+                        the nested admin routes below. */}
+                    <Route
+                      path="/admin"
+                      element={
+                        <AdminAccessGuard>
+                          <AdminHome />
+                        </AdminAccessGuard>
+                      }
+                    />
                     <Route
                       path="/admin/invites"
                       element={
@@ -276,6 +324,28 @@ const App = () => (
                       }
                     />
                     <Route path="/design-system/product-card" element={<DesignSystemPreview />} />
+                    {/* Previews of the first-run screens, so the onboarding chrome
+                        can be reviewed without flipping profiles.onboarding_complete.
+                        Admin-only — unlike the older /design-system/* routes these
+                        render real profile data. Under /admin so the guard and the
+                        URL agree; useSurfaceTheme exempts them from the ops palette
+                        so they still preview in the app's own register. */}
+                    <Route
+                      path="/admin/design-system/figure"
+                      element={
+                        <AdminAccessGuard>
+                          <FigurePreview />
+                        </AdminAccessGuard>
+                      }
+                    />
+                    <Route
+                      path="/admin/design-system/taste"
+                      element={
+                        <AdminAccessGuard>
+                          <TastePage />
+                        </AdminAccessGuard>
+                      }
+                    />
                     <Route path="/design-system/studio/*" element={<Navigate to="/studio" replace />} />
                     <Route
                       path="/design-system/studio-alternatives" 

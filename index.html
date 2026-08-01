@@ -11,10 +11,22 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="manifest" href="/manifest.json" />
     
-    <!-- Premium Google Fonts -->
+    <!--
+      All webfonts load here, in one request. src/index.css used to add four
+      more @import rules on top of this link, which serialised into a waterfall
+      after CSS parse.
+
+        Bodoni Moda            display serif  (--font-serif)
+        Hanken Grotesk         UI sans        (--font-sans)
+        Noto Serif Devanagari  brand only     (--font-deva) — कलागृह wordmark
+        Inter / Source Serif 4 / Roboto Mono  ops surfaces only, see
+                               :root[data-surface="ops"] in src/index.css
+        Playfair Display / Pacifico           still referenced inline by the
+                               landing page; retire with the rebrand sweep
+    -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&family=Pacifico&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500&family=Hanken+Grotesk:wght@400;500;600;700&family=Noto+Serif+Devanagari:wght@400;500;600&family=Inter:wght@300;400;500;600;700&family=Source+Serif+4:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;600&family=Playfair+Display:wght@400;500;600;700&family=Pacifico&display=swap" rel="stylesheet">
 
     
     

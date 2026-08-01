@@ -1,8 +1,6 @@
-/* Premium Typography - Google Fonts */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Source+Serif+4:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;600&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Rock+Salt&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Allura:wght@400&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Over+the+Rainbow&display=swap');
+/* Webfonts are loaded from a single <link> in index.html — see the note there.
+   Rock Salt / Allura / Over the Rainbow used to be @imported here and were
+   referenced nowhere; they have been dropped. */
 
 @tailwind base;
 @tailwind components;
@@ -86,8 +84,115 @@ img {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   Tantu / Kalagriha design system.
+
+   Colour law (handoff §2.1):
+     · terracotta #B3542E is THE ONLY filled action — max one per screen
+     · gold #C9A227 is provenance ONLY — Nama, seals, ✦ YOURS. Never a button,
+       never decoration. It is deliberately NOT wired to --accent, because
+       shadcn uses --accent for hover/focus surfaces in menus, dropdowns and
+       command palettes; that would spray gold across the whole app. Provenance
+       components read --gold / --gold-deep explicitly instead.
+     · radii 3–6px only, hairline borders only.
+
+   Ops surfaces (/admin, /hitl) opt out via :root[data-surface="ops"] below,
+   which restores the previous stone theme verbatim. The attribute is set on
+   documentElement by useSurfaceTheme() — not on a wrapper element — because
+   dialogs, drawers and toasts portal to document.body and would otherwise
+   inherit the new palette inside the ingestion dashboards.
+   ───────────────────────────────────────────────────────────────────────────── */
 @layer base {
   :root {
+    --background: 39 45.45% 91.37%;
+    --foreground: 36 12.2% 16.08%;
+    --card: 0 0% 100%;
+    --card-foreground: 36 12.2% 16.08%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 36 12.2% 16.08%;
+    --primary: 17.1429 59.11% 44.12%;
+    --primary-foreground: 39 45.45% 91.37%;
+    --secondary: 41.25 47.06% 93.33%;
+    --secondary-foreground: 36 12.2% 16.08%;
+    --muted: 40.8 40.98% 88.04%;
+    --muted-foreground: 43.6364 8.66% 49.8%;
+    --accent: 40.8 40.98% 88.04%;
+    --accent-foreground: 36 12.2% 16.08%;
+    --destructive: 359.0323 79.4872% 15.2941%;
+    --destructive-foreground: 0 85.7143% 97.2549%;
+    --border: 38.5714 34.15% 83.92%;
+    --input: 38.5714 34.15% 83.92%;
+    --ring: 17.1429 59.11% 44.12%;
+    --chart-1: 17.1429 59.11% 44.12%;
+    --chart-2: 39.3631 74.41% 41.37%;
+    --chart-3: 39.3103 14.15% 59.8%;
+    --chart-4: 36.6667 14.29% 24.71%;
+    --chart-5: 21.3223 66.12% 64.12%;
+    --sidebar: 39 45.45% 91.37%;
+    --sidebar-foreground: 43.6364 8.66% 49.8%;
+    --sidebar-primary: 36 12.2% 16.08%;
+    --sidebar-primary-foreground: 39 45.45% 91.37%;
+    --sidebar-accent: 40.8 40.98% 88.04%;
+    --sidebar-accent-foreground: 36 12.2% 16.08%;
+    --sidebar-border: 38.5714 34.15% 83.92%;
+    --sidebar-ring: 43.6364 8.66% 49.8%;
+
+    /* Brand raw tokens — read directly, not through shadcn semantics */
+    --ink: 36 12.2% 16.08%;
+    --ink-deep: 36 16.13% 12.16%;
+    --ink-deepest: 34.2857 14.29% 9.61%;
+    --ink-soft: 36 14.02% 20.98%;
+    --ink-line: 36.6667 14.29% 24.71%;
+    --body-ink: 41.0526 14.29% 26.08%;
+    --on-ink-1: 40 15.79% 59.02%;
+    --on-ink-2: 40.8 20% 75.49%;
+    --on-ink-3: 40.9091 22.92% 81.18%;
+    --terracotta: 17.1429 59.11% 44.12%;
+    --terracotta-tint: 21.3223 66.12% 64.12%;
+    --gold: 45.5556 67.5% 47.06%;
+    --gold-deep: 39.3631 74.41% 41.37%;
+    --taupe: 39.3103 14.15% 59.8%;
+    --hairline: 38.5714 34.15% 83.92%;
+    --hairline-2: 39.2308 37.14% 86.27%;
+    --hairline-3: 39.3103 32.58% 82.55%;
+    --hairline-4: 40 28.3% 79.22%;
+    --warp: 39.2308 46.43% 89.02%;
+    --placeholder-grid: 39.3103 44.62% 87.25%;
+
+    --font-sans: "Hanken Grotesk", ui-sans-serif, sans-serif, system-ui;
+    --font-serif: "Bodoni Moda", ui-serif, Georgia, serif;
+    --font-deva: "Noto Serif Devanagari", ui-serif, serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --radius: 0.3125rem;
+    --shadow-x: 0;
+    --shadow-y: 1px;
+    --shadow-blur: 3px;
+    --shadow-spread: 0px;
+    --shadow-opacity: 0.1;
+    --shadow-color: oklch(0 0 0);
+    --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+    --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
+    --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
+    --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
+    --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 2px 4px -1px hsl(0 0% 0% / 0.10);
+    --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 4px 6px -1px hsl(0 0% 0% / 0.10);
+    --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 8px 10px -1px hsl(0 0% 0% / 0.10);
+    --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+    --tracking-normal: 0em;
+    --spacing: 0.25rem;
+
+    /* Derived tokens for existing utilities */
+    --text-secondary-2: var(--muted-foreground);
+    --radius-card: var(--radius);
+    --radius-sheet: calc(var(--radius) + 0.125rem);
+    --radius-chip: 9999px;
+  }
+
+  /* ── Ops surfaces (/admin/*, /hitl): the pre-Kalagriha stone theme, verbatim.
+     Set by useSurfaceTheme() on <html> so portalled dialogs inherit it too.
+     Do not "harmonise" these values with the brand palette — the point is that
+     the ingestion, HITL and placement dashboards are visually untouched. ── */
+  :root[data-surface="ops"] {
     --background: 60 9.0909% 97.8431%;
     --foreground: 12.0000 6.4935% 15.0980%;
     --card: 60 9.0909% 97.8431%;
@@ -124,24 +229,6 @@ img {
     --font-serif: Source Serif 4, ui-serif, serif;
     --font-mono: Roboto Mono, ui-monospace, monospace;
     --radius: 0.625rem;
-    --shadow-x: 0;
-    --shadow-y: 1px;
-    --shadow-blur: 3px;
-    --shadow-spread: 0px;
-    --shadow-opacity: 0.1;
-    --shadow-color: oklch(0 0 0);
-    --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-    --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-    --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
-    --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
-    --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 2px 4px -1px hsl(0 0% 0% / 0.10);
-    --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 4px 6px -1px hsl(0 0% 0% / 0.10);
-    --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 8px 10px -1px hsl(0 0% 0% / 0.10);
-    --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
-    --tracking-normal: 0em;
-    --spacing: 0.25rem;
-
-    /* Derived tokens for existing utilities */
     --text-secondary-2: var(--muted-foreground);
     --radius-card: var(--radius);
     --radius-sheet: calc(var(--radius) + 0.125rem);
@@ -231,6 +318,24 @@ img {
 
   .no-shadow {
     box-shadow: none !important;
+  }
+
+  /* Warp/weft grid — the woven ground behind garment frames (canvas 7a, 7e, 8a).
+     22px on white surfaces. */
+  .bg-warp-grid {
+    background-image:
+      linear-gradient(hsl(var(--warp)) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--warp)) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+
+  /* Tighter 11px weave used inside honest placeholder tiles — the PHOTO /
+     FIGURE cards in 6c2 that stand in until real art lands. */
+  .bg-placeholder-grid {
+    background-image:
+      linear-gradient(hsl(var(--placeholder-grid)) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--placeholder-grid)) 1px, transparent 1px);
+    background-size: 11px 11px;
   }
 
   .text-display {

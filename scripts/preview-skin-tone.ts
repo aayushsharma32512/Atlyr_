@@ -25,7 +25,7 @@ const H = 3072
 
 const luma = (r: number, g: number, b: number) => 0.2126 * r + 0.7152 * g + 0.0722 * b
 
-/** Body vs background. male.png is WHITE-backed where female.png is transparent. */
+/** Body vs background. Both mannequins are transparent-backed; the brightness half is free insurance. */
 const isSkin = (d: Buffer, i: number) => d[i + 3] >= 32 && luma(d[i], d[i + 1], d[i + 2]) < 245
 
 /** Mean position of the mannequin's own skin along the axis — the tone it was shot at. */

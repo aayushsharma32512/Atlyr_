@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { hasReturningMarker } from "@/features/auth/inviteStorage";
 import { LandingHeader } from "./components/LandingHeader";
+import { LandingGate } from "./components/LandingGate";
 import { HeroSection } from "./components/HeroSection";
 import { HeroPreview } from "./components/HeroPreview";
 import { AISection } from "./components/AISection";
@@ -87,19 +87,20 @@ export default function LandingPage() {
     }
   }, [searchParams]);
 
-  useEffect(() => {
-    if (authLoading) return;
-    if (user) {
-      navigate("/app", { replace: true });
-      return;
-    }
-    if (searchParams.get("waitlist") === "1") {
-      return;
-    }
-    if (hasReturningMarker()) {
-      navigate(`/auth/login?next=${encodeURIComponent("/app")}`, { replace: true });
-    }
-  }, [authLoading, navigate, searchParams, user]);
+  // "/" renders "/". There used to be two automatic bounces here — a live
+  // session went to /app, and a stale `atlyr_returning_v1` marker punted you to
+  // /auth/login even while signed out. Both were written when this page was a
+  // marketing pitch a returning user had no reason to re-read. It is now the
+  // gate (6a) — the wordmark, the tagline, the invitation line — so the people
+  // most likely to type the bare domain were the only ones who never saw it.
+  // The marker one was the worse of the two: signing out doesn't clear it, so it
+  // fired forever, and it sent signed-out users to a login screen they hadn't
+  // asked for.
+  //
+  // Nothing is lost. The gate offers "Already invited? Sign in →" to signed-out
+  // visitors and "Enter the studio →" once a session exists, and /app is still
+  // directly linkable. Those authenticated branches in LandingGate and
+  // LandingHeader were unreachable until now.
 
   const isAuthenticated = Boolean(user);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -149,30 +150,21 @@ export default function LandingPage() {
         ref={scrollContainerRef}
         className={`max-h-[100vh] overflow-y-scroll scroll-smooth snap-y snap-mandatory`}
       >
-        {/* Header + Hero Title */}
-        <section className="snap-start snap-always h-[300px] flex flex-col items-center justify-end">
+        {/* 6a — the gate. The wordmark stands in for a headline; everything
+            else on the page scrolls underneath it. */}
+        <section className="snap-start snap-always">
           <LandingHeader
             isAuthenticated={isAuthenticated}
             onWaitlistScroll={handleWaitlistScroll}
             onSignInClick={handleSignInClick}
           />
 
-          <div className="max-w-5xl mx-auto px-6 sm:px-8">
-            <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-6xl lowercase lg:text-5xl xl:text-6xl text-center ">
-              Your personal
-              <span className="block bg-foreground h-[60px] md:h-[80px] lg:h-[100px] bg-clip-text text-transparent font-thin" style={{ textTransform: 'lowercase', fontFamily: "'Pacifico', cursive" }}>
-                fashion companion
-              </span>
-            </h1>
-          </div>
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={handleWaitlistScroll}
-              className="relative mx-auto mt-4 overflow-hidden rounded-full bg-primary px-8 py-3 text-xs font-bold uppercase tracking-widest text-white shadow-sm transition-shadow hover:shadow-md"
-            >
-              Join Waitlist
-            </motion.button>
+          <LandingGate
+            isAuthenticated={isAuthenticated}
+            onWaitlistScroll={handleWaitlistScroll}
+            onSignInClick={handleSignInClick}
+            onEnterApp={() => navigate("/app")}
+          />
         </section>
 
         {/* Hero Content */}
