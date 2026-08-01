@@ -170,3 +170,9 @@ services/ingestion/.env
 # Assets
 services/ingestion-automated/assets/old-gemini-avatar-female.png
 services/ingestion-automated/assets/old-gemini-avatar-male.png
+
+# Local scratch tools and image datasets (~112 MB, not part of the app)
+image-drop/
+manual-erase/
+myntra_shoes/
+shoe_segmentation/

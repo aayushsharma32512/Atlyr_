@@ -69,6 +69,8 @@ export class SegmentingHandler implements StepHandler {
     }
     const triggerUrl = `${modalUrl}/?seg_job_id=${segJob.seg_job_id}&pipeline_job_id=${job_id}&category=${category}`;
 
+    // Wall-clock of the Modal call — the billing proxy for GPU time (see cost accounting).
+    const modalStart = Date.now();
     const res = await fetch(triggerUrl, {
       method: 'POST',
       headers: {
@@ -97,6 +99,7 @@ export class SegmentingHandler implements StepHandler {
         segmentedImageUrl: modalResult.final_image_url,
         configName: 'v1',
         createdAt: new Date().toISOString(),
+        duration_ms: Date.now() - modalStart,
       },
     });
 

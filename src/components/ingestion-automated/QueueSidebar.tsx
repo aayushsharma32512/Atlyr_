@@ -47,9 +47,10 @@ function SectionLabel({ children }: { children: string }) {
 type Props = {
   queue: QueueState
   onAddItem: () => void
+  onIngestionStatus: () => void
 }
 
-export function QueueSidebar({ queue, onAddItem }: Props) {
+export function QueueSidebar({ queue, onAddItem, onIngestionStatus }: Props) {
   const { model, actions, visible } = queue
   const [restarting, setRestarting] = useState(false)
   const [pushing, setPushing] = useState(false)
@@ -311,6 +312,9 @@ export function QueueSidebar({ queue, onAddItem }: Props) {
           Reset filters
         </button>
         <Button size="sm" className="h-7 text-xs w-full" onClick={onAddItem}>+ Add items</Button>
+        <Button size="sm" variant="outline" className="h-7 text-xs w-full mt-1.5" onClick={onIngestionStatus}>
+          Ingestion status
+        </Button>
       </div>
       {dialog}
       <ConfirmDialog

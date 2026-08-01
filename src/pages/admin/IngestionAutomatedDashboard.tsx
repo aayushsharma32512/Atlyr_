@@ -12,6 +12,7 @@ import { QueueSidebar } from '@/components/ingestion-automated/QueueSidebar'
 import { RowItem } from '@/components/ingestion-automated/RowItem'
 import { ItemDetailPage } from '@/components/ingestion-automated/ItemDetailPage'
 import { AddItemDialog } from '@/components/ingestion-automated/AddItemDialog'
+import { IngestionStatusDialog } from '@/components/ingestion-automated/IngestionStatusDialog'
 import { PlacementMeshEditor } from '@/components/ingestion-automated/PlacementMeshEditor'
 import { PhotoViewerDialog, type ViewerImage } from '@/components/ingestion-automated/PhotoViewerDialog'
 import { SegmentEraserDialog } from '@/components/ingestion-automated/SegmentEraserDialog'
@@ -24,6 +25,7 @@ export default function IngestionAutomatedDashboard() {
   const queue = useQueueState()
   const [detailJobId, setDetailJobId] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
+  const [statusOpen, setStatusOpen] = useState(false)
   const [eraserJobId, setEraserJobId] = useState<string | null>(null)
   const [meshJobId, setMeshJobId] = useState<string | null>(null)
   const [errorJobId, setErrorJobId] = useState<string | null>(null)
@@ -50,7 +52,7 @@ export default function IngestionAutomatedDashboard() {
   return (
     <AppShellLayout>
       <div className="flex h-full overflow-hidden">
-        <QueueSidebar queue={queue} onAddItem={() => setAddOpen(true)} />
+        <QueueSidebar queue={queue} onAddItem={() => setAddOpen(true)} onIngestionStatus={() => setStatusOpen(true)} />
 
         <div className="flex-1 overflow-y-auto p-3">
           {queue.loading && queue.jobs.length === 0 ? (
@@ -111,7 +113,10 @@ export default function IngestionAutomatedDashboard() {
         onOpenChange={setAddOpen}
         onSuccess={(jobId) => { queue.refetch(); setDetailJobId(jobId) }}
         onDuplicate={(jobId) => { queue.refetch(); highlight(jobId) }}
+        onProgress={queue.refetch}
       />
+
+      <IngestionStatusDialog open={statusOpen} onOpenChange={setStatusOpen} />
 
       <SegmentEraserDialog
         job={eraserJob}

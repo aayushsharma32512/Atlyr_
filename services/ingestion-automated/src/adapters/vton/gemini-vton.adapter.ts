@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { config } from '../../config/index';
+import { readUsage, type TokenUsage } from '../gemini';
 import { withRetry, errorHttpStatus, isTransientUpstreamError } from '../../utils/retry';
 import { createLogger } from '../../utils/logger';
 import type { TryonInput, TryonOutput, TryonProvider } from '../../domain/types';
@@ -133,7 +134,7 @@ function buildPrompt(
   }
 
   const garmentSpecBlock = [
-    "GARMENT SPEC (image_1 is the garment's visual truth — where any line below conflicts with image_1, follow image_1):",
+    "GARMENT SPEC (image_2 is the garment's visual truth — where any line below conflicts with image_2, follow image_2):",
     cleanedPhysics,
   ].filter(Boolean).join('\n\n');
 
@@ -144,7 +145,7 @@ function buildPrompt(
   return { system, prompt };
 }
 
-async function callGemini(modelName: string, systemInstruction: string, prompt: string, avatarB64: string, avatarMime: string, garmentB64: string, garmentMime: string): Promise<{ b64: string; mimeType: string }> {
+async function callGemini(modelName: string, systemInstruction: string, prompt: string, avatarB64: string, avatarMime: string, garmentB64: string, garmentMime: string): Promise<{ b64: string; mimeType: string; usage: TokenUsage | null }> {
   if (!config.GOOGLE_API_KEY) throw new Error('GOOGLE_API_KEY is not set');
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${config.GOOGLE_API_KEY}`;
@@ -160,7 +161,16 @@ async function callGemini(modelName: string, systemInstruction: string, prompt: 
           { text: prompt },
         ],
       }],
-      generationConfig: { responseModalities: ['IMAGE'] },
+      // Validated VTON recipe — matches the Google AI Studio settings that produce good
+      // try-ons: deterministic output (temperature 0) so the model faithfully dresses the
+      // base avatar instead of regurgitating the reference model, at portrait 9:16 / 2K.
+      // imageConfig field names verified against the v1beta gemini-3-pro-image (and the
+      // gemini-2.5-flash-image fallback) API — both accept this shape.
+      generationConfig: {
+        responseModalities: ['IMAGE'],
+        temperature: 0,
+        imageConfig: { aspectRatio: '9:16', imageSize: '2K' },
+      },
     }),
     signal: AbortSignal.timeout(120_000),
   });
@@ -168,6 +178,7 @@ async function callGemini(modelName: string, systemInstruction: string, prompt: 
   if (!resp.ok) throw new Error(`${modelName} ${resp.status}: ${await resp.text()}`);
   const data = (await resp.json()) as {
     candidates?: { content?: { parts?: { inlineData?: { mimeType: string; data: string } }[] }; finishReason?: string }[];
+    usageMetadata?: Record<string, number>;
   };
 
   const parts = data.candidates?.[0]?.content?.parts ?? [];
@@ -176,7 +187,7 @@ async function callGemini(modelName: string, systemInstruction: string, prompt: 
     const finishReason = data.candidates?.[0]?.finishReason ?? 'unknown';
     throw new Error(`${modelName}: no image in response (finishReason=${finishReason})`);
   }
-  return { b64: imagePart.data, mimeType: imagePart.mimeType };
+  return { b64: imagePart.data, mimeType: imagePart.mimeType, usage: readUsage(data.usageMetadata) };
 }
 
 async function fetchImageAsBase64(url: string): Promise<{ b64: string; mimeType: string }> {
@@ -211,7 +222,7 @@ export const geminiVtonProvider: TryonProvider = {
     // after per-model retries are exhausted we move down the fallback chain. A non-transient
     // error (e.g. 400 bad request) fails fast without trying the rest.
     const candidates = imageModelCandidates();
-    let image: { b64: string; mimeType: string } | undefined;
+    let image: { b64: string; mimeType: string; usage: TokenUsage | null } | undefined;
     let usedModel = candidates[0];
     let lastErr: unknown;
 
@@ -243,6 +254,7 @@ export const geminiVtonProvider: TryonProvider = {
       mimeType: image.mimeType,
       inferenceMs: Date.now() - start,
       modelUsed: usedModel,
+      usage: image.usage,
     };
   },
 };

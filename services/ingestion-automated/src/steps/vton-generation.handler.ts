@@ -49,6 +49,7 @@ export class VtonGenerationHandler implements StepHandler {
         public_url: publicUrl,
         model_used: result.modelUsed,
         inference_ms: result.inferenceMs,
+        usage: result.usage ?? null,
       },
     });
 
