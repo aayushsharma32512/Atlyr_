@@ -24,3 +24,4 @@ export * from "./outfit-inspiration-presets";
 export * from "./outfit-inspiration-tile";
 export * from "./product-results-grid";
 export * from "./moodboard-picker-drawer";
+export * from "./wordmark-lockup";

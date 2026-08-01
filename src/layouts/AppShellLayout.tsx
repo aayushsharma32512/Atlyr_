@@ -3,6 +3,11 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom"
 
 import { BottomNavBar } from "@/design-system/primitives"
 import { STUDIO_LAST_PATH_STORAGE_KEY } from "@/features/studio/constants"
+import {
+  FIRST_RUN_ENTRY_PATH,
+  isFirstRunPath,
+  needsFirstRun,
+} from "@/features/profile/constants/firstRun"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { useAuth } from "@/contexts/AuthContext"
 import { useGuest } from "@/contexts/GuestContext"
@@ -27,12 +32,12 @@ export function AppShellLayout({ children }: AppShellLayoutProps) {
       return
     }
 
-    if (location.pathname.startsWith("/profile/user-details")) {
+    if (isFirstRunPath(location.pathname)) {
       return
     }
 
-    if (!profile || profile.onboarding_complete === false) {
-      navigate("/profile/user-details", { replace: true })
+    if (needsFirstRun(profile)) {
+      navigate(FIRST_RUN_ENTRY_PATH, { replace: true })
     }
   }, [guestState.isGuest, isLoading, location.pathname, navigate, profile, user])
 

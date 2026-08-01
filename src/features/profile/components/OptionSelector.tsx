@@ -24,7 +24,7 @@ export function OptionSelector({
   className,
 }: OptionSelectorProps) {
   return (
-    <div className={cn("space-y-3", className) + "w-full"}>
+    <div className={cn("w-full space-y-3", className)}>
       <h4 className="text-sm font-medium text-foreground">{title}</h4>
       <div 
         className="overflow-x-auto scrollbar-hide w-full flex-1"

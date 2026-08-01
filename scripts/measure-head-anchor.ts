@@ -18,14 +18,15 @@ import { join } from 'node:path'
 const CANVAS_W = 1800
 const CANVAS_H = 3072
 
-// Same figure test probeMannequinBounds uses. The brightness half is what carries male.png, which
-// has a WHITE background rather than a transparent one — drop it and the male figure reads as
-// full-bleed and every measurement collapses to the image bounds.
+// Same figure test probeMannequinBounds uses. Both mannequins are transparent-backed now, so the
+// alpha half carries this alone; the brightness half is kept as free insurance against an asset that
+// ships on white again.
 const ALPHA_CUTOFF = 12
 const BRIGHT_CUTOFF = 245
 
 // Measured over a band wide enough to contain the shoulders (they are the landmark that bounds the
-// head search) but not the image edges, where male.png carries faint compression artifacts.
+// head search) but not the image edges, where male.png carried faint compression artifacts before the
+// background was cut away.
 const BAND_LO = 0.15
 const BAND_HI = 0.85
 // Per row we take the LONGEST CONTIGUOUS RUN, not the pixel count. The head, neck and torso are each

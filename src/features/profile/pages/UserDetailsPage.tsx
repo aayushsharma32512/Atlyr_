@@ -2,18 +2,39 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { ScreenHeader } from "@/design-system/primitives"
-import { BasicInformationCard } from "@/features/profile/components/BasicInformationCard"
+import { ScreenHeader, WordmarkLockup } from "@/design-system/primitives"
 import { MannequinHeadAvatar } from "@/features/profile/components/MannequinHeadAvatar"
-import type { DropdownOption } from "@/features/profile/components/DropdownSelector"
-import { ExpandableDetailCard } from "@/features/profile/components/ExpandableDetailCard"
-import type { Option } from "@/features/profile/components/OptionSelector"
+import { DropdownSelector, type DropdownOption } from "@/features/profile/components/DropdownSelector"
+import { PickRow, type PickTile } from "@/features/profile/components/PickRow"
+import {
+  GENDERS,
+  HEIGHT_BANDS,
+  SIZES,
+  bandForHeight,
+} from "@/features/profile/constants/figureVocabularies"
+import { TASTE_IN_FIRST_RUN } from "@/features/profile/constants/firstRun"
 import { useProfileUpdateMutation } from "@/features/profile/hooks/useProfileQuery"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { useAvatarHairStyles } from "@/features/profile/hooks/useAvatarHairStyles"
+import {
+  PLACEMENT_CANVAS_WIDTH,
+  headCropRect,
+} from "@/features/studio/constants/mannequinAnchors"
 import { AppShellLayout } from "@/layouts/AppShellLayout"
 import { SKIN_TONE_STEPS, skinToneChipColor } from "@/shared/skin/melanin"
+
+/**
+ * Canvas 6c2 — "the figure, roughly right". Second half of first run, and the
+ * profile editor for the same fields once onboarding is done. Both modes share
+ * the row grammar; only the chrome differs (wordmark + step eyebrow + skip on
+ * first run, back button + Save on edit).
+ *
+ * NOT PERSISTED THIS PASS — body type and size are rendered but have nowhere to
+ * go: `profiles` has a `selected_silhouette` column that nothing writes, and no
+ * size column at all. Wiring either means adding a key to the mutation below,
+ * which was deliberately left out of a UI-only pass. The rows say so on their
+ * face rather than pretending. See TODO(wave-3) at the state declarations.
+ */
 
 const HAIR_COLOR_SWATCHES = [
   "#000000",
@@ -36,20 +57,26 @@ function buildHeightOptions(): DropdownOption[] {
       const totalInches = feet * 12 + inches
       const cm = Math.round(totalInches * 2.54)
       const label = `${feet}'${inches}" (${cm} cm)`
-      options.push({
-        id: `${cm}`,
-        label,
-        value: label,
-      })
+      options.push({ id: `${cm}`, label, value: label })
     }
   }
   return options
 }
 
-export function UserDetailsPage() {
+export interface UserDetailsPageProps {
+  /**
+   * Render the first-run chrome regardless of profile state. Only for the
+   * /design-system preview route — an onboarded account would otherwise always
+   * see the edit chrome and never the screen as designed.
+   */
+  forceFirstRunChrome?: boolean
+}
+
+export function UserDetailsPage({ forceFirstRunChrome = false }: UserDetailsPageProps = {}) {
   const navigate = useNavigate()
   const { profile, isLoading } = useProfileContext()
   const updateProfileMutation = useProfileUpdateMutation()
+
   const [isSaving, setIsSaving] = useState(false)
   const [name, setName] = useState("")
   const [age, setAge] = useState("")
@@ -58,11 +85,19 @@ export function UserDetailsPage() {
   const [selectedHairStyleId, setSelectedHairStyleId] = useState<string | null>(null)
   const [selectedHairColorHex, setSelectedHairColorHex] = useState<string | null>(null)
   const [heightCm, setHeightCm] = useState<number | null>(null)
-  const [skinToneOptions, setSkinToneOptions] = useState<Option[]>([])
+  const [showExactHeight, setShowExactHeight] = useState(false)
+  // TODO(wave-3): size has no home yet — it needs a column, and the handoff
+  // scopes it to the PDP size hint, never a catalog filter. Body type is pulled
+  // from the screen for now; its vocabulary is still in figureVocabularies.
+  const [selectedSize, setSelectedSize] = useState<string | null>(null)
+
   const [hasInitialized, setHasInitialized] = useState(false)
   const previousGenderRef = useRef<"male" | "female" | null>(null)
   const resolvedGender = gender === "male" || gender === "female" ? gender : null
   const hairStylesQuery = useAvatarHairStyles(resolvedGender)
+
+  const isFirstRun = forceFirstRunChrome || (!isLoading && !profile?.onboarding_complete)
+
   const resolvedHairStyleForPreview = useMemo(() => {
     if (!hairStylesQuery.data.length) {
       return null
@@ -71,7 +106,12 @@ export function UserDetailsPage() {
       return hairStylesQuery.byId.get(selectedHairStyleId) ?? null
     }
     return hairStylesQuery.defaultStyle
-  }, [hairStylesQuery.byId, hairStylesQuery.data.length, hairStylesQuery.defaultStyle, selectedHairStyleId])
+  }, [
+    hairStylesQuery.byId,
+    hairStylesQuery.data.length,
+    hairStylesQuery.defaultStyle,
+    selectedHairStyleId,
+  ])
 
   useEffect(() => {
     if (isLoading || hasInitialized) {
@@ -83,7 +123,7 @@ export function UserDetailsPage() {
       setName(initialName ?? "")
       setAge(profile.age ? profile.age.toString() : "")
       setGender(
-        profile.gender === "male" || profile.gender === "female" ? profile.gender : ""
+        profile.gender === "male" || profile.gender === "female" ? profile.gender : "",
       )
       setSelectedSkinTone(profile.selected_skin_tone ?? null)
       setSelectedHairStyleId(profile.hair_style_id ?? null)
@@ -97,7 +137,6 @@ export function UserDetailsPage() {
   useEffect(() => {
     if (!resolvedGender) {
       previousGenderRef.current = null
-      setSkinToneOptions([])
       return
     }
 
@@ -106,19 +145,71 @@ export function UserDetailsPage() {
       setSelectedHairStyleId(null)
     }
     previousGenderRef.current = resolvedGender
-
-    // Each chip shows the MANNEQUIN'S OWN skin retoned, not the raw reference colour — the reference
-    // chips are flat patches measured under controlled light, so showing them directly means the
-    // swatch you pick looks nothing like the body you get. Pure arithmetic, so no image decoding.
-    const options = SKIN_TONE_STEPS.map((step) => {
-      return {
-        id: step.hex,
-        label: step.label,
-        color: skinToneChipColor(resolvedGender, step.tone),
-      }
-    })
-    setSkinToneOptions(options)
   }, [resolvedGender])
+
+  /**
+   * Swatches show the MANNEQUIN'S OWN skin retoned, not the raw reference
+   * colour — the reference chips are flat patches measured under controlled
+   * light, so showing them directly means the swatch you pick looks nothing
+   * like the body you get. Pure arithmetic, no image decoding.
+   *
+   * The stored id stays `step.hex` because that is what the renderer's
+   * `projectHexToTone()` is calibrated against. Canvas 6c2 draws a different
+   * six-step ramp; those values are illustrative and would feed unvalidated
+   * hexes into the renderer, so this keeps the canvas's *grammar* (numbered
+   * swatch cards) with the codebase's *values*.
+   */
+  const skinToneOptions = useMemo<PickTile[]>(() => {
+    if (!resolvedGender) return []
+    return SKIN_TONE_STEPS.map((step, index) => ({
+      id: step.hex,
+      label: String(index + 1).padStart(2, "0"),
+      description: step.label,
+      color: skinToneChipColor(resolvedGender, step.tone),
+    }))
+  }, [resolvedGender])
+
+  /**
+   * Thumbnails come from the baked photoreal cutouts in /public/hair-baked,
+   * keyed by styleKey — NOT from `assetUrl`. That asset is a compositing layer
+   * for the mannequin: a flat black silhouette meant to be recoloured and
+   * positioned on a head, which as a standalone thumbnail is an unreadable blob.
+   * A style with no baked cutout falls back to the labelled placeholder.
+   */
+  const hairOptions = useMemo<PickTile[]>(() => {
+    if (!resolvedGender) return []
+    // Baked cutouts are full mannequin canvases, so crop to the head using the
+    // renderer's own rect rather than eyeballing one.
+    const rect = headCropRect(resolvedGender)
+    const crop = {
+      x: rect.x,
+      y: rect.y,
+      w: rect.w,
+      naturalWidth: PLACEMENT_CANVAS_WIDTH,
+    }
+    return (hairStylesQuery.data ?? []).map((style) => ({
+      id: style.id,
+      label: style.styleKey,
+      imageUrl: `/hair-baked/${resolvedGender}/${style.styleKey}.png`,
+      imageCrop: crop,
+    }))
+  }, [hairStylesQuery.data, resolvedGender])
+
+  const hairColorOptions = useMemo<PickTile[]>(
+    () =>
+      HAIR_COLOR_SWATCHES.map((hex) => ({
+        id: hex,
+        label: "",
+        description: `Hair colour ${hex}`,
+        color: hex,
+      })),
+    [],
+  )
+
+  const heightOptions = useMemo(() => buildHeightOptions(), [])
+  // Derived, never stored: an existing exact height highlights its band without
+  // being rewritten to the band's representative value.
+  const selectedHeightBand = bandForHeight(heightCm)
 
   const trimmedName = name.trim()
   const parsedAge = Number.parseInt(age, 10)
@@ -128,24 +219,21 @@ export function UserDetailsPage() {
     parsedAge > 0 &&
     (gender === "male" || gender === "female")
 
-  const handleSave = async () => {
-    if (!isFormValid) {
-      return
-    }
+  const persistableFigure = () => ({
+    ...(trimmedName ? { name: trimmedName } : {}),
+    ...(Number.isFinite(parsedAge) && parsedAge > 0 ? { age: parsedAge } : {}),
+    ...(gender === "male" || gender === "female" ? { gender } : {}),
+    ...(selectedSkinTone ? { selected_skin_tone: selectedSkinTone } : {}),
+    hair_style_id: selectedHairStyleId,
+    hair_color_hex: selectedHairColorHex,
+    ...(typeof heightCm === "number" ? { height_cm: heightCm } : {}),
+  })
 
+  const commit = async (updates: Record<string, unknown>, destination: string) => {
     setIsSaving(true)
     try {
-      await updateProfileMutation.mutateAsync({
-        name: trimmedName,
-        age: parsedAge,
-        gender,
-        onboarding_complete: true,
-        ...(selectedSkinTone ? { selected_skin_tone: selectedSkinTone } : {}),
-        hair_style_id: selectedHairStyleId,
-        hair_color_hex: selectedHairColorHex,
-        ...(typeof heightCm === "number" ? { height_cm: heightCm } : {}),
-      })
-      navigate("/home")
+      await updateProfileMutation.mutateAsync(updates)
+      navigate(destination)
     } catch (error) {
       console.error("Failed to save user details", error)
     } finally {
@@ -153,169 +241,240 @@ export function UserDetailsPage() {
     }
   }
 
-  const handleBack = () => {
-    navigate("/profile")
+  // First run never blocks: every row is optional, and so is the whole step.
+  const handleContinue = () =>
+    commit({ ...persistableFigure(), onboarding_complete: true }, "/home")
+
+  // "Use a neutral figure" — take nothing, but still clear the gate so the
+  // AppShellLayout redirect doesn't bounce them straight back here.
+  const handleSkip = () => commit({ onboarding_complete: true }, "/home")
+
+  const handleSave = () => {
+    if (!isFormValid) return
+    commit({ ...persistableFigure(), onboarding_complete: true }, "/profile")
   }
 
-  const handleSelectionChange = (sectionTitle: string, optionId: string) => {
-    if (sectionTitle === "Skin Tone") {
-      setSelectedSkinTone(optionId)
-    }
-    if (sectionTitle === "Hair Type") {
-      setSelectedHairStyleId(optionId)
-    }
-    if (sectionTitle === "Hair Color") {
-      setSelectedHairColorHex(optionId)
-    }
-    if (sectionTitle === "Height") {
-      const parsedHeight = Number.parseInt(optionId, 10)
-      setHeightCm(Number.isFinite(parsedHeight) ? parsedHeight : null)
-    }
-  }
+  const single = (value: string | null, next: string) => (value === next ? null : next)
 
-  const heightOptions = useMemo(() => buildHeightOptions(), [])
+  const screen = (
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+        {isFirstRun ? (
+          <header className="shrink-0 pt-6">
+            <WordmarkLockup size="firstRun" />
+            <div className="px-[26px] pt-4">
+              <p className="flex items-center gap-2 text-[8.5px] font-semibold uppercase tracking-[0.22em] text-primary">
+                {TASTE_IN_FIRST_RUN ? "First run · step 2 of 2" : "First run · 30 seconds"}
+                {TASTE_IN_FIRST_RUN && (
+                  <span className="flex gap-[3px]" aria-hidden="true">
+                    <span className="h-0.5 w-3 bg-primary" />
+                    <span className="h-0.5 w-3 bg-primary" />
+                  </span>
+                )}
+              </p>
+              <h1 className="mb-1 mt-[7px] font-display text-[26px] font-medium leading-[1.08] text-foreground">
+                The figure,
+                <br />
+                roughly right.
+              </h1>
+              <p className="text-[11.5px] leading-[1.5] text-muted-foreground">
+                So looks land on someone shaped like you. Photos come later, in the Studio.
+              </p>
+            </div>
+          </header>
+        ) : (
+          <ScreenHeader
+            title="Your figure"
+            onAction={() => navigate("/profile")}
+            className="shrink-0"
+          />
+        )}
 
-  const facialFeaturesSections = useMemo(
-    () => [
-      {
-        title: "Skin Tone",
-        options: skinToneOptions,
-      },
-      {
-        title: "Hair Type",
-        options: (hairStylesQuery.data ?? []).map((style) => ({
-          id: style.id,
-          label: style.styleKey,
-          imageUrl: style.assetUrl,
-        })),
-      },
-      {
-        title: "Hair Color",
-        options: HAIR_COLOR_SWATCHES.map((hex) => ({
-          id: hex,
-          label: hex,
-          color: hex,
-        })),
-      },
-    ],
-    [hairStylesQuery.data, skinToneOptions],
-  )
+        {/* Deliberately not Radix ScrollArea: its viewport wraps children in a
+            display:table element, which sizes to content. Any row wider than the
+            frame then widened the whole page instead of scrolling inside its
+            rail. A plain block scroller keeps normal width constraints. */}
+        <div className="min-h-0 w-full flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide">
+          <div className="pb-6 pt-4">
+            <section className="px-6 pb-[13px]">
+              <div className="flex items-center gap-2.5">
+                <span className="text-[8px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  You
+                </span>
+                <span className="h-px flex-1 bg-hairline" aria-hidden="true" />
+              </div>
+              <div className="mt-2 flex gap-2">
+                <label className="flex-1">
+                  <span className="sr-only">Name</span>
+                  <input
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    placeholder="your name"
+                    className="w-full rounded-[5px] border border-hairline bg-card px-3 py-2 text-[11px] text-foreground placeholder:text-taupe focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </label>
+                <label className="w-20">
+                  <span className="sr-only">Age</span>
+                  <input
+                    value={age}
+                    onChange={(event) => setAge(event.target.value.replace(/\D/g, ""))}
+                    inputMode="numeric"
+                    placeholder="age"
+                    className="w-full rounded-[5px] border border-hairline bg-card px-3 py-2 text-[11px] text-foreground placeholder:text-taupe focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </label>
+              </div>
+            </section>
 
-  const bodyDetailsSections = useMemo(
-    () => [
-      {
-        title: "Height",
-        type: "dropdown" as const,
-        options: heightOptions,
-      },
-      /*
-      {
-        title: "Build Type",
-        type: "image" as const,
-        options: [
-          { id: "build-1", label: "Skinny" },
-          { id: "build-2", label: "Slim" },
-          { id: "build-3", label: "Average" },
-          { id: "build-4", label: "Athletic" },
-          { id: "build-5", label: "Muscular" },
-        ],
-      },
-      */
-    ],
-    [heightOptions],
-  )
-
-  const facialSelections = useMemo<Record<string, string>>(
-    () => ({
-      ...(selectedSkinTone ? { "Skin Tone": selectedSkinTone } : {}),
-      ...(selectedHairStyleId ? { "Hair Type": selectedHairStyleId } : {}),
-      ...(selectedHairColorHex ? { "Hair Color": selectedHairColorHex } : {}),
-    }),
-    [selectedHairColorHex, selectedHairStyleId, selectedSkinTone],
-  )
-
-  const bodySelections = useMemo<Record<string, string>>(
-    () => (typeof heightCm === "number" ? { Height: heightCm.toString() } : {}),
-    [heightCm],
-  )
-
-  return (
-    <AppShellLayout>
-      <div className="relative flex flex-1 flex-col min-h-0 bg-background">
-        <ScreenHeader
-          onAction={handleBack}
-          className="absolute left-4 top-4 z-20 px-0 pt-0 pb-0"
-        />
-        {/* Scrollable Content */}
-        <ScrollArea className="flex-1 min-h-0 w-full">
-          <div className="px-4 pt-6 pb-4 space-y-4">
-            {/* Basic Information Card */}
-            <BasicInformationCard
-              name={name}
-              age={age}
-              gender={gender}
-              skinTone={selectedSkinTone}
-              hairStyleId={selectedHairStyleId}
-              hairColorHex={selectedHairColorHex}
-              onNameChange={setName}
-              onAgeChange={setAge}
-              onGenderChange={setGender}
+            <PickRow
+              label="Figure"
+              hint="pick one"
+              variant="pill"
+              options={GENDERS}
+              selectedIds={gender ? [gender] : []}
+              onToggle={(id) => setGender(gender === id ? "" : id)}
             />
 
-            {/* Facial Features Card */}
-            <ExpandableDetailCard
-              title="Facial Features"
-              icon={
+            {resolvedGender && (
+              <>
+                <PickRow
+                  label="Skin tone"
+                  hint="pick one"
+                  variant="swatch"
+                  options={skinToneOptions}
+                  selectedIds={selectedSkinTone ? [selectedSkinTone] : []}
+                  onToggle={(id) => setSelectedSkinTone(single(selectedSkinTone, id))}
+                />
+
+                <PickRow
+                  label="Hair"
+                  searchable
+                  options={hairOptions}
+                  selectedIds={selectedHairStyleId ? [selectedHairStyleId] : []}
+                  onToggle={(id) => setSelectedHairStyleId(single(selectedHairStyleId, id))}
+                />
+
+                <PickRow
+                  label="Hair colour"
+                  hint="pick one"
+                  variant="swatch"
+                  options={hairColorOptions}
+                  selectedIds={selectedHairColorHex ? [selectedHairColorHex] : []}
+                  onToggle={(id) => setSelectedHairColorHex(single(selectedHairColorHex, id))}
+                />
+              </>
+            )}
+
+            <PickRow
+              label="Height"
+              hint="pick one"
+              variant="pill"
+              options={HEIGHT_BANDS}
+              selectedIds={selectedHeightBand ? [selectedHeightBand] : []}
+              onToggle={(id) => {
+                const band = HEIGHT_BANDS.find((entry) => entry.id === id)
+                if (!band) return
+                setHeightCm(selectedHeightBand === id ? null : band.cm)
+              }}
+            />
+
+            <div className="-mt-2 px-6 pb-[13px]">
+              {showExactHeight ? (
+                <DropdownSelector
+                  title="Exact height"
+                  options={heightOptions}
+                  selectedId={typeof heightCm === "number" ? heightCm.toString() : undefined}
+                  placeholder="Exact height"
+                  onSelect={(id) => {
+                    const parsed = Number.parseInt(id, 10)
+                    setHeightCm(Number.isFinite(parsed) ? parsed : null)
+                  }}
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowExactHeight(true)}
+                  className="text-[9px] font-medium text-muted-foreground underline underline-offset-2"
+                >
+                  {typeof heightCm === "number"
+                    ? `set exactly — currently ${heightCm} cm`
+                    : "set exactly"}
+                </button>
+              )}
+            </div>
+
+            <PickRow
+              label="Size you usually wear"
+              hint="not saved yet"
+              variant="pill"
+              options={SIZES}
+              selectedIds={selectedSize ? [selectedSize] : []}
+              onToggle={(id) => setSelectedSize(single(selectedSize, id))}
+            />
+
+            {resolvedGender && (
+              <div className="flex justify-center px-6 pt-2">
                 <MannequinHeadAvatar
                   size={64}
                   gender={resolvedGender}
                   skinToneHex={selectedSkinTone}
                   hairStyle={
-                    resolvedHairStyleForPreview && resolvedGender
-                      ? { styleKey: resolvedHairStyleForPreview.styleKey, gender: resolvedGender }
+                    resolvedHairStyleForPreview
+                      ? {
+                          styleKey: resolvedHairStyleForPreview.styleKey,
+                          gender: resolvedGender,
+                        }
                       : null
                   }
                   hairColorHex={selectedHairColorHex}
                 />
-              }
-              items={[
-                { label: "Skin Tone" },
-                { label: "Hair Type" },
-                { label: "Hair Color" },
-              ]}
-              selectionSections={facialFeaturesSections}
-              onSelectionChange={handleSelectionChange}
-              selectedValues={facialSelections}
-            />
-
-            {/* Body Details Card */}
-            <ExpandableDetailCard
-              title="Body Details"
-              items={[
-                { label: "Height" },
-                /*
-                { label: "Build Type" },
-                */
-              ]}
-              selectionSections={bodyDetailsSections}
-              onSelectionChange={handleSelectionChange}
-              selectedValues={bodySelections}
-            />
+              </div>
+            )}
           </div>
-        </ScrollArea>
-
-        {/* Save Button - Fixed at bottom */}
-        <div className="px-4 py-4 shrink-0 border-t border-border bg-background">
-          <Button
-            onClick={handleSave}
-            disabled={isSaving || !isFormValid}
-            className="w-full bg-foreground text-background hover:bg-foreground/90 h-11 rounded-lg"
-          >
-            {isSaving ? "Saving..." : "Save Details"}
-          </Button>
         </div>
-      </div>
-    </AppShellLayout>
+
+        <footer className="shrink-0 border-t border-hairline bg-background px-[22px] pb-6 pt-3.5">
+          {isFirstRun ? (
+            <>
+              <p className="mb-2.5 text-center text-[9.5px] font-medium text-muted-foreground">
+                Nothing here is a measurement — it picks a starting figure. Edit in Profile → Likeness.
+              </p>
+              <Button
+                onClick={handleContinue}
+                disabled={isSaving}
+                className="h-auto w-full rounded-[3px] py-[15px] text-[13px] font-bold"
+              >
+                {isSaving ? "Saving…" : "Start exploring →"}
+              </Button>
+              <button
+                type="button"
+                onClick={handleSkip}
+                disabled={isSaving}
+                className="mt-3 w-full text-center text-[11px] font-medium text-muted-foreground"
+              >
+                Skip — use a neutral figure
+              </button>
+            </>
+          ) : (
+            <Button
+              onClick={handleSave}
+              disabled={isSaving || !isFormValid}
+              className="h-11 w-full rounded-[5px]"
+            >
+              {isSaving ? "Saving…" : "Save details"}
+            </Button>
+          )}
+        </footer>
+    </div>
+  )
+
+  // First run owns the whole viewport — no bottom nav. The canvas draws none,
+  // and a nav here is a trapdoor: tapping it leaves onboarding only for the
+  // AppShellLayout gate to bounce you straight back. In edit mode the page is a
+  // normal profile screen and keeps the shell.
+  return isFirstRun ? (
+    <div className="flex h-[100dvh] flex-col bg-background">{screen}</div>
+  ) : (
+    <AppShellLayout>{screen}</AppShellLayout>
   )
 }
 

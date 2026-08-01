@@ -26,6 +26,8 @@ export default {
 				'serif': ['var(--font-serif)'],
 				'mono': ['var(--font-mono)'],
 				'display': ['var(--font-serif)'],
+				// Brand surfaces only (कलागृह wordmark, taglines). Never UI copy.
+				'deva': ['var(--font-deva)'],
 			},
 			fontSize: {
 				xxs: ["0.5rem", { lineHeight: "0.75rem" }],
@@ -81,7 +83,39 @@ export default {
 					3: 'hsl(var(--chart-3))',
 					4: 'hsl(var(--chart-4))',
 					5: 'hsl(var(--chart-5))'
-				}
+				},
+				// ── Tantu brand ramp. These sit outside the shadcn semantics on
+				// purpose: `gold` in particular must never become --accent, or
+				// every dropdown hover in the app turns into a provenance cue.
+				ink: {
+					DEFAULT: 'hsl(var(--ink))',
+					deep: 'hsl(var(--ink-deep))',
+					deepest: 'hsl(var(--ink-deepest))',
+					soft: 'hsl(var(--ink-soft))',
+					line: 'hsl(var(--ink-line))',
+					body: 'hsl(var(--body-ink))'
+				},
+				'on-ink': {
+					1: 'hsl(var(--on-ink-1))',
+					2: 'hsl(var(--on-ink-2))',
+					3: 'hsl(var(--on-ink-3))'
+				},
+				terracotta: {
+					DEFAULT: 'hsl(var(--terracotta))',
+					tint: 'hsl(var(--terracotta-tint))'
+				},
+				gold: {
+					DEFAULT: 'hsl(var(--gold))',
+					deep: 'hsl(var(--gold-deep))'
+				},
+				taupe: 'hsl(var(--taupe))',
+				hairline: {
+					DEFAULT: 'hsl(var(--hairline))',
+					2: 'hsl(var(--hairline-2))',
+					3: 'hsl(var(--hairline-3))',
+					4: 'hsl(var(--hairline-4))'
+				},
+				warp: 'hsl(var(--warp))'
 			},
 			borderRadius: {
 				xl: 'calc(var(--radius) + 4px)',

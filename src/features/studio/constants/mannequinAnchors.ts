@@ -8,6 +8,14 @@
  * flat SVG hair silhouettes onto the head, which is no longer how hair works — the baked cutouts
  * carry their own position — so the scaling maths that went with that has been removed.)
  */
+/**
+ * The placement composition space. Every mannequin and every baked hair cutout
+ * is authored at these dimensions, so the anchors below are directly comparable
+ * across assets.
+ */
+export const PLACEMENT_CANVAS_WIDTH = 1800
+export const PLACEMENT_CANVAS_HEIGHT = 3072
+
 export type HeadAnchor = {
   /** Figure centre-line x. The mannequins are NOT centred on CANVAS_W/2. */
   cx: number
@@ -21,7 +29,10 @@ export type HeadAnchor = {
 
 export const PLACEMENT_HEAD_ANCHOR: Record<"male" | "female", HeadAnchor> = {
   female: { cx: 896, top: 146, chin: 508, width: 259 },
-  male: { cx: 900, top: 164, chin: 548, width: 278 },
+  // chin moved 548 -> 553 when male.png's background was cut: unmatting the silhouette band darkens
+  // those edge pixels, so the neck reads a hair wider and the pinch lands 5px lower. Re-measured, not
+  // hand-tuned — see scripts/measure-head-anchor.ts.
+  male: { cx: 900, top: 164, chin: 553, width: 278 },
 }
 
 /**

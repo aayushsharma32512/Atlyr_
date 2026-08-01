@@ -40,8 +40,9 @@ const cache = new Map<string, HTMLCanvasElement>()
 /**
  * Body vs background.
  *
- * `female.png` is transparent-backed but `male.png` is WHITE-backed, so the brightness test is what
- * carries the male case and cannot be dropped in favour of an alpha test alone.
+ * Both mannequins are transparent-backed now — male.png was cut by scripts/cut-mannequin-background.ts
+ * — so the alpha test carries this on its own. The brightness half is kept as free insurance against a
+ * future asset that ships on white again; it costs nothing and excludes nothing the body needs.
  */
 const isSkinPixel = (d: Uint8ClampedArray, i: number) =>
   d[i + 3] >= 32 && luma(d[i], d[i + 1], d[i + 2]) < 245

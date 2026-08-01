@@ -54,7 +54,11 @@ async function probeGarmentBounds(url: string, texW: number, texH: number): Prom
   }
 }
 
-/** Density-based figure bounds of the mannequin frame (same probe as the editor). */
+/**
+ * Density-based figure bounds of the mannequin frame (same probe as the editor). Both mannequins are
+ * transparent-backed now, so alpha alone would do; the near-white test is kept as free insurance
+ * against an asset that ships on white again.
+ */
 async function probeMannequinBounds(url: string, texW: number, texH: number): Promise<Bounds> {
   const fallback: Bounds = { x: 0, y: 0, w: texW, h: texH }
   try {
