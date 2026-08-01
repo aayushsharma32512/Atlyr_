@@ -1,308 +1,190 @@
-import { useMemo, useState } from "react"
+import { useState } from "react"
+import { useMutation, useQuery } from "@tanstack/react-query"
+import { Check, X, RefreshCw, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { AppShellLayout } from "@/layouts/AppShellLayout"
-import { useAuth } from "@/contexts/AuthContext"
 import { useToast } from "@/hooks/use-toast"
-import { useIssueWaitlistInvites } from "@/features/admin/hooks/useIssueWaitlistInvites"
-import type { InviteIssueItem, InviteIssueMode } from "@/services/admin/inviteAdminService"
+import { cn } from "@/lib/utils"
+import {
+  listWaitlist,
+  setWaitlistApproval,
+  type WaitlistEntry,
+  type WaitlistStatus,
+} from "@/services/admin/inviteAdminService"
 
-const DEFAULT_COUNT = "50"
-const DEFAULT_EXPIRY_DAYS = "7"
-
-function parseEmails(raw: string) {
-  return raw
-    .split(/[\n,]+/)
-    .map((entry) => entry.trim().toLowerCase())
-    .filter(Boolean)
+const STATUS_BADGE: Record<WaitlistStatus, { label: string; cls: string }> = {
+  pending:   { label: "Pending",   cls: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900" },
+  invited:   { label: "Approved",  cls: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900" },
+  converted: { label: "Joined",    cls: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900" },
+  rejected:  { label: "Rejected",  cls: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900" },
 }
 
-function buildInviteLink(code: string) {
-  const base = typeof window !== "undefined" ? window.location.origin : ""
-  return `${base}/auth/signup?invite=${encodeURIComponent(code)}&next=%2Fapp`
-}
-
-function formatStatus(status: string) {
-  return status.replace(/_/g, " ")
-}
-
-type StatusVariant = "default" | "secondary" | "destructive" | "outline"
-
-function statusVariant(status: string): StatusVariant {
-  if (status === "invited") return "default"
-  if (status === "already_invited") return "secondary"
-  if (status === "not_pending" || status === "not_found") return "outline"
-  if (status.includes("failed") || status.includes("error")) return "destructive"
-  return "secondary"
+function timeAgo(iso: string) {
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
+  if (s < 60) return "just now"
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  return `${Math.floor(s / 86400)}d ago`
 }
 
 export default function AdminInvitesPage() {
-  const { loading } = useAuth()
   const { toast } = useToast()
-  const issueInvitesMutation = useIssueWaitlistInvites()
+  const [busyEmail, setBusyEmail] = useState<string | null>(null)
+  const [quickEmail, setQuickEmail] = useState("")
+  const [tab, setTab] = useState<"pending" | "approved">("pending")
 
-  const [mode, setMode] = useState<InviteIssueMode>("count")
-  const [count, setCount] = useState(DEFAULT_COUNT)
-  const [emailsInput, setEmailsInput] = useState("")
-  const [expiresInDays, setExpiresInDays] = useState(DEFAULT_EXPIRY_DAYS)
-  const [results, setResults] = useState<InviteIssueItem[]>([])
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const waitlistQuery = useQuery({
+    queryKey: ["admin-waitlist"],
+    queryFn: () => listWaitlist(300),
+    staleTime: 30_000,
+  })
 
-  const summary = useMemo(() => {
-    const counts = results.reduce<Record<string, number>>((acc, item) => {
-      acc[item.status] = (acc[item.status] ?? 0) + 1
-      return acc
-    }, {})
-    return counts
-  }, [results])
+  const actionMutation = useMutation({
+    mutationFn: ({ email, action }: { email: string; action: "approve" | "reject" }) => setWaitlistApproval(email, action),
+    onMutate: ({ email }) => setBusyEmail(email),
+    onSuccess: (status, { email }) => {
+      toast({ title: status === "invited" ? `Approved ${email}` : `Rejected ${email}` })
+      waitlistQuery.refetch()
+    },
+    onError: (e) => toast({ title: "Action failed", description: e instanceof Error ? e.message : undefined, variant: "destructive" }),
+    onSettled: () => setBusyEmail(null),
+  })
 
-  const handleIssueInvites = async () => {
-    setErrorMessage(null)
-    const expiry = Number(expiresInDays)
+  const act = (email: string, action: "approve" | "reject") => actionMutation.mutate({ email, action })
 
-    if (!Number.isFinite(expiry) || expiry <= 0) {
-      setErrorMessage("Expiry must be a positive number of days.")
-      return
-    }
-
-    if (mode === "count") {
-      const parsedCount = Number(count)
-      if (!Number.isFinite(parsedCount) || parsedCount <= 0) {
-        setErrorMessage("Enter a valid count.")
-        return
-      }
-
-      try {
-        const response = await issueInvitesMutation.mutateAsync({
-          mode,
-          count: parsedCount,
-          expiresInDays: expiry,
-        })
-        setResults(response.issued ?? [])
-        toast({ title: "Invites issued", description: `Processed ${response.issued.length} waitlist entries.` })
-      } catch (error) {
-        const status = typeof (error as { status?: number }).status === "number" ? (error as { status?: number }).status : null
-        if (status === 401 || status === 403) {
-          setErrorMessage("Not authorized to issue invites.")
-        } else {
-          const message = error instanceof Error ? error.message : "Unable to issue invites"
-          setErrorMessage(message)
-        }
-      }
-      return
-    }
-
-    const parsedEmails = parseEmails(emailsInput)
-    if (parsedEmails.length === 0) {
-      setErrorMessage("Enter at least one email.")
-      return
-    }
-
-    try {
-      const response = await issueInvitesMutation.mutateAsync({
-        mode,
-        emails: parsedEmails,
-        expiresInDays: expiry,
-      })
-      setResults(response.issued ?? [])
-      toast({ title: "Invites issued", description: `Processed ${response.issued.length} emails.` })
-    } catch (error) {
-      const status = typeof (error as { status?: number }).status === "number" ? (error as { status?: number }).status : null
-      if (status === 401 || status === 403) {
-        setErrorMessage("Not authorized to issue invites.")
-      } else {
-        const message = error instanceof Error ? error.message : "Unable to issue invites"
-        setErrorMessage(message)
-      }
-    }
-  }
-
-  const handleCopyCodes = async () => {
-    const lines = results
-      .filter((item) => item.invite)
-      .map((item) => `${item.email}\t${item.invite}`)
-      .join("\n")
-
-    if (!lines) {
-      toast({ title: "Nothing to copy", description: "No invite codes available yet." })
-      return
-    }
-
-    try {
-      await navigator.clipboard.writeText(lines)
-      toast({ title: "Copied codes", description: "Invite codes copied to clipboard." })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Clipboard write failed"
-      toast({ title: "Copy failed", description: message, variant: "destructive" })
-    }
-  }
-
-  const handleCopyLinks = async () => {
-    const lines = results
-      .filter((item) => item.invite)
-      .map((item) => `${item.email}\t${buildInviteLink(item.invite ?? "")}`)
-      .join("\n")
-
-    if (!lines) {
-      toast({ title: "Nothing to copy", description: "No invite links available yet." })
-      return
-    }
-
-    try {
-      await navigator.clipboard.writeText(lines)
-      toast({ title: "Copied links", description: "Invite links copied to clipboard." })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Clipboard write failed"
-      toast({ title: "Copy failed", description: message, variant: "destructive" })
-    }
-  }
-
-  if (loading) {
-    return (
-      <AppShellLayout>
-        <div className="flex min-h-[60vh] items-center justify-center">
-          <LoadingSpinner />
-        </div>
-      </AppShellLayout>
-    )
-  }
+  const rows = waitlistQuery.data ?? []
+  // "Approved" = accepted into the app (invited) or already signed up (converted/Joined).
+  // "Pending" = everything not yet approved, so rejected rows stay visible & re-approvable.
+  const isApproved = (r: WaitlistEntry) => r.status === "invited" || r.status === "converted"
+  const approvedRows = rows.filter(isApproved)
+  const pendingRows = rows.filter((r) => !isApproved(r))
+  const visibleRows = tab === "approved" ? approvedRows : pendingRows
 
   return (
     <AppShellLayout>
-      <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-4 py-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">Admin - Issue invites</h1>
-          <p className="text-sm text-muted-foreground">
-            Generate invite codes for waitlist users and share links with them.
-          </p>
+      <div className="mx-auto w-full max-w-4xl p-4 sm:p-6">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold text-foreground">Waitlist approvals</h1>
+            <p className="text-sm text-muted-foreground">
+              Newest applicants first. Approve → they can log in directly with Google (no code).
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => waitlistQuery.refetch()} disabled={waitlistQuery.isFetching}>
+            <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", waitlistQuery.isFetching && "animate-spin")} /> Refresh
+          </Button>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Issue invites</CardTitle>
-            <CardDescription>Choose the issuance mode and set expiry.</CardDescription>
+        {/* Quick approve an email that isn't on the list yet */}
+        <Card className="mb-4">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">Approve an email directly</CardTitle>
+            <CardDescription>Adds it as approved even if they never joined the waitlist.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <Tabs value={mode} onValueChange={(value) => setMode(value as InviteIssueMode)}>
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="count">Oldest N</TabsTrigger>
-                <TabsTrigger value="emails">Specific emails</TabsTrigger>
-              </TabsList>
-              <TabsContent value="count" className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="invite-count">Oldest waitlist users</Label>
-                  <Input
-                    id="invite-count"
-                    type="number"
-                    min={1}
-                    value={count}
-                    onChange={(event) => setCount(event.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Invites the earliest pending waitlist entries.
-                  </p>
-                </div>
-              </TabsContent>
-              <TabsContent value="emails" className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="invite-emails">Emails</Label>
-                  <Textarea
-                    id="invite-emails"
-                    rows={6}
-                    placeholder="name@domain.com, other@domain.com"
-                    value={emailsInput}
-                    onChange={(event) => setEmailsInput(event.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Enter one email per line or comma-separated.
-                  </p>
-                </div>
-              </TabsContent>
-            </Tabs>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="invite-expiry">Expiry (days)</Label>
-                <Input
-                  id="invite-expiry"
-                  type="number"
-                  min={1}
-                  value={expiresInDays}
-                  onChange={(event) => setExpiresInDays(event.target.value)}
-                />
-              </div>
-            </div>
-
-            {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
-
-            <Button
-              onClick={handleIssueInvites}
-              disabled={issueInvitesMutation.isPending}
-              className="w-full md:w-auto"
+          <CardContent>
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault()
+                const em = quickEmail.trim().toLowerCase()
+                if (!em) return
+                act(em, "approve")
+                setQuickEmail("")
+              }}
             >
-              {issueInvitesMutation.isPending ? "Issuing..." : "Issue invites"}
-            </Button>
+              <Input type="email" placeholder="someone@example.com" value={quickEmail} onChange={(e) => setQuickEmail(e.target.value)} className="h-9" />
+              <Button type="submit" size="sm" className="h-9 shrink-0" disabled={!quickEmail.trim() || !!busyEmail}>
+                <Check className="mr-1 h-3.5 w-3.5" /> Approve
+              </Button>
+            </form>
           </CardContent>
         </Card>
 
+        {/* Waitlist list */}
         <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Results</CardTitle>
-            <CardDescription>Review and copy invite codes.</CardDescription>
+          <CardHeader className="pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <CardTitle className="text-sm">Waitlist {rows.length > 0 && <span className="text-muted-foreground font-normal">· {rows.length} total</span>}</CardTitle>
+              {/* Approved / Pending segmented toggle */}
+              <div className="inline-flex rounded-lg bg-muted p-0.5">
+                {([
+                  { key: "pending", label: "Pending", count: pendingRows.length },
+                  { key: "approved", label: "Approved", count: approvedRows.length },
+                ] as const).map((t) => (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={() => setTab(t.key)}
+                    className={cn(
+                      "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                      tab === t.key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {t.label}
+                    <span className={cn("ml-1.5 rounded px-1.5 py-0.5 text-[10px]", tab === t.key ? "bg-muted text-muted-foreground" : "bg-background/60 text-muted-foreground")}>
+                      {t.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {results.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No results yet.</p>
+          <CardContent>
+            {waitlistQuery.isLoading ? (
+              <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+            ) : waitlistQuery.isError ? (
+              <p className="py-8 text-center text-sm text-destructive">Couldn’t load the waitlist. Are you an admin? {(waitlistQuery.error as Error)?.message}</p>
+            ) : visibleRows.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                {rows.length === 0
+                  ? "No one on the waitlist yet."
+                  : tab === "pending"
+                    ? "Nothing pending — all caught up."
+                    : "No approved applicants yet."}
+              </p>
             ) : (
-              <>
-                <div className="flex flex-wrap gap-2">
-                  {Object.entries(summary).map(([status, count]) => (
-                    <Badge key={status} variant={statusVariant(status)}>
-                      {formatStatus(status)}: {count}
-                    </Badge>
-                  ))}
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="secondary" onClick={handleCopyCodes}>
-                    Copy codes
-                  </Button>
-                  <Button variant="secondary" onClick={handleCopyLinks}>
-                    Copy invite links
-                  </Button>
-                </div>
-
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Invite code</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {results.map((item) => (
-                      <TableRow key={`${item.email}-${item.status}`}>
-                        <TableCell className="text-xs md:text-sm">{item.email}</TableCell>
-                        <TableCell className="text-xs md:text-sm">{item.invite ?? "-"}</TableCell>
-                        <TableCell>
-                          <Badge variant={statusVariant(item.status)}>
-                            {formatStatus(item.status)}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </>
+              <div className="flex flex-col divide-y divide-border">
+                {visibleRows.map((entry: WaitlistEntry) => {
+                  const badge = STATUS_BADGE[entry.status] ?? STATUS_BADGE.pending
+                  const isBusy = busyEmail === entry.email
+                  const approved = entry.status === "invited" || entry.status === "converted"
+                  return (
+                    <div key={entry.id} className="flex items-center gap-3 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-sm font-medium text-foreground">{entry.email}</span>
+                          <Badge variant="outline" className={cn("shrink-0 text-[10px]", badge.cls)}>{badge.label}</Badge>
+                        </div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {entry.name || "—"}{entry.phone_number ? ` · ${entry.phone_number}` : ""} · applied {timeAgo(entry.created_at)}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <Button
+                          size="icon" variant="outline"
+                          className={cn("h-8 w-8 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/40", approved && "opacity-40")}
+                          title="Approve" disabled={isBusy || approved}
+                          onClick={() => act(entry.email, "approve")}
+                        >
+                          {isBusy && actionMutation.variables?.action === "approve" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                        </Button>
+                        <Button
+                          size="icon" variant="outline"
+                          className={cn("h-8 w-8 text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/40", entry.status === "rejected" && "opacity-40")}
+                          title="Reject" disabled={isBusy || entry.status === "rejected"}
+                          onClick={() => act(entry.email, "reject")}
+                        >
+                          {isBusy && actionMutation.variables?.action === "reject" ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             )}
           </CardContent>
         </Card>
