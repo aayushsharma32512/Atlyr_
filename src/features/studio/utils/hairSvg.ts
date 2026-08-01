@@ -162,6 +162,10 @@ export async function fetchHairSvg(url: string): Promise<HairAssetEntry> {
     return cached
   }
   const response = await fetch(url)
+  // Without this a 404/500 body — an HTML error page — gets sanitized, cached, and persisted to
+  // localStorage, so the hair stays broken until SVG_CACHE_VERSION is bumped. Throwing lets the
+  // caller fall back to a bald head and retry on the next load.
+  if (!response.ok) throw new Error(`hair svg ${response.status} for ${url}`)
   const raw = await response.text()
   const entry: HairAssetEntry = {
     markup: sanitizeHairSvgMarkup(raw),
