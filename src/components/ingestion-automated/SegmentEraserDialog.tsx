@@ -362,14 +362,17 @@ export function SegmentEraserDialog({ job, open, onOpenChange, onSaved }: Props)
         )}
 
         {/* Canvas stage — sized to fit the space left after the controls, so nothing scrolls.
-            Only when zoomed >1 does the viewport bound + scroll to pan. */}
-        <div className={cn('flex min-h-0 flex-1 items-center justify-center', zoom > 1 ? 'overflow-auto' : 'overflow-hidden')}>
+            Only when zoomed >1 does the viewport bound + scroll to pan. Zoom scales the stage's
+            actual width/height (not a CSS transform) so the scroll area grows in every direction,
+            and m-auto centers it while staying scrollable to all edges (flex center clips the
+            top/left of an overflowing child). */}
+        <div className={cn('flex min-h-0 flex-1', zoom > 1 ? 'overflow-auto' : 'overflow-hidden')}>
           {!url ? (
-            <div className="flex aspect-[4/5] w-[300px] items-center justify-center rounded-lg border border-border text-xs text-muted-foreground">No segmented image</div>
+            <div className="m-auto flex aspect-[4/5] w-[300px] items-center justify-center rounded-lg border border-border text-xs text-muted-foreground">No segmented image</div>
           ) : (
             <div
-              className="relative shrink-0 origin-top rounded-lg border border-border bg-[repeating-conic-gradient(#e5e7eb_0_25%,#f3f4f6_0_50%)] bg-[length:16px_16px]"
-              style={{ width: disp.w, height: disp.h, transform: zoom !== 1 ? `scale(${zoom})` : undefined }}
+              className="relative m-auto shrink-0 rounded-lg border border-border bg-[repeating-conic-gradient(#e5e7eb_0_25%,#f3f4f6_0_50%)] bg-[length:16px_16px]"
+              style={{ width: disp.w * zoom, height: disp.h * zoom }}
             >
               <canvas ref={imageCanvasRef} className="absolute inset-0 h-full w-full" />
               <canvas
