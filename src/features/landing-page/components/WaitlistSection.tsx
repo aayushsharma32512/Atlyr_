@@ -11,6 +11,7 @@ import {
   type CountryCode,
 } from "libphonenumber-js";
 import { Linkedin, Facebook, Instagram, Twitter, CheckCircle, AlertCircle } from "lucide-react";
+import { WordmarkLockup } from "@/design-system/primitives";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
@@ -566,13 +567,16 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
 
             {/* Brand + Tagline */}
             <div className="flex flex-col items-start w-full lg:w-auto">
-              <div className="inline-block font-normal text-2xl tracking-widest">
-                ATLYR
-              </div>
+              {/* A lockup position, so it takes the real mark rather than the
+                  name set in a letterspaced sans. onDark because this footer
+                  sits on ink. */}
+              <WordmarkLockup size="firstRun" onDark />
               <div className="lg:block mt-2">
                 <p
-                  className="text-sm text-background/90 text-left leading-normal max-w-xs"
-                  style={{ fontFamily: "'Pacifico', cursive" }}
+                  // Bodoni italic, as everywhere else on the page. Emphasis here
+                  // stays white rather than terracotta — on ink the white is
+                  // already the stronger signal, and two accents would muddle it.
+                  className="font-display italic text-sm text-background/90 text-left leading-normal max-w-xs"
                 >
                   discover your
                   <span className="block text-white ">personal style</span>
@@ -651,7 +655,7 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
           <div className="mt-6 pt-8 border-t border-white/10 mb-6">
             <div className="flex justify-start">
               <span className="text-xs text-white/50 tracking-wider text-left">
-                DESIGN BY ATLYR • COPYRIGHT © {new Date().getFullYear()}. ALL RIGHTS RESERVED
+                DESIGN BY KALAGRIHA • COPYRIGHT © {new Date().getFullYear()}. ALL RIGHTS RESERVED
               </span>
             </div>
           </div>

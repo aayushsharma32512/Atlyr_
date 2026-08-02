@@ -1,4 +1,5 @@
 import { Instagram, Twitter, Facebook, Linkedin } from "lucide-react";
+import { WordmarkLockup } from "@/design-system/primitives";
 import Magnet from "../reactbits-components/Magnet";
 import TextPressure from "../reactbits-components/TextPressure";
 
@@ -11,14 +12,14 @@ export function LandingFooter() {
           {/* Left Side - Brand and Tagline */}
           <div className="space-y-2">
             {/* Brand */}
-            <div className="inline-block rounded-full border-none px-0 py-1 font-thin text-xl">
-              <span className="tracking-wider">ATLYR</span>
+            <div className="inline-block rounded-full border-none px-0 py-1">
+              <WordmarkLockup size="header" onDark />
             </div>
 
             {/* Tagline */}
             <div className="space-y-2">
               {/* Large Decorative Text */}
-              <p className="text-2xl text-background/90 leading-relaxed max-w-md" style={{ fontFamily: "'Pacifico', cursive" }}>
+              <p className="font-display italic text-2xl text-background/90 leading-relaxed max-w-md">
                 Outfits that express your
                 <span className="block text-white italic">unique style</span>
                 <span className="block text-white/90">and personality</span>
@@ -138,7 +139,7 @@ export function LandingFooter() {
           style={{ position: 'relative', userSelect: 'none' }}
         >
           <TextPressure
-            text="ATLYR"
+            text="KALAGRIHA"
             flex={true}
             alpha={false}
             stroke={false}
@@ -155,7 +156,7 @@ export function LandingFooter() {
         <div className="mt-16 pt-8 border-t border-white/10">
           <div className="flex justify-center">
             <span className="text-xs text-white/50 tracking-wider text-center">
-              DESIGN BY ATLYR • COPYRIGHT © {new Date().getFullYear()}. ALL RIGHTS RESERVED
+              DESIGN BY KALAGRIHA • COPYRIGHT © {new Date().getFullYear()}. ALL RIGHTS RESERVED
             </span>
           </div>
         </div>

@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
-import { deviceGallery, heroGarments } from "../constants";
+import { heroGarments } from "../constants";
 import { LandingMiniStudio } from "./LandingMiniStudio";
 
 export function HeroPreview() {

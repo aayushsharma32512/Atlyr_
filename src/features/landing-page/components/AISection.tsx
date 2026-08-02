@@ -80,7 +80,7 @@ export function AISection() {
             </h2>
             
             <p className="text-lg text-muted-foreground sm:text-xl">
-              ATLYR AI understands your unique style preferences and curates outfits that match your vibe, occasion, and mood—all powered by advanced machine learning.
+              Kalagriha AI understands your unique style preferences and curates outfits that match your vibe, occasion, and mood—all powered by advanced machine learning.
             </p>
             
             <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:gap-6 lg:justify-start">
