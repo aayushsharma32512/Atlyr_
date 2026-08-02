@@ -7,6 +7,9 @@ export interface MoodboardTab {
   label: string
 }
 
+/** Boards backed by the system (not user-curated) — they carry the gold edge. */
+const SYSTEM_BOARD_IDS = new Set(["try-ons", "wardrobe"])
+
 interface MoodboardPinsProps extends HTMLAttributes<HTMLDivElement> {
   tabs: MoodboardTab[]
   activeTabId: string
@@ -57,6 +60,9 @@ export function MoodboardPins({ tabs, activeTabId, onTabSelect, className, ...re
     >
       {tabs.map((tab, index) => {
         const isActive = tab.id === activeTabId
+        // System boards (Try-ons, and Wardrobe once it lands) carry the gold
+        // provenance edge — the one place gold is allowed outside the Nama (P0-C20).
+        const isSystem = SYSTEM_BOARD_IDS.has(tab.id)
         return (
           <button
             key={`${tab.id}-${index}`}
@@ -73,14 +79,14 @@ export function MoodboardPins({ tabs, activeTabId, onTabSelect, className, ...re
             tabIndex={isActive ? 0 : -1}
             onClick={() => onTabSelect(tab.id)}
             className={cn(
-              // Base chip styling
-              "flex-shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-xs font-medium leading-none",
-              "transition-colors duration-200",
-              "active:scale-[0.98]",
-              "snap-center snap-always",
+              // 3px rect chips (P0-C20). Active = filled charcoal + cream.
+              "flex-shrink-0 whitespace-nowrap rounded-[3px] border px-3.5 py-1.5 text-[11px] font-medium leading-none",
+              "transition-colors duration-200 active:scale-[0.98] snap-center snap-always",
               isActive
-                ? "bg-muted text-foreground"
-                : "bg-muted/50 text-foreground hover:bg-muted/75",
+                ? "border-foreground bg-foreground text-background"
+                : isSystem
+                  ? "border-gold/60 bg-card text-gold-muted hover:border-gold"
+                  : "border-hairline bg-card text-ink hover:border-hairline-3 hover:bg-editorial/40",
             )}
           >
             {tab.label}

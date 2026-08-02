@@ -54,6 +54,22 @@ interface OutfitInspirationCardProps {
   onSlotSelect?: (slot: "top" | "bottom" | "shoes") => void
   /** Ref to the avatar container for snapshot capture */
   avatarRef?: React.Ref<HTMLDivElement>
+  /** Kalagriha feed treatment: white card, hairline frame, warp/weft avatar ground. */
+  framed?: boolean
+  /** Home-feed scrapbook variety: red pin on some, dark charcoal ground on some.
+      Off everywhere else (search, boards) — those stay clean white. */
+  variety?: boolean
+}
+
+/** System-authored outfits carry the house mark, not a stylist handle. */
+const BRAND_ATTRIBUTIONS = new Set(["atlyr", "kalagriha", "कलागृह"])
+
+// Deterministic per-card variety (canvas 6d/6f scrapbook): some pins get the red
+// thumbtack, some flip to a dark charcoal ground. Fixed by id so nothing changes on scroll.
+function variantHash(s: string): number {
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
+  return Math.abs(h)
 }
 
 const variantConfig: Record<
@@ -106,7 +122,15 @@ export function OutfitInspirationCard({
   allowEmptyMannequin = false,
   onSlotSelect,
   avatarRef,
+  framed = false,
+  variety = false,
 }: OutfitInspirationCardProps) {
+  const isBrandAttribution = attribution
+    ? BRAND_ATTRIBUTIONS.has(attribution.trim().toLowerCase())
+    : false
+  const variantSeed = variety ? variantHash(outfitId ?? title ?? "x") : 0
+  const showPin = false // pins removed everywhere per request
+  const darkCard = variety && framed && variantSeed % 5 === 1
   const articleRef = useRef<HTMLElement>(null)
   const mountTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -387,8 +411,11 @@ export function OutfitInspirationCard({
   }
 
   const avatarWrapperClasses = cn(
-    "relative flex w-full items-center justify-center overflow-hidden rounded-xl",
-    variant === "wide" ? "py-1" : "py-1",
+    "relative flex w-full items-center justify-center overflow-hidden py-1",
+    // Framed feed tile: the avatar sits on the woven warp/weft ground; the card
+    // frame owns the corner radius, so the well itself is square-cornered. Some
+    // cards flip to the dark charcoal grid (canvas mix).
+    framed ? (darkCard ? "warp-weft-dark rounded-none" : "warp-weft rounded-none") : "rounded-xl",
     isFluid && fluidLayout === "card" && "h-full",
   )
 
@@ -407,12 +434,20 @@ export function OutfitInspirationCard({
     <article
       ref={articleRef}
       className={cn(
-        "flex flex-col gap-1",
+        "relative flex flex-col",
+        framed
+          ? darkCard
+            ? "gap-0 overflow-hidden rounded-frame border border-ink-line bg-ink-deep shadow-[0_1px_3px_rgba(0,0,0,0.05)]"
+            : "gap-0 overflow-hidden rounded-frame border border-hairline bg-card shadow-[0_1px_3px_rgba(0,0,0,0.05)]"
+          : "gap-1",
         isFluid ? "h-full" : config.containerWidth,
         className,
       )}
       style={articleStyle}
     >
+      {showPin ? (
+        <span className="absolute left-3 top-0 z-10 h-2 w-2 -translate-y-1/2 rounded-full bg-primary shadow-[0_1px_2px_rgba(23,20,16,0.4)]" />
+      ) : null}
       <div className={avatarWrapperClasses} style={avatarWrapperStyle}>
         {!isMountedForAvatar ? (
           <div className="flex h-full w-full items-center justify-center bg-muted/20" aria-label="Loading preview" />
@@ -533,12 +568,12 @@ export function OutfitInspirationCard({
             }}
             style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none", userSelect: "none" }}
             className={cn(
-              "absolute right-1 top-1 size-6 items-center justify-center rounded-xl text-muted-foreground/80 select-none",
-              isSaved && "text-red-500"
+              "absolute right-1 top-1 size-6 items-center justify-center rounded-md text-muted-foreground/80 select-none",
+              isSaved && "text-primary"
             )}
           >
             <Heart
-              className={cn("h-3 w-3", isSaved ? "fill-current text-red-500" : "text-muted-foreground/80")}
+              className={cn("h-3 w-3", isSaved ? "fill-current text-primary" : "text-muted-foreground/80")}
               aria-hidden="true"
             />
           </IconButton>
@@ -546,20 +581,52 @@ export function OutfitInspirationCard({
 
         {attribution ? (
           <div className="absolute bottom-0.5 right-1 flex items-center justify-end px-0.5">
-            <span className="rounded-md px-1 text-[7px] font-thin text-muted-foreground">
-              {attribution}
-            </span>
+            {isBrandAttribution ? (
+              <span className="font-deva text-[9px] leading-none text-taupe">कलागृह</span>
+            ) : (
+              <span className="rounded-md px-1 text-[7px] font-thin text-muted-foreground">
+                {attribution}
+              </span>
+            )}
           </div>
         ) : null}
       </div>
 
       {shouldRenderMetadata ? (
-        <div ref={metadataRef} className="flex flex-col gap-1">
+        <div
+          ref={metadataRef}
+          className={cn(
+            "flex flex-col gap-0.5",
+            // Fixed footer height so every framed card's meta block is identical —
+            // the grid reads this height to size the avatar, so uniform footers give
+            // a uniform grid regardless of title length.
+            framed &&
+              (darkCard
+                ? "h-[46px] overflow-hidden border-t border-ink-line px-2 pb-2 pt-1.5"
+                : "h-[46px] overflow-hidden border-t border-hairline px-2 pb-2 pt-1.5"),
+          )}
+        >
           {showTitle && title ? (
-            <p className={cn("text-[9px] font-normal text-foreground", config.titleClamp)}>{title}</p>
+            <p
+              className={cn(
+                framed
+                  ? cn("line-clamp-1 text-[11.5px] font-semibold leading-snug", darkCard ? "text-on-ink-2" : "text-foreground")
+                  : cn("text-[9px] font-normal text-foreground", config.titleClamp),
+              )}
+            >
+              {title}
+            </p>
           ) : null}
-          {visibleChips.length ? (
-            <div className="flex items-center gap-0.5 overflow-x-auto whitespace-nowrap scrollbar-hide">
+          {/* Canvas card: name + one small line (piece count) — no tag chips. Chips
+              stay only on the unframed studio card. */}
+          {framed ? (
+            resolvedRenderedItems.length > 0 ? (
+              <p className={cn("text-[10px] leading-none", darkCard ? "text-on-ink-1" : "text-taupe")}>
+                {resolvedRenderedItems.length} {resolvedRenderedItems.length === 1 ? "piece" : "pieces"}
+              </p>
+            ) : null
+          ) : visibleChips.length ? (
+            <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap scrollbar-hide">
               {visibleChips.map((chip, index) => (
                 <span
                   key={`${chip}-${index}`}

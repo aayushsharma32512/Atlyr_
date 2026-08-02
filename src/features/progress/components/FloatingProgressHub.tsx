@@ -325,7 +325,7 @@ export function FloatingProgressHub() {
       </div>
     ) : (
       <div className="flex flex-col items-center justify-center">
-        <span className="text-[12px] font-semibold tracking-normal text-foreground/90">Atlyr</span>
+        <span className="font-deva text-[13px] font-medium text-foreground/90">कलागृह</span>
       </div>
     )
 
@@ -403,7 +403,7 @@ export function FloatingProgressHub() {
             >
               <div className="flex w-full items-center justify-between px-3 pt-0.5 pb-0.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold tracking-normal text-foreground">Atlyr</span>
+                  <span className="font-deva text-[15px] font-medium text-foreground">कलागृह</span>
                 </div>
                 <button
                   onClick={() => setIsExpanded(false)}
@@ -521,7 +521,7 @@ function JobCard({
           <div className="h-full w-full animate-pulse bg-muted/60" />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <span className="text-[10px] font-semibold tracking-normal text-foreground/60">Atlyr</span>
+            <span className="font-deva text-[11px] font-medium text-foreground/60">कलागृह</span>
           </div>
         )}
       </div>

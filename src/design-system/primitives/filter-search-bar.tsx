@@ -85,8 +85,8 @@ interface FilterSearchBarProps {
   alignPreviewTop?: boolean
 }
 
-const elevatedClasses = "rounded-xl px-2 pb-2"
-const flatClasses = "rounded-xl px-1 py-1 shadow-sm"
+const elevatedClasses = "rounded-frame px-2 pb-2"
+const flatClasses = "rounded-frame px-1 py-1 shadow-sm"
 
 const DEFAULT_SORT_OPTIONS: SortOption[] = [
   { value: "similarity", label: "Similarity" },
@@ -246,7 +246,7 @@ export function FilterSearchBar({
   const filterChips = hasFilters ? (
     <div className={cn("flex gap-2", alignPreviewTop ? "items-start" : "items-end")}>
       <div className="overflow-x-auto whitespace-nowrap scrollbar-hide">
-        <div className="inline-flex h-6 rounded-full border border-border bg-muted/40 p-0.5">
+        <div className="inline-flex h-6 rounded-[3px] border border-hairline bg-card p-0.5">
           {filters!.map((chip) => (
             <button
               key={chip.id}
@@ -255,8 +255,8 @@ export function FilterSearchBar({
               onClick={chip.onActivate}
               disabled={chip.isActive}
               className={cn(
-                "relative rounded-full px-2 text-[11px] font-medium transition-all duration-200",
-                chip.isActive ? "bg-foreground text-background shadow-sm" : "text-muted-foreground hover:text-foreground"
+                "relative rounded-[2px] px-2 text-[11px] font-medium transition-all duration-200",
+                chip.isActive ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
               )}
               aria-pressed={chip.isActive}
               aria-label={`Switch to ${chip.label}`}
@@ -302,7 +302,8 @@ export function FilterSearchBar({
             <IconButton
                tone="ghost"
                size="md"
-               className="h-full w-8 sm:w-9 text-muted-foreground hover:text-foreground"
+               /* Lens (image search) is the search bar's one terracotta accent. */
+               className="h-full w-8 sm:w-9 text-primary hover:text-primary/80"
                onMouseDown={(e) => e.preventDefault()}
                onClick={handleCameraClick}
                disabled={isUploadingImage}
@@ -390,7 +391,8 @@ export function FilterSearchBar({
 
       {hasFilters && pillPosition === "top" ? filterChips : null}
 
-      <div className="flex h-10 w-full items-stretch rounded-xl border border-border bg-background/95">
+      {/* Kalagriha §Component_Specs SearchBar: white ground, 3px radius, hairline border. */}
+      <div className="flex h-10 w-full items-stretch rounded-[3px] border border-hairline bg-card">
         
         {leadingActions === undefined ? (
           <div className="flex h-full">
@@ -409,7 +411,7 @@ export function FilterSearchBar({
                       onValueChange={sortDisabled ? undefined : handleSortChange}
                       disabled={sortDisabled}
                     >
-                      <SelectTrigger className={cn("h-full w-9 rounded-none border-r border-border text-muted-foreground px-2 py-0 border-none shadow-none focus:ring-0 [&>svg:not(.arrow-icon)]:hidden [&>span]:hidden", index === 0 ? "rounded-l-xl" : "")}>
+                      <SelectTrigger className={cn("h-full w-9 rounded-none border-r border-border text-muted-foreground px-2 py-0 border-none shadow-none focus:ring-0 [&>svg:not(.arrow-icon)]:hidden [&>span]:hidden", index === 0 ? "rounded-l-[3px]" : "")}>
                         <ArrowUpNarrowWide className="h-4 w-4 flex-shrink-0 arrow-icon" />
                       </SelectTrigger>
                       <SelectContent align="start">
@@ -428,7 +430,7 @@ export function FilterSearchBar({
                   size="md"
                   className={cn(
                     "h-full w-9 rounded-none border-r border-border text-muted-foreground",
-                    index === 0 ? "rounded-l-xl" : "",
+                    index === 0 ? "rounded-l-[3px]" : "",
                     action.disabled && "pointer-events-none opacity-40",
                   )}
                   onClick={action.disabled ? undefined : action.onClick}
@@ -446,7 +448,7 @@ export function FilterSearchBar({
                  key={action.id}
                  tone="ghost"
                  size="md"
-                 className={cn("h-full w-9 rounded-none border-r border-border text-muted-foreground", index === 0 ? "rounded-l-xl" : "")}
+                 className={cn("h-full w-9 rounded-none border-r border-border text-muted-foreground", index === 0 ? "rounded-l-[3px]" : "")}
                  onClick={action.onClick}
                >
                  {action.icon}

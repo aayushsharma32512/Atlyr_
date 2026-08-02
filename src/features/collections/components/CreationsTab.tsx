@@ -32,6 +32,25 @@ import { trackTryonFlowStarted } from "@/integrations/posthog/engagementTracking
 
 const PAGE_SIZE = 6
 
+const SLOT_LABEL: Record<StudioProductTraySlot, string> = { top: "Top", bottom: "Bottom", shoes: "Shoes" }
+
+function formatTrayPrice(price?: number | null, currency?: string | null): string {
+  if (typeof price !== "number" || !Number.isFinite(price)) return "—"
+  try {
+    return new Intl.NumberFormat("en-IN", { style: "currency", currency: currency ?? "INR", maximumFractionDigits: 0 }).format(price)
+  } catch {
+    return `₹${Math.round(price).toLocaleString("en-IN")}`
+  }
+}
+
+// "airy kota weave · high rise" style spec line from the piece's own tags.
+function buildTraySpec(item: StudioProductTrayItem): string {
+  const parts = [item.materialType, item.fitTags?.[0], item.feelTags?.[0]].filter(
+    (v): v is string => Boolean(v && v.trim() && v.toLowerCase() !== "null"),
+  )
+  return parts.slice(0, 2).join(" · ")
+}
+
 export function CreationsTab() {
   const [currentSlide, setCurrentSlide] = useState(0)
   const [flippedIds, setFlippedIds] = useState<Record<string, boolean>>({})
@@ -66,6 +85,8 @@ export function CreationsTab() {
   const analytics = useEngagementAnalytics()
   const [isSaveDrawerOpen, setIsSaveDrawerOpen] = useState(false)
   const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false)
+  // Which piece the "IN THIS OUTFIT" detail card is showing (6e3). Null = first.
+  const [selectedTraySlot, setSelectedTraySlot] = useState<StudioProductTraySlot | null>(null)
 
   const outfitMembershipQuery = useOutfitCollectionMembership()
   const anonymiseOutfitMutation = useAnonymiseOutfit()
@@ -91,6 +112,7 @@ export function CreationsTab() {
   useEffect(() => {
     setSlotOrder(defaultSlotOrder)
     setHiddenSlots({})
+    setSelectedTraySlot(null)
   }, [activeCreation?.outfitId, defaultSlotOrder])
 
   useEffect(() => {
@@ -496,7 +518,7 @@ export function CreationsTab() {
 
   if (creationsQuery.isError) {
     return (
-      <div className="flex min-h-[240px] flex-col items-center justify-center gap-3 rounded-2xl border border-destructive/40 bg-destructive/5 px-4 py-6 text-sm text-destructive">
+      <div className="flex min-h-[240px] flex-col items-center justify-center gap-3 rounded-frame border border-destructive/40 bg-destructive/5 px-4 py-6 text-sm text-destructive">
         Unable to load creations right now.
         <Button size="sm" variant="secondary" onClick={() => creationsQuery.refetch()}>
           Retry
@@ -507,86 +529,115 @@ export function CreationsTab() {
 
   if (creations.length === 0) {
     return (
-      <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-dashed border-muted-foreground/30 bg-muted/10 text-sm text-muted-foreground">
+      <div className="flex min-h-[240px] items-center justify-center rounded-frame border border-dashed border-hairline-dashed bg-card/40 text-sm text-muted-foreground">
         No creations yet.
       </div>
     )
   }
 
   const currentCreation = creations[currentSlide]
+  const isCurrentFlipped = Boolean(currentCreation && flippedIds[currentCreation.id])
+  // Pieces ride below the card as the "IN THIS OUTFIT" strip (6e3).
+  const orderedTrayItems = useMemo(() => {
+    const order: StudioProductTraySlot[] = ["top", "bottom", "shoes"]
+    return [...trayItems].sort((a, b) => order.indexOf(a.slot) - order.indexOf(b.slot))
+  }, [trayItems])
+  const selectedTrayItem =
+    orderedTrayItems.find((item) => item.slot === selectedTraySlot) ?? orderedTrayItems[0] ?? null
+  const creationSubtitle = useMemo(() => {
+    const parts = [activeOutfit?.category, activeOutfit?.vibes].filter(
+      (v): v is string => Boolean(v && v.trim() && v !== "others" && v.toLowerCase() !== "null"),
+    )
+    return parts.join(" · ")
+  }, [activeOutfit?.category, activeOutfit?.vibes])
 
   return (
-    <div className="flex flex-col gap-1" style={{ height: 'calc(100vh - 178px)' }}>
-      {/* Top Container - Carousel */}
-      <div className="flex flex-col items-center gap-2 px-4 sm:px-12 py-2 w-full h-full overflow-hidden">
-        <div className="flex w-full max-w-[384px] flex-col items-center gap-1 h-full">
-          <div className="relative w-full overflow-hidden flex-1 max-h-[600px]">
-            <div
-              className="absolute inset-0 z-20 pointer-events-none"
-              style={{
-                background: `
-                  linear-gradient(to right, var(--muted, #f5f5f5) 0%, rgba(245,245,245,0.85) 10%, rgba(245,245,245,0.0) 22%, rgba(245,245,245,0.0) 78%, rgba(245,245,245,0.85) 90%, var(--muted, #f5f5f5) 100%)
-                `,
-              }}
-            />
-            <div
-              ref={scrollContainerRef}
-              className="h-full w-full overflow-x-auto overflow-y-hidden scrollbar-hide"
-              style={{
-                scrollSnapType: "x mandatory",
-                WebkitOverflowScrolling: "touch",
-                scrollBehavior: "smooth",
-              }}
-            >
-              <div
-                className="flex h-full items-center gap-4 px-20"
-                style={{ width: `${(totalSlides + (isFetchingMoreCreations ? 1 : 0)) * 342}px` }}
-              >
-                {creations.map((creation, index) => {
-                  const isActive = index === currentSlide
-                  const isCardFlipped = Boolean(flippedIds[creation.id])
-                  const isVisible = Math.abs(index - currentSlide) <= 2
-                  const gender = resolveGender(creation.gender)
-                  const vtoUrl = creation.vtoImageUrl
-                  const vtoErrored = Boolean(vtoUrl && vtoImageErrorUrls[creation.outfitId] === vtoUrl)
-                  const showVtoImage = Boolean(vtoUrl) && !vtoErrored
+    // Natural vertical flow — the whole tab scrolls inside the page's scroll
+    // container (no locked height / fixed bottom bar that clipped the content).
+    // Desktop widens into two columns (card left · pieces right) so the card
+    // isn't a lonely strip in the middle of a wide screen.
+    <div className="mx-auto flex w-full max-w-[384px] flex-col gap-4 pb-6 md:max-w-[880px] md:flex-row md:items-start md:gap-8">
+      <div className="flex w-full flex-col gap-2 px-1 md:w-[480px] md:flex-none">
+        {/* Framed creation card (canvas 6e3) */}
+        {currentCreation ? (
+          <div className="rounded-frame border border-hairline bg-card p-3 shadow-[0_10px_26px_rgba(30,27,22,0.10)]">
+            {/* Header — title + favourite / edit */}
+            <div className="flex items-center justify-between gap-2">
+              <p className="truncate text-sm font-semibold text-foreground md:text-base">{currentCreation.name}</p>
+              <div className="flex items-center gap-3 leading-none text-taupe">
+                <button
+                  type="button"
+                  onClick={handleToggleSave}
+                  aria-label={isSaved ? "Remove from favourites" : "Add to favourites"}
+                  className={cn("text-[13px] leading-none transition-colors", isSaved ? "text-primary" : "hover:text-primary")}
+                >
+                  ♥
+                </button>
+                {!isDraftCreation && activeOutfit ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditDrawerOpen(true)}
+                    aria-label="Edit creation"
+                    className="text-[13px] leading-none transition-colors hover:text-foreground"
+                  >
+                    ✎
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            {creationSubtitle ? (
+              <p className="mt-0.5 truncate text-[10px] text-faint md:text-xs">{creationSubtitle}</p>
+            ) : null}
 
-                  return (
-                    <div
-                      key={creation.id ?? `creation-${index}`}
-                      data-card-index={index}
-                      className="relative flex h-full flex-shrink-0 items-center justify-center"
-                      style={{
-                        width: 'min(356px, 80vw)',
-                        scrollSnapAlign: "center",
-                      }}
-                    >
+            {/* Preview — warp/weft ground, the carousel of avatar/try-on views */}
+            <div className="relative mt-2 h-[340px] overflow-hidden rounded-lg border border-warp bg-secondary md:h-[420px]">
+              <div className="warp-weft absolute inset-0" />
+              <div
+                className="absolute inset-0 z-20 pointer-events-none"
+                style={{
+                  background: `
+                    linear-gradient(to right, var(--muted, #f5f5f5) 0%, rgba(245,245,245,0.85) 8%, rgba(245,245,245,0.0) 20%, rgba(245,245,245,0.0) 80%, rgba(245,245,245,0.85) 92%, var(--muted, #f5f5f5) 100%)
+                  `,
+                }}
+              />
+              <div
+                ref={scrollContainerRef}
+                className="relative z-10 h-full w-full overflow-x-auto overflow-y-hidden scrollbar-hide"
+                style={{
+                  scrollSnapType: "x mandatory",
+                  WebkitOverflowScrolling: "touch",
+                  scrollBehavior: "smooth",
+                }}
+              >
+                <div
+                  className="flex h-full items-center gap-4 px-16"
+                  style={{ width: `${(totalSlides + (isFetchingMoreCreations ? 1 : 0)) * 342}px` }}
+                >
+                  {creations.map((creation, index) => {
+                    const isCardFlipped = Boolean(flippedIds[creation.id])
+                    const isVisible = Math.abs(index - currentSlide) <= 2
+                    const gender = resolveGender(creation.gender)
+                    const vtoUrl = creation.vtoImageUrl
+                    const vtoErrored = Boolean(vtoUrl && vtoImageErrorUrls[creation.outfitId] === vtoUrl)
+                    const showVtoImage = Boolean(vtoUrl) && !vtoErrored
+
+                    return (
                       <div
-                        className="relative w-full h-full transition-opacity duration-300 transition-transform"
+                        key={creation.id ?? `creation-${index}`}
+                        data-card-index={index}
+                        className="relative flex h-full flex-shrink-0 items-center justify-center"
                         style={{
-                          opacity: isActive ? 1 : 1,
+                          width: 'min(360px, 80vw)',
+                          scrollSnapAlign: "center",
                         }}
                       >
-                        <div className="overflow-hidden w-full h-full rounded-lg" style={{ transform: "" }}>
-                          <div className="relative h-full w-full">
-                            {/* Edit overlay — top-right, active card only */}
-                            {isActive && !isDraftCreation && activeOutfit && (
-                              <div className="absolute top-2 right-2 z-10">
-                                <TrayActionButton
-                                  tone="plain"
-                                  iconEnd={MoreVertical}
-                                  label=""
-                                  className="pointer-events-auto h-9 w-9 rounded-full bg-card/80 px-0 text-xs font-medium text-foreground hover:bg-card flex items-center justify-center"
-                                  onClick={() => setIsEditDrawerOpen(true)}
-                                />
-                              </div>
-                            )}
-                            {!isCardFlipped ? (
-                              showVtoImage ? (
-                                <>
-                                  <img
-                                    src={vtoUrl ?? undefined}
-                                    alt={creation.name ?? "Try-on"}
+                        <div className="relative h-full w-full overflow-hidden rounded-md">
+                          {!isCardFlipped ? (
+                            showVtoImage ? (
+                              <>
+                                <img
+                                  src={vtoUrl ?? undefined}
+                                  alt={creation.name ?? "Try-on"}
                                   className="h-full w-full object-cover select-none"
                                   loading={isVisible ? "eager" : "lazy"}
                                   draggable={false}
@@ -595,17 +646,34 @@ export function CreationsTab() {
                                     if (!creation.outfitId || !vtoUrl) return
                                     setVtoImageErrorUrls((prev) =>
                                       prev[creation.outfitId] === vtoUrl ? prev : { ...prev, [creation.outfitId]: vtoUrl },
-                                      )
-                                    }}
-                                  />
-                                  <div
-                                    className="absolute bottom-1 right-1 z-10 rounded-full px-1 py-0 text-[10px] font-medium text-foreground"
-                                    style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none", userSelect: "none" }}
-                                  >
-                                    Atlyr
-                                  </div>
-                                </>
-                              ) : isVisible ? (
+                                    )
+                                  }}
+                                />
+                                <div
+                                  className="absolute bottom-1 right-1.5 z-10 font-deva text-[11px] leading-none text-background/85 drop-shadow-[0_1px_2px_rgba(23,20,16,0.55)]"
+                                  style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none", userSelect: "none" }}
+                                >
+                                  कलागृह
+                                </div>
+                              </>
+                            ) : isVisible ? (
+                              <OutfitInspirationTile
+                                preset="heroCanonical"
+                                outfitId={creation.outfitId}
+                                title={creation.name}
+                                chips={[]}
+                                cardClassName="h-full w-full"
+                                avatarHeadSrc="/avatars/Default.png"
+                                avatarGender={gender}
+                                avatarHeightCm={170}
+                                disableAvatarSwipe
+                              />
+                            ) : (
+                              <div className="h-full w-full rounded-md bg-muted/40" />
+                            )
+                          ) : (
+                            <div className="absolute inset-0">
+                              {isVisible ? (
                                 <OutfitInspirationTile
                                   preset="heroCanonical"
                                   outfitId={creation.outfitId}
@@ -619,138 +687,135 @@ export function CreationsTab() {
                                 />
                               ) : (
                                 <div className="h-full w-full rounded-md bg-muted/40" />
-                              )
-                            ) : null}
-                            {isCardFlipped ? (
-                              <div className="absolute inset-0">
-                                {isVisible ? (
-                                  <OutfitInspirationTile
-                                    preset="heroCanonical"
-                                    outfitId={creation.outfitId}
-                                    title={creation.name}
-                                    chips={[]}
-                                    cardClassName="h-full w-full"
-                                    avatarHeadSrc="/avatars/Default.png"
-                                    avatarGender={gender}
-                                    avatarHeightCm={170}
-                                    disableAvatarSwipe
-                                  />
-                                ) : (
-                                  <div className="h-full w-full rounded-md bg-muted/40" />
-                                )}
-                              </div>
-                            ) : null}
-                          </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
+                    )
+                  })}
+                  {isFetchingMoreCreations ? (
+                    <div
+                      key="creations-loading"
+                      className="relative flex h-full flex-shrink-0 items-center justify-center"
+                      style={{ width: "min(360px, 80vw)" }}
+                    >
+                      <div className="h-full w-full animate-pulse rounded-md bg-muted/50" />
                     </div>
-                  )
-                })}
-                {isFetchingMoreCreations ? (
-                  <div
-                    key="creations-loading"
-                    className="relative flex h-full flex-shrink-0 items-center justify-center"
-                    style={{ width: "min(356px, 80vw)" }}
-                  >
-                    <div className="h-full w-full animate-pulse rounded-lg bg-muted/50" />
-                  </div>
-                ) : null}
+                  ) : null}
+                </div>
               </div>
+
+              {/* Front/try-on label + flip badge (over the preview) */}
+              <span className="absolute left-2.5 top-2 z-30 text-[7px] font-medium uppercase tracking-[0.12em] text-taupe">
+                {isCurrentFlipped ? "Try-on" : "Front · Outfit"}
+              </span>
+              <button
+                type="button"
+                onClick={() => toggleFlip(currentCreation.id)}
+                className="absolute right-2 top-2 z-30 flex items-center gap-1 rounded-[3px] bg-ink-deep px-2 py-1 text-[8px] font-semibold leading-none text-gold"
+                aria-label="Flip to try-on"
+              >
+                <RotateCcw className="h-2.5 w-2.5" /> flip · ✦ try-on
+              </button>
+            </div>
+
+            {/* Actions */}
+            <div className="mt-2.5 flex gap-2">
+              <button
+                type="button"
+                onClick={() => handleOpenStudio(currentCreation)}
+                className="flex-1 rounded-[3px] border border-hairline bg-card py-2.5 text-center text-[11px] font-semibold text-foreground transition-colors hover:bg-editorial/40"
+              >
+                Open in Studio
+              </button>
+              <button
+                type="button"
+                onClick={() => handleOpenStudio(currentCreation)}
+                className="flex-1 rounded-[3px] bg-primary py-2.5 text-center text-[11px] font-bold text-primary-foreground transition-opacity hover:bg-primary/90"
+              >
+                Try it on →
+              </button>
             </div>
           </div>
+        ) : null}
 
-          {/* Title and Controls */}
-          {currentCreation ? (
-            <div className="flex w-full items-center justify-between px-1">
-              <div className="flex flex-col">
-                <p className="text-sm font-medium text-foreground lowercase leading-4 tracking-[-0.14px] truncate ml-3">
-                  {currentCreation.name}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-8 w-8"
-                  onClick={() => toggleFlip(currentCreation.id)}
-                  aria-label="Flip card"
-                >
-                  <RotateCcw className="h-4 w-4" />
-                </Button>
-                <TrayActionButton
-                  tone="plain"
-                  iconEnd={ArrowUpRight}
-                  label="Studio"
-                  className="pointer-events-auto h-9 rounded-xl bg-card/80 px-2 text-xs font-medium text-foreground hover:bg-card rounded-full"
-                  onClick={() => handleOpenStudio(currentCreation)}
+        {/* Pagination */}
+        <div className="flex items-center justify-center gap-1 w-full py-0.5">
+          <button
+            onClick={handlePrevious}
+            className="flex items-center justify-center p-1 shrink-0 hover:bg-muted/30 rounded-md transition-colors"
+            aria-label="Previous slide"
+          >
+            <ChevronLeft className="h-3.5 w-3.5 text-muted-foreground" />
+          </button>
+          <div className="flex items-center gap-1.5 px-1 shrink-0">
+            {Array.from({ length: Math.min(9, totalSlides) }).map((_, index) => {
+              const isActive = index === currentSlide
+              return (
+                <button
+                  key={index}
+                  onClick={() => handleDotClick(index)}
+                  className={cn(
+                    "shrink-0 transition-all duration-200 rounded-full",
+                    isActive
+                      ? "h-2 w-2 bg-foreground"
+                      : "h-1.5 w-1.5 bg-muted-foreground/40 hover:bg-muted-foreground/60"
+                  )}
+                  aria-label={`Go to slide ${index + 1}`}
                 />
-              </div>
-            </div>
-          ) : null}
+              )
+            })}
+          </div>
+          <button
+            onClick={handleNext}
+            className="flex items-center justify-center p-1 shrink-0 hover:bg-muted/30 rounded-md transition-colors"
+            aria-label="Next slide"
+          >
+            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+          </button>
+        </div>
+      </div>
 
-          {/* Pagination */}
-          <div className="flex items-center justify-center gap-1 w-full py-0.5">
-            <button 
-              onClick={handlePrevious} 
-              className="flex items-center justify-center p-1 shrink-0 hover:bg-muted/30 rounded-md transition-colors" 
-              aria-label="Previous slide"
-            >
-              <ChevronLeft className="h-3.5 w-3.5 text-muted-foreground" />
-            </button>
-            <div className="flex items-center gap-1.5 px-1 shrink-0">
-              {Array.from({ length: Math.min(9, totalSlides) }).map((_, index) => {
-                const isActive = index === currentSlide
-                return (
-                  <button
-                    key={index}
-                    onClick={() => handleDotClick(index)}
-                    className={cn(
-                      "shrink-0 transition-all duration-200 rounded-full",
-                      isActive 
-                        ? "h-2 w-2 bg-foreground" 
-                        : "h-1.5 w-1.5 bg-muted-foreground/40 hover:bg-muted-foreground/60"
-                    )}
-                    aria-label={`Go to slide ${index + 1}`}
-                  />
-                )
-              })}
-            </div>
-            <button 
-              onClick={handleNext} 
-              className="flex items-center justify-center p-1 shrink-0 hover:bg-muted/30 rounded-md transition-colors" 
-              aria-label="Next slide"
-            >
-              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-            </button>
+      {/* IN THIS OUTFIT — one row per piece (top · bottom · shoes). No selected/
+          detail duplicate — each row is the piece itself, tap → its PDP (6e3). */}
+      {orderedTrayItems.length > 0 ? (
+        <div className="w-full min-w-0 px-1 md:flex-1 md:pt-1">
+          <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-taupe md:text-[11px]">In this outfit</p>
+          <div className="mt-2 flex flex-col gap-2">
+            {orderedTrayItems.map((item) => (
+              <button
+                key={item.slot}
+                type="button"
+                onClick={() => handleProductPress(item)}
+                className="flex w-full min-w-0 items-center gap-3 rounded-[5px] border border-hairline bg-card px-3 py-2.5 text-left transition-colors hover:border-hairline-3 hover:bg-editorial/30 md:py-3"
+              >
+                {item.imageUrl ? (
+                  <img src={item.imageUrl} alt="" loading="lazy" className="h-12 w-12 flex-none object-contain md:h-16 md:w-16" />
+                ) : (
+                  <span className="h-12 w-12 flex-none rounded-[3px] bg-editorial md:h-16 md:w-16" />
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[9px] font-semibold uppercase tracking-[0.14em] text-taupe md:text-[10px]">
+                    {item.brand?.trim() || SLOT_LABEL[item.slot]}
+                  </span>
+                  <span className="mt-0.5 block line-clamp-2 text-[13px] font-semibold leading-snug text-foreground md:text-[15px]">{item.title}</span>
+                  {buildTraySpec(item) ? (
+                    <span className="mt-0.5 block truncate text-[10px] text-taupe md:text-[11px]">{buildTraySpec(item)}</span>
+                  ) : null}
+                </span>
+                <span className="flex-none self-start text-[13px] font-bold text-foreground md:text-[15px]">
+                  {formatTrayPrice(item.price, item.currency)}
+                </span>
+              </button>
+            ))}
           </div>
         </div>
-      </div>
-
-      {/* space gainer for the fixed product tray so that the OutfitInspirationCard is not covered by the product tray */}
-      <div className="invisible z-20 flex justify-center bg-background pb-4 min-h-[150px]">
-        <ProductTray items={trayItems} slotOrder={slotOrder} showActions={false} />
-      </div>
-
-      {/* Bottom Bar - Product List */}
-      <div className="fixed bottom-8 left-0 right-0 z-20 flex justify-center bg-background pb-4">
-        <div style={{ width: 'min(356px, 80vw)' }}>
-        <ProductTray
-          items={trayItems}
-          isLoading={productTrayQuery.isLoading}
-          onProductPress={handleProductPress}
-          defaultOutfitName={activeCreation?.name ?? ""}
-          showFilter={false}
-          showRemove={false}
-          showActions={false}
-          slotOrder={slotOrder}
-          hiddenSlots={hiddenSlots}
-          onAddSlot={handleAddSlot}
-          onRemoveSlot={handleRemoveSlot}
-          onRestoreSlot={handleRestoreSlot}
-          onReorderSlots={handleReorderSlots}
-        />
+      ) : productTrayQuery.isLoading ? (
+        <div className="w-full px-1 md:flex-1">
+          <div className="h-[72px] w-full animate-pulse rounded-[5px] bg-muted/40" />
         </div>
-      </div>
+      ) : null}
       <SaveOutfitDrawer
         key={activeCreation?.id ?? "save-draft"}
         open={isSaveDrawerOpen}

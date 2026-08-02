@@ -214,20 +214,20 @@ export function CollectionsPage() {
   const renderMoodboards = (boards: Moodboard[]) => {
     if (isLoading) {
       return (
-        <div className="text-center text-sm text-gray-500 min-h-[200px] flex items-center justify-center">
+        <div className="text-center text-sm text-taupe min-h-[200px] flex items-center justify-center">
           Loading moodboards…
         </div>
       )
     }
     if (!boards.length) {
       return (
-        <div className="text-center text-sm text-gray-500 min-h-[200px] flex items-center justify-center">
+        <div className="text-center text-sm text-taupe min-h-[200px] flex items-center justify-center">
           No moodboards found
         </div>
       )
     }
     return (
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
         {boards.map((moodboard, index) => (
           <MoodboardCard
             key={`${moodboard.slug}-${moodboard.createdAt ?? moodboard.updatedAt ?? "system"}-${index}`}
@@ -237,8 +237,17 @@ export function CollectionsPage() {
             itemCount={moodboard.itemCount}
             preview={previews[moodboard.slug]}
             onDelete={handleDeleteMoodboard}
+            index={index}
           />
         ))}
+        {/* Canvas 6e: the "+ New board" tile closes the board list. */}
+        <button
+          type="button"
+          onClick={() => setIsPickerOpen(true)}
+          className="flex min-h-[150px] items-center justify-center rounded-frame border border-dashed border-hairline-dashed px-4 text-center text-[11.5px] font-medium text-taupe transition-colors hover:bg-editorial/30"
+        >
+          ＋ New board — long-press anything, it sticks here
+        </button>
       </div>
     )
   }
@@ -287,21 +296,21 @@ export function CollectionsPage() {
       case "products":
         if (savedProductsQuery.isLoading) {
           return (
-            <div className="text-center text-sm text-gray-500 min-h-[200px] flex items-center justify-center">
+            <div className="text-center text-sm text-taupe min-h-[200px] flex items-center justify-center">
               Loading saved products…
             </div>
           )
         }
         if (savedProductsQuery.isError) {
           return (
-            <div className="text-center text-sm text-gray-500 min-h-[200px] flex items-center justify-center">
+            <div className="text-center text-sm text-taupe min-h-[200px] flex items-center justify-center">
               Unable to load products right now.
             </div>
           )
         }
         if (productItems.length === 0) {
           return (
-            <div className="text-center text-sm text-gray-500 min-h-[200px] flex items-center justify-center">
+            <div className="text-center text-sm text-taupe min-h-[200px] flex items-center justify-center">
               No saved products yet.
             </div>
           )
@@ -344,55 +353,69 @@ export function CollectionsPage() {
         // aria-hidden="true" // valid prop but typescript might complain if not in interface
       />
 
-      {/* 3. Content Area - Starts naturally after the ghost header */}
-      <div className="px-4 pt-4 pb-4 overflow-y-auto " style={{ marginBottom: activeTab === "moodboards" ? "120px" : "0px" }}>
+      {/* 3. Content Area - capped to the same column width as the Home feed so cards
+             render at a matching size (not stretched full-width). */}
+      <div className="mx-auto w-full max-w-[24.5rem] px-4 pt-2 pb-24 overflow-y-auto md:max-w-[47rem] lg:max-w-[62rem] xl:max-w-[78rem]">
+        {/* Search bar on top, the Moodboards/Creations/Products toggle below it —
+            both pinned so they stay put while the grid scrolls. */}
+        <div className="sticky top-0 z-30 -mx-4 mb-3 flex flex-col gap-2 bg-background/95 px-4 pb-2 pt-1 backdrop-blur-sm">
+          {(activeTab === "products" || activeTab === "moodboards") && (
+            <FilterSearchBar
+              className="rounded-frame"
+              value={searchTerm}
+              onValueChange={handleSearchChange}
+              filters={shouldShowFilters ? filterChips : undefined}
+              pillPosition={shouldShowFilters ? "top" : "none"}
+              variant="elevated"
+              onSubmit={(searchTerm.trim().length > 0 || uploadedImageUrl) ? handleSubmit : undefined}
+              onClear={handleClear}
+              placeholder={activeTab === "moodboards" ? "search your boards & saves" : "search products…"}
+              trailingAction={(searchTerm.trim().length > 0 || uploadedImageUrl) ? undefined : null}
+              onFocus={() => setIsSearchFocused(true)}
+              onBlur={() => setIsSearchFocused(false)}
+              onImageUpload={handleImageUpload}
+              isUploadingImage={isUploading}
+              previewImageUrl={uploadedImageUrl}
+              onClearImage={handleClearImage}
+              showCompactPreview
+              {...(activeTab === "moodboards"
+                ? {
+                    showFilterButton: false,
+                    sortValue: moodboardSort,
+                    onSortChange: (v: string) => setMoodboardSort(v as "recency" | "alphabetical"),
+                    sortOptions: [
+                      { value: "recency", label: "Recent" },
+                      { value: "alphabetical", label: "A-Z" },
+                    ],
+                  }
+                : {
+                    leadingActions: null,
+                  }
+              )}
+            />
+          )}
+          <div className="flex justify-center gap-2">
+            {[
+              { id: "moodboards", label: "Moodboards" },
+              { id: "creations", label: "Creations" },
+              { id: "products", label: "Products" },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => handleTabChange(tab.id)}
+                className={`rounded-[3px] border px-3.5 py-1.5 text-[11px] font-medium leading-none transition-colors ${
+                  activeTab === tab.id
+                    ? "border-foreground bg-foreground text-background"
+                    : "border-hairline bg-card text-ink hover:border-hairline-3 hover:bg-editorial/40"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
         {renderContent()}
       </div>
-
-
-      {/* Conditionally render search bar only for "products" or "moodboards" tab */}
-      {(activeTab === "products" || activeTab === "moodboards") && (
-        <div className="fixed bottom-12 left-0 right-0 mx-auto w-full px-2 z-30 flex items-end gap-2">
-          <FilterSearchBar
-            className="rounded-b-3xl flex-1"
-            value={searchTerm}
-            onValueChange={handleSearchChange}
-            filters={shouldShowFilters ? filterChips : undefined}
-            pillPosition={shouldShowFilters ? "top" : "none"}
-            variant="elevated"
-            onSubmit={(searchTerm.trim().length > 0 || uploadedImageUrl) ? handleSubmit : undefined}
-            onClear={handleClear}
-            placeholder={shouldShowFilters 
-              ? (activeFilter === "products" ? "Search products..." : "Search outfits...")
-              : "Discover your next look"
-            }
-            trailingAction={(searchTerm.trim().length > 0 || uploadedImageUrl) ? undefined : null}
-            onFocus={() => setIsSearchFocused(true)}
-            onBlur={() => setIsSearchFocused(false)}
-            onImageUpload={handleImageUpload}
-            isUploadingImage={isUploading}
-            previewImageUrl={uploadedImageUrl}
-            onClearImage={handleClearImage}
-            showCompactPreview
-            // For moodboards tab: show only sort (no filter) with custom options
-            // For products tab: hide leading actions (no sort/filter)
-            {...(activeTab === "moodboards" 
-              ? {
-                  showFilterButton: false,
-                  sortValue: moodboardSort,
-                  onSortChange: (v: string) => setMoodboardSort(v as "recency" | "alphabetical"),
-                  sortOptions: [
-                    { value: "recency", label: "Recent" },
-                    { value: "alphabetical", label: "A-Z" },
-                  ],
-                }
-              : {
-                  leadingActions: null,
-                }
-            )}
-          />
-        </div>
-      )}
 
       <MoodboardPickerDrawer
         open={isPickerOpen}
@@ -430,8 +453,7 @@ function useResponsiveColumns() {
   useEffect(() => {
     const updateColumns = () => {
       const width = window.innerWidth
-      if (width >= 1280) setColumns(5) // xl
-      else if (width >= 1024) setColumns(4) // lg
+      if (width >= 1024) setColumns(4) // lg+ (capped at 4)
       else if (width >= 768) setColumns(3) // md
       else setColumns(2) // sm
     }

@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { cn } from "@/lib/utils"
-import { OutfitInspirationTile } from "@/design-system/primitives"
 import type { MoodboardPreview } from "@/services/collections/collectionsService"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -14,50 +13,45 @@ interface MoodboardCardProps {
   itemCount?: number
   preview?: MoodboardPreview
   onDelete?: (slug: string, name: string) => void
+  /** Position in the board grid — seeds the fixed tilt + stagger so the wall
+   *  reads like pinned scraps, not a rigid grid (boards/feed only). */
+  index?: number
 }
 
-const MoodboardCard = ({ name, slug, isSystem = false, itemCount = 0, preview, onDelete }: MoodboardCardProps) => {
+// Fixed per-slot rotations + vertical offsets — hand-placed pinboard scatter.
+// Fixed (never random) so a card keeps its angle across re-mounts (tilt gate,
+// Design_Tokens §4.3).
+const CARD_TILT = ["-2.1deg", "1.6deg", "-1.1deg", "2deg", "-1.7deg", "1.2deg"]
+const CARD_DROP = ["0rem", "0.9rem", "0.35rem", "0.7rem", "0.2rem", "0.55rem"]
+
+const MoodboardCard = ({ name, slug, isSystem = false, itemCount = 0, preview, onDelete, index = 0 }: MoodboardCardProps) => {
   const navigate = useNavigate()
   const items = useMemo(() => preview?.items ?? [], [preview?.items])
-  const hasItems = items.length > 0
-  const resolveGender = (value?: string | null): "male" | "female" => (value === "male" ? "male" : "female")
   const isClickable = Boolean(slug) && itemCount > 0
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false)
   const canDelete = Boolean(onDelete && slug && !isSystem)
 
-  const renderPreviewItem = useCallback(
-    (item: NonNullable<typeof items>[number]) => {
+  // Flatten the board into individual flat-lay garment images — a product's own
+  // image, or each garment inside an outfit's rendered items — so the collage shows
+  // flat pieces on cream, exactly like the kalagriha canvas board card (6e).
+  const garments = useMemo(() => {
+    const urls: string[] = []
+    for (const item of items) {
+      if (urls.length >= 4) break
       if (item.itemType === "outfit") {
-        return (
-          <OutfitInspirationTile
-            preset="homeCurated"
-            wrapperClassName="flex h-full w-full items-center justify-center"
-            outfitId={item.id}
-            renderedItems={item.renderedItems}
-            showTitle={false}
-            showChips={false}
-            showSaveButton={false}
-            sizeMode="fluid"
-            fluidLayout="avatar"
-            cardClassName="h-full w-full"
-            avatarGender={resolveGender(item.gender)}
-          />
-        )
+        for (const rendered of item.renderedItems ?? []) {
+          if (rendered.imageUrl) {
+            urls.push(rendered.imageUrl)
+            if (urls.length >= 4) break
+          }
+        }
+      } else if (item.imageUrl) {
+        urls.push(item.imageUrl)
       }
-
-      return item.imageUrl ? (
-        <img
-          src={item.imageUrl}
-          alt={item.productName ?? "Product preview"}
-          className="h-full w-full object-contain"
-        />
-      ) : (
-        <div className="flex h-full items-center justify-center text-xs text-muted-foreground">Preview unavailable</div>
-      )
-    },
-    [resolveGender],
-  )
+    }
+    return urls
+  }, [items])
 
   const handleNavigate = useCallback(() => {
     if (!slug) return
@@ -66,27 +60,103 @@ const MoodboardCard = ({ name, slug, isSystem = false, itemCount = 0, preview, o
     navigate(`/home?${params.toString()}`)
   }, [isConfirmingDelete, isMenuOpen, navigate, slug])
 
-  return (
+  // Scrapbook collage — cream cells tilted a touch, each a flat garment, exactly
+  // like the canvas board card. Layout adapts to how many pieces preview:
+  // 1 → full · 2 → split · 3 → row · 4+ → big-left + stacked + right.
+  const cell = (src: string | undefined, tilt: string, className?: string) => (
     <div
-      role={isClickable ? "button" : undefined}
-      tabIndex={isClickable ? 0 : undefined}
-      aria-disabled={isClickable ? undefined : true}
-      onClick={isClickable ? handleNavigate : undefined}
-      onKeyDown={
-        isClickable
-          ? (event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault()
-                handleNavigate()
-              }
-            }
-          : undefined
-      }
       className={cn(
-        "relative w-full overflow-hidden rounded-2xl bg-card text-left shadow-none transition hover:shadow-sm border border-sidebar-border border-b-1",
-        !isClickable && "cursor-default",
+        "relative flex items-center justify-center overflow-hidden rounded-[4px] bg-background p-2",
+        className,
       )}
+      style={{ transform: `rotate(${tilt})` }}
     >
+      {src ? <img src={src} alt="" loading="lazy" className="max-h-full max-w-[86%] object-contain" /> : null}
+    </div>
+  )
+
+  const renderCollage = () => {
+    const n = garments.length
+    if (n === 0) {
+      return (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            navigate("/search")
+          }}
+          className="flex h-[110px] w-full flex-col items-center justify-center gap-2 rounded-[4px] border border-dashed border-hairline-dashed text-taupe transition-colors hover:bg-editorial/30"
+        >
+          <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-hairline-dashed text-primary">
+            <span className="text-lg font-light leading-none">+</span>
+          </span>
+          <span className="text-[10px]">Add pieces</span>
+        </button>
+      )
+    }
+    if (n === 1) return <div className="h-[118px]">{cell(garments[0], "-1deg", "h-full w-full")}</div>
+    if (n === 2)
+      return (
+        <div className="flex h-[110px] gap-2">
+          {cell(garments[0], "-2deg", "flex-1")}
+          {cell(garments[1], "1.8deg", "flex-1")}
+        </div>
+      )
+    if (n === 3)
+      return (
+        <div className="flex h-[92px] gap-2">
+          {cell(garments[0], "2deg", "flex-1")}
+          {cell(garments[1], "-1.6deg", "flex-1")}
+          {cell(garments[2], "1.4deg", "flex-1")}
+        </div>
+      )
+    return (
+      <div className="flex h-[118px] gap-2">
+        {cell(garments[0], "-2deg", "flex-[1.4]")}
+        <div className="flex flex-1 flex-col gap-2">
+          {cell(garments[1], "1.6deg", "flex-1")}
+          {cell(garments[2], "2.2deg", "flex-1")}
+        </div>
+        {cell(garments[3], "1.8deg", "flex-1")}
+      </div>
+    )
+  }
+
+  const tilt = CARD_TILT[index % CARD_TILT.length]
+  const drop = CARD_DROP[index % CARD_DROP.length]
+
+  return (
+    // Outer stays upright: it carries the stagger drop and holds the pushpin
+    // vertical while the card leaf tilts beneath it — a pinned-scrap look.
+    <div className="relative w-full" style={{ marginTop: drop }}>
+      {/* Pushpin — charcoal head (terracotta stays the action colour, gold stays
+          provenance), a soft sheen, and a short cast shadow onto the card. */}
+      <span aria-hidden className="pointer-events-none absolute left-1/2 top-0 z-20 -translate-x-1/2 -translate-y-[45%]">
+        <span className="relative block h-3 w-3 rounded-full bg-ink-deep shadow-[0_2px_3px_rgba(46,42,36,0.4)]">
+          <span className="absolute left-[2.5px] top-[2px] h-[3px] w-[3px] rounded-full bg-background/55" />
+        </span>
+      </span>
+      <div
+        role={isClickable ? "button" : undefined}
+        tabIndex={isClickable ? 0 : undefined}
+        aria-disabled={isClickable ? undefined : true}
+        onClick={isClickable ? handleNavigate : undefined}
+        onKeyDown={
+          isClickable
+            ? (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault()
+                  handleNavigate()
+                }
+              }
+            : undefined
+        }
+        style={{ transform: `rotate(${tilt})` }}
+        className={cn(
+          "relative w-full rounded-frame border border-hairline bg-card p-3.5 text-left shadow-[0_1px_3px_rgba(46,42,36,0.06)] transition hover:-translate-y-0.5 hover:shadow-[0_6px_16px_rgba(46,42,36,0.12)]",
+          !isClickable && "cursor-default",
+        )}
+      >
       {canDelete ? (
         <div className="absolute right-2 top-2 z-10">
           <DropdownMenu
@@ -163,58 +233,16 @@ const MoodboardCard = ({ name, slug, isSystem = false, itemCount = 0, preview, o
           </DropdownMenu>
         </div>
       ) : null}
-      <div className="grid aspect-[7/9] grid-cols-2 grid-rows-2 gap-0 overflow-hidden rounded-t-2xl bg-none border border-sidebar-border border-b-1 border-x-0 border-t-0">
-        {hasItems ? (
-          items.length === 1 ? (
-            // 1 item: Full space
-            <div className="relative col-span-2 row-span-2 overflow-hidden bg-card p-2">
-              {items[0] ? renderPreviewItem(items[0]) : null}
-            </div>
-          ) : items.length === 2 ? (
-            // 2 items: Half and half
-            <>
-              <div className="relative row-span-2 overflow-hidden bg-card p-2  border-r border-sidebar-border">
-                {items[0] ? renderPreviewItem(items[0]) : null}
-              </div>
-              <div className="relative row-span-2 overflow-hidden bg-card p-2">
-                {items[1] ? renderPreviewItem(items[1]) : null}
-              </div>
-            </>
-          ) : (
-            // 3+ items: 1 large left + 2 stacked right
-            <>
-              <div className="relative row-span-2 overflow-hidden bg-card p-1 border-r border-sidebar-border">
-                {items[0] ? renderPreviewItem(items[0]) : null}
-              </div>
-              <div className="relative overflow-hidden bg-card p-1">
-                {items[1] ? renderPreviewItem(items[1]) : null}
-              </div>
-              <div className="relative overflow-hidden bg-card p-1 border-t border-sidebar-border">
-                {items[2] ? renderPreviewItem(items[2]) : null}
-              </div>
-            </>
-          )
-        ) : (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              navigate("/search")
-            }}
-            className="col-span-2 row-span-2 flex flex-col items-center justify-center gap-2 text-muted-foreground transition-colors hover:bg-muted/60"
-          >
-            <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-dashed border-muted-foreground/40">
-              <span className="text-xl font-light">+</span>
-            </div>
-            <span className="text-xs">Add items</span>
-          </button>
-        )}
+      {renderCollage()}
+      <div className="mt-3">
+        <p className="truncate text-sm font-semibold leading-snug text-foreground">{name}</p>
+        {itemCount > 0 ? (
+          <p className="mt-0.5 text-[10.5px] text-taupe">
+            {itemCount} {itemCount === 1 ? "pin" : "pins"}
+          </p>
+        ) : null}
       </div>
-      <div className="p-2 text-left">
-        <p className="text-sm font-medium text-foreground">{name}</p>
-        {/* <p className="text-xs text-muted-foreground">{isSystem ? "System" : "Moodboard"}</p> */}
       </div>
-
     </div>
   )
 }

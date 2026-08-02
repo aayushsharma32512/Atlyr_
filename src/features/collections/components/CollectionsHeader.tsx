@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
+import { WordmarkLockup } from "@/design-system/primitives"
 // import type { Database } from "@/integrations/supabase/types";
 
 
@@ -194,47 +195,33 @@ const CollectionsHeader = ({
 
   return (
     <header
-      className={`bg-white/95 backdrop-blur-md px-2 sm:px-4 py-2 sm:py-3 box-border ${className || ''}`}
+      className={`border-b border-hairline bg-background/95 backdrop-blur-sm px-2 sm:px-4 py-2 sm:py-3 box-border ${className || ''}`}
       style={style}
     >
-      <div className="flex items-center justify-between mb-1 p-2">
-        <div className="flex items-center gap-2 sm:gap-3">
-          <span className="pl-3 text-sm sm:text-base font-medium text-gray-900">{resolvedName}</span>
-        </div>
-        <div className="flex items-center gap-2 sm:gap-4">
-          <div className="flex gap-2 sm:gap-4 text-sm sm:text-base text-gray-600 sm:mt-0 sm:mr-2">
-            <span>
-              <span className="font-medium text-gray-900">{resolvedCreationsCount}</span>{" "}
-              <span>creations</span>
-            </span>
-          </div>
-          <Button
-            variant="ghost"
-            className="bg-card text-sm sm:text-base font-medium text-foreground shadow-none hover:bg-muted/40"
-            size="sm"
-            onClick={onAddMoodboard}
-          >
-            Add <Plus className="h-4 w-4" />
-          </Button>
-          {/* <IconButton tone="subtle" size="xxs" aria-label="Add collection" onClick={onAddMoodboard}>
-            <Plus className="h-3 w-3" />
-          </IconButton> */}
-        </div>
+      {/* House wordmark — कलागृह, left-aligned to match every other screen header. */}
+      <div className="flex justify-start pb-1.5 pt-0.5 pl-3">
+        <WordmarkLockup size="header" />
       </div>
 
-      {/* Category Tabs */}
-      <div className="flex justify-around mt-1 pt-1">
-        {categoryTabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => onTabChange(tab.id)}
-            className={`text-sm font-medium px-4 py-1 rounded-full transition-colors ${activeTab === tab.id ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
-              }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="flex items-end justify-between mb-1 px-3 pt-1">
+        <div className="flex flex-col">
+          {/* Editorial screen title — the canvas leads Boards with a serif headline. */}
+          <h1 className="font-display text-[26px] font-medium leading-none text-foreground">Your boards</h1>
+          <p className="mt-1.5 text-[11px] text-taupe">
+            {resolvedName} · <span className="font-medium text-foreground">{resolvedCreationsCount}</span> creations
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          className="bg-card text-sm font-medium text-foreground shadow-none hover:bg-editorial/40"
+          size="sm"
+          onClick={onAddMoodboard}
+        >
+          Add <Plus className="h-4 w-4" />
+        </Button>
       </div>
+      {/* Category tabs moved into the content area — they now sit BELOW the search
+          bar (rendered by CollectionsPage), not inside this header. */}
     </header>
   )
 }
