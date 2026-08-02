@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { X, Plus, Check } from "lucide-react"
+import { Bookmark, Check, Plus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -226,26 +226,30 @@ export function SaveOutfitDrawer({
             }
           }}
         >
-          <DrawerHeader className="flex flex-row items-center justify-between px-6 pb-1 pt-0">
+          <DrawerHeader className="flex flex-row items-center justify-between px-5 pb-0 pt-1">
             <div className="sr-only">
               <DrawerTitle>{isEditMode ? "Edit outfit" : "Save outfit to collection"}</DrawerTitle>
               <DrawerDescription>{isEditMode ? "Edit outfit details and moodboards." : "Provide outfit details and choose moodboards."}</DrawerDescription>
             </div>
 
+            <span className="text-[8.5px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              {isEditMode ? "Edit this look" : "Save this look"}
+            </span>
+
             <DrawerClose asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <X className="h-4 w-4" />
+              <Button variant="ghost" size="icon" className="-mr-2 h-7 w-7">
+                <X className="h-3.5 w-3.5" />
               </Button>
             </DrawerClose>
           </DrawerHeader>
-          <Separator className="my-1 mb-2 " />
+          <Separator className="my-2 bg-hairline" />
 
           <div className="relative px-5 w-full mx-auto max-h-[80vh] overflow-y-auto">
             <div className="w-full space-y-1 pb-4">
               <div className="flex flex-row gap-2 mx-auto w-full overflow-x-hidden ">
                 {/* Outfit Name */}
                 <div className="w-[50%] p-1 space-y-1 min-w-0 overflow-hidden">
-                  <Label htmlFor="outfit-name" className="text-xs font-thin pl-0.5">
+                  <Label htmlFor="outfit-name" className="pl-0.5 text-[7.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                     Outfit Name
                   </Label>
                   <Input
@@ -260,7 +264,7 @@ export function SaveOutfitDrawer({
 
                 {/* Category */}
                 <div className="flex-1 space-y-1 min-w-0 overflow-hidden p-1">
-                  <Label className="text-xs font-thin pl-0.5">Category</Label>
+                  <Label className="pl-0.5 text-[7.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Category</Label>
                   <Select value={categoryId} onValueChange={setCategoryId} disabled={categoriesLoading}>
                     <SelectTrigger className="bg-card text-sm h-9 shadow-none placeholder:text-muted-foreground text-foreground placeholder:text-sm">
                       <SelectValue placeholder={categoriesLoading ? "Loading…" : "Select category"} />
@@ -280,7 +284,7 @@ export function SaveOutfitDrawer({
               <div className="flex flex-row gap-2">
                 {/* Occasion */}
                 <div className="flex-1 p-1 space-y-1 min-w-0 overflow-hidden">
-                  <Label className="text-xs font-thin pl-0.5">Occasion</Label>
+                  <Label className="pl-0.5 text-[7.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Occasion</Label>
                   <Select value={occasionId} onValueChange={setOccasionId} disabled={occasionsLoading}>
                     <SelectTrigger className="bg-card text-sm h-9 shadow-none placeholder:text-muted-foreground text-foreground placeholder:text-sm">
                       <SelectValue placeholder={occasionsLoading ? "Loading…" : "Select occasion"} />
@@ -297,7 +301,7 @@ export function SaveOutfitDrawer({
 
                 {/* Vibe */}
                 <div className="flex-1 p-1 space-y-1 min-w-0 overflow-hidden">
-                  <Label htmlFor="vibe" className="text-xs font-thin pl-0.5">
+                  <Label htmlFor="vibe" className="pl-0.5 text-[7.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                     Vibe
                   </Label>
                   <Input
@@ -312,7 +316,7 @@ export function SaveOutfitDrawer({
 
               {/* Keywords */}
               <div className="p-1 space-y-1">
-                <Label htmlFor="keywords" className="text-xs font-thin pl-0.5">
+                <Label htmlFor="keywords" className="pl-0.5 text-[7.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   Keywords
                 </Label>
                 <Textarea
@@ -324,120 +328,108 @@ export function SaveOutfitDrawer({
                 />
               </div>
 
-              {/* Add to Moodboard */}
+              {/* To board — tag chips, not a list.
+                  The old rail was a horizontal scroller with "Create" pinned to
+                  its left, so boards past the third were invisible and you
+                  couldn't see what was already ticked without scrolling back.
+                  Boards are a small, flat set: wrapping multi-select chips show
+                  the whole vocabulary and every current selection at a glance,
+                  and "+ New board" sits in the same row as one more chip. */}
               <div className="space-y-1 p-1">
-                  <Label className="text-xs font-thin pl-0.5">Add to Moodboard</Label>
+                <Label className="pl-0.5 text-[7.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  To board
+                </Label>
 
-               
-
-                <div className="flex gap-1 overflow-x-auto pb-2 scrollbar-hide">
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
                   {isLoadingMoodboards ? (
-                    <p className="text-sm text-muted-foreground">Loading moodboards…</p>
-                  ) : onCreateMoodboard ? (
+                    <p className="text-[9px] text-muted-foreground">Loading boards…</p>
+                  ) : (
                     <>
+                      {selectableMoodboards.map((moodboard) => {
+                        const isSelected = selectedMoodboardIds.includes(moodboard.slug)
+                        return (
+                          <button
+                            key={moodboard.slug}
+                            type="button"
+                            aria-pressed={isSelected}
+                            onClick={() =>
+                              setSelectedMoodboardIds((prev) =>
+                                prev.includes(moodboard.slug)
+                                  ? prev.filter((slug) => slug !== moodboard.slug)
+                                  : [...prev, moodboard.slug],
+                              )
+                            }
+                            disabled={isSubmitting}
+                            className={cn(
+                              "inline-flex items-center gap-1 whitespace-nowrap rounded-[3px] border px-2.5 py-1.5",
+                              "text-[9.5px] font-medium transition-colors disabled:opacity-60",
+                              isSelected
+                                ? "border-ink bg-ink text-on-ink-1"
+                                : "border-hairline-4 bg-card text-ink-body hover:border-ink-line",
+                            )}
+                          >
+                            {moodboard.label}
+                            {isSelected && <Check className="size-2.5" strokeWidth={3} aria-hidden="true" />}
+                          </button>
+                        )
+                      })}
 
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          setCreateError(null)
-                          setIsCreating((prev) => !prev)
-                        }}
-                        className="gap-1 h-9 border-border rounded-full bg-background hover:bg-background outline-none flex-shrink-0"
-                        disabled={isSubmitting}
-                        size="sm"
-                      >
-                        Create
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                      {/* {isCreating ? (
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            <Input
-                              value={newMoodboardName}
-                              onChange={(e) => setNewMoodboardName(e.target.value)}
-                              placeholder="Name your moodboard"
-                              disabled={isSubmitting}
-                              className="bg-card rounded-full text-xs w-48 shadow-none placeholder:text-muted-foreground text-foreground placeholder:text-xs h-9"
-                            />
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={handleCreateNewMoodboard}
-                              disabled={isSubmitting}
-                              className="gap-1 flex-shrink-0"
-                            >
-                              <Plus className="h-4 w-4" />
-                              Save
-                            </Button>
-                          </div>
-                        ) : null} */}
+                      {onCreateMoodboard ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCreateError(null)
+                            setIsCreating((prev) => !prev)
+                          }}
+                          disabled={isSubmitting}
+                          className={cn(
+                            "inline-flex items-center gap-1 whitespace-nowrap rounded-[3px] border border-dashed px-2.5 py-1.5",
+                            "text-[9.5px] font-medium transition-colors disabled:opacity-60",
+                            isCreating
+                              ? "border-terracotta text-terracotta"
+                              : "border-hairline-4 text-muted-foreground hover:border-ink-line",
+                          )}
+                        >
+                          <Plus className="size-2.5" aria-hidden="true" />
+                          New board
+                        </button>
+                      ) : null}
+
+                      {selectableMoodboards.length === 0 && !onCreateMoodboard ? (
+                        <p className="text-[9px] text-muted-foreground">No boards yet</p>
+                      ) : null}
                     </>
-                  ) : null}
-                  {!isLoadingMoodboards && moodboards.length > 0
-                    ? selectableMoodboards.map((moodboard) => (
-                      <Button
-                        key={moodboard.slug}
-                        type="button"
-                        variant="outline"
-                        onClick={() =>
-                          setSelectedMoodboardIds((prev) =>
-                            prev.includes(moodboard.slug)
-                              ? prev.filter((slug) => slug !== moodboard.slug)
-                              : [...prev, moodboard.slug],
-                          )
-                        }
-                        disabled={isSubmitting}
-                        className={cn(
-                          "border-border rounded-full text-foreground bg-background hover:bg-background outline-none flex-shrink-0 whitespace-nowrap",
-                          selectedMoodboardIds.includes(moodboard.slug) && "border-muted-foreground bg-muted/50",
-                        )}
-                      >
-                        {moodboard.label}
-                      </Button>
-                    ))
-                    : null}
-                  {!isLoadingMoodboards && selectableMoodboards.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No moodboards yet</p>
-                  ) : null}
-                  {createError ? <p className="text-sm text-destructive w-full">{createError}</p> : null}
+                  )}
                 </div>
 
-                
+                {createError ? <p className="pt-1 text-[9px] text-destructive">{createError}</p> : null}
+
                 {isCreating ? (
-                  <div className="w-full flex flex-col gap-1 mt-0 p-0 rounded-lg bg-muted/40">
-                    <div className="flex justify-between items-center px-3 pt-2 ">
-                      <span className="font-medium text-xs text-foreground">Create moodboard</span>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => setIsCreating(false)}
-                        className="h-7 w-7 p-0"
-                        aria-label="Close"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <div className="flex items-center gap-2 w-full flex-shrink-0 px-3 pb-3 mt-0">
-                      <Input
-                        value={newMoodboardName}
-                        onChange={(e) => setNewMoodboardName(e.target.value)}
-                        placeholder="Name your moodboard"
-                        disabled={isSubmitting}
-                        className="bg-card  text-xs shadow-none placeholder:text-muted-foreground text-foreground placeholder:text-xs h-9 mt-0 w-full"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={handleCreateNewMoodboard}
-                        disabled={isSubmitting}
-                        className="gap-1 flex-shrink-0 h-9 shadow-none"
-                      >
-                        Save
-                      </Button>
-                    </div>
+                  <div className="mt-1.5 flex items-center gap-1.5 rounded-[4px] border border-hairline bg-muted/30 p-2">
+                    <Input
+                      value={newMoodboardName}
+                      onChange={(e) => setNewMoodboardName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          void handleCreateNewMoodboard()
+                        }
+                      }}
+                      placeholder="Name your board"
+                      autoFocus
+                      disabled={isSubmitting}
+                      className="h-8 rounded-[3px] border-hairline-4 bg-card text-[10px] shadow-none placeholder:text-[10px] placeholder:text-muted-foreground"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCreateNewMoodboard}
+                      disabled={isSubmitting}
+                      className="h-8 shrink-0 rounded-[3px] border-hairline-4 px-3 text-[10px] shadow-none"
+                    >
+                      Add
+                    </Button>
                   </div>
                 ) : null}
               </div>
@@ -489,14 +481,15 @@ export function SaveOutfitDrawer({
                 )}
               </div>
 
-              {/* Center: Save button */}
+              {/* Center: Save — the screen's one filled terracotta. */}
               <Button
                 onClick={handleSave}
-                className="w-full min-w-0 bg-foreground text-background hover:bg-foreground/90 h-8 rounded-lg text-xs px-3"
+                className="h-9 w-full min-w-0 gap-1.5 rounded-[3px] bg-primary px-3 text-[11px] font-bold text-primary-foreground hover:bg-primary/90"
                 disabled={!isValid || isSubmitting || categoriesLoading || occasionsLoading}
               >
+                <Bookmark className="size-3 shrink-0" aria-hidden="true" />
                 <span className="truncate">
-                  {isSubmitting ? "Saving…" : isEditMode ? "Save Changes" : "Save to Collection"}
+                  {isSubmitting ? "Saving…" : isEditMode ? "Save changes" : "Save"}
                 </span>
               </Button>
 

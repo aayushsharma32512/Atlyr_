@@ -1,23 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
-import { SquareUserRound, RefreshCw, Search, Maximize2, Shirt, Footprints, Minimize2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { ChevronLeft, RefreshCw, Search, Sparkles } from "lucide-react"
 import { useOutfitSnapshot } from "@/features/outfits/hooks/useOutfitSnapshot"
 
 import {
-  CategoryFilterBar,
   FilterSearchBar,
   IconButton,
   MoodboardPickerDrawer,
   SaveOutfitDrawer,
   OutfitInspirationTile,
-  ShortProductCard,
-  ScreenHeader,
   type FilterCategory,
 } from "@/design-system/primitives"
-import { AlternativesGrid } from "./components/AlternativesGrid"
+import { ProductPeekCard } from "./components/ProductPeekCard"
+import { RackGrid } from "./components/RackGrid"
+import { RackHeader, type RackMode } from "./components/RackHeader"
+import { WearingCard } from "./components/WearingCard"
 import { CategoryId } from "@/design-system/primitives/category-filter-bar"
-import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { useStudioContext } from "./context/StudioContext"
 import { useStudioOutfit } from "@/features/studio/hooks/useStudioOutfit"
@@ -60,6 +58,13 @@ import { setPendingStudioComboChange, useStudioCombinationTracking } from "@/int
 import { trackTryonFlowStarted } from "@/integrations/posthog/engagementTracking/tryon/tryonTracking"
 import { useStudioTourContext } from "./context/StudioTourContext"
 
+/** WEARING · {SLOT} on the 7c worn-piece card. */
+const SLOT_DISPLAY_LABELS: Record<StudioProductTraySlot, string> = {
+  top: "Tops",
+  bottom: "Bottoms",
+  shoes: "Shoes",
+}
+
 export function StudioAlternativesView() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -88,10 +93,12 @@ export function StudioAlternativesView() {
     if (!tour.isActive) return 
     const stepId = tour.getCurrentStep()?.id
 
-    // If we are on Alternatives Screen, we expect step to be 'alternatives' or 'full-screen'.
-    // If step is 'mannequin' (Back) or 'product-details' (Next after full-screen), we should return to Studio.
-    if (stepId === "mannequin" || stepId === "product-details") {
-       openStudio()
+    // On this screen the tour should be on 'alternatives'. Stepping back to
+    // 'mannequin' means the user belongs in the studio again.
+    // ('full-screen' and 'product-details' used to appear here — neither is a
+    // real step id any more; 'product-details' never was one at all.)
+    if (stepId === "mannequin") {
+      openStudio()
     }
   }, [tour, openStudio])
   const startLikenessFlow = useStartLikenessFlow()
@@ -121,6 +128,8 @@ export function StudioAlternativesView() {
   const { user } = useAuth()
   const { profile, gender } = useProfileContext()
   const [isSaveDrawerOpen, setIsSaveDrawerOpen] = useState(false)
+  // 7e — the peek sheet over the dimmed studio.
+  const [isPeekOpen, setIsPeekOpen] = useState(false)
   
   // Detect admin mode for direct save
   const adminGender = useOptionalAdminGender()
@@ -158,7 +167,7 @@ export function StudioAlternativesView() {
   const heroProductId = parsedParams.productId ?? slotProductIds[slot] ?? null
   const heroProductQuery = useStudioHeroProduct(resolvedOutfitId, slot, heroProductId)
   
-  // Use the old alternatives query as fallback when no active search
+  // The rack's default source: the whole catalogue for this slot.
   const fallbackAlternativesQuery = useStudioAlternatives(resolvedOutfitId, slot)
 
   const requestedSlotIds = parsedParams.slotIds
@@ -282,7 +291,8 @@ export function StudioAlternativesView() {
     return products
   }, [search.hasActiveSearch, searchResultsQuery.data, fallbackAlternativesQuery.data, sortValue, activeSlotIds, slot])
 
-  // Apply client-side collection/moodboard filter
+  // Client-side collection/moodboard filter. Kept live: activeCollectionSlugs
+  // only fills from the ≡ chips, so it narrows nothing unless asked.
   const filteredAlternativeProducts = useMemo(() => {
     if (activeCollectionSlugs.length === 0) return alternativeProducts
     const memberMap = productCollectionMembership.data ?? {}
@@ -294,6 +304,20 @@ export function StudioAlternativesView() {
   const isLoading = search.hasActiveSearch
     ? searchResultsQuery.isLoading
     : fallbackAlternativesQuery.isLoading
+
+  // 7c's rack modes. Each is a different question about the same slot, so they
+  // share one product list rather than four query paths.
+  const [rackMode, setRackMode] = useState<RackMode>("alternates")
+
+  const rackProducts = useMemo(() => {
+    if (rackMode === "yours") {
+      return []
+    }
+    if (rackMode === "saves") {
+      return filteredAlternativeProducts.filter((product) => productSaveActions.isSaved(product.id))
+    }
+    return filteredAlternativeProducts
+  }, [filteredAlternativeProducts, productSaveActions, rackMode])
 
   // --- FILTER OPTIONS ---
   const { data: filterOptions, isLoading: isFilterOptionsLoading, error: filterOptionsError } = useProductFilterOptions({
@@ -602,10 +626,20 @@ export function StudioAlternativesView() {
     openStudio()
   }, [openStudio])
 
+  /**
+   * Canvas 7e. This used to jump straight to /studio/product/:id — a route
+   * change out of the studio just to read a fabric line. The peek is the
+   * halfway stop; its own "Full details" still escalates to the page.
+   */
   const handleHeroDetails = useCallback(() => {
-    if (isViewOnly) {
+    if (!heroProduct && !focusedItem?.id) {
       return
     }
+    setIsPeekOpen(true)
+  }, [focusedItem?.id, heroProduct])
+
+  const handlePeekDetails = useCallback(() => {
+    setIsPeekOpen(false)
     const productId = heroProduct?.productId ?? focusedItem?.id
     if (!productId) {
       return
@@ -615,7 +649,7 @@ export function StudioAlternativesView() {
       return
     }
     openProduct(productId)
-  }, [focusedItem?.id, heroProduct, isViewOnly, openProduct])
+  }, [focusedItem?.id, heroProduct, openProduct])
 
   const handleBuyClick = useCallback(() => {
     if (isViewOnly) {
@@ -918,47 +952,40 @@ export function StudioAlternativesView() {
     ],
   )
 
-  // Dynamic categories with "others" icon changing based on panel mode
-  const categories = useMemo(() => {
-    const BottomIcon = (props: { className?: string }) => (
-      <svg width="21" height="18" viewBox="0 0 21 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <g clipPath="url(#clip0_1_2625)">
-          <path fillRule="evenodd" clipRule="evenodd" d="M1.71599 0.0343769C1.52044 0.095399 1.36568 0.238497 1.27195 0.445235C1.23115 0.535043 1.2271 0.601418 1.22675 1.20438C1.22627 1.77119 1.21949 1.90096 1.17881 2.11817C0.667436 4.84774 0.359233 7.47455 0.13953 10.9774C0.0674454 12.1263 0 14.0089 0 14.8721C0 15.5305 0.0176048 15.6081 0.209354 15.7999C0.40039 15.991 0.384213 15.9875 1.71207 16.1137C1.90929 16.1325 2.52343 16.1894 3.07691 16.2403C3.63051 16.2912 4.18744 16.3431 4.31472 16.3556C4.66753 16.3903 5.18854 16.4392 6.29264 16.5411C6.84612 16.5922 7.45516 16.6496 7.64607 16.6686C8.16803 16.7209 8.4057 16.7154 8.5507 16.6478C8.69035 16.5828 8.81846 16.4611 8.88554 16.3296C8.93384 16.2351 9.02186 15.9135 9.7295 13.2502C9.86725 12.7316 9.98692 12.3152 9.99536 12.3248C10.0037 12.3345 10.0487 12.4933 10.0952 12.6778C10.1416 12.8623 10.2153 13.1486 10.2588 13.314C10.3024 13.4794 10.4904 14.203 10.6767 14.9218C10.863 15.6408 11.0377 16.274 11.065 16.3289C11.1253 16.4506 11.2818 16.5988 11.4127 16.6583C11.5351 16.7139 11.8098 16.7171 12.3094 16.6688C12.5057 16.6499 13.1191 16.5929 13.6726 16.5422C14.2261 16.4915 14.7311 16.4448 14.7947 16.4384C14.8583 16.4319 15.587 16.364 16.4141 16.2875C17.9602 16.1445 18.4108 16.1026 19.0515 16.0419C19.255 16.0225 19.4708 15.991 19.5309 15.9717C19.6784 15.9243 19.855 15.7608 19.9352 15.5975L20 15.4656L19.9956 14.8293C19.9875 13.67 19.9144 12.0582 19.7899 10.295C19.6515 8.33278 19.4458 6.38733 19.1884 4.60377C19.1012 3.99974 18.8745 2.63323 18.8295 2.44076C18.8129 2.36963 18.7969 1.97745 18.7881 1.42278L18.7738 0.520531L18.706 0.398249C18.6155 0.234691 18.4748 0.109435 18.3142 0.0493648L18.1822 0L9.99917 0.00154637C3.19682 0.00285481 1.79926 0.00832659 1.71599 0.0343769ZM5.93317 1.52995C6.09685 1.72456 6.14883 1.98791 6.07187 2.23248C6.02096 2.39437 5.86097 2.57839 5.69955 2.66082L5.58702 2.71839L4.06837 2.72482L2.5496 2.73112L2.53699 2.78263C2.50856 2.8998 2.264 4.42083 2.19965 4.88141C1.95223 6.6514 1.77725 8.34646 1.64331 10.2718C1.56766 11.3588 1.45775 13.7918 1.45763 14.3818L1.45751 14.6167L1.56742 14.6311C1.66151 14.6434 3.15078 14.783 3.94455 14.854C4.08443 14.8665 4.3604 14.8922 4.55762 14.9113C4.99572 14.9533 6.76084 15.1186 7.29517 15.1677C7.5094 15.1873 7.68961 15.1984 7.69579 15.1921C7.70198 15.1859 7.7523 15.0107 7.80761 14.8027C7.86292 14.5947 8.05063 13.8935 8.22453 13.2446C8.63087 11.7297 8.97738 10.4355 9.17257 9.705C9.33185 9.10834 9.38419 8.98035 9.51373 8.87103C9.65742 8.7497 9.8023 8.69915 10.0058 8.69915C10.2371 8.69915 10.3766 8.75851 10.5283 8.92147C10.6585 9.06147 10.6714 9.09668 10.8633 9.84382C10.9484 10.1746 11.0885 10.716 11.1748 11.0469C11.2609 11.3777 11.4272 12.0179 11.5442 12.4697C11.6481 12.8708 11.7523 13.2718 11.8569 13.6726C12.0072 14.2453 12.1696 14.8697 12.2088 15.0261C12.2281 15.1023 12.2517 15.1735 12.2616 15.1843C12.2715 15.195 12.455 15.1872 12.6695 15.1671C12.8841 15.1471 13.5124 15.0887 14.066 15.0376C14.6195 14.9864 15.2336 14.9293 15.4308 14.9107C15.6281 14.8921 15.904 14.8667 16.0439 14.8542C16.9133 14.7766 18.3497 14.6428 18.4326 14.6316L18.531 14.6183V14.3353C18.531 13.8061 18.4453 12.0182 18.3562 10.6883C18.1932 8.25594 17.9264 5.86906 17.5803 3.7478C17.514 3.34146 17.421 2.81843 17.4065 2.77038C17.395 2.73243 17.3055 2.72993 15.9541 2.72993C14.3763 2.72993 14.3769 2.72993 14.1874 2.59266C13.9905 2.44992 13.8612 2.16265 13.8914 1.93439C13.9098 1.79521 13.9692 1.65223 14.0556 1.53887L14.1177 1.45751H5.87215L5.93317 1.52995Z" fill="#292524" />
-        </g>
-        <defs>
-          <clipPath id="clip0_1_2625">
-            <rect width="20" height="16.7037" fill="white" />
-          </clipPath>
-        </defs>
-      </svg>
-    )
+  /**
+   * Alternates means the whole slot, so returning to it clears any committed
+   * text/image search. Without this a search you ran earlier stayed committed
+   * and the tab quietly showed a filtered subset of the catalogue.
+   */
+  const handleRackModeChange = useCallback(
+    (next: RackMode) => {
+      setRackMode(next)
+      if (next === "alternates" && search.hasActiveSearch) {
+        search.resetForSlot(slot, null, isAdminMode)
+      }
+    },
+    [isAdminMode, search, slot],
+  )
 
-    return [
-      { id: "top" as const, label: "Top", icon: Shirt },
-      { id: "bottom" as const, label: "Bottom", icon: BottomIcon },
-      { id: "shoes" as const, label: "Shoes", icon: Footprints },
-      { 
-        id: "others" as const, 
-        label: "Others", 
-        icon: panelMode === "split" ? Maximize2 : Minimize2 
-      },
-    ]
-  }, [panelMode])
 
-  // --- FORCE SEARCH (Sparkles): Search for items similar to current avatar item ---
+  /**
+   * ⟳ — back to the full catalogue for this slot.
+   *
+   * This used to fire an image-embedding search against the worn piece, so the
+   * one "reset"-looking control on the screen actually *narrowed* the rack to a
+   * few dozen lookalikes, and nothing put it back. Image similarity can return
+   * when it earns its place; until then this clears text, image and filters.
+   */
   const handleForceSearch = useCallback(() => {
     if (isViewOnly) {
       return
     }
-    console.log('[StudioSearch] Force search triggered with image:', currentSlotImageUrl)
-    // Auto-restore split view if right panel is full width
     if (panelMode === "right-full") {
       restoreSplit()
     }
-    if (currentSlotImageUrl) {
-      search.handleForceSearch(currentSlotImageUrl)
-    }
-  }, [currentSlotImageUrl, isViewOnly, panelMode, restoreSplit, search])
+    setRackMode("alternates")
+    search.resetForSlot(slot, null, isAdminMode)
+  }, [isAdminMode, isViewOnly, panelMode, restoreSplit, search, slot])
 
   const heroTitle = heroProduct?.title ?? focusedItem?.product_name ?? focusedItem?.brand ?? "Selected piece"
   const heroPrice = heroProduct?.price ?? focusedItem?.price ?? 0
@@ -967,7 +994,7 @@ export function StudioAlternativesView() {
   const trailingAction = useMemo(() => {
     return {
       id: "force-search",
-      ariaLabel: "Reset to current item",
+      ariaLabel: "Show everything in this slot",
       icon: <RefreshCw className="h-4 w-4" />,
       onClick: handleForceSearch,
     }
@@ -975,36 +1002,52 @@ export function StudioAlternativesView() {
 
   return (
     <>
-    <div className="h-full w-full relative">
-      <ScreenHeader
-        // title="Alternatives"
-        onAction={handleBack}
-        className="absolute left-1 top-3 z-20 px-0 pt-0 pb-0"
-      />
-      
-      {/* Main content area - search bar overlays on top */}
-      <div
-        ref={containerRef}
-        style={{
-          height: "calc(100vh - 44px)",
-        }}
-        className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 items-stretch justify-start overflow-hidden px-1 pr-1 pb-0 pt-2"
-      >
+    {/* Both columns and the search bar live inside one centred frame, which is
+        what lets the bar dock "under both columns" rather than being pinned to
+        the viewport.
+        Unlike 7a, the frame is NOT held at the 390px phone width. 7a has one
+        column; this has two side by side, so a phone-width frame gives each
+        pane ~190px and the rack collapses to two cramped cards. It grows with
+        the viewport instead — the cards stay a readable size and the rack simply
+        fits more of them per row. */}
+    <div
+      className="flex justify-center overflow-hidden bg-background"
+      style={{ height: "calc(100dvh - 2.5rem)" }}
+    >
+      <div className="relative my-auto flex h-full max-h-[844px] w-full max-w-sm flex-col overflow-hidden px-2.5 md:max-h-[900px] md:max-w-3xl md:px-4 lg:max-w-5xl">
+        <header className="flex shrink-0 items-center pt-2">
+          <IconButton
+            tone="ghost"
+            size="xs"
+            aria-label="Back"
+            onClick={handleBack}
+            className="-ml-1"
+          >
+            <ChevronLeft className="size-4" aria-hidden="true" />
+          </IconButton>
+          <span className="flex-1 truncate text-center text-[9.5px] font-semibold uppercase tracking-[0.16em] text-muted-foreground md:text-[11px]">
+            Alternates · Split
+          </span>
+          {/* Spacer keeps the label optically centred; ⤢ lives on the rack. */}
+          <span className="size-7 shrink-0" aria-hidden="true" />
+        </header>
+
+        <div ref={containerRef} className="flex min-h-0 flex-1 gap-2 pt-2 md:gap-3 md:pt-3">
         {/* Left Panel - Outfit Preview */}
         {panelMode !== "right-full" && (
           /* Split view - left panel */
-          <section 
-            className="relative flex h-full min-h-0 flex-none flex-col justify-between gap-1 transition-all duration-200"
-            style={{ 
+          <section
+            className="flex h-full min-h-0 flex-none flex-col gap-2 transition-all duration-200"
+            style={{
               width: `${splitRatio}%`,
             }}
           >
 
             <div
-              className="relative flex flex-1 h-full w-full items-center justify-center overflow-hidden rounded-1xl"
+              className="bg-warp-grid relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-md border border-hairline bg-card"
             >
-              <div 
-                className="flex flex-1 h-[90%] w-full items-center justify-center bg-transparent"
+              <div
+                className="absolute inset-0 flex items-end justify-center bg-transparent"
               >
                 {heroAvatar ? (
                   <OutfitInspirationTile
@@ -1088,73 +1131,59 @@ export function StudioAlternativesView() {
                     avatarRef={snapshotRef}
                   />
                 ) : (
-                  <div className="flex h-[400px] w-full items-center justify-center rounded-[120px] bg-muted/40 text-xs text-muted-foreground">
+                  <div className="flex h-full w-full items-center justify-center text-center text-[10px] text-muted-foreground">
                     {isOutfitLoading ? "Loading outfit…" : "Select an outfit to view alternatives"}
                   </div>
                 )}
               </div>
-
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-label="Try-on"
-                className="absolute bottom-2 left-0 z-10 flex items-center gap-1.5 rounded-xl bg-card h-9 px-3 text-muted-foreground hover:bg-muted/40 hover:text-foreground text-xs font-medium"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  handleTryOn()
-                }}
-              >
-                <SquareUserRound className="size-4" aria-hidden="true" />
-                TryOn
-              </Button>
             </div>
 
-            <ShortProductCard
-              className="w-full pl-3 pr-1 mb-14"
+            {/* The canvas drops the old floating TryOn pill and the separate
+                "this look" bar — both fold into this one card. */}
+            <WearingCard
+              className="shrink-0"
+              slotLabel={SLOT_DISPLAY_LABELS[slot]}
               title={heroTitle}
+              brand={heroProduct?.brand ?? null}
               price={heroPrice}
-              discountPercent={null}
-              rating={heroProduct?.rating ?? "—"}
-              reviewCount={heroProduct?.reviewCount ?? "—"}
+              isReadOnly={isViewOnly}
               onOpenDetails={handleHeroDetails}
+              onTryOn={handleTryOn}
               onSave={isViewOnly ? undefined : () => setIsSaveDrawerOpen(true)}
-              onBuy={heroProduct?.productUrl ? handleBuyClick : undefined}
             />
           </section>
         )}
 
 
-        {/* Right Panel - Product Grid */}
+        {/* Right Panel — the rack, as a panel card */}
         {(
-          <section 
+          <section
             className={cn(
-              "relative flex h-[calc(100% - 6rem)] min-h-0 mb-4 flex-1 flex-col gap-0 overflow-hidden rounded-1xl bg-card/90 p-0",
+              "relative flex h-full min-h-0 flex-1 flex-col gap-0 overflow-hidden rounded-md border border-hairline bg-card p-0",
               tour.isHighlighted("alternatives") ? "z-[75] shadow-xl" : (tour.isActive ? "z-0" : "")
             )}
-            style={{ 
-              width: panelMode === "right-full" ? "100%" : undefined,
-              height: panelMode === "right-full" ? "100%" : "calc(100% - 3.4rem)",
-            }}
           >
-            {/* Header Row with Category Icons */}
-            <div className="flex items-center w-full border-l border-sidebar-border">
-              <CategoryFilterBar
-                activeCategory={panelMode === "right-full" ? "others" : slot}
-                onCategoryChange={isViewOnly ? undefined : handleCategoryChange}
-                categories={categories}
-                className="flex-1 z-50 bg-card"
-              />
-            </div>
-            
+            <RackHeader
+              mode={rackMode}
+              onModeChange={handleRackModeChange}
+              slot={slot}
+              onSlotChange={handleCategoryChange}
+              isExpanded={panelMode === "right-full"}
+              onToggleExpanded={() =>
+                panelMode === "split" ? setPanelMode("right-full") : restoreSplit()
+              }
+              isReadOnly={isViewOnly}
+            />
+
             {/* Products Grid - takes full remaining height */}
             <div
-              className="flex flex-1 min-h-0 items-stretch w-full flex-col overflow-hidden border-l border-sidebar-border bg-card gap-0"
+              className="flex flex-1 min-h-0 items-stretch w-full flex-col overflow-hidden bg-card gap-0"
             >
               {/* Results Header - shows count and active search */}
-              {!isLoading && (search.hasActiveSearch || search.activeFilterIds.length > 0) && (
-                <div className="flex items-center px-2 py-0.5 border-none bg-muted/20">
-                  <span className="text-xs text-muted-foreground">
-                    {filteredAlternativeProducts.length} results
+              {!isLoading && rackMode !== "yours" && (search.hasActiveSearch || search.activeFilterIds.length > 0) && (
+                <div className="flex shrink-0 items-center border-b border-hairline px-2.5 py-1.5">
+                  <span className="truncate text-[8px] text-muted-foreground md:text-[10px]">
+                    {rackProducts.length} results
                     {search.committedText && (
                       <span> for &ldquo;{search.committedText}&rdquo;</span>
                     )}
@@ -1168,62 +1197,76 @@ export function StudioAlternativesView() {
                 </div>
               )}
 
-              {isLoading ? (
-                /* Skeleton Grid Loader */
-                <div className="grid h-full min-h-0 grid-cols-[repeat(auto-fit,minmax(5rem,1fr))] sm:grid-cols-[repeat(auto-fit,minmax(6rem,1fr))] gap-[2px] overflow-y-auto p-1">
-                  {Array.from({ length: 12 }).map((_, i) => (
-                    <div key={i} className="flex flex-col gap-1">
-                      <Skeleton className="aspect-square w-full rounded-lg" />
-                      <Skeleton className="h-3 w-3/4" />
-                      <Skeleton className="h-3 w-1/2" />
-                    </div>
-                  ))}
-                </div>
-              ) : filteredAlternativeProducts.length === 0 ? (
-                /* Empty State */
-                <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4 text-center">
-                  <div className="rounded-full bg-muted/50 p-3">
-                    <Search className="h-6 w-6 text-muted-foreground" />
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-foreground">No results found</p>
-                    <p className="text-xs text-muted-foreground max-w-[200px]">
-                      Try different keywords, adjust your filters, or search with an image
-                    </p>
-                  </div>
+              {rackMode === "yours" ? (
+                <div className="flex flex-1 flex-col items-center justify-center gap-1.5 p-4 text-center">
+                  <Sparkles className="size-4 text-gold" aria-hidden="true" />
+                  <p className="text-[9.5px] font-semibold text-foreground md:text-[12px]">
+                    Your own pieces
+                  </p>
+                  <p className="max-w-[160px] text-[8px] text-muted-foreground md:max-w-[220px] md:text-[10px]">
+                    Wardrobe items you upload will appear here, ready to style into any look.
+                  </p>
                 </div>
               ) : (
-                <AlternativesGrid
-                    products={filteredAlternativeProducts}
-                    onSelect={isViewOnly ? undefined : handleAlternativeSelect}
-                    isProductSaved={productSaveActions.isSaved}
-                    onToggleSave={
-                      isViewOnly
-                        ? undefined
-                        : (productId, nextSaved) => productSaveActions.onToggleSave(productId, nextSaved)
-                    }
-                    onLongPressSave={
-                      isViewOnly ? undefined : (productId) => productSaveActions.onLongPressSave(productId)
-                    }
-                    className="h-full"
-                  />
+                <RackGrid
+                  products={rackProducts}
+                  isLoading={isLoading}
+                  wornProductId={activeSlotIds[slot] ?? null}
+                  className="min-h-0 flex-1"
+                  onSelect={
+                    isViewOnly
+                      ? undefined
+                      : (product) => {
+                          // RackGrid only carries what it renders; the swap needs
+                          // the full record (placement, itemType, gender).
+                          const full = rackProducts.find((candidate) => candidate.id === product.id)
+                          if (full) {
+                            void handleAlternativeSelect(full)
+                          }
+                        }
+                  }
+                  isProductSaved={productSaveActions.isSaved}
+                  onToggleSave={
+                    isViewOnly
+                      ? undefined
+                      : (productId, nextSaved) => productSaveActions.onToggleSave(productId, nextSaved)
+                  }
+                  onLongPressSave={
+                    isViewOnly ? undefined : (productId) => productSaveActions.onLongPressSave(productId)
+                  }
+                  emptyState={
+                    <div className="flex flex-col items-center gap-2 text-center">
+                      <Search className="size-4 text-muted-foreground" aria-hidden="true" />
+                      <p className="text-[9.5px] font-semibold text-foreground md:text-[12px]">
+                        {rackMode === "saves" ? "Nothing saved in this slot" : "No results found"}
+                      </p>
+                      <p className="max-w-[160px] text-[8px] text-muted-foreground md:max-w-[220px] md:text-[10px]">
+                        {rackMode === "saves"
+                          ? "Tap ♡ on a piece to keep it here."
+                          : "Try different keywords, adjust your filters, or tap ⟳ to see everything."}
+                      </p>
+                    </div>
+                  }
+                />
               )}
             </div>
           </section>
         )}
       </div>
 
-      {/* Search Bar - Fixed at Bottom, Full Width */}
+      {/* Search bar — docked full width under BOTH columns, inside the frame.
+          It used to be `fixed` to the viewport, which on a laptop parked it far
+          below a rack that had already ended. */}
       {(
-      <div className="pointer-events-none fixed inset-x-0 bottom-[44px] z-20">
+      <div className="shrink-0 pb-2 pt-2">
         <div
           className={cn(
-            "pointer-events-auto mx-auto w-full max-w-5xl px-0",
+            "w-full",
             isViewOnly ? "pointer-events-none opacity-60" : null,
           )}
         >
           <FilterSearchBar
-            className="rounded-t-3xl"
+            className="rounded-[5px] border border-hairline"
             variant="elevated"
             value={search.draftText}
             onValueChange={search.setDraftText}
@@ -1249,9 +1292,36 @@ export function StudioAlternativesView() {
         </div>
       </div>
       )}
+      </div>
     </div>
 
       {/* Save Outfit Drawer */}
+      {/* 7e — details without leaving the studio. The hero is the piece already
+          on the model, so the sheet promotes "Full details" rather than
+          offering a Wear action that would do nothing. */}
+      <ProductPeekCard
+        open={isPeekOpen}
+        onOpenChange={setIsPeekOpen}
+        isWorn
+        isReadOnly={isViewOnly}
+        item={
+          heroProduct
+            ? {
+                id: heroProduct.productId,
+                title: heroProduct.title,
+                brand: heroProduct.brand,
+                price: heroProduct.price,
+                imageUrl: heroProduct.imageUrl ?? null,
+                slotLabel: SLOT_DISPLAY_LABELS[slot],
+                specs: [heroProduct.color, heroProduct.size].filter(Boolean) as string[],
+              }
+            : null
+        }
+        onWear={handlePeekDetails}
+        onDetails={handlePeekDetails}
+        onSave={isViewOnly ? undefined : () => setIsSaveDrawerOpen(true)}
+      />
+
       <SaveOutfitDrawer
         open={isSaveDrawerOpen}
         onOpenChange={setIsSaveDrawerOpen}

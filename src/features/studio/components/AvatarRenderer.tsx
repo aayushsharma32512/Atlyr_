@@ -189,6 +189,13 @@ export function AvatarRenderer(props: AvatarRendererProps) {
         avatarRef={props.avatarRef}
         onReady={props.onReady}
         fetchPriority={props.fetchPriority}
+        // Must be forwarded: PlacementAvatarRenderer's hit testing is opt-in
+        // (`if (onItemSelect)` — it only sets eventMode/cursor on garments when
+        // a caller asks). Dropping it here meant that on the photoreal path —
+        // i.e. any outfit whose garments carry a placement, which is most of
+        // them — tapping a garment did nothing at all, while the legacy SVG path
+        // worked fine. That asymmetry is what made this look unreproducible.
+        onItemSelect={props.onItemSelect}
         hairStyle={
           props.hairStyle?.styleKey && props.hairStyle.gender
             ? { styleKey: props.hairStyle.styleKey, gender: props.hairStyle.gender }
@@ -750,7 +757,7 @@ function LegacyAvatarRenderer({
                 key={shouldAnimate ? `${layer.key}-anim` : layer.key}
                 src={layer.url}
                 alt={layer.item.description ?? layer.item.productName ?? layer.item.brand ?? "Outfit item"}
-                className="absolute select-none"
+                className={cn("absolute select-none", onItemSelect && "cursor-pointer")}
                 style={{
                   ...layer.style,
                   visibility: imagesRevealed ? 'visible' : 'hidden',

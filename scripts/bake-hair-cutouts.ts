@@ -432,6 +432,16 @@ async function main() {
       await mkdir(publicDir, { recursive: true })
       await writeFile(join(publicDir, `${styleKey}.png`), cutout)
 
+      // The app serves the .webp; the .png beside it is the master this re-encodes from. Both are
+      // written here or a re-bake would appear to do nothing — the renderer would keep serving the
+      // previous cutout. Format-only at identical dimensions: recolorHair normalises against a
+      // percentile-trimmed luminance histogram, which was measured across every cutout as drifting
+      // at most 2 of 255 under this encoder setting.
+      await writeFile(
+        join(publicDir, `${styleKey}.webp`),
+        await sharp(cutout).webp({ quality: 90, alphaQuality: 100, effort: 6 }).toBuffer(),
+      )
+
       // Proof shot: the cutout back over the untouched mannequin, which is exactly what the
       // renderer will do. Two passes — sharp applies resize BEFORE composite within one pipeline,
       // which would shrink the base below the overlay and fail.

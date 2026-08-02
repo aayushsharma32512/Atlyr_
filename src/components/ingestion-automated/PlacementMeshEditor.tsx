@@ -250,7 +250,11 @@ async function probeMannequinBounds(img: HTMLImageElement, texW: number, texH: n
 
 /** Placement mannequin base image for a normalized gender. */
 export function mannequinAssetUrl(mannequin: 'male' | 'female'): string {
-  return `/mannequins/${mannequin}.png`
+  // WebP, not the PNG master beside it. Format-only re-encode at identical dimensions: the figure
+  // bounds probeMannequinBounds derives from these pixels — which every saved placement is
+  // registered against — were verified byte-identical before the swap. 8.1MB → 259KB, and the
+  // landing demo now loads this on first paint.
+  return `/mannequins/${mannequin}.webp`
 }
 
 function normalizeMannequin(picked: string | null | undefined, gender: string | null | undefined): 'male' | 'female' {

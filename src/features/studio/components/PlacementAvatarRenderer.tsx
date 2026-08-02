@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { Application, Assets, Container, MeshPlane, Sprite, Texture } from "pixi.js"
 import type { StudioRenderedItem, StudioRenderedZone } from "@/features/studio/types"
 import { mannequinAssetUrl } from "@/components/ingestion-automated/PlacementMeshEditor"
-import { headCropRect } from "@/features/studio/constants/mannequinAnchors"
+import { PLACEMENT_HEAD_ANCHOR, headCropRect } from "@/features/studio/constants/mannequinAnchors"
 import { recolorHair, recolorSkin } from "@/features/studio/utils/recolor"
 
 // Fixed placement canvas — identical to the mesh editor / Modal placement engine
@@ -20,9 +20,51 @@ type Bounds = { x: number; y: number; w: number; h: number }
 // Layer order: bottoms sit behind tops; shoes at the base. Higher z draws later (on top).
 const ZONE_Z: Record<StudioRenderedZone, number> = { shoes: 0, bottom: 1, top: 2 }
 
-/** Opaque bounding box of a mostly-transparent garment PNG (same probe as the editor). */
-async function probeGarmentBounds(url: string, texW: number, texH: number): Promise<Bounds> {
-  const fallback: Bounds = { x: 0, y: 0, w: texW, h: texH }
+/**
+ * Open the top of a figure frame so hair isn't sliced off at the crown.
+ *
+ * probeMannequinBounds reads the BARE mannequin, so its top edge is the top of
+ * the bald skull. The baked hair cutout is composited over it as a separate
+ * full-canvas sprite and contributes nothing to those bounds — so every style
+ * that rises above the crown (which is most of them) got a flat cut across the
+ * top. Invisible while the avatar was a 64px circle; obvious the moment it is
+ * rendered large.
+ *
+ * The allowance is the same one headCropRect already applies for the same
+ * reason: 55% of head height above the crown, clamped to the canvas. Only added
+ * when hair actually drew, or a bald figure would float under dead space.
+ */
+function withHairHeadroom(bounds: Bounds, mannequin: "male" | "female", hairDrawn: boolean): Bounds {
+  if (!hairDrawn) return bounds
+  const a = PLACEMENT_HEAD_ANCHOR[mannequin]
+  const top = Math.max(0, bounds.y - (a.chin - a.top) * 0.55)
+  return { x: bounds.x, y: top, w: bounds.w, h: bounds.h + (bounds.y - top) }
+}
+
+/**
+ * Opaque bounding box AND a point-in-cloth test for a mostly-transparent
+ * garment PNG (same probe as the editor).
+ *
+ * The mask matters as much as the bounds. A garment mesh spans the whole padded
+ * 1800x3072 frame, so every garment's *rectangular* hit area covers the entire
+ * figure — tap the trousers and the topmost sprite (the shirt) answers, because
+ * it was added last. `isOpaque` lets the hit test ask whether there is actually
+ * cloth under the finger. Same single alpha pass; the mask was already being
+ * computed and thrown away.
+ */
+type GarmentProbe = {
+  bounds: Bounds
+  /** Texture-space coords, in the ORIGINAL (unpadded-scale) pixel grid. */
+  isOpaque: (texX: number, texY: number) => boolean
+}
+
+async function probeGarment(url: string, texW: number, texH: number): Promise<GarmentProbe> {
+  const fallback: GarmentProbe = {
+    bounds: { x: 0, y: 0, w: texW, h: texH },
+    // Rectangular fallback — the current behaviour, used only when the pixels
+    // can't be read (a cross-origin image without CORS headers, say).
+    isOpaque: () => true,
+  }
   try {
     const img = await loadImage(url)
     const scale = Math.min(1, BOUNDS_SAMPLE / Math.max(img.width, img.height))
@@ -31,10 +73,12 @@ async function probeGarmentBounds(url: string, texW: number, texH: number): Prom
     const ctx = draw(img, cw, ch)
     if (!ctx) return fallback
     const { data } = ctx.getImageData(0, 0, cw, ch)
+    const mask = new Uint8Array(cw * ch)
     let minX = cw, minY = ch, maxX = -1, maxY = -1
     for (let y = 0; y < ch; y++) {
       for (let x = 0; x < cw; x++) {
         if (data[(y * cw + x) * 4 + 3] <= ALPHA_CUTOFF) continue
+        mask[y * cw + x] = 1
         if (x < minX) minX = x; if (x > maxX) maxX = x
         if (y < minY) minY = y; if (y > maxY) maxY = y
       }
@@ -44,10 +88,32 @@ async function probeGarmentBounds(url: string, texW: number, texH: number): Prom
     const pad = inv
     const bx = Math.max(0, minX * inv - pad)
     const by = Math.max(0, minY * inv - pad)
+
+    // The mask is sampled at ~256px, so one sample is several texture pixels
+    // wide. Accept a hit within one sample of real cloth: a tap that lands on a
+    // sleeve edge or between the legs of a print should still count, and a
+    // near-miss is far less annoying than selecting the wrong garment.
+    const isOpaque = (texX: number, texY: number) => {
+      const sx = Math.round((texX / texW) * cw)
+      const sy = Math.round((texY / texH) * ch)
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const x = sx + dx
+          const y = sy + dy
+          if (x < 0 || y < 0 || x >= cw || y >= ch) continue
+          if (mask[y * cw + x]) return true
+        }
+      }
+      return false
+    }
+
     return {
-      x: bx, y: by,
-      w: Math.min(texW - bx, (maxX - minX + 1) * inv + pad * 2),
-      h: Math.min(texH - by, (maxY - minY + 1) * inv + pad * 2),
+      bounds: {
+        x: bx, y: by,
+        w: Math.min(texW - bx, (maxX - minX + 1) * inv + pad * 2),
+        h: Math.min(texH - by, (maxY - minY + 1) * inv + pad * 2),
+      },
+      isOpaque,
     }
   } catch {
     return fallback
@@ -111,9 +177,15 @@ function draw(img: HTMLImageElement, cw: number, ch: number): CanvasRenderingCon
   return ctx
 }
 
-/** Where the baked photoreal hair cutouts live. Full-canvas RGBA frames, positioned by baking. */
+/**
+ * Where the baked photoreal hair cutouts live. Full-canvas RGBA frames, positioned by baking.
+ *
+ * WebP, re-encoded from the PNG masters kept alongside them. recolorHair normalises against a
+ * percentile-trimmed luminance histogram of these pixels, so that range was checked across all
+ * twelve cutouts before the swap: worst drift 2 of 255, opaque pixel count unchanged. 2.4MB → 273KB.
+ */
 function bakedHairAssetUrl(mannequin: "male" | "female", styleKey: string): string {
-  return `/hair-baked/${mannequin}/${styleKey}.png`
+  return `/hair-baked/${mannequin}/${styleKey}.webp`
 }
 
 type PlacementHairStyle = {
@@ -142,6 +214,12 @@ type Props = {
    * the face is what's being chosen and a full figure would render the detail too small.
    */
   crop?: "figure" | "head"
+  /**
+   * Tap handler per garment. Omit to keep the surface read-only, which is what the studio wants —
+   * passing it turns on PIXI hit testing against each garment's real mesh geometry, so taps land on
+   * the garment shape rather than its bounding box.
+   */
+  onItemSelect?: (item: StudioRenderedItem) => void
 }
 
 /**
@@ -166,9 +244,16 @@ export function PlacementAvatarRenderer({
   hairColorHex = null,
   skinTone = null,
   crop = "figure",
+  onItemSelect,
 }: Props) {
   const [host, setHost] = useState<HTMLDivElement | null>(null)
   const appRef = useRef<Application | null>(null)
+
+  // The scene is rebuilt only when `sig` changes, so a handler captured while building it would go
+  // stale against anything the caller closes over. Held in a ref and called through, which keeps the
+  // tap current without rebuilding every garment on each render.
+  const onItemSelectRef = useRef(onItemSelect)
+  onItemSelectRef.current = onItemSelect
 
   /**
    * The mannequin to draw: the VIEWER'S, whenever any garment can be rendered on it.
@@ -242,6 +327,7 @@ export function PlacementAvatarRenderer({
         // Hair sits over the mannequin but UNDER the garments, so a collar can occlude it. The
         // cutout is a full-canvas frame with the hair already in position, so it draws at the origin
         // — there is no positioning maths.
+        let hairDrawn = false
         if (hairStyle && hairStyle.gender === mannequin) {
           try {
             const hairImg = await loadImage(bakedHairAssetUrl(mannequin, hairStyle.styleKey))
@@ -251,6 +337,7 @@ export function PlacementAvatarRenderer({
             hair.width = CANVAS_W
             hair.height = CANVAS_H
             world.addChild(hair)
+            hairDrawn = true
           } catch {
             // A missing cutout must render a bald mannequin, never break the whole avatar.
           }
@@ -259,7 +346,11 @@ export function PlacementAvatarRenderer({
         // Frame either the whole figure or a head-and-shoulders crop.
         const mb = crop === "head"
           ? headCropRect(mannequin)
-          : await probeMannequinBounds(mannequinUrl, CANVAS_W, CANVAS_H)
+          : withHairHeadroom(
+              await probeMannequinBounds(mannequinUrl, CANVAS_W, CANVAS_H),
+              mannequin,
+              hairDrawn,
+            )
         if (disposed) return
         const displayScale = Math.min(containerWidth / mb.w, containerHeight / mb.h)
         world.scale.set(displayScale)
@@ -277,7 +368,7 @@ export function PlacementAvatarRenderer({
           const texH = tex.height
           const fit = Math.min(CANVAS_W / texW, CANVAS_H / texH)
 
-          const gb = await probeGarmentBounds(item.imageUrl, texW, texH)
+          const { bounds: gb, isOpaque } = await probeGarment(item.imageUrl, texW, texH)
           if (disposed) return
 
           const mesh = new MeshPlane({ texture: tex, verticesX: MESH_X, verticesY: MESH_Y })
@@ -307,6 +398,39 @@ export function PlacementAvatarRenderer({
           garment.position.set(home.x + t.tx, home.y + t.ty)
           garment.scale.set(fit * t.scale)
           garment.rotation = (t.rotationDeg * Math.PI) / 180
+
+          // Opt-in hit testing. This renderer is read-only for the studio, so interactivity stays
+          // off unless a caller asks; enabling it everywhere would add cost to surfaces that never
+          // use it.
+          //
+          // Read through the ref, not the prop: the scene is only rebuilt when
+          // `sig` changes, so a caller that starts with no handler and supplies
+          // one later (auth resolving, view-only clearing) would otherwise leave
+          // every garment permanently non-interactive.
+          //
+          // hitArea is NOT optional here. PIXI hit-tests a mesh against its
+          // bounding box — an earlier comment in this file claimed it was
+          // "per-pixel-ish", which is what let the bug hide. Every garment mesh
+          // spans the full padded frame, so all three bounding boxes cover the
+          // whole figure and the last one added (the top, by ZONE_Z) swallowed
+          // every tap: clicking the trousers selected the shirt. The mask makes
+          // the test ask what is actually drawn under the point.
+          if (onItemSelectRef.current) {
+            garment.eventMode = "static"
+            garment.cursor = "pointer"
+            garment.hitArea = {
+              // Local space: the mesh is laid out from (-texW/2, -texH/2), so
+              // shifting by half the texture gives texture-space coords. Pivot,
+              // scale and rotation are already undone by PIXI before this runs.
+              contains: (x: number, y: number) => {
+                const texX = x + texW / 2
+                const texY = y + texH / 2
+                if (texX < 0 || texY < 0 || texX >= texW || texY >= texH) return false
+                return isOpaque(texX, texY)
+              },
+            }
+            garment.on("pointertap", () => onItemSelectRef.current?.(item))
+          }
 
           world.addChild(garment)
         }

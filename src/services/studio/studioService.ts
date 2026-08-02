@@ -245,8 +245,10 @@ async function searchAlternatives({
     typeCategories: [itemType],
   }
 
-  // Force gender filter as requested by user ("whenever search query goes... just send filter as male and unisex")
-  // This overrides any manually selected gender filters, but ensures the user always sees their gender + unisex in this flow.
+  // Keeps search aligned with the browse rack (buildRackGenderFilter): you
+  // should not search up a garment that browsing would never have shown you.
+  // It does override a manual gender pick in the ≡ chips — a known wart, but
+  // the alternative is a search that surfaces the wrong gender by default.
   if (gender === 'male' || gender === 'female') {
     searchFilters.genders = [gender, 'unisex']
   }
@@ -531,6 +533,37 @@ async function getRandomOutfitByGender({
     studioOutfit: mapDbOutfitToStudioOutfit(picked as any),
     trayItems: deriveTrayItemsFromRow(picked),
   }
+}
+
+/**
+ * Whether the studio rack also shows products the ingest hasn't gendered yet.
+ *
+ * `false` — the rack is your gender plus unisex, and nothing else. Ungendered
+ * rows are excluded, because a gender clause that lists values necessarily
+ * drops NULLs.
+ *
+ * Set to `true` to fold them back in. Note this only affects BROWSE: the search
+ * path filters through `ProductSearchFilters.genders`, a list of values with no
+ * way to express "or unset", so a search would still hide them. Keeping it
+ * `false` is what makes browse and search agree — worth preserving if you ever
+ * flip it.
+ *
+ * The real fix is on the ingest side: gendering those products makes the
+ * question disappear.
+ */
+const STUDIO_INCLUDE_UNGENDERED = false
+
+/**
+ * Gender clause for the studio rack, as distinct from the outfits query — the
+ * rack is the only place we may want ungendered stock, and `is.null` in the
+ * outfits filter would change what outfits get picked.
+ */
+function buildRackGenderFilter(gender: Gender | null) {
+  const clauses = buildGenderFilter(gender).split(",")
+  if (STUDIO_INCLUDE_UNGENDERED) {
+    clauses.push("gender.is.null")
+  }
+  return clauses.join(",")
 }
 
 function buildGenderFilter(gender: Gender | null) {
@@ -855,12 +888,17 @@ async function getAlternatives({ slot, gender, limit = 24, filters }: GetAlterna
       "id, product_name, brand, price, image_url, thumbnail_url, product_url, gender, type, placement_x, placement_y, image_length, placement, size, currency, color, fit, feel, vibes, body_parts_visible",
     )
     .eq("type", itemType)
-    .not("gender", "is", null)
     .limit(limit)
     .order("updated_at", { ascending: false })
 
-  query = query.or(buildGenderFilter(gender))
+  // One gender clause, not two. The old query also carried a separate
+  // `gender IS NOT NULL`, which was redundant — listing values already excludes
+  // NULLs — and made STUDIO_INCLUDE_UNGENDERED impossible to honour, since the
+  // two clauses contradicted each other.
+  query = query.or(buildRackGenderFilter(gender))
 
+  // `filters` is what the user picked in the ≡ chips, so it always applies —
+  // suppressing it would leave a control that visibly does nothing.
   if (filters) {
     // Brands
     if (filters.brands && filters.brands.length > 0) {

@@ -42,6 +42,12 @@ export type StudioPlacementByMannequin = Partial<Record<"male" | "female", Studi
 export interface StudioRenderedItem extends StudioProductMetadata {
   zone: StudioRenderedZone
   imageUrl: string
+  /**
+   * Small WebP for tiles, cards and lists — named explicitly so a grid asks for the thumbnail
+   * rather than depending on what `imageUrl`'s fallback chain resolved to.
+   * Undefined or null on products that have no thumbnail yet; fall back to `imageUrl`.
+   */
+  thumbnailUrl?: string | null
   placementX: number
   placementY: number
   imageLengthCm: number

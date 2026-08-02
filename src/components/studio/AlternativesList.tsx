@@ -422,8 +422,12 @@ export function AlternativesList({ alternatives, selectedItem, currentOutfitItem
               >
                 <div className="aspect-square mb-3 rounded-lg bg-muted overflow-hidden">
                   <img 
-                    src={displayItem.imageUrl}
+                    // Thumbnail: this is a card, not the body. imageUrl stays the source of truth
+                    // for anything the mannequin composites.
+                    src={displayItem.thumbnailUrl || displayItem.imageUrl}
                     alt={displayItem.description}
+                    loading="lazy"
+                    decoding="async"
                     className="w-full h-full object-contain transition-transform duration-300 hover:scale-105"
                   />
                 </div>
@@ -578,8 +582,10 @@ export function AlternativesList({ alternatives, selectedItem, currentOutfitItem
                           {/* Polaroid-style image with thin bezel */}
                           <div className="aspect-square bg-white rounded-xl overflow-hidden mb-1 flex items-center justify-center ring-[0.5px] ring-border/60 p-[1px]">
                             <img 
-                              src={item.imageUrl}
+                              src={item.thumbnailUrl || item.imageUrl}
                               alt={item.description}
+                              loading="lazy"
+                              decoding="async"
                               className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-110"
                             />
                           </div>

@@ -40,7 +40,7 @@ export function LeftActionRail({
     <div
       className={cn(
         VARIANT_CLASSES[variant],
-        highlight ? "z-[60] ring-2 ring-primary ring-offset-2 ring-offset-card shadow-lg" : null,
+        highlight ? "z-[75] ring-2 ring-primary ring-offset-2 ring-offset-card shadow-lg" : null,
         className,
       )}
     >
@@ -61,7 +61,7 @@ export function LeftActionRail({
         disabled={remixIsDisabled}
         className={cn(
           "text-foreground",
-          highlightRemix ? "z-[60] ring-2 ring-primary ring-offset-2 ring-offset-card shadow-lg" : null
+          highlightRemix ? "z-[75] ring-2 ring-primary ring-offset-2 ring-offset-card shadow-lg" : null
         )}
       >
         <Shuffle className="stroke-width-[1px] text-foreground stroke-current" />
@@ -74,7 +74,7 @@ export function LeftActionRail({
         disabled={shareIsDisabled}
         className={cn(
           "text-foreground",
-          highlightShare ? "z-[60] ring-2 ring-primary ring-offset-2 ring-offset-card shadow-lg" : null
+          highlightShare ? "z-[75] ring-2 ring-primary ring-offset-2 ring-offset-card shadow-lg" : null
         )}
       >
         <Share aria-hidden="true" />
