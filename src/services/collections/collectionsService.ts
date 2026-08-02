@@ -170,6 +170,7 @@ const OUTFIT_SELECT = `
     price,
     currency,
     image_url,
+    thumbnail_url,
     product_url,
     description,
     color,
@@ -193,6 +194,7 @@ const OUTFIT_SELECT = `
     price,
     currency,
     image_url,
+    thumbnail_url,
     product_url,
     description,
     color,
@@ -216,6 +218,7 @@ const OUTFIT_SELECT = `
     price,
     currency,
     image_url,
+    thumbnail_url,
     product_url,
     description,
     color,
@@ -682,10 +685,11 @@ export async function fetchSavedProducts(userId: string | null): Promise<SavedPr
     if (existing && existing.createdAt >= createdAt) {
       continue
     }
+    const imageUrl = product?.thumbnail_url ?? product?.image_url ?? null
     deduped.set(id, {
       id,
       createdAt,
-      imageUrl: product?.image_url ?? null,
+      imageUrl,
       brand: product?.brand ?? null,
       price: product?.price ?? null,
       currency: product?.currency ?? null,
@@ -737,11 +741,12 @@ export async function fetchCollectionProducts(
     const itemType = rawType === "top" || rawType === "bottom" || rawType === "shoes" ? rawType : null
     const rawGender = product?.gender
     const gender = rawGender === "male" || rawGender === "female" ? rawGender : null
+    const imageUrl = product?.thumbnail_url ?? product?.image_url ?? null
     deduped.set(id, {
       id,
       createdAt,
       title,
-      imageUrl: product?.image_url ?? null,
+      imageUrl,
       brand: product?.brand ?? null,
       price: product?.price ?? null,
       currency: product?.currency ?? null,
@@ -1250,6 +1255,7 @@ export async function fetchMoodboardItems(params: {
       product:product_id(
         id,
         image_url,
+        thumbnail_url,
         brand,
         price,
         currency,
@@ -1287,11 +1293,12 @@ export async function fetchMoodboardItems(params: {
         }
 
         if (row?.product?.id) {
+          const imageUrl = row.product.thumbnail_url ?? row.product.image_url ?? null
           return {
             itemType: "product",
             id: row.product.id,
             createdAt,
-            imageUrl: row.product.image_url ?? null,
+            imageUrl,
             brand: row.product.brand ?? null,
             price: row.product.price ?? null,
             currency: row.product.currency ?? null,
@@ -1356,11 +1363,12 @@ export async function fetchMoodboardItemsBatch(params: {
     }
 
     if (row.item_type === "product" && row.product?.id) {
+      const imageUrl = row.product.thumbnail_url ?? row.product.image_url ?? null
       grouped.get(slug)?.push({
         itemType: "product",
         id: row.product.id,
         createdAt,
-        imageUrl: row.product.image_url ?? null,
+        imageUrl,
         brand: row.product.brand ?? null,
         price: row.product.price ?? null,
         currency: row.product.currency ?? null,

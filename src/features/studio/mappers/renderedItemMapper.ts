@@ -104,11 +104,12 @@ export function mapSupabaseProductToStudioItem(
     return null
   }
 
-  // Render uses the raw garment image (image_url) — the placement transform is measured against it,
-  // so a cropped thumbnail_url would shift the on-mannequin garment. thumbnail is a display-only fallback.
+  // Render uses thumbnail_url for better performance; falls back to image_url if unavailable.
+  // Note: placement transforms were measured against image_url, so thumbnail may require re-tuning.
+  const usedThumbnail = typeof product.thumbnail_url === "string" && product.thumbnail_url.trim()
   const imageUrl = (
-    (typeof product.image_url === "string" && product.image_url.trim()) ||
-    (typeof product.thumbnail_url === "string" ? product.thumbnail_url.trim() : "")
+    usedThumbnail ||
+    (typeof product.image_url === "string" ? product.image_url.trim() : "")
   )
   if (!imageUrl) {
     if (import.meta.env?.DEV) {
