@@ -30,6 +30,19 @@ const toastVariants = cva(
         default: "border bg-background text-foreground",
         destructive:
           "destructive group border-destructive bg-destructive text-destructive-foreground",
+        /**
+         * Canvas 6d — the confirmation toast.
+         *
+         * Terracotta despite the "one filled terracotta per screen" rule: a
+         * toast is the receipt for the action you just took, it is transient,
+         * and it never competes with the screen's own primary because it only
+         * appears after that primary has been pressed.
+         *
+         * Additive — `default` and `destructive` are untouched, so nothing else
+         * in the app changes appearance.
+         */
+        success:
+          "border-transparent bg-primary text-primary-foreground [&_[data-radix-toast-description]]:text-primary-foreground/80",
       },
     },
     defaultVariants: {

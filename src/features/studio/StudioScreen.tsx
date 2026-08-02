@@ -77,6 +77,7 @@ export function StudioScreenView() {
   const bottomIdParam = parsedParams.slotIds.bottom
   const shoesIdParam = parsedParams.slotIds.shoes
   const {
+    openAlternatives,
     openAlternativesSplit,
     openProduct,
     openScrollUp,
@@ -409,13 +410,16 @@ export function StudioScreenView() {
   const [peekSlot, setPeekSlot] = useState<StudioProductTraySlot>("top")
 
   /**
-   * Tapping a garment on the model. This used to call `openAlternatives`, which
-   * routed to 7c — a whole-screen answer to a question you asked by touching
-   * one shirt. Tapping a specific piece reads as "tell me about *this*", so it
-   * opens the 7e peek on the piece itself: fabric, provenance, price, with
-   * "Full details" escalating to the product page. Swapping is a different
-   * question and keeps its own affordance — the ⟳ on each slot row, which
-   * opens the tray sheet.
+   * Tapping a garment on the model opens the 7c split view on that slot.
+   *
+   * The model is the spatial control — you poke a piece to go browsing what else
+   * could go there. Details are the rows' job: they already carry name, brand
+   * and price, so tapping one to get *more* is the natural next step. I had
+   * these the other way round and it read backwards in use.
+   *
+   * `openAlternatives` rather than `openAlternativesSplit` because it carries
+   * the tapped item through, so 7c lands with the right slot AND the right worn
+   * hero instead of falling back to whatever slot was last active.
    */
   const handleAvatarItemSelect = useCallback(
     (item: OutfitItem) => {
@@ -430,8 +434,8 @@ export function StudioScreenView() {
         return
       }
 
-      // Seed the hero cache for the tapped piece, so escalating to 7c or the
-      // product page lands on a warm screen rather than a spinner.
+      // Seed the hero cache and warm the rack, so 7c opens populated rather than
+      // on a spinner.
       if (syncOutfitId) {
         const trayMatch = resolvedTrayItems.find((trayItem) => trayItem.slot === slot)
         if (trayMatch) {
@@ -441,15 +445,29 @@ export function StudioScreenView() {
           )
         }
         prefetchStudioAlternatives(queryClient, { outfitId: syncOutfitId, slot, gender }).catch(() => {
-          // Prefetch failures should not block the peek.
+          // Prefetch failures should not block navigation.
         })
       }
 
-      setPeekSlot(slot)
-      setPeekOpen(true)
+      openAlternatives(item, { outfitId: syncOutfitId })
     },
-    [gender, isViewOnly, normalizeSlot, queryClient, resolvedTrayItems, syncOutfitId, tour],
+    [
+      gender,
+      isViewOnly,
+      normalizeSlot,
+      openAlternatives,
+      queryClient,
+      resolvedTrayItems,
+      syncOutfitId,
+      tour,
+    ],
   )
+
+  /** Slot row body — the 7e drawer for the piece already in that slot. */
+  const handlePeekSlot = useCallback((slot: StudioProductTraySlot) => {
+    setPeekSlot(slot)
+    setPeekOpen(true)
+  }, [])
 
   const handleProductPress = useCallback(
     (product: StudioProductTrayItem) => {
@@ -749,6 +767,9 @@ export function StudioScreenView() {
         toast({
           title: "Outfit saved",
           description: hadCollectionError ? "Saved outfit, but could not add it to all collections." : undefined,
+          // 6d: the save drawer's receipt. Falls back to the plain toast when a
+          // collection write failed, since that is not a clean success.
+          variant: hadCollectionError ? undefined : "success",
         })
 
         // Capture snapshot after save (non-blocking)
@@ -881,11 +902,12 @@ export function StudioScreenView() {
   )
 
   /**
-   * A slot row (or its ⟳, or an empty slot's "Add …"). All three are the same
-   * question — "what else could go here" — so all three open the tray sheet on
-   * that slot instead of routing to 7c.
+   * The ⟳ on a slot row, or an empty slot's "Add …". Both ask "what else could
+   * go here", so both open the tray sheet in place. Tapping the row *body* is a
+   * different question and goes to the details drawer; tapping the garment on
+   * the model escalates all the way to 7c.
    */
-  const handleAddSlot = useCallback(
+  const handleOpenAlternates = useCallback(
     (slot: StudioProductTraySlot) => {
       if (isViewOnly) {
         return
@@ -1223,7 +1245,8 @@ export function StudioScreenView() {
         items={resolvedTrayItems}
         hiddenSlots={hiddenSlots}
         isReadOnly={isViewOnly}
-        onOpenSlot={handleAddSlot}
+        onOpenDetails={handlePeekSlot}
+        onOpenAlternates={handleOpenAlternates}
         onRemoveSlot={handleRemoveSlot}
         highlight={tour.isHighlighted("slot-rows")}
         className="shrink-0"

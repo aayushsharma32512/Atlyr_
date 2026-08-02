@@ -526,6 +526,7 @@ export function StudioScrollUpView() {
         toast({
           title: "Outfit saved",
           description: hadCollectionError ? "Saved outfit, but could not add it to all collections." : undefined,
+          variant: hadCollectionError ? undefined : "success",
         })
 
         console.log("[StudioScrollUpScreen] Starting snapshot capture for outfit:", saved.id)

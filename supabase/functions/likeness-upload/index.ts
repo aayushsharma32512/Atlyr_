@@ -245,6 +245,29 @@ async function generateCandidateImage({
   return { bytes, mimeType }
 }
 
+/**
+ * Reduce an upstream failure to something a human can act on in one glance.
+ * Our own codes (STAGE2_NO_IMAGE, IDENTITY_SUMMARY_EMPTY) pass through as-is;
+ * a Google API error collapses to its `reason`/`status` rather than the whole
+ * JSON body.
+ */
+function summarisePipelineError(message: string): string {
+  const jsonStart = message.indexOf("{")
+  if (jsonStart >= 0) {
+    try {
+      const parsed = JSON.parse(message.slice(jsonStart))
+      const err = parsed?.error
+      if (err) {
+        const reason = err.details?.find((d: any) => d?.reason)?.reason
+        return [err.code, reason ?? err.status].filter(Boolean).join(" ") || "UPSTREAM_ERROR"
+      }
+    } catch {
+      // Not JSON after all — fall through to the truncation below.
+    }
+  }
+  return message.length > 120 ? `${message.slice(0, 120)}…` : message
+}
+
 async function executePipeline({
   index,
   stage1Model,
@@ -376,6 +399,7 @@ serve(async (req) => {
     const parallelStreams = Math.max(1, Math.min(uploadRequest.parallelStreams, uploadRequest.candidateCount))
     const seedBase = Date.now() % 1_000_000
     const generatedCandidates: GeneratedCandidate[] = []
+    const pipelineFailures: string[] = []
 
     for (let i = 0; i < pipelineIndexes.length; i += parallelStreams) {
       const batch = pipelineIndexes.slice(i, i + parallelStreams)
@@ -397,9 +421,11 @@ serve(async (req) => {
         if (result.status === "fulfilled") {
           generatedCandidates.push(result.value)
         } else {
+          const reason = (result.reason as Error)?.message ?? "unknown"
+          pipelineFailures.push(reason)
           console.error("[LikenessUpload] pipeline failed", {
             index,
-            error: (result.reason as Error)?.message ?? "unknown",
+            error: reason,
         correlationId: auth.correlationId,
           })
         }
@@ -407,7 +433,15 @@ serve(async (req) => {
     }
 
     if (generatedCandidates.length === 0) {
-      throw new Error("NO_CANDIDATES")
+      // A bare "NO_CANDIDATES" says only that all of them failed, never why —
+      // the per-candidate reasons went to console.error and nowhere a caller
+      // could see them, so the one visible symptom was the least informative
+      // one. Carry a SHORT reason out; the full text stays in the logs above.
+      // Short on purpose: upstream errors arrive as a whole JSON payload
+      // (service names, metadata, localised copy) and that does not belong in
+      // a toast.
+      const detail = [...new Set(pipelineFailures.map(summarisePipelineError))].slice(0, 2).join(" | ")
+      throw new Error(detail ? `NO_CANDIDATES: ${detail}` : "NO_CANDIDATES")
     }
 
     generatedCandidates.sort((a, b) => a.index - b.index)

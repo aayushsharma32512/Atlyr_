@@ -58,11 +58,15 @@ export interface StudioSlotRowsProps {
   hiddenSlots: Partial<Record<StudioProductTraySlot, boolean>>
   isReadOnly?: boolean
   /**
-   * Card body or ⟳ — opens the alternates rack with this slot pre-selected.
-   * Same destination as the empty row's "Add …", which is why both call the
-   * one handler.
+   * Card body — the worn piece's own details (7e drawer). The row already shows
+   * name, brand and price, so tapping it reads as "tell me more about this one".
    */
-  onOpenSlot: (slot: StudioProductTraySlot) => void
+  onOpenDetails: (slot: StudioProductTraySlot) => void
+  /**
+   * ⟳, and the empty row's "Add …" — other options for this slot. An empty slot
+   * has no worn piece to detail, so it only has this destination.
+   */
+  onOpenAlternates: (slot: StudioProductTraySlot) => void
   onRemoveSlot: (slot: StudioProductTraySlot) => void
   /** Tour spotlight — must clear the z-[70] scrim to stay clickable. */
   highlight?: boolean
@@ -74,7 +78,8 @@ export function StudioSlotRows({
   items,
   hiddenSlots,
   isReadOnly = false,
-  onOpenSlot,
+  onOpenDetails,
+  onOpenAlternates,
   onRemoveSlot,
   highlight = false,
   className,
@@ -96,7 +101,7 @@ export function StudioSlotRows({
               <button
                 type="button"
                 disabled={isReadOnly}
-                onClick={isReadOnly ? undefined : () => onOpenSlot(slot)}
+                onClick={isReadOnly ? undefined : () => onOpenAlternates(slot)}
                 className={cn(
                   "flex min-w-0 flex-1 items-center gap-2.5 rounded-[5px] border-[1.5px] border-dashed",
                   "border-hairline-4 bg-card/40 px-[11px] py-1.5 text-left",
@@ -144,41 +149,61 @@ export function StudioSlotRows({
               <Layers className="size-3.5" />
             </span>
 
-            <button
-              type="button"
-              disabled={isReadOnly}
-              onClick={isReadOnly ? undefined : () => onOpenSlot(slot)}
+            {/* The card is a div, not a button: it holds TWO targets — the body
+                (details) and ⟳ (alternates). A button inside a button is invalid
+                HTML and browsers drop the inner one, which is why ⟳ used to be a
+                decorative span with no click of its own. */}
+            <div
               className={cn(
                 "flex min-w-0 flex-1 items-center gap-2.5 rounded-[5px] border-[1.5px] border-hairline",
-                "bg-card px-[11px] py-1.5 text-left transition-colors hover:border-hairline-4",
-                "disabled:cursor-not-allowed disabled:opacity-60",
+                "bg-card pl-[11px] pr-1.5 transition-colors",
+                isReadOnly ? "opacity-60" : "hover:border-hairline-4",
               )}
             >
-              <span
-                className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-ink-body"
-                style={{ boxShadow: "inset 0 1px 2px hsl(var(--ink) / 0.18)" }}
+              <button
+                type="button"
+                disabled={isReadOnly}
+                onClick={isReadOnly ? undefined : () => onOpenDetails(slot)}
+                title={`${item.title} — details`}
+                className="flex min-w-0 flex-1 items-center gap-2.5 py-1.5 text-left disabled:cursor-not-allowed"
               >
-                <Glyph className="size-3" />
-              </span>
-
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[9.5px] font-semibold text-foreground">
-                  {item.title}
+                <span
+                  className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-ink-body"
+                  style={{ boxShadow: "inset 0 1px 2px hsl(var(--ink) / 0.18)" }}
+                >
+                  <Glyph className="size-3" />
                 </span>
-                <span className="block truncate text-[7.5px] text-muted-foreground">
-                  {item.brand ?? ""}
+
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[9.5px] font-semibold text-foreground">
+                    {item.title}
+                  </span>
+                  <span className="block truncate text-[7.5px] text-muted-foreground">
+                    {item.brand ?? ""}
+                  </span>
                 </span>
-              </span>
 
-              <PriceDisplay
-                price={item.price}
-                className="shrink-0 text-[9.5px] font-bold text-foreground"
-              />
+                <PriceDisplay
+                  price={item.price}
+                  className="shrink-0 text-[9.5px] font-bold text-foreground"
+                />
+              </button>
 
-              <span className="shrink-0 text-[11px] text-terracotta" title="alternates for this slot">
+              <button
+                type="button"
+                disabled={isReadOnly}
+                onClick={isReadOnly ? undefined : () => onOpenAlternates(slot)}
+                aria-label={`Other ${label.toLowerCase()} options`}
+                title={`Other ${label.toLowerCase()} options`}
+                className={cn(
+                  "flex size-7 shrink-0 items-center justify-center rounded-[3px] text-terracotta",
+                  "transition-colors disabled:cursor-not-allowed",
+                  !isReadOnly && "hover:bg-terracotta/10",
+                )}
+              >
                 <RotateCw className="size-3" aria-hidden="true" />
-              </span>
-            </button>
+              </button>
+            </div>
           </div>
         )
       })}

@@ -64,7 +64,7 @@ const STUDIO_TOUR_STEPS: StudioTourStep[] = [
     {
         id: 'mannequin',
         title: 'Tap what you\'re wearing',
-        message: 'Tap any garment on the model to see its fabric, price and where it comes from.',
+        message: 'Tap any garment on the model to open the full rack of alternatives for that slot.',
         tooltipPosition: { top: '30%', left: CENTRED },
     },
     {
@@ -94,7 +94,7 @@ const STUDIO_TOUR_STEPS: StudioTourStep[] = [
     {
         id: 'slot-rows',
         title: 'The pieces you\'re wearing',
-        message: 'Each row is one slot. Tap a row to swap the piece for another, or ✕ to take it off.',
+        message: 'Tap a row for that piece\'s details, ⟳ to swap it for something else, or ✕ to take it off.',
         tooltipPosition: { bottom: '24%', left: CENTRED },
     },
     {
