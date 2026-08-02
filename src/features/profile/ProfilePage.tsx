@@ -1,21 +1,70 @@
+import { ChevronRight } from "lucide-react"
 import { useNavigate } from "react-router-dom"
-import { LogOut, Settings, SquareUserRound, PersonStanding } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
 import { useAuth } from "@/contexts/AuthContext"
-import { MenuItemButton } from "@/features/profile/components/MenuItemButton"
+import { useCollectionsOverview } from "@/features/collections/hooks/useMoodboards"
 import { MannequinHeadAvatar } from "@/features/profile/components/MannequinHeadAvatar"
-import { DailyUsageCard } from "@/features/profile/components/DailyUsageCard"
 import { useAvatarHairStyles } from "@/features/profile/hooks/useAvatarHairStyles"
+import { useDailyLimits } from "@/features/profile/hooks/useDailyLimits"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { AppShellLayout } from "@/layouts/AppShellLayout"
 
+type ProfileRowProps = {
+  label: string
+  value: string
+  onClick: () => void
+}
+
+function ProfileRow({ label, value, onClick }: ProfileRowProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex min-h-16 w-full items-center gap-3 border-b border-hairline px-4 py-3 text-left last:border-b-0 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+    >
+      <span className="shrink-0 text-[15px] font-semibold text-foreground">{label}</span>
+      <span className="ml-auto min-w-0 truncate text-right text-sm font-medium text-muted-foreground">
+        {value}
+      </span>
+      <ChevronRight
+        className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
+        aria-hidden="true"
+      />
+    </button>
+  )
+}
+
+function formatJoinedDate(dateValue?: string | null) {
+  if (!dateValue) return null
+
+  const date = new Date(dateValue)
+  if (Number.isNaN(date.getTime())) return null
+
+  const month = new Intl.DateTimeFormat("en", { month: "short" }).format(date)
+  return `${month} '${String(date.getFullYear()).slice(-2)}`
+}
+
+function pluralize(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`
+}
+
+function formatAgeAndGender(age?: number | null, gender?: "male" | "female" | null) {
+  const parts = [
+    typeof age === "number" ? `${age} years` : null,
+    gender ? `${gender.charAt(0).toUpperCase()}${gender.slice(1)}` : null,
+  ].filter(Boolean)
+
+  return parts.length ? parts.join(" · ") : "Not set"
+}
+
 function ProfilePageView() {
   const { profile, gender, skinTone, hairStyleId, hairColorHex } = useProfileContext()
-  const { signOut } = useAuth()
+  const { user, signOut } = useAuth()
   const navigate = useNavigate()
   const hairStylesQuery = useAvatarHairStyles(gender)
+  const limitsQuery = useDailyLimits()
+  const collectionsQuery = useCollectionsOverview()
+
   const resolvedHairStyle = (() => {
     if (!hairStylesQuery.data.length) return null
     if (hairStyleId && hairStylesQuery.byId.has(hairStyleId)) {
@@ -24,206 +73,119 @@ function ProfilePageView() {
     return hairStylesQuery.defaultStyle
   })()
 
+  const moodboards = collectionsQuery.data?.moodboards ?? []
+  const wardrobe = moodboards.find((board) => board.slug === "wardrobe")
+  const boardPinCount = moodboards.reduce((total, board) => total + board.itemCount, 0)
+
+  const tryon = limitsQuery.data?.tryon
+  const tryonsRemaining = tryon ? Math.max(tryon.limit - tryon.count, 0) : null
+
+  const profileName = profile?.name?.trim() || "Your profile"
+  const profileInitial = profileName.charAt(0).toUpperCase()
+  const joinedDate = formatJoinedDate(user?.created_at ?? profile?.created_at)
   const handleLogout = async () => {
     await signOut()
     navigate("/")
   }
 
-  const handleMenuClick = (itemId: string) => {
-    switch (itemId) {
-      case "avatar":
-        navigate("/profile/avatar")
-        break
-      case "user-details":
-        navigate("/profile/user-details")
-        break
-      default:
-        break
-    }
-  }
-
-  const menuItems = [
-    // {
-    //   id: "invites",
-    //   label: "Invites",
-    //   icon: MailOpen,
-    //   group: 1,
-    // },
-    // {
-    //   id: "instagram",
-    //   label: "Link Instagram",
-    //   icon: Instagram,
-    //   group: 1,
-    // },
-    {
-      id: "avatar",
-      label: "Likeness",
-      icon: SquareUserRound,
-      group: 2,
-      onClick: () => handleMenuClick("avatar"),
-    },
-    {
-      id: "user-details",
-      label: "User details",
-      icon: PersonStanding,
-      group: 2,
-      onClick: () => handleMenuClick("user-details"),
-    },
-    // {
-    //   id: "wardrobe",
-    //   label: "Wardrobe",
-    //   icon: Columns2,
-    //   group: 2,
-    // },
-    // {
-    //   id: "train-ai",
-    //   label: "Train Atlyr ai",
-    //   icon: GitPullRequestDraft,
-    //   group: 2,
-    // },
-    // {
-    //   id: "add-inventory",
-    //   label: "Add Inventory",
-    //   icon: CircleFadingPlus,
-    //   group: 3,
-    // },
-    // {
-    //   id: "feedback",
-    //   label: "Feedback",
-    //   icon: MessageSquareReply,
-    //   group: 3,
-    // },
-    // {
-    //   id: "contact",
-    //   label: "Contact Us",
-    //   icon: AtSign,
-    //   group: 3,
-    // },
-    {
-      id: "logout",
-      label: "Log Out",
-      icon: LogOut,
-      group: 3,
-      onClick: handleLogout,
-    },
-  ]
-  const group1Items = menuItems.filter((item) => item.group === 1)
-  const group2Items = menuItems.filter((item) => item.group === 2)
-  const group3Items = menuItems.filter((item) => item.group === 3)
-
-  const profileName = profile?.name?.trim()
-  const profileInitial = profileName ? profileName.charAt(0).toUpperCase() : ""
-
   return (
-    <div className="min-h-screen bg-background text-white">
-      {/* Main Content */}
-      <div>
-        {/* Header */}
-        <div className="px-4 pt-4 pb-6">
-          {/* Profile Card */}
-          <div className="bg-background rounded-lg p-4">
-            <div className="flex items-center justify-center gap-4 relative">
-              {/* Profile Picture */}
-              <div className="w-16 h-16">
-                {gender ? (
-                  <MannequinHeadAvatar
-                    size={64}
-                    gender={gender}
-                    skinToneHex={skinTone}
-                    hairStyle={
-                      resolvedHairStyle && gender
-                        ? { styleKey: resolvedHairStyle.styleKey, gender }
-                        : null
-                    }
-                    hairColorHex={hairColorHex}
-                  />
-                ) : (
-                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-200 text-gray-600">
-                    {profileInitial}
-                  </div>
-                )}
-              </div>
+    <div className="min-h-[calc(100dvh-55px)] bg-background text-foreground">
+      <div className="mx-auto w-full max-w-lg px-5 pb-10 pt-6 sm:px-6 sm:pt-8">
+        <header className="flex items-end justify-between gap-4 px-1">
+          <h1 className="min-w-0 truncate font-display text-[38px] font-medium leading-none tracking-[-0.025em] text-foreground sm:text-[42px]">
+            {profileName}
+          </h1>
+          {joinedDate ? (
+            <p className="shrink-0 pb-0.5 text-sm font-medium text-muted-foreground sm:text-base">
+              joined {joinedDate}
+            </p>
+          ) : null}
+        </header>
 
-              {/* Profile Info */}
-              <div className="flex-1 min-w-0">
-                {profileName ? (
-                  <h2 className="text-base font-bold text-gray-900 mb-1">{profileName}</h2>
-                ) : null}
-              </div>
-
-              {/* Settings Icon */}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute top-0 right-0 text-gray-900 hover:text-gray-900"
-              >
-                <Settings className="w-8 h-8 text-gray-900" />
-              </Button>
-            </div>
+        <button
+          type="button"
+          onClick={() => navigate("/profile/avatar")}
+          className="group mt-7 flex min-h-36 w-full items-center gap-5 rounded-lg border border-hairline bg-card p-4 text-left shadow-xs hover:border-hairline-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-5"
+        >
+          <div className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-md border border-hairline bg-muted/30 sm:size-28">
+            {gender ? (
+              <MannequinHeadAvatar
+                size={88}
+                gender={gender}
+                skinToneHex={skinTone}
+                hairStyle={
+                  resolvedHairStyle
+                    ? { styleKey: resolvedHairStyle.styleKey, gender }
+                    : null
+                }
+                hairColorHex={hairColorHex}
+                className="rounded-md bg-transparent"
+              />
+            ) : (
+              <span className="font-display text-3xl text-muted-foreground">{profileInitial}</span>
+            )}
           </div>
-          <Separator className="bg-border" />
 
-          {/* Daily Usage Card */}
-          <div className="mt-4">
-            <DailyUsageCard />
+          <div className="min-w-0 flex-1">
+            <p className="text-lg font-semibold text-foreground">Your likeness</p>
+            <p className="mt-1 text-sm leading-5 text-muted-foreground">
+              Your saved avatar and likenesses
+            </p>
           </div>
-          <Separator className="my-4 bg-border" />
 
-          {/* Menu Items */}
-          <div className="bg-white rounded-lg overflow-hidden">
-            {/* Group 1: Invites & Link Instagram */}
-            {group1Items.length > 0 ? (
-              <div>
-                {group1Items.map((item) => (
-                  <MenuItemButton
-                    key={item.id}
-                    icon={item.icon}
-                    label={item.label}
-                    onClick={item.onClick}
-                  />
-                ))}
-              </div>
-            ) : null}
+          <ChevronRight
+            className="size-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
+            aria-hidden="true"
+          />
+        </button>
 
-            {/* Separator between Group 1 and Group 2 */}
-            {group1Items.length > 0 && group2Items.length > 0 ? (
-              <Separator className="bg-gray-200" />
-            ) : null}
+        <section
+          className="mt-5 overflow-hidden rounded-lg border border-hairline bg-card shadow-xs"
+          aria-label="Profile details"
+        >
+          <ProfileRow
+            label="Wardrobe"
+            value={
+              collectionsQuery.isLoading
+                ? "Loading…"
+                : pluralize(wardrobe?.itemCount ?? 0, "piece")
+            }
+            onClick={() => navigate("/collection")}
+          />
+          <ProfileRow
+            label="Try-ons"
+            value={
+              limitsQuery.isLoading
+                ? "Loading…"
+                : tryonsRemaining === null || !tryon
+                  ? "Unavailable"
+                  : `${tryonsRemaining} of ${tryon.limit} left`
+            }
+            onClick={() => navigate("/home?moodboard=try-ons")}
+          />
+          <ProfileRow
+            label="User details"
+            value={formatAgeAndGender(profile?.age, gender)}
+            onClick={() => navigate("/profile/user-details")}
+          />
+          <ProfileRow
+            label="Boards"
+            value={
+              collectionsQuery.isLoading
+                ? "Loading…"
+                : `${pluralize(moodboards.length, "board")} · ${pluralize(boardPinCount, "pin")}`
+            }
+            onClick={() => navigate("/collection")}
+          />
+        </section>
 
-            {/* Group 2: Avatar, User details, Wardrobe, Train Atlyr ai */}
-            {group2Items.length > 0 ? (
-              <div>
-                {group2Items.map((item) => (
-                  <MenuItemButton
-                    key={item.id}
-                    icon={item.icon}
-                    label={item.label}
-                    onClick={item.onClick}
-                  />
-                ))}
-              </div>
-            ) : null}
-
-            {/* Separator between Group 2 and Group 3 */}
-            {group2Items.length > 0 && group3Items.length > 0 ? (
-              <Separator className="bg-gray-200" />
-            ) : null}
-
-            {/* Group 3: Add Inventory, Feedback, Contact Us, Log Out */}
-            {group3Items.length > 0 ? (
-              <div>
-                {group3Items.map((item) => (
-                  <MenuItemButton
-                    key={item.id}
-                    icon={item.icon}
-                    label={item.label}
-                    onClick={item.onClick}
-                  />
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="mx-auto mt-8 block min-h-11 px-5 text-sm font-semibold text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          Sign out
+        </button>
       </div>
     </div>
   )
