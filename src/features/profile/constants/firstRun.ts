@@ -12,7 +12,12 @@
  */
 export const TASTE_PATH = "/onboarding/taste"
 export const FIRST_RUN_FIGURE_PATH = "/profile/user-details"
-export const FIRST_RUN_ENTRY_PATH = FIRST_RUN_FIGURE_PATH
+
+// Widened to string on purpose. Left as a literal, TS narrows it to
+// "/profile/user-details" and then reports the TASTE_IN_FIRST_RUN comparison
+// below as an impossible one — which is only true until someone repoints this
+// constant, exactly the edit it is here to allow.
+export const FIRST_RUN_ENTRY_PATH: string = FIRST_RUN_FIGURE_PATH
 
 const FIRST_RUN_PATHS = [TASTE_PATH, FIRST_RUN_FIGURE_PATH]
 

@@ -4,8 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "bun run --watch src/index.ts",
-    "start": "bun run src/index.ts",
-    "backfill:placement": "bun run scripts/backfill-placement-transform.ts"
+    "start": "bun run src/index.ts"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",

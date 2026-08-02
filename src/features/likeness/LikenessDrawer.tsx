@@ -565,6 +565,9 @@ export function LikenessDrawer({
                     onBack={handleBackToStepThree}
                     isBackDisabled={uploadMutation.isPending}
                     isSaving={uploadMutation.isPending}
+                    // 6n: "the exit is honest and returns exactly" — closing the
+                    // drawer drops you back on the studio with the look intact.
+                    onDismiss={() => onOpenChange(false)}
                   />
                 )}
                 {currentStep === 2 && (
