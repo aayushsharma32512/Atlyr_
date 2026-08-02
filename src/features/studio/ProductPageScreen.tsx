@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ArrowDownRight, ArrowUpRight, Heart, Ruler, ShoppingBag, Shuffle } from "lucide-react"
 import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
 import { ProductAlternateCard, TrayActionButton, MoodboardPickerDrawer, ScreenHeader } from "@/design-system/primitives"
 import { PriceDisplay } from "@/design-system/primitives/price-display"
+import { cn } from "@/lib/utils"
+import { parseProductDescription } from "@/utils/productDescription"
 
 import { BASE_DELIVERY_SPECS, BASE_PRIMARY_SPECS } from "./constants/specs"
 import { useStudioContext } from "./context/StudioContext"
@@ -338,7 +340,19 @@ export function ProductPageView() {
 
   const title = product?.title ?? "Product"
   const brand = product?.brand ?? "Atlyr"
-  const description = product?.description ?? "—"
+  // Scraped descriptions arrive as a whole mini-page of markup — see
+  // parseProductDescription for why this is split rather than flattened.
+  const descriptionSections = useMemo(
+    () => parseProductDescription(product?.description),
+    [product?.description],
+  )
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false)
+  // Lead with the prose; everything after it (Details, Wash care, Shipping) is
+  // reference material that shouldn't push the page down until asked for.
+  const visibleSections = isDescriptionExpanded
+    ? descriptionSections
+    : descriptionSections.slice(0, 1)
+  const hasMoreSections = descriptionSections.length > 1
   const price = product?.price ?? 0
   const imageSrc = product?.imageUrl ?? "/placeholder.svg"
 
@@ -498,10 +512,47 @@ export function ProductPageView() {
               </div>
             </div>
 
-            <div className="flex w-full justify-center">
-              <div className="flex items-start rounded-md bg-muted/10 px-1 py-1">
-                <p className="text-xs2 text-muted-foreground">{description}</p>
-              </div>
+            <div className="flex w-full flex-col items-start gap-2.5 px-1">
+              {visibleSections.length === 0 && (
+                <p className="text-xs2 text-muted-foreground">
+                  No description for this piece yet.
+                </p>
+              )}
+
+              {visibleSections.map((section, index) => (
+                <div key={section.title ?? `section-${index}`} className="w-full">
+                  {section.title && (
+                    <p className="mb-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      {section.title}
+                    </p>
+                  )}
+                  <div className="flex flex-col gap-1">
+                    {section.paragraphs.map((paragraph, line) => (
+                      <p
+                        key={line}
+                        className={cn(
+                          "text-xs2 leading-relaxed text-ink-body",
+                          // The lead paragraph stays clamped while collapsed so
+                          // a 900-word blurb can't own the screen.
+                          index === 0 && !isDescriptionExpanded && "line-clamp-4",
+                        )}
+                      >
+                        {paragraph}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              {(hasMoreSections || !isDescriptionExpanded) && descriptionSections.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setIsDescriptionExpanded((open) => !open)}
+                  className="text-xs2 font-semibold text-terracotta"
+                >
+                  {isDescriptionExpanded ? "Show less" : "Read more"}
+                </button>
+              )}
             </div>
 
             <div className="flex w-full items-center overflow-hidden rounded-md bg-card/80">
