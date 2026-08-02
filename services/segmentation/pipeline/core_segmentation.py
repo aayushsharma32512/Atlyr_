@@ -1159,7 +1159,11 @@ def refine_garment_mask(
     sam2_variant: str = "sam2_large",
     output_dir: Optional[str] = None,
     garment_is_skin_colored: bool = False,
-) -> Tuple[np.ndarray, np.ndarray]:
+    return_metadata: bool = False,
+) -> Union[
+    Tuple[np.ndarray, np.ndarray],
+    Tuple[np.ndarray, np.ndarray, dict],
+]:
     """
     Run FASHN Parser + SAM Point Prompts (constrained by FASHN body exclusion points)
     to extract a high-resolution, refined clothing mask.
@@ -1209,6 +1213,25 @@ def refine_garment_mask(
             print(f"  [DINO] Saved boxes visualization to dino_detected_boxes.png")
     except Exception as e:
         print(f"  [DINO] Failed to run detection/visualization: {e}")
+
+    # FASHN is a human parser and may return no useful mask for flatlays or
+    # garments on hangers. In that case, use the union of category-targeted
+    # GroundingDINO boxes as the coarse SAM2 prior.
+    if not np.any(coarse_garment_mask > 127) and len(pos_boxes) > 0:
+        dino_coarse = np.zeros((img_h, img_w), dtype=np.uint8)
+        for box in pos_boxes:
+            x1, y1, x2, y2 = map(int, box)
+            x1 = max(0, min(img_w - 1, x1))
+            y1 = max(0, min(img_h - 1, y1))
+            x2 = max(0, min(img_w - 1, x2))
+            y2 = max(0, min(img_h - 1, y2))
+            if x2 > x1 and y2 > y1:
+                dino_coarse[y1:y2 + 1, x1:x2 + 1] = 255
+        coarse_garment_mask = dino_coarse
+        print(f"  [DINO] Built fallback coarse mask from {len(pos_boxes)} positive box(es)")
+
+    if not np.any(coarse_garment_mask > 127):
+        raise RuntimeError(f"No '{category}' garment was detected in the image")
 
     # Build SAM Point Prompts
     point_coords_list = []
@@ -1343,6 +1366,14 @@ def refine_garment_mask(
     image_long_side = max(img_h, img_w)
     feathered = _feather_mask(polished, feather_radius=2, image_long_side=image_long_side)
     
+    if return_metadata:
+        return feathered, sampled_bg, {
+            "positive_boxes": [
+                [float(value) for value in box.tolist()]
+                for box in pos_boxes
+            ],
+        }
+
     return feathered, sampled_bg
 
 

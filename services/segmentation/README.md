@@ -2,6 +2,11 @@
 
 Production-ready local segmentation scripts to extract clean transparent garment assets from model shots.
 
+For the stateless image → category-targeted ROI/cutout → dual catalog-search harness, see
+[`../../docs/visual-search-implementation.md`](../../docs/visual-search-implementation.md). It uses
+the same green-screen pipeline with persistence disabled, preserves the production cutout, and adds
+contextual-crop versus white-cutout retrieval comparison in a temporary Modal API/UI.
+
 ## Setup
 
 ```bash

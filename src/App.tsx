@@ -52,6 +52,7 @@ const FigurePreview = lazy(() => import("./pages/FigurePreview.tsx"));
 const AdminHome = lazy(() => import("./pages/admin/AdminHome.tsx"));
 const LoginPage = lazy(() => import("./pages/LoginPage.tsx"));
 const AuthCallback = lazy(() => import("./pages/AuthCallback.tsx"));
+const VisualSearchTestScreen = lazy(() => import("@/features/visual-search/VisualSearchTestScreen"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -189,6 +190,7 @@ const App = () => (
                     <Route path="/auth/login" element={<LoginPage />} />
                     <Route path="/auth/signup" element={<LoginPage />} />
                     <Route path="/auth/callback" element={<AuthCallback />} />
+                    <Route path="/visual-search-test" element={<VisualSearchTestScreen />} />
                     <Route path="/app/*" element={<AppRouter />} />
                     <Route
                       path="/product/:itemId"

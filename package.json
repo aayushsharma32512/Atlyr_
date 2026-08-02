@@ -24,6 +24,7 @@
     "generate:embeddings:fashion": "node scripts/generate-fashion-siglip-embeddings-local.js",
     "embedding:update": "bun run scripts/embedding-update.js",
     "test:search": "node scripts/test-vector-search.js",
+    "test:visual-search": "node scripts/visual-search-test.mjs",
     "update:products": "bun run scripts/update-product-details.js",
     "issue:waitlist-invites": "bun run scripts/issue-waitlist-invites.js"
   },

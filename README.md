@@ -89,6 +89,34 @@ bun run dev
 http://localhost:8080
 ```
 
+### Visual-search pipeline test
+
+A stateless test surface is available at `http://localhost:8080/visual-search-test`. It sends an
+image plus an explicit `upper`, `lower`, or `shoes` selection to a Modal L4 endpoint, runs the
+production FASHN/GroundingDINO/SAM2 cutout pipeline, then builds two search queries: a padded crop
+from the original image that retains real occluders and a tightly cropped cutout composited on white.
+Both are embedded with `fashion-siglip-embed`, searched through the existing
+`match_products_image` catalog RPC, and combined with weighted rank fusion.
+
+The harness does not create visual-search tables, job rows, storage objects, or wardrobe entries.
+Those production concerns are intentionally deferred. Deployment, environment, CLI, and expected
+response details are in [`docs/visual-search-implementation.md`](docs/visual-search-implementation.md).
+
+The test requires two new Modal deployments, `fashion-siglip-embed` and
+`atlyr-visual-search-test`; none of the existing Modal apps need to be redeployed. Exact secret and
+deployment commands are in the implementation guide linked above. After deploying them, run either:
+
+```bash
+# Browser UI
+bun run dev
+# open http://localhost:8080/visual-search-test
+
+# Repeatable CLI run; writes both query crops, the raw cutout, and results.json
+VISUAL_SEARCH_TEST_URL=https://<modal-endpoint> \
+VISUAL_SEARCH_TEST_TOKEN=<token> \
+npm run test:visual-search -- --image ./photo.jpg --category upper
+```
+
 ### 7) Optional: Product upload scripts
 These scripts upload images to Supabase Storage and insert products.
 
@@ -118,6 +146,7 @@ bun run lint
 - `src/integrations/supabase/` — Supabase client and types
 - `supabase/` — Migrations and config
 - `scripts/` — Data ingestion and embedding generation scripts
+- `services/segmentation/visual_search/` — stateless visual-search test endpoint
 - `VECTOR_SEARCH_SETUP.md` — Detailed guide for AI-powered semantic search
 - `public/` — Static assets
 - `scripts/` — Data ingestion utilities (run with Bun)
