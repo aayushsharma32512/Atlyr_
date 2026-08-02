@@ -1300,6 +1300,7 @@ export function StudioScreenView() {
         wornItems={resolvedTrayItems}
         hiddenSlots={hiddenSlots}
         isReadOnly={isViewOnly}
+        mannequin={(adminGender ?? avatarGender ?? "female") as "male" | "female"}
         onWear={handleTrayWear}
         onOpenSplitView={(slot) => {
           setTraySheetOpen(false)
