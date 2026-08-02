@@ -31,6 +31,7 @@ type Mode = '2d' | '3d'
 export default function PlacementDashboard() {
   const [mode, setMode] = useState<Mode>('2d')
   const [productId, setProductId] = useState('')
+  const [productName, setProductName] = useState('')
   const [gender, setGender] = useState<'' | 'male' | 'female' | 'unisex'>('')
   const [category, setCategory] = useState('')
   const [createdAfter, setCreatedAfter] = useState('') // yyyy-mm-dd
@@ -58,12 +59,14 @@ export default function PlacementDashboard() {
     [createdBefore],
   )
   const productIdArg = useMemo(() => productId.trim() || undefined, [productId])
+  const productNameArg = useMemo(() => productName.trim() || undefined, [productName])
 
   const { products, loading, error, refetch } = useProducts({
     // Only what the tiles + both editors need — skips vector_embedding / big JSONB and the exact
     // count. `type` gives the 2D editor its zone; placement_x/y + image_length are the 2D values.
     columns: 'id, product_name, brand, image_url, thumbnail_url, gender, type, type_category, placement, placement_x, placement_y, image_length, created_at',
     productId: productIdArg,
+    searchQuery: productNameArg,
     genders: gendersArg,
     typeCategories: typeCategoriesArg,
     createdAfter: createdAfterArg,
@@ -83,7 +86,7 @@ export default function PlacementDashboard() {
   }, [rows])
 
   const clearFilters = () => {
-    setProductId(''); setGender(''); setCategory(''); setCreatedAfter(''); setCreatedBefore('')
+    setProductId(''); setProductName(''); setGender(''); setCategory(''); setCreatedAfter(''); setCreatedBefore('')
     setNeeds3D(false)
   }
 
@@ -126,6 +129,10 @@ export default function PlacementDashboard() {
             <div className="flex flex-col gap-1">
               <label className="text-[10px] uppercase tracking-wide text-muted-foreground">Product ID</label>
               <Input value={productId} onChange={(e) => setProductId(e.target.value)} placeholder="exact id" className="h-8 w-56 text-xs" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] uppercase tracking-wide text-muted-foreground">Product Name</label>
+              <Input value={productName} onChange={(e) => setProductName(e.target.value)} placeholder="search by name" className="h-8 w-56 text-xs" />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-[10px] uppercase tracking-wide text-muted-foreground">Gender</label>
