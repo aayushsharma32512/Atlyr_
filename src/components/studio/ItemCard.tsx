@@ -144,8 +144,10 @@ export function ItemCard({ item, className, isSelected = false, onSelectionChang
               <div className="w-[110px] flex flex-col">
                 <div className="w-[110px] h-[110px] bg-muted rounded-lg flex items-center justify-center overflow-hidden">
                   <img
-                    src={item.imageUrl}
+                    src={item.thumbnailUrl || item.imageUrl}
                     alt={item.description}
+                    loading="lazy"
+                    decoding="async"
                     className="w-full h-full object-contain"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;

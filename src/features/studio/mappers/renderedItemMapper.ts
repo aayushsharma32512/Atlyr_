@@ -149,6 +149,10 @@ export function mapSupabaseProductToStudioItem(
     id: product.id,
     zone: zone ?? "top",
     imageUrl,
+    // Carried explicitly rather than left implicit in imageUrl above, so a tile asks for the
+    // thumbnail by name instead of relying on what the fallback chain happened to pick. Null when
+    // the product has no thumbnail yet, in which case callers fall back to imageUrl.
+    thumbnailUrl: typeof product.thumbnail_url === "string" ? product.thumbnail_url.trim() || null : null,
     placementX,
     placementY,
     imageLengthCm,

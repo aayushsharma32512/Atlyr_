@@ -29,8 +29,10 @@ export function StudioOutfitDetails({ currentOutfit, onItemSelect }: StudioOutfi
           >
             <div className="aspect-square bg-muted rounded overflow-hidden mb-3">
               <img 
-                src={item.imageUrl}
+                src={item.thumbnailUrl || item.imageUrl}
                 alt={item.description}
+                loading="lazy"
+                decoding="async"
                 className="w-full h-full object-contain"
               />
             </div>
