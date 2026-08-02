@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { useForm, FormProvider } from "react-hook-form"
 import { toast as sonnerToast } from "sonner"
 import {
@@ -58,6 +59,7 @@ export function LikenessDrawer({
   initialSavedPoseId = null,
 }: LikenessDrawerProps) {
   const { toast } = useToast()
+  const navigate = useNavigate()
   const { jobs, addJob, updateJob, removeJob, getJobById } = useJobs()
   const [currentStep, setCurrentStep] = useState<LikenessStep>(initialStep ?? DEFAULT_STEP)
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null)
@@ -534,6 +536,31 @@ export function LikenessDrawer({
     ],
   )
 
+  // 6o's inline daily meter. Fetched once per open rather than polled — it only
+  // moves when this drawer generates, and a wrong-by-one count on a limit the
+  // edge function enforces anyway is not worth a subscription.
+  const [likenessRemainingToday, setLikenessRemainingToday] = useState<number | null>(null)
+  useEffect(() => {
+    if (!open || !user) return
+    let cancelled = false
+    checkLikenessLimit()
+      .then((result) => {
+        if (!cancelled) setLikenessRemainingToday(Math.max(0, result.limit - result.count))
+      })
+      .catch(() => {
+        // Informational only — leave it unrendered rather than guess a number.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, user, currentStep])
+
+  /** 6o "all poses ›" / 6n2 "Manage all poses ›" — both land on the 6o2 gallery. */
+  const handleManagePoses = useCallback(() => {
+    onOpenChange(false)
+    navigate("/profile/avatar")
+  }, [navigate, onOpenChange])
+
   const statusLabel =
     currentStep === 3
       ? "saved"
@@ -589,6 +616,12 @@ export function LikenessDrawer({
                     isSaving={selectMutation.isPending}
                     viewMode="grid"
                     showBack={false}
+                    remainingToday={likenessRemainingToday}
+                    onRegenerate={() => {
+                      setActiveBatchId(null)
+                      handlePrevious()
+                    }}
+                    onAllPoses={handleManagePoses}
                   />
                 )}
                 {currentStep === 3 && (
@@ -603,6 +636,7 @@ export function LikenessDrawer({
                     isGeneratingTryOn={isVTonApiPending}
                     savedMode={savedMode}
                     savedPoseId={savedPoseId}
+                    onManagePoses={handleManagePoses}
                   />
                 )}
               </CardContent>

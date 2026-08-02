@@ -3,7 +3,8 @@ import type { PointerEvent as ReactPointerEvent } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "react-router-dom"
-import { CheckCircle2, X, Layers } from "lucide-react"
+import { Bell, X } from "lucide-react"
+import { NotificationTray } from "./NotificationTray"
 import { toast as sonnerToast } from "sonner"
 import { useJobs } from "../providers/JobsContext"
 import type { Job } from "../providers/JobsContext"
@@ -18,6 +19,10 @@ import { trackTryonGenerationStarted } from "@/integrations/posthog/engagementTr
 export function FloatingProgressHub() {
   const { jobs, processingCount, readyCount, removeJob, addJob, updateJob } = useJobs()
   const [isExpanded, setIsExpanded] = useState(false)
+  // 6p's tray. Read state is per-device and per-session by design — see the
+  // note in NotificationTray; there is no read-receipt to persist to.
+  const [isTrayOpen, setIsTrayOpen] = useState(false)
+  const [readIds, setReadIds] = useState<Set<string>>(() => new Set())
   const [yPosition, setYPosition] = useState(() =>
     typeof window !== "undefined" ? window.innerHeight / 2 - 36 : 0
   ) // Y position in pixels
@@ -73,6 +78,28 @@ export function FloatingProgressHub() {
     .filter(j => j.status === 'ready' || j.status === 'failed')
     .sort((a, b) => b.startedAt - a.startedAt)
     .slice(0, 5)
+
+  const unreadCount = completedJobs.filter((job) => !readIds.has(job.id)).length
+
+  const handleMarkAllRead = useCallback(() => {
+    setReadIds(new Set(jobs.map((job) => job.id)))
+  }, [jobs])
+
+  // Names the work rather than counting it: "Dressing your likeness…" tells you
+  // what you are waiting for, "2 jobs" does not.
+  const hubHeadline = (() => {
+    if (activeJobs.length === 0) return "Nothing cooking"
+    if (activeJobs.length > 1) return `${activeJobs.length} things in progress…`
+    return activeJobs[0].type === "likeness"
+      ? "Building your likeness…"
+      : "Dressing your likeness…"
+  })()
+
+  // Collapse the tray whenever the hub itself closes, so reopening the hub
+  // never restores a pop-out the user had dismissed.
+  useEffect(() => {
+    if (!isExpanded) setIsTrayOpen(false)
+  }, [isExpanded])
 
   // Click outside to collapse
   useEffect(() => {
@@ -401,18 +428,63 @@ export function FloatingProgressHub() {
                 transformOrigin: expandUpward ? "bottom center" : "top center",
               }}
             >
-              <div className="flex w-full items-center justify-between px-3 pt-0.5 pb-0.5">
-                <div className="flex items-center gap-2">
-                  <span className="font-deva text-[15px] font-medium text-foreground">कलागृह</span>
+              {/* Canvas 6p — the hub says what is happening and, more usefully,
+                  gives you permission to leave. "~40 seconds · go wander" is the
+                  whole point of a background jobs system; a bare title bar made
+                  it look like something you had to sit and watch. */}
+              <div className="flex w-full items-start justify-between gap-2 border-b border-hairline px-3 pb-2 pt-2">
+                <div className="min-w-0">
+                  <p className="truncate text-[11px] font-semibold text-foreground">
+                    {activeJobs.length > 0 ? hubHeadline : "Nothing cooking"}
+                  </p>
+                  <p className="mt-0.5 text-[8px] text-muted-foreground">
+                    {activeJobs.length > 0
+                      ? "go wander, we'll tap your shoulder"
+                      : "start a try-on in the studio"}
+                  </p>
                 </div>
-                <button
-                  onClick={() => setIsExpanded(false)}
-                  className="h-7 w-7 inline-flex items-center justify-center rounded-xl"
-                  aria-label="Close"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
+                <div className="flex shrink-0 items-center gap-0.5">
+                  <button
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setIsTrayOpen((open) => !open)
+                    }}
+                    className="relative inline-flex h-7 w-7 items-center justify-center rounded-[3px] text-ink-body"
+                    aria-label="Notifications"
+                    aria-expanded={isTrayOpen}
+                  >
+                    <Bell className="h-3.5 w-3.5" />
+                    {unreadCount > 0 && (
+                      <span className="absolute right-1 top-1 size-1.5 rounded-full bg-terracotta" />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setIsExpanded(false)}
+                    className="h-7 w-7 inline-flex items-center justify-center rounded-[3px]"
+                    aria-label="Close"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
+
+              {/* Anchored under the bell, as drawn — but inside the hub rather
+                  than a global app header, because no such header exists and
+                  adding one would put new furniture on every screen. */}
+              {isTrayOpen && (
+                <div className="absolute right-2 top-11 z-10" onClick={(e) => e.stopPropagation()}>
+                  <NotificationTray
+                    open
+                    readIds={readIds}
+                    onMarkAllRead={handleMarkAllRead}
+                    onSelect={(job) => {
+                      setReadIds((prev) => new Set(prev).add(job.id))
+                      setIsTrayOpen(false)
+                      handleViewResult(job)
+                    }}
+                  />
+                </div>
+              )}
 
               <div className="flex-1 overflow-y-auto px-3 pb-3 pt-2 space-y-2">
                 {jobs.length === 0 ? (

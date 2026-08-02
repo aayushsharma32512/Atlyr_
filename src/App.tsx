@@ -205,7 +205,18 @@ const App = () => (
                         </ShareAccessGuard>
                       }
                     />
-                    <Route path="/hitl" element={<InventoryDashboard />} />
+                    {/* Was a BARE route — the inventory dashboard was readable by
+                        anyone with the URL, signed in or not. Authenticated
+                        rather than admin-only: HITL review is done by operators
+                        who are not necessarily admins. */}
+                    <Route
+                      path="/hitl"
+                      element={
+                        <ShareAccessGuard>
+                          <InventoryDashboard />
+                        </ShareAccessGuard>
+                      }
+                    />
                     <Route
                       path="/home"
                       element={
@@ -388,8 +399,24 @@ const App = () => (
                       }
                     />
                     <Route path="/design-system/collection" element={<Navigate to="/collection" replace />} />
-                    <Route path="/design-system/mannequin" element={<MannequinPreview />} />
-                    <Route path="/mannequin" element={<MannequinPreview />} />
+                    {/* Both were bare. The same harness is reachable at two paths;
+                        guarding one and not the other would have been theatre. */}
+                    <Route
+                      path="/design-system/mannequin"
+                      element={
+                        <ShareAccessGuard>
+                          <MannequinPreview />
+                        </ShareAccessGuard>
+                      }
+                    />
+                    <Route
+                      path="/mannequin"
+                      element={
+                        <ShareAccessGuard>
+                          <MannequinPreview />
+                        </ShareAccessGuard>
+                      }
+                    />
                     <Route
                       path="/design-system/profile"
                       element={

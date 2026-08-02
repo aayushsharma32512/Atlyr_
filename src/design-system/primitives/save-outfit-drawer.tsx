@@ -257,7 +257,7 @@ export function SaveOutfitDrawer({
                     placeholder="E.g., Summer Casual Look"
                     value={outfitName}
                     onChange={(e) => setOutfitName(e.target.value)}
-                    className="bg-card text-sm h-9 shadow-none placeholder:text-muted-foreground text-foreground placeholder:text-sm"
+                    className="h-8 rounded-[3px] border-hairline-4 bg-card text-[11px] text-foreground shadow-none placeholder:text-[11px] placeholder:text-muted-foreground"
                     ref={outfitNameRef}
                   />
                 </div>
@@ -266,7 +266,7 @@ export function SaveOutfitDrawer({
                 <div className="flex-1 space-y-1 min-w-0 overflow-hidden p-1">
                   <Label className="pl-0.5 text-[7.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Category</Label>
                   <Select value={categoryId} onValueChange={setCategoryId} disabled={categoriesLoading}>
-                    <SelectTrigger className="bg-card text-sm h-9 shadow-none placeholder:text-muted-foreground text-foreground placeholder:text-sm">
+                    <SelectTrigger className="h-8 rounded-[3px] border-hairline-4 bg-card text-[11px] text-foreground shadow-none placeholder:text-[11px] placeholder:text-muted-foreground">
                       <SelectValue placeholder={categoriesLoading ? "Loading…" : "Select category"} />
                     </SelectTrigger>
                     <SelectContent>
@@ -286,7 +286,7 @@ export function SaveOutfitDrawer({
                 <div className="flex-1 p-1 space-y-1 min-w-0 overflow-hidden">
                   <Label className="pl-0.5 text-[7.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Occasion</Label>
                   <Select value={occasionId} onValueChange={setOccasionId} disabled={occasionsLoading}>
-                    <SelectTrigger className="bg-card text-sm h-9 shadow-none placeholder:text-muted-foreground text-foreground placeholder:text-sm">
+                    <SelectTrigger className="h-8 rounded-[3px] border-hairline-4 bg-card text-[11px] text-foreground shadow-none placeholder:text-[11px] placeholder:text-muted-foreground">
                       <SelectValue placeholder={occasionsLoading ? "Loading…" : "Select occasion"} />
                     </SelectTrigger>
                     <SelectContent>
@@ -309,7 +309,7 @@ export function SaveOutfitDrawer({
                     placeholder="E.g., Chic, Casual, Bold"
                     value={vibe ?? ""}
                     onChange={(e) => setVibe(e.target.value)}
-                    className="bg-card text-sm h-9 shadow-none placeholder:text-muted-foreground text-foreground placeholder:text-sm"
+                    className="h-8 rounded-[3px] border-hairline-4 bg-card text-[11px] text-foreground shadow-none placeholder:text-[11px] placeholder:text-muted-foreground"
                   />
                 </div>
               </div>
@@ -324,7 +324,7 @@ export function SaveOutfitDrawer({
                   placeholder="Summer, Casual, Streetstyle"
                   value={keywords ?? ""}
                   onChange={(e) => setKeywords(e.target.value)}
-                  className="bg-card text-sm h-9 shadow-none placeholder:text-muted-foreground text-foreground placeholder:text-sm"
+                  className="h-8 rounded-[3px] border-hairline-4 bg-card text-[11px] text-foreground shadow-none placeholder:text-[11px] placeholder:text-muted-foreground"
                 />
               </div>
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type TouchEvent } from "react"
 import { UseFormReturn } from "react-hook-form"
-import { Check, Share, X } from "lucide-react"
+import { Check, Maximize2, RotateCcw, Share, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { CardHeader, CardFooter } from "@/components/ui/card"
@@ -27,7 +27,16 @@ interface StepTwoFormProps {
   isSaving?: boolean
   viewMode?: StepTwoViewMode
   showBack?: boolean
+  /** 6o: "9 left today" — the daily meter sits where the regenerate tempts. */
+  remainingToday?: number | null
+  /** 6o: ⟲ Regenerate both. Falls back to onPrevious, which is the same journey. */
+  onRegenerate?: () => void
+  /** 6o: "all poses ›" — through to the 6o2 gallery. */
+  onAllPoses?: () => void
 }
+
+/** A / B / C … — "Candidate A" reads as a choice; "generation #1" reads as a log line. */
+const candidateLetter = (index: number) => String.fromCharCode(65 + Math.max(0, index))
 
 export function StepTwoForm({
   type = 'screen',
@@ -38,9 +47,13 @@ export function StepTwoForm({
   isSaving = false,
   viewMode = "scroll",
   showBack = true,
+  remainingToday = null,
+  onRegenerate,
+  onAllPoses,
 }: StepTwoFormProps) {
   const [selectedIndex, setSelectedIndex] = useState<number>(() => candidates[0]?.index ?? 0)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+  const isDrawer = type === 'drawer'
 
   const canContinue = useMemo(() => candidates.length > 0 && typeof selectedIndex === "number", [candidates, selectedIndex])
 
@@ -71,18 +84,87 @@ export function StepTwoForm({
           canSave={canContinue}
         />
       ) : null}
-      <div className="flex flex-col flex-1 min-h-0">
+      {/* Canvas 6o — the darkroom.
+          The likeness steps are the one place the app goes dark: you are looking
+          at a render of yourself, and cream chrome around it reads as a form to
+          fill in rather than a print coming up. The rest of the flow stays on
+          the cream register. */}
+      <div className={`flex flex-col flex-1 min-h-0 ${isDrawer ? 'bg-ink-deepest -mx-2.5 -mt-2.5 rounded-t-[14px] px-1 pt-1' : ''}`}>
         <div className="flex-1 min-h-0 overflow-y-auto">
-          <CardHeader className={`flex flex-col gap-3 items-center justify-center p-6 text-center shrink-0 ${type === 'drawer' ? 'border-none shadow-none' : ''}`}>
-            <div className="flex flex-1 flex-col gap-1.5 items-center justify-center">
-              <p className="text-base font-medium text-card-foreground leading-none">Select closest likeness</p>
-              <p className="text-sm font-normal text-muted-foreground leading-5">
-                Review the generated candidates and keep the closest likeness.
+          {isDrawer ? (
+            <div className="shrink-0 px-5 pb-1 pt-4 text-center">
+              <p className="text-[8px] font-bold uppercase tracking-[0.2em] text-terracotta">
+                Your likeness is ready
+              </p>
+              <h2 className="mt-2 font-display text-[24px] font-medium leading-tight text-on-ink-1">
+                Which one is more you?
+              </h2>
+              <p className="mt-1.5 text-[9.5px] text-on-ink-3">
+                You can refine later. Pick the one that feels right.
               </p>
             </div>
-          </CardHeader>
+          ) : (
+            <CardHeader className="flex flex-col gap-3 items-center justify-center p-6 text-center shrink-0">
+              <div className="flex flex-1 flex-col gap-1.5 items-center justify-center">
+                <p className="text-base font-medium text-card-foreground leading-none">Select closest likeness</p>
+                <p className="text-sm font-normal text-muted-foreground leading-5">
+                  Review the generated candidates and keep the closest likeness.
+                </p>
+              </div>
+            </CardHeader>
+          )}
 
-          {viewMode === "grid" ? (
+          {isDrawer ? (
+            <div className="grid grid-cols-2 gap-2.5 px-5 pb-2 pt-3">
+              {candidates.map((candidate) => {
+                const isPicked = selectedIndex === candidate.index
+                return (
+                  <div key={candidate.path} className="relative flex flex-col">
+                    {/* The PICKED tab sits ON the card's top edge, so the choice
+                        reads as a physical tag rather than a checkbox. */}
+                    {isPicked ? (
+                      <span className="absolute -top-[7px] left-1/2 z-10 -translate-x-1/2 rounded-[2px] bg-on-ink-1 px-2 py-[3px] text-[6.5px] font-bold uppercase tracking-[0.16em] text-ink-deepest">
+                        Picked
+                      </span>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedIndex(candidate.index)}
+                      onDoubleClick={() => openPreviewAt(candidate.index)}
+                      className={`relative flex aspect-[3/4] w-full items-center justify-center overflow-hidden rounded-[5px] border bg-ink-deep transition-colors ${
+                        isPicked ? 'border-on-ink-1' : 'border-ink-line hover:border-on-ink-3'
+                      }`}
+                    >
+                      {candidate.signedUrl ? (
+                        <img
+                          src={candidate.signedUrl}
+                          alt={`Candidate ${candidateLetter(candidate.index)}`}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-[8px] uppercase tracking-[0.1em] text-on-ink-3">
+                          render · placeholder
+                        </span>
+                      )}
+                      <span
+                        role="presentation"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          openPreviewAt(candidate.index)
+                        }}
+                        className="absolute right-1.5 top-1.5 rounded-[2px] bg-ink-deepest/70 px-1.5 py-1 text-on-ink-2"
+                      >
+                        <Maximize2 className="size-2.5" aria-hidden="true" />
+                      </span>
+                    </button>
+                    <p className="mt-1.5 text-center text-[9px] font-medium text-on-ink-2">
+                      Candidate {candidateLetter(candidate.index)}
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+          ) : viewMode === "grid" ? (
             <div className="grid grid-cols-2 gap-3 justify-items-center items-start px-3 py-[28px] w-full">
               {candidates.map((candidate) => (
                 <div key={candidate.path} className="flex flex-col gap-2 items-center relative w-[150px]">
@@ -167,26 +249,75 @@ export function StepTwoForm({
           )}
         </div>
 
-        <CardFooter className={`flex flex-col gap-2 items-center justify-center pb-6 pt-2.5 px-6 shrink-0 ${type === 'drawer' ? 'border-none shadow-none' : ''}`}>
-          <div className="flex w-full gap-2">
-            {showBack ? (
-              <Button type="button" variant="outline" className="flex-1" onClick={onPrevious}>
-                back
-              </Button>
-            ) : null}
+        {isDrawer ? (
+          <div className="shrink-0 px-5 pb-5 pt-2">
             <Button
               type="button"
               onClick={handleSave}
-              className="bg-primary flex gap-2 h-9 items-center justify-center px-4 py-2 rounded-[10px] shadow-sm flex-1"
+              className="flex h-11 w-full items-center justify-center rounded-[3px] bg-primary px-4 shadow-sm hover:bg-primary/90"
               disabled={!canContinue || isSaving}
             >
-              <Share className="relative shrink-0 size-4 text-primary-foreground" />
-              <p className="font-medium leading-5 relative shrink-0 text-primary-foreground text-sm capitalize">
-                {isSaving ? "saving..." : "save likeness"}
-              </p>
+              <span className="text-[12px] font-bold text-primary-foreground">
+                {isSaving
+                  ? "Saving…"
+                  : `Use Candidate ${candidateLetter(selectedIndex)} →`}
+              </span>
             </Button>
+
+            {/* The daily meter sits inline with the regenerate, not in a toast
+                after the fact — the limit should be visible where it tempts. */}
+            <div className="mt-3 flex items-center justify-center gap-1.5 text-[9px] text-on-ink-3">
+              <button
+                type="button"
+                onClick={onRegenerate ?? onPrevious}
+                disabled={isSaving || remainingToday === 0}
+                className="inline-flex items-center gap-1 font-medium text-on-ink-2 disabled:opacity-40"
+              >
+                <RotateCcw className="size-2.5" aria-hidden="true" />
+                Regenerate both
+              </button>
+              {remainingToday !== null ? (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span>{remainingToday} left today</span>
+                </>
+              ) : null}
+              {onAllPoses ? (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <button
+                    type="button"
+                    onClick={onAllPoses}
+                    className="font-medium text-terracotta"
+                  >
+                    all poses ›
+                  </button>
+                </>
+              ) : null}
+            </div>
           </div>
-        </CardFooter>
+        ) : (
+          <CardFooter className="flex flex-col gap-2 items-center justify-center pb-6 pt-2.5 px-6 shrink-0">
+            <div className="flex w-full gap-2">
+              {showBack ? (
+                <Button type="button" variant="outline" className="flex-1" onClick={onPrevious}>
+                  back
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                onClick={handleSave}
+                className="bg-primary flex gap-2 h-9 items-center justify-center px-4 py-2 rounded-[10px] shadow-sm flex-1"
+                disabled={!canContinue || isSaving}
+              >
+                <Share className="relative shrink-0 size-4 text-primary-foreground" />
+                <p className="font-medium leading-5 relative shrink-0 text-primary-foreground text-sm capitalize">
+                  {isSaving ? "saving..." : "save likeness"}
+                </p>
+              </Button>
+            </div>
+          </CardFooter>
+        )}
       </div>
     </Form>
   )

@@ -183,6 +183,7 @@ async function fetchCategoryOutfits(categoryId: string, limit: number, gender: G
           placement_x,
           placement_y,
           image_length,
+          placement,
           type_category,
           body_parts_visible
         ),
@@ -207,6 +208,7 @@ async function fetchCategoryOutfits(categoryId: string, limit: number, gender: G
           placement_x,
           placement_y,
           image_length,
+          placement,
           type_category,
           body_parts_visible
         ),
@@ -231,6 +233,7 @@ async function fetchCategoryOutfits(categoryId: string, limit: number, gender: G
           placement_x,
           placement_y,
           image_length,
+          placement,
           type_category,
           body_parts_visible
         )

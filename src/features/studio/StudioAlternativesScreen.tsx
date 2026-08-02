@@ -726,6 +726,7 @@ export function StudioAlternativesView() {
         toast({
           title: "Outfit saved",
           description: hadCollectionError ? "Saved outfit, but could not add it to all collections." : undefined,
+          variant: hadCollectionError ? undefined : "success",
         })
 
         // Capture snapshot after save (non-blocking)
@@ -1212,6 +1213,13 @@ export function StudioAlternativesView() {
                   products={rackProducts}
                   isLoading={isLoading}
                   wornProductId={activeSlotIds[slot] ?? null}
+                  // Expanded, the rack has the model's half too, so it earns
+                  // more columns at the same card size.
+                  columnsClassName={
+                    panelMode === "right-full"
+                      ? "grid-cols-3 md:grid-cols-5 lg:grid-cols-6"
+                      : undefined
+                  }
                   className="min-h-0 flex-1"
                   onSelect={
                     isViewOnly

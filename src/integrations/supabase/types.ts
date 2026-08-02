@@ -297,6 +297,7 @@ export type Database = {
           image_url: string
           material_type: string | null
           occasion: string | null
+          placement: Json | null
           placement_x: number | null
           placement_y: number | null
           price: number
@@ -336,6 +337,7 @@ export type Database = {
           image_url: string
           material_type?: string | null
           occasion?: string | null
+          placement?: Json | null
           placement_x?: number | null
           placement_y?: number | null
           price: number
@@ -375,6 +377,7 @@ export type Database = {
           image_url?: string
           material_type?: string | null
           occasion?: string | null
+          placement?: Json | null
           placement_x?: number | null
           placement_y?: number | null
           price?: number
@@ -1125,6 +1128,7 @@ export type Database = {
           image_vector: string | null
           material_type: string | null
           occasion: string | null
+          placement: Json | null
           placement_x: number | null
           placement_y: number | null
           price: number
@@ -1169,6 +1173,7 @@ export type Database = {
           image_vector?: string | null
           material_type?: string | null
           occasion?: string | null
+          placement?: Json | null
           placement_x?: number | null
           placement_y?: number | null
           price: number
@@ -1213,6 +1218,7 @@ export type Database = {
           image_vector?: string | null
           material_type?: string | null
           occasion?: string | null
+          placement?: Json | null
           placement_x?: number | null
           placement_y?: number | null
           price?: number

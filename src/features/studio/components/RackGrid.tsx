@@ -35,17 +35,17 @@ export interface RackGridProps {
   isLoading?: boolean
   emptyState?: React.ReactNode
   /**
-   * Minimum card width in px. Columns are auto-filled from it rather than
-   * fixed, so a wider rack (a laptop, or the expanded panel) gets *more* cards
-   * at a readable size instead of the same two stretched or squeezed.
+   * Column count, as Tailwind classes.
+   *
+   * Explicit breakpoints rather than `auto-fill minmax()`: on a phone the rack
+   * is half of a 384px frame — about 174px — and any minimum wide enough to
+   * look right on a laptop collapsed that to a SINGLE column. Two-up is the
+   * floor the canvas draws, so the phone case sets it and wider viewports add
+   * columns rather than the other way round.
    */
-  minCardPx?: number
+  columnsClassName?: string
   className?: string
 }
-
-const gridStyle = (minCardPx: number): React.CSSProperties => ({
-  gridTemplateColumns: `repeat(auto-fill, minmax(${minCardPx}px, 1fr))`,
-})
 
 export function RackGrid({
   products,
@@ -56,18 +56,21 @@ export function RackGrid({
   onLongPressSave,
   isLoading = false,
   emptyState,
-  minCardPx = 108,
+  columnsClassName = "grid-cols-2 md:grid-cols-3 lg:grid-cols-4",
   className,
 }: RackGridProps) {
   if (isLoading) {
     return (
       <div
-        className={cn("grid content-start gap-2 overflow-y-auto p-2.5", className)}
-        style={gridStyle(minCardPx)}
+        className={cn(
+          "grid content-start gap-1.5 overflow-y-auto p-2 md:gap-2 md:p-2.5",
+          columnsClassName,
+          className,
+        )}
       >
         {Array.from({ length: 12 }).map((_, index) => (
           <div key={index} className="flex flex-col gap-1">
-            <Skeleton className="aspect-square w-full rounded-[4px]" />
+            <Skeleton className="aspect-[5/6] w-full rounded-[4px]" />
             <Skeleton className="h-2 w-3/4" />
             <Skeleton className="h-2 w-1/2" />
           </div>
@@ -82,8 +85,11 @@ export function RackGrid({
 
   return (
     <div
-      className={cn("grid content-start gap-2 overflow-y-auto p-2.5", className)}
-      style={gridStyle(minCardPx)}
+      className={cn(
+        "grid content-start gap-1.5 overflow-y-auto p-2 md:gap-2 md:p-2.5",
+        columnsClassName,
+        className,
+      )}
     >
       {products.map((product) => {
         const isWorn = product.id === wornProductId
@@ -97,17 +103,20 @@ export function RackGrid({
               onClick={onSelect && !isWorn ? () => onSelect(product) : undefined}
               title={isWorn ? "Already on the model" : `Wear ${product.title}`}
               className={cn(
-                "bg-warp-grid group relative flex aspect-square w-full items-center justify-center",
+                "bg-warp-grid group relative flex aspect-[5/6] w-full items-center justify-center",
                 "overflow-hidden rounded-[4px] border bg-card transition-colors disabled:cursor-default",
                 isWorn ? "border-terracotta" : "border-hairline hover:border-hairline-4",
               )}
             >
               {product.imageSrc ? (
+                // Fills the tile rather than sitting at 85% inside it — at
+                // two-up phone width the garment was a stamp in the middle of a
+                // mostly-empty box. object-contain still shows the whole piece.
                 <img
                   src={product.imageSrc}
                   alt=""
                   loading="lazy"
-                  className="relative max-h-[85%] max-w-[85%] object-contain"
+                  className="relative h-full w-full object-contain p-0.5"
                 />
               ) : (
                 <span className="relative text-[7px] font-semibold tracking-[0.1em] text-taupe">

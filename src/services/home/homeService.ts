@@ -87,6 +87,7 @@ const OUTFIT_SELECT = `
     placement_x,
     placement_y,
     image_length,
+    placement,
     type_category,
     body_parts_visible
   ),
@@ -111,6 +112,7 @@ const OUTFIT_SELECT = `
     placement_x,
     placement_y,
     image_length,
+    placement,
     type_category,
     body_parts_visible
   ),
@@ -135,6 +137,7 @@ const OUTFIT_SELECT = `
     placement_x,
     placement_y,
     image_length,
+    placement,
     type_category,
     body_parts_visible
   )

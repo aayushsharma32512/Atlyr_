@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Application, Assets, Container, MeshPlane, Sprite, Texture } from "pixi.js"
+import { Application, Assets, Container, MeshPlane, Rectangle, Sprite, Texture } from "pixi.js"
 import type { StudioRenderedItem, StudioRenderedZone } from "@/features/studio/types"
 import { mannequinAssetUrl } from "@/components/ingestion-automated/PlacementMeshEditor"
 import { PLACEMENT_HEAD_ANCHOR, headCropRect } from "@/features/studio/constants/mannequinAnchors"
@@ -58,7 +58,28 @@ type GarmentProbe = {
   isOpaque: (texX: number, texY: number) => boolean
 }
 
-async function probeGarment(url: string, texW: number, texH: number): Promise<GarmentProbe> {
+/**
+ * Probe results, memoised by URL.
+ *
+ * Both probes are pure functions of the image at `url` (the texture dimensions are themselves fixed
+ * per URL, and are folded into the key only so a caller cannot silently reuse a probe measured
+ * against a different grid). They each cost a decode plus a ~256x256 alpha scan on the main thread,
+ * and were previously re-run per card — three garment scans plus a mannequin scan for every tile in
+ * the feed, all recomputing byte-identical answers.
+ */
+const garmentProbeCache = new Map<string, Promise<GarmentProbe>>()
+const mannequinBoundsCache = new Map<string, Promise<Bounds>>()
+
+function probeGarment(url: string, texW: number, texH: number): Promise<GarmentProbe> {
+  const key = `${url}|${texW}x${texH}`
+  const hit = garmentProbeCache.get(key)
+  if (hit) return hit
+  const pending = probeGarmentUncached(url, texW, texH)
+  garmentProbeCache.set(key, pending)
+  return pending
+}
+
+async function probeGarmentUncached(url: string, texW: number, texH: number): Promise<GarmentProbe> {
   const fallback: GarmentProbe = {
     bounds: { x: 0, y: 0, w: texW, h: texH },
     // Rectangular fallback — the current behaviour, used only when the pixels
@@ -125,7 +146,16 @@ async function probeGarment(url: string, texW: number, texH: number): Promise<Ga
  * transparent-backed now, so alpha alone would do; the near-white test is kept as free insurance
  * against an asset that ships on white again.
  */
-async function probeMannequinBounds(url: string, texW: number, texH: number): Promise<Bounds> {
+function probeMannequinBounds(url: string, texW: number, texH: number): Promise<Bounds> {
+  const key = `${url}|${texW}x${texH}`
+  const hit = mannequinBoundsCache.get(key)
+  if (hit) return hit
+  const pending = probeMannequinBoundsUncached(url, texW, texH)
+  mannequinBoundsCache.set(key, pending)
+  return pending
+}
+
+async function probeMannequinBoundsUncached(url: string, texW: number, texH: number): Promise<Bounds> {
   const fallback: Bounds = { x: 0, y: 0, w: texW, h: texH }
   try {
     const img = await loadImage(url)
@@ -158,14 +188,36 @@ async function probeMannequinBounds(url: string, texW: number, texH: number): Pr
   }
 }
 
+/**
+ * Decoded images, memoised by URL.
+ *
+ * Every mounted avatar used to build its own `new Image()` for the mannequin frame, the hair cutout
+ * and each garment probe. The bytes came from the HTTP cache, but the DECODE did not: a feed of N
+ * cards paid N full decodes of the 1800x3072 mannequin on the main thread, which is what made
+ * scrolling stutter once the whole feed moved onto this renderer.
+ *
+ * Sharing the element also shares its identity, which matters downstream: `Texture.from` keys its
+ * GPU upload off the source object, so one Image per URL means one ~22MB mannequin texture for the
+ * whole feed instead of one per card. It is likewise what lets the `recolorSkin` / `recolorHair`
+ * caches (keyed on `img.src`) actually hit.
+ *
+ * A rejected load is evicted so a transient failure doesn't poison the URL for the session.
+ */
+const imageCache = new Map<string, Promise<HTMLImageElement>>()
+
 function loadImage(url: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
+  const hit = imageCache.get(url)
+  if (hit) return hit
+  const pending = new Promise<HTMLImageElement>((resolve, reject) => {
     const el = new Image()
     el.crossOrigin = "anonymous"
     el.onload = () => resolve(el)
     el.onerror = () => reject(new Error("image load failed"))
     el.src = url
   })
+  pending.catch(() => imageCache.delete(url))
+  imageCache.set(url, pending)
+  return pending
 }
 
 function draw(img: HTMLImageElement, cw: number, ch: number): CanvasRenderingContext2D | null {
@@ -289,8 +341,14 @@ export function PlacementAvatarRenderer({
   useEffect(() => {
     if (!host) return
     let disposed = false
+    let released = false
     onReady?.(false)
     const app = new Application()
+
+    // A garment tap handler is what forces this avatar to keep a live renderer: PIXI hit testing
+    // needs the scene graph. Without one the composite is a still image and nothing ever redraws it,
+    // which is the case for every card in the feed — see the snapshot step at the end of the build.
+    const interactive = Boolean(onItemSelectRef.current)
 
     ;(async () => {
       try {
@@ -301,6 +359,9 @@ export function PlacementAvatarRenderer({
           antialias: true,
           resolution: Math.min(window.devicePixelRatio || 1, 2),
           autoDensity: true,
+          // Nothing animates here; the scene is built once. A running ticker per card just burns
+          // frames re-drawing an unchanging composite across the whole feed.
+          autoStart: false,
         })
         if (disposed) { app.destroy(true); return }
         appRef.current = app
@@ -435,6 +496,35 @@ export function PlacementAvatarRenderer({
           world.addChild(garment)
         }
 
+        app.render()
+
+        // ── Snapshot and release the WebGL context ──────────────────────────────────────────────
+        //
+        // A browser allows only ~16 live WebGL contexts; past that it force-loses the oldest, which
+        // blanks whichever cards happen to be onscreen. The feed keeps far more avatars mounted than
+        // that (the grid's mount band spans several screens at ~320px per card), so once the whole
+        // feed moved onto this renderer, scrolling meant contexts being created and destroyed
+        // constantly — the stutter, and the cards that came back empty.
+        //
+        // A non-interactive avatar has no reason to hold a context after its one render: flatten it
+        // to a bitmap, hand that to the DOM, and give the context straight back. Live contexts then
+        // track how many avatars are BUILDING, not how many are mounted.
+        if (!interactive) {
+          const snapshot = app.renderer.extract.canvas({
+            target: app.stage,
+            frame: new Rectangle(0, 0, containerWidth, containerHeight),
+            resolution: app.renderer.resolution,
+          }) as HTMLCanvasElement
+          if (disposed) return
+          snapshot.style.width = "100%"
+          snapshot.style.height = "100%"
+          snapshot.style.display = "block"
+          host.replaceChildren(snapshot)
+          released = true
+          appRef.current = null
+          app.destroy(true, { children: true })
+        }
+
         onReady?.(true)
       } catch {
         if (!disposed) onReady?.(true) // don't wedge the studio on a placement render error
@@ -444,7 +534,9 @@ export function PlacementAvatarRenderer({
     return () => {
       disposed = true
       appRef.current = null
-      try { app.destroy(true, { children: true }) } catch { /* already torn down */ }
+      if (!released) {
+        try { app.destroy(true, { children: true }) } catch { /* already torn down */ }
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig, host])
