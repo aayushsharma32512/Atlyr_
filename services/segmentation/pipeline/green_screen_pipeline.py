@@ -37,8 +37,90 @@ GARMENT_CLASSES_LOCAL = {
 }
 FASHN_GARMENT_CLASSES = {
     "top": [3, 7, 10, 11], "dress": [4, 7, 10, 11],
-    "pants": [6, 7], "skirt": [5, 7], "footwear": [8, 9, 15],
+    "pants": [5, 6, 7], "skirt": [5, 7], "footwear": [8, 9, 15],
 }
+
+CATEGORY_ALIASES = {
+    "upper": "top",
+    "top": "top",
+    "topwear": "top",
+    "lower": "pants",
+    "bottom": "pants",
+    "bottomwear": "pants",
+    "pants": "pants",
+    "skirt": "pants",
+    "shoes": "footwear",
+    "shoe": "footwear",
+    "footwear": "footwear",
+    "dress": "dress",
+}
+
+
+def normalize_target_category(category: str):
+    """Map UI/catalog vocabulary to the parser's canonical garment classes."""
+    raw = (category or "").strip().lower()
+    if raw in ("", "auto"):
+        return None
+    if raw not in CATEGORY_ALIASES:
+        allowed = ", ".join(sorted(CATEGORY_ALIASES))
+        raise ValueError(f"Unsupported garment category '{category}'. Expected one of: {allowed}")
+    return CATEGORY_ALIASES[raw]
+
+
+def build_search_bbox(mask: np.ndarray, positive_boxes, image_width: int, image_height: int,
+                      padding_ratio: float = 0.15):
+    """Build an exclusive XYXY retrieval box from visible cloth and the best DINO box."""
+    ys, xs = np.where(mask > 127)
+    if len(xs) == 0 or len(ys) == 0:
+        return None
+
+    x1, y1 = int(xs.min()), int(ys.min())
+    x2, y2 = int(xs.max()) + 1, int(ys.max()) + 1
+    base_area = max(1, (x2 - x1) * (y2 - y1))
+    mask_area = max(1, int((mask > 127).sum()))
+
+    best_box = None
+    best_score = 0.0
+    for raw_box in positive_boxes or []:
+        if len(raw_box) != 4:
+            continue
+        bx1 = max(0, min(image_width - 1, int(raw_box[0])))
+        by1 = max(0, min(image_height - 1, int(raw_box[1])))
+        bx2 = max(bx1 + 1, min(image_width, int(raw_box[2]) + 1))
+        by2 = max(by1 + 1, min(image_height, int(raw_box[3]) + 1))
+        box_area = max(1, (bx2 - bx1) * (by2 - by1))
+        area_ratio = box_area / base_area
+        overlap = int((mask[by1:by2, bx1:bx2] > 127).sum())
+        mask_coverage = overlap / mask_area
+        box_precision = overlap / box_area
+
+        # Reject person-sized or unrelated detections while allowing a garment
+        # box to restore shoulders/sleeves hidden by hair, hands, or straps.
+        if area_ratio > 3.0 or (mask_coverage < 0.25 and box_precision < 0.15):
+            continue
+        score = mask_coverage + box_precision
+        if score > best_score:
+            best_score = score
+            best_box = (bx1, by1, bx2, by2)
+
+    if best_box is not None:
+        x1 = min(x1, best_box[0])
+        y1 = min(y1, best_box[1])
+        x2 = max(x2, best_box[2])
+        y2 = max(y2, best_box[3])
+
+    width = x2 - x1
+    height = y2 - y1
+    pad_x = max(4, int(width * padding_ratio))
+    pad_y = max(4, int(height * padding_ratio))
+    return [
+        max(0, x1 - pad_x),
+        max(0, y1 - pad_y),
+        min(image_width, x2 + pad_x),
+        min(image_height, y2 + pad_y),
+    ]
+
+
 FASHN_EXCLUSION_CLASSES = {
     "top": [1, 2, 12, 13, 14, 16], "dress": [1, 2, 12, 13, 14, 16],
     "pants": [1, 2, 12, 13, 14, 16], "skirt": [1, 2, 12, 13, 14, 16],
@@ -51,6 +133,11 @@ def upload_and_record_step(seg_job_id, config_id, step_name, step_order,
                            metadata=None, error=None, started_at=None,
                            skip_upload=False):
     """Uploads files to storage & writes a step result row."""
+    # Stateless visual-search tests deliberately skip DB rows and intermediate
+    # uploads while still using the exact production segmentation math.
+    if config_id is None:
+        return output_path
+
     completed_at = datetime.utcnow().isoformat() + "Z"
     remote_output = None
     remote_mask = None
@@ -92,7 +179,8 @@ def run_green_screen_pipeline_e2e(
     vton_image_url: str,
     category: str = "top",
     output_dir: str = None,
-    skip_intermediate_uploads: bool = False
+    skip_intermediate_uploads: bool = False,
+    persist_results: bool = True,
 ) -> dict:
     """
     Runs the exact green-screen SAM2 pipeline end-to-end,
@@ -103,12 +191,14 @@ def run_green_screen_pipeline_e2e(
     os.makedirs(output_dir, exist_ok=True)
 
     try:
-        # Resolve config ID from active pipeline configuration
-        url = f"{supabase_client.SUPABASE_URL}/rest/v1/segmentation_pipeline_config?select=id,name&is_active=eq.true"
-        resp = requests.get(url, headers=supabase_client.get_headers())
-        if resp.status_code != 200 or not resp.json():
-            raise RuntimeError(f"Could not fetch segmentation pipeline config: {resp.text}")
-        config_id = resp.json()[0]["id"]
+        config_id = None
+        if persist_results:
+            # Resolve config ID from active pipeline configuration
+            url = f"{supabase_client.SUPABASE_URL}/rest/v1/segmentation_pipeline_config?select=id,name&is_active=eq.true"
+            resp = requests.get(url, headers=supabase_client.get_headers())
+            if resp.status_code != 200 or not resp.json():
+                raise RuntimeError(f"Could not fetch segmentation pipeline config: {resp.text}")
+            config_id = resp.json()[0]["id"]
 
         # Ensure local image path (download if it's a remote URL)
         img_path = result_store.ensure_local_file(vton_image_url, output_dir)
@@ -116,7 +206,8 @@ def run_green_screen_pipeline_e2e(
             raise FileNotFoundError(f"Input VTON image not found at: {img_path}")
 
         # Update database state to running
-        db_store.update_job_db_state(seg_job_id, "running")
+        if persist_results:
+            db_store.update_job_db_state(seg_job_id, "running")
 
         # ------------------------------------------------------------------
         # STEP 1: FASHN Parse
@@ -133,19 +224,31 @@ def run_green_screen_pipeline_e2e(
         fashn = FashnHumanParser()
         seg_map = fashn.predict(img_rgb)
 
-        # Resolve category
-        category = "top"
-        best_area = 0
-        for cat, class_ids in GARMENT_CLASSES_LOCAL.items():
-            mask = extract_class_mask(seg_map, class_ids)
-            area = mask.sum() // 255
-            if area > best_area:
-                best_area = area
-                category = cat
-        print(f"  Resolved category: {category}")
+        # Honor an explicit user selection. Auto-detection remains available for
+        # the automated ingestion caller by passing category="auto".
+        target_category = normalize_target_category(category)
+        if target_category is None:
+            target_category = "top"
+            best_area = 0
+            for cat, class_ids in GARMENT_CLASSES_LOCAL.items():
+                mask = extract_class_mask(seg_map, class_ids)
+                area = mask.sum() // 255
+                if area > best_area:
+                    best_area = area
+                    target_category = cat
+        category = target_category
+        print(f"  Target category: {category}")
 
         fashn_g_ids = FASHN_GARMENT_CLASSES.get(category, [3])
         coarse_garment_mask = extract_class_mask(seg_map, fashn_g_ids)
+        min_mask_area = max(256, int(h * w * 0.0005))
+        used_gdino_fallback = False
+        if int(np.sum(coarse_garment_mask > 127)) < min_mask_area:
+            # A flatlay/hanger often produces only parser noise. Clearing the
+            # mask activates the GroundingDINO box fallback inside refinement.
+            coarse_garment_mask[:] = 0
+            used_gdino_fallback = True
+            print("  FASHN target mask was empty/small; using GDINO + SAM2 fallback.")
         garment_path = os.path.join(output_dir, "02_fashn_garment.png")
         cv2.imwrite(garment_path, coarse_garment_mask)
 
@@ -261,7 +364,7 @@ def run_green_screen_pipeline_e2e(
         step_order = 4
         step_start = datetime.utcnow().isoformat() + "Z"
         print(f"\n--- Step {step_order}: SAM2 Point-Interactive Refinement ---")
-        sam_refined_mask, sampled_bg = refine_garment_mask(
+        sam_refined_mask, sampled_bg, refinement_metadata = refine_garment_mask(
             image_path=img_path,
             coarse_garment_mask=coarse_garment_mask,
             exclusion_mask=skin_mask,
@@ -270,6 +373,7 @@ def run_green_screen_pipeline_e2e(
             schp_map=schp_map,
             output_dir=output_dir,
             garment_is_skin_colored=bool(is_garment_skin_colored),
+            return_metadata=True,
         )
         sam_path = os.path.join(output_dir, "03_sam_and_fashn.png")
         cv2.imwrite(sam_path, sam_refined_mask)
@@ -396,6 +500,12 @@ def run_green_screen_pipeline_e2e(
         rgba = np.dstack([blended_rgb, alpha])
         final_path = os.path.join(output_dir, "09_final_garment.png")
         cv2.imwrite(final_path, cv2.cvtColor(rgba, cv2.COLOR_RGBA2BGRA))
+        search_bbox = build_search_bbox(
+            sam2_only_alpha_binary,
+            refinement_metadata.get("positive_boxes", []),
+            image_width=w,
+            image_height=h,
+        )
 
         # Checkerboard visualization
         checker = np.zeros((h, w, 3), dtype=np.uint8)
@@ -412,29 +522,35 @@ def run_green_screen_pipeline_e2e(
         cv2.imwrite(checker_path, cv2.cvtColor(vis_bgr, cv2.COLOR_RGB2BGR))
 
         # Upload final image to storage
-        final_url = supabase_client.upload_file_to_storage(
-            final_path,
-            f"segmentation/{seg_job_id}/final.png",
-            "image/png",
-        )
-        supabase_client.upload_file_to_storage(
-            checker_path,
-            f"segmentation/{seg_job_id}/final_checker.png",
-            "image/png",
-        )
+        final_url = None
+        if persist_results:
+            final_url = supabase_client.upload_file_to_storage(
+                final_path,
+                f"segmentation/{seg_job_id}/final.png",
+                "image/png",
+            )
+            supabase_client.upload_file_to_storage(
+                checker_path,
+                f"segmentation/{seg_job_id}/final_checker.png",
+                "image/png",
+            )
 
         upload_and_record_step(seg_job_id, config_id, "final_output", step_order,
                                "completed", final_path, None,
                                {"final_url": final_url}, started_at=step_start)
 
         # Update job as completed with final URL
-        db_store.update_job_db_state(seg_job_id, "completed", final_image_url=final_url)
-        db_store.update_parent_job_url(pipeline_job_id, final_url)
+        if persist_results:
+            db_store.update_job_db_state(seg_job_id, "completed", final_image_url=final_url)
+            db_store.update_parent_job_url(pipeline_job_id, final_url)
 
         return {
             "status": "completed",
             "final_image_path": final_path,
-            "final_image_url": final_url
+            "final_image_url": final_url,
+            "category": category,
+            "detector": "gdino_sam2" if used_gdino_fallback else "fashn_parse_sam2",
+            "search_bbox": search_bbox,
         }
 
     except Exception as e:
@@ -443,10 +559,11 @@ def run_green_screen_pipeline_e2e(
         print(f"[Pipeline Error] {err_msg}")
         
         # Try updating status to failed in DB
-        try:
-            db_store.update_job_db_state(seg_job_id, "failed", error=err_msg)
-        except:
-            pass
+        if persist_results:
+            try:
+                db_store.update_job_db_state(seg_job_id, "failed", error=err_msg)
+            except Exception:
+                pass
             
         return {
             "status": "failed",

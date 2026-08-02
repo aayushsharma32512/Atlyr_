@@ -71,6 +71,14 @@ class FashionEmbedder:
         
         vec = None
 
+        def decode_image(image_b64):
+            source = Image.open(io.BytesIO(base64.b64decode(image_b64)))
+            if source.mode in {"RGBA", "LA"} or "transparency" in source.info:
+                rgba = source.convert("RGBA")
+                white = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
+                return Image.alpha_composite(white, rgba).convert("RGB")
+            return source.convert("RGB")
+
         # --- TEXT LOGIC ---
         if "text" in payload:
             text = payload["text"]
@@ -80,11 +88,19 @@ class FashionEmbedder:
 
         # --- IMAGE LOGIC ---
         elif "image_b64" in payload:
-            image_b64 = payload["image_b64"]
-            img = Image.open(io.BytesIO(base64.b64decode(image_b64))).convert("RGB")
+            img = decode_image(payload["image_b64"])
             image_input = self.preprocess_val(img).unsqueeze(0)
             with torch.no_grad():
                 vec = self.model.encode_image(image_input, normalize=True)[0]
+
+        # --- BATCH IMAGE LOGIC ---
+        elif "images_b64" in payload:
+            images = [decode_image(value) for value in payload["images_b64"]]
+            if not images:
+                raise ValueError("images_b64 must contain at least one image")
+            image_input = torch.stack([self.preprocess_val(img) for img in images])
+            with torch.no_grad():
+                vec = self.model.encode_image(image_input, normalize=True)
         
         return vec.tolist()
 
