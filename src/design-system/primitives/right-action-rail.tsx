@@ -45,7 +45,7 @@ export function RightActionRail({
     <div
       className={cn(
         VARIANT_CLASSES[variant],
-        highlight ? "z-[60] ring-2 ring-primary ring-offset-2 ring-offset-card shadow-lg" : null,
+        highlight ? "z-[75] ring-2 ring-primary ring-offset-2 ring-offset-card shadow-lg" : null,
         className,
       )}
     >
@@ -57,7 +57,7 @@ export function RightActionRail({
         disabled={redoDisabled}
         className={cn(
           "text-foreground",
-          highlightUndoRedo ? "z-[60] ring-2 ring-primary ring-offset-2 ring-offset-card shadow-lg" : null
+          highlightUndoRedo ? "z-[75] ring-2 ring-primary ring-offset-2 ring-offset-card shadow-lg" : null
         )}
       >
         <Redo2 aria-hidden="true" />
@@ -70,7 +70,7 @@ export function RightActionRail({
         disabled={undoDisabled}
         className={cn(
           "text-foreground",
-          highlightUndoRedo ? "z-[60] ring-2 ring-primary ring-offset-2 ring-offset-card shadow-lg" : null
+          highlightUndoRedo ? "z-[75] ring-2 ring-primary ring-offset-2 ring-offset-card shadow-lg" : null
         )}
       >
         <Undo2 aria-hidden="true" />
@@ -85,7 +85,7 @@ export function RightActionRail({
         className={cn(
           "text-foreground",
           isCheckpointActive ? "border border-primary/40 bg-primary/10 text-primary" : null,
-          highlightCheckpoint ? "z-[60] ring-2 ring-primary ring-offset-2 ring-offset-card shadow-lg" : null
+          highlightCheckpoint ? "z-[75] ring-2 ring-primary ring-offset-2 ring-offset-card shadow-lg" : null
         )}
       >
         <GitCompare aria-hidden="true" />

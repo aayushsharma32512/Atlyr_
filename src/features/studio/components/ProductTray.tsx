@@ -411,8 +411,11 @@ export function ProductTray({
           </div>
           <div className="h-6 w-px bg-border/60 shrink-0" aria-hidden="true" />
           <div className={cn("relative flex flex-1", (highlightDetails || highlightProducts) && "isolate z-[75]")}>
+            {/* z-[75] to clear StudioTour's z-[70] scrim, matching the Save and
+                Try-on rings above. At z-40 this ring — and the button it framed
+                — sat underneath the dimmer and could not be tapped. */}
             {highlightDetails && (
-              <div className="absolute -inset-1 z-40 rounded-xl ring-2 ring-primary" />
+              <div className="absolute -inset-1 z-[75] rounded-xl ring-2 ring-primary" />
             )}
             <TrayActionButton
               tone="plain"

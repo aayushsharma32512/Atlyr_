@@ -1,7 +1,27 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 
-export type StudioTourStepId = 'welcome' | 'mannequin' | 'alternatives' | 'full-screen' | 'remix' | 'product-interaction' | 'return-from-product' | 'undo-redo' | 'checkpoint' | 'click-details' | 'back-from-details' | 'save-button' | 'share-button' | 'tryon-button'
+/**
+ * Two ids were dropped when the studio moved to the 7a layout:
+ *  · 'product-interaction' was consumed by StudioScreen but never existed in
+ *    STUDIO_TOUR_STEPS, so that branch could never be true.
+ *  · 'full-screen' existed as a step but nothing consumed it, so it rendered a
+ *    tooltip pointing at nothing.
+ */
+export type StudioTourStepId =
+    | 'welcome'
+    | 'mannequin'
+    | 'slot-rows'
+    | 'alternatives'
+    | 'remix'
+    | 'return-from-product'
+    | 'undo-redo'
+    | 'checkpoint'
+    | 'click-details'
+    | 'back-from-details'
+    | 'save-button'
+    | 'share-button'
+    | 'tryon-button'
 
 export interface StudioTourStep {
     id: StudioTourStepId
@@ -16,60 +36,96 @@ export interface StudioTourStep {
     }
 }
 
+/**
+ * Positions are viewport-fixed (the tooltip is `position: fixed`), so they are
+ * written against the CENTRE rather than as raw pixel offsets from an edge.
+ *
+ * The studio is a 384px-wide frame, capped at 844px tall and centred both ways,
+ * so `calc(50% ± n)` tracks it on any screen while the old `bottom: 550px`
+ * style offsets pointed at empty space the moment the window wasn't phone-sized.
+ * The tooltip is w-72 (288px), hence the recurring 144px half-width.
+ */
+const FRAME_HALF_WIDTH = 192 // max-w-sm / 2
+const TOOLTIP_HALF_WIDTH = 144 // w-72 / 2
+
+/** Beside the frame, clear of its left/right edge — for the canvas-edge clusters. */
+const BESIDE_LEFT = `calc(50% + ${FRAME_HALF_WIDTH - 8}px)`
+const BESIDE_RIGHT = `calc(50% + ${FRAME_HALF_WIDTH - 8}px)`
+/** Horizontally centred on the frame. */
+const CENTRED = `calc(50% - ${TOOLTIP_HALF_WIDTH}px)`
+
 const STUDIO_TOUR_STEPS: StudioTourStep[] = [
     {
         id: 'welcome',
         title: 'Welcome to your Studio!',
         message: 'Your personal styling space awaits. Let\'s show you around.',
-        tooltipPosition: { top: '40%', left: 'calc(50% - 144px)' },
+        tooltipPosition: { top: '42%', left: CENTRED },
     },
     {
         id: 'mannequin',
-        title: 'Try Different Styles',
-        message: 'Tap any item on the mannequin to explore alternatives and switch things up.',
-        tooltipPosition: { top: '40%', right: '20px' },
+        title: 'Tap what you\'re wearing',
+        message: 'Tap any garment on the model to see its fabric, price and where it comes from.',
+        tooltipPosition: { top: '30%', left: CENTRED },
+    },
+    {
+        id: 'undo-redo',
+        title: 'Perfect your look',
+        message: 'Changed your mind? Undo and redo sit on the left edge of the model.',
+        tooltipPosition: { top: '18%', left: BESIDE_LEFT },
+    },
+    {
+        id: 'checkpoint',
+        title: 'Your original style',
+        message: 'Tap ⟲ to jump back to the look you started with — tap it again to return to your edits.',
+        tooltipPosition: { top: '27%', left: BESIDE_LEFT },
+    },
+    {
+        id: 'remix',
+        title: 'Shuffle the look',
+        message: 'Feeling adventurous? Shuffle rebuilds the outfit from scratch.',
+        tooltipPosition: { top: '18%', right: BESIDE_RIGHT },
+    },
+    {
+        id: 'share-button',
+        title: 'Share your style',
+        message: 'Want a second opinion? Share sends the look to a friend, view-only.',
+        tooltipPosition: { top: '27%', right: BESIDE_RIGHT },
+    },
+    {
+        id: 'slot-rows',
+        title: 'The pieces you\'re wearing',
+        message: 'Each row is one slot. Tap a row to swap the piece for another, or ✕ to take it off.',
+        tooltipPosition: { bottom: '24%', left: CENTRED },
+    },
+    {
+        id: 'save-button',
+        title: 'Save your outfit',
+        message: 'Love this combo? Save keeps it in your boards.',
+        tooltipPosition: { bottom: '14%', left: CENTRED },
+    },
+    {
+        id: 'tryon-button',
+        title: 'Virtual try-on',
+        message: 'Curious how it looks on you? Try on puts the outfit on your likeness.',
+        tooltipPosition: { bottom: '14%', left: CENTRED },
+    },
+    {
+        id: 'click-details',
+        title: 'Shop the look',
+        message: 'The priced stub opens the receipt — every piece, with somewhere to buy it.',
+        tooltipPosition: { bottom: '14%', left: CENTRED },
     },
     {
         id: 'alternatives',
-        title: 'Browse & Swap',
+        title: 'Browse & swap',
         message: 'Scroll through similar items and tap to instantly try them on your look.',
         tooltipPosition: { top: '20%', left: '20px' },
     },
     {
-        id: 'full-screen',
-        title: 'Go Full Screen',
-        message: 'Tap here to open the complete studio experience with all the styling tools.',
-        tooltipPosition: { bottom: '300px', right: '40px' },
-    },
-    {
         id: 'return-from-product',
-        title: 'Easy Navigation',
+        title: 'Easy navigation',
         message: 'Finished exploring? Tap the back button at the top to return to your studio.',
         tooltipPosition: { top: '80px', left: '20px' },
-    },
-    {
-        id: 'undo-redo',
-        title: 'Perfect Your Look',
-        message: 'Not sure about a change? Use undo and redo to quickly compare different options.',
-        tooltipPosition: { bottom: '400px', right: '80px' },
-    },
-    {
-        id: 'checkpoint',
-        title: 'Your Original Style',
-        message: 'Want to start over? Tap here to instantly go back to the outfit you started with.',
-        tooltipPosition: { bottom: '340px', right: '80px' },
-    },
-    {
-        id: 'remix',
-        title: 'Remix Your Look',
-        message: 'Feeling adventurous? Tap the remix button to get a fresh perspective on your style.',
-        tooltipPosition: { bottom: '240px', left: '80px' },
-    },
-    {
-        id: 'click-details',
-        title: 'View Product Details',
-        message: 'Tap the Details button to explore product info, similar items, and purchase options.',
-        tooltipPosition: { bottom: '300px', left: 'calc(50% - 144px)' },
     },
     {
         id: 'back-from-details',
@@ -77,25 +133,6 @@ const STUDIO_TOUR_STEPS: StudioTourStep[] = [
         message: 'Tap the back button to return to your studio anytime.',
         tooltipPosition: { top: '80px', left: '20px' },
     },
-    {
-        id: 'save-button',
-        title: 'Save Your Outfit',
-        message: 'Love this combo? Tap Save to keep it in your wardrobe or add to a moodboard.',
-        tooltipPosition: { bottom: '550px', right: '40px' },
-    },
-    {
-        id: 'share-button',
-        title: 'Share Your Style',
-        message: 'Want a second opinion? Tap Share to show your look to friends.',
-        tooltipPosition: { bottom: '550px', left: '80px' },
-    },
-    {
-        id: 'tryon-button',
-        title: 'Virtual Try-On',
-        message: 'Curious how it looks? Tap Tryon to see the outfit on a model.',
-        tooltipPosition: { bottom: '550px', right: '40px' },
-    },
-
 ]
 
 export function useStudioTour() {
