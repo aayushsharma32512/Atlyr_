@@ -18,9 +18,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Columns2, Redo2, Undo2, Share, Info, Shirt, Footprints, X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import logoImage from "/assets/logo.png"
 import { useToast } from "@/hooks/use-toast"
-import { IconButton, OutfitInspirationTile } from "@/design-system/primitives"
+import { IconButton, OutfitInspirationTile, WordmarkLockup } from "@/design-system/primitives"
+import { LandingPlacementFigure } from "./LandingPlacementFigure"
+
+/** Matches the h-[440px] w-[360px] host below — the PIXI surface needs numbers, not CSS. */
+const FIGURE_W = 360
+const FIGURE_H = 440
+
+/**
+ * Baked hair for the photoreal figure, standing in for the SVG path's /female_hair.png overlay.
+ * Keys come from public/hair-baked/<gender>/. Neutral styles on purpose: the demo is showing off
+ * garments, and a strong haircut competes with them.
+ */
+const DEMO_HAIR_STYLE: Record<"male" | "female", string> = {
+  female: "straight",
+  male: "parted",
+}
 import { Button } from "@/components/ui/button"
 import type { StudioRenderedItem } from "@/features/studio/types"
 import { useMiniStudioTour } from "../hooks/useMiniStudioTour"
@@ -171,6 +185,19 @@ export function LandingMiniStudio() {
     return items
   }, [outfit, dressActive])
 
+  /**
+   * Can this exact outfit be drawn on the photoreal mannequin?
+   *
+   * Only the default outfits are placed; the alternates are not. The test has to be EVERY visible
+   * garment, not "some" — the photoreal renderer silently skips items without a placement, so a
+   * partially-placed outfit would render as a body wearing half an outfit rather than falling back.
+   * Also per-mannequin: a garment placed on the female body says nothing about the male one.
+   */
+  const outfitIsPlaced = useMemo(
+    () => renderedItems.every((item) => Boolean(item.placement?.[activeGender])),
+    [renderedItems, activeGender],
+  )
+
   // Track which zone is animating (for per-item animations)
   const [animatingZone, setAnimatingZone] = useState<SlotType | null>(null)
   const prevOutfitRef = useRef<OutfitState>(outfit)
@@ -183,6 +210,7 @@ export function LandingMiniStudio() {
     if (prev.top.id !== outfit.top.id) changedZone = "top"
     else if (prev.bottom.id !== outfit.bottom.id) changedZone = "bottom"
     else if (prev.shoes.id !== outfit.shoes.id) changedZone = "shoes"
+
     
     if (changedZone) {
       setAnimatingZone(changedZone)
@@ -398,9 +426,11 @@ export function LandingMiniStudio() {
             isStudioMode ? "w-full" : "w-[55%] border-r border-border/30"
           )}
         >
-          {/* Logo - Top Left */}
-          <div className="absolute top-2 left-4 z-10">
-            <img src={logoImage} alt="ATLYR" className="h-10 w-auto" />
+          {/* Logo - Top Left. The live mark, not /assets/logo.png — that PNG is
+              the pre-rebrand "Atlyr." lockup, and inside a card demoing the app
+              it was the one place the old name still showed on the page. */}
+          <div className="absolute top-3 left-4 z-10">
+            <WordmarkLockup size="header" />
           </div>
 
           {/* Gender Selector */}
@@ -460,33 +490,52 @@ export function LandingMiniStudio() {
             "absolute left-1/2 top-1/2 flex h-[440px] w-[360px] -translate-x-1/2 -translate-y-1/2 items-center justify-center transition-all duration-300",
              tour.isHighlighted('mannequin') ? "z-50 scale-[1.02]" : "z-0"
           )}>
-            <OutfitInspirationTile
-              preset="hero"
-              renderedItems={renderedItems}
-              avatarGender={activeGender}
-              avatarHeightCm={170}
-              showTitle={false}
-              showChips={false}
-              showSaveButton={false}
-              onItemSelect={handleMannequinItemClick}
-              cardClassName="h-full w-full object-contain"
-              animatingZone={animatingZone}
-              onAvatarReady={setAvatarReady}
-            />
-            {/* Only show hair when avatar is fully loaded to prevent hair appearing before outfit */}
-            {avatarReady && activeGender === "female" && (
-              <img
-                src="/female_hair.png"
-                alt=""
-                className="absolute top-[-1%] left-1/2 z-10 w-[23%] -translate-x-1/2 object-contain pointer-events-none"
+            {outfitIsPlaced ? (
+              <LandingPlacementFigure
+                items={renderedItems}
+                gender={activeGender}
+                width={FIGURE_W}
+                height={FIGURE_H}
+                hairStyleKey={DEMO_HAIR_STYLE[activeGender]}
+                // The two renderers name the slot differently — the tile emits `type`, the
+                // placement renderer emits a StudioRenderedItem carrying `zone`. Handing the item
+                // over unadapted type-checks loosely and then silently does nothing, because the
+                // lookup misses and the handler returns early.
+                onItemSelect={(item) => handleMannequinItemClick({ type: item.zone })}
               />
-            )}
-            {avatarReady && activeGender === "male" && (
-              <img
-                src="/male_hair.png"
-                alt=""
-                className="absolute top-[-3.5%] left-[49.6%] z-10 w-[16%] -translate-x-1/2 object-contain pointer-events-none"
-              />
+            ) : (
+              <>
+                <OutfitInspirationTile
+                  preset="hero"
+                  renderedItems={renderedItems}
+                  avatarGender={activeGender}
+                  avatarHeightCm={170}
+                  showTitle={false}
+                  showChips={false}
+                  showSaveButton={false}
+                  onItemSelect={handleMannequinItemClick}
+                  cardClassName="h-full w-full object-contain"
+                  animatingZone={animatingZone}
+                  onAvatarReady={setAvatarReady}
+                />
+                {/* Hair overlays belong to the SVG avatar only — the photoreal renderer composites
+                    baked hair itself, and these PNGs are aligned to the SVG figure's proportions.
+                    Only shown once the avatar is loaded, so hair never precedes the outfit. */}
+                {avatarReady && activeGender === "female" && (
+                  <img
+                    src="/female_hair.png"
+                    alt=""
+                    className="absolute top-[-1%] left-1/2 z-10 w-[23%] -translate-x-1/2 object-contain pointer-events-none"
+                  />
+                )}
+                {avatarReady && activeGender === "male" && (
+                  <img
+                    src="/male_hair.png"
+                    alt=""
+                    className="absolute top-[-3.5%] left-[49.6%] z-10 w-[16%] -translate-x-1/2 object-contain pointer-events-none"
+                  />
+                )}
+              </>
             )}
           </div>
 
@@ -622,11 +671,17 @@ export function LandingMiniStudio() {
                 >
                   {/* Fixed aspect ratio for consistent card sizes */}
                   <div className="aspect-[4/5] flex items-center justify-center bg-muted/20">
+                    {/* Thumbnail here, full image only on the body. These tiles render a few
+                        hundred pixels wide but were loading the same multi-megabyte cut-outs the
+                        mannequin composites — a whole grid of them. thumbnailUrl is the 400px
+                        WebP; imageUrl stays the source of truth for anything worn, because the
+                        placement transform is measured against it. */}
                     <img
-                      src={product.imageUrl}
+                      src={product.thumbnailUrl || product.imageUrl}
                       alt={product.productName}
                       className="h-full w-full object-contain"
                       loading="lazy"
+                      decoding="async"
                     />
                   </div>
                 </button>
