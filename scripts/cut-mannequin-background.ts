@@ -520,7 +520,17 @@ async function main() {
     console.log(`  stashed the pristine original at ${stash}`)
   }
   await writeFile(assetPath(gender), outPng)
+
+  // The app serves the .webp; this .png is the master it re-encodes from. Written together or a
+  // re-cut would appear to do nothing, since the renderer never reads the PNG. Format-only at
+  // identical dimensions — probeMannequinBounds derives the figure box from these pixels and every
+  // saved placement is registered against it, so the bounds were verified byte-identical under this
+  // encoder setting before the app was pointed at WebP.
+  const outWebp = await sharp(outPng).webp({ quality: 90, alphaQuality: 100, effort: 6 }).toBuffer()
+  await writeFile(assetPath(gender).replace(/\.png$/, '.webp'), outWebp)
+
   console.log(`\nPublished public/mannequins/${gender}.png (${(outPng.length / 1024 / 1024).toFixed(2)} MiB)`)
+  console.log(`      + public/mannequins/${gender}.webp (${(outWebp.length / 1024).toFixed(0)} KiB) — the served asset`)
   console.log('Next: bun run scripts/measure-head-anchor.ts — the male literal must be unchanged.')
 }
 
