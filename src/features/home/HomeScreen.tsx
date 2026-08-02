@@ -13,10 +13,13 @@ import {
   SectionHeader,
   MoodboardPickerDrawer,
   SaveOutfitDrawer,
+  WordmarkLockup,
   type FilterCategory,
 } from "@/design-system/primitives"
 import { AppShellLayout } from "@/layouts/AppShellLayout"
 import { MoodboardPins, type MoodboardTab } from "./components/MoodboardPins"
+import { FeedHeroBand } from "./components/FeedHeroBand"
+import { useResponsiveColumns } from "@/shared/hooks/useResponsiveColumns"
 import { cn } from "@/lib/utils"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { useAuth } from "@/contexts/AuthContext"
@@ -60,7 +63,6 @@ import { useEngagementAnalytics } from "@/integrations/posthog/engagementTrackin
 import { buildRailId, computeBucketedRowMajorPositions, type EntityUiContext, trackItemClicked, trackSavedToCollection, trackSaveToggled } from "@/integrations/posthog/engagementTracking/entityEvents"
 import { observeHomeCard, setHomeRecentStylesRailId, unobserveHomeCard } from "@/integrations/posthog/engagementTracking/browseDepth/homeBrowseDepth"
 
-const CARD_MAX_WIDTH = "24.5rem"
 const CURATED_SEED_KEY = "home:curatedSeed"
 
 function getCuratedSeed(): string {
@@ -134,7 +136,7 @@ export function HomeScreenView() {
       variant: "narrow" as const,
       title: entry.title,
       chips: entry.chips,
-      attribution: resolveOutfitAttribution(entry.outfit.created_by),
+      attribution: undefined,
       outfitId: entry.outfit.id,
       renderedItems: entry.renderedItems ?? mapLegacyOutfitItemsToStudioItems(entry.outfit.items),
       gender: profileGender ?? "female",
@@ -166,6 +168,10 @@ export function HomeScreenView() {
   const recentStylesQuery = useHomeRecentStyles(10)
   const curatedOutfitsQuery = useHomeCuratedOutfits(curatedSeed, 50)
   const allOutfitsQuery = useHomeAllOutfits(allOutfitsSort, 50)
+  // "Just in" — the newest ingestions, always newest-first regardless of the
+  // All-Outfits tab sort (own query key so the two never couple). These are the
+  // freshly-ingested looks the team wants featured on the avatar up top.
+  const justInQuery = useHomeAllOutfits("newly_added", 12)
   const TRY_ON_PAGE_SIZE = 20
   const MOODBOARD_PAGE_SIZE = 20
   const tryOnsQuery = useTryOns(TRY_ON_PAGE_SIZE)
@@ -178,6 +184,10 @@ export function HomeScreenView() {
   const outfitMembershipQuery = useOutfitCollectionMembership()
   const anonymiseOutfitMutation = useAnonymiseOutfit()
   const updateOutfitMutation = useUpdateOutfit()
+
+  // Feed density scales with the viewport (2 → 3 → 4), so a wide screen fills
+  // with columns instead of stranding one narrow phone-width strip.
+  const feedColumns = useResponsiveColumns(4)
 
   const recentStyles = recentStylesQuery.data ?? []
   const curatedOutfits = (curatedOutfitsQuery.data?.pages ?? []).flat()
@@ -237,6 +247,21 @@ export function HomeScreenView() {
     return computeBucketedRowMajorPositions(ids, 2)
   }, [allOutfitsStyleItems])
 
+  // Newest ingestions → avatar cards for the "Just in" hero. Capped to a short
+  // strip; these already carry placement, so they render on the 3D mannequin.
+  const justInItems = useMemo(() => {
+    const entries = (justInQuery.data?.pages ?? []).flat()
+    return entries.slice(0, 8).map((entry) => {
+      const item = buildInspirationFromEntry(entry)
+      const outfitId = item.outfitId ?? entry.outfit.id
+      return {
+        ...item,
+        showSaveButton: true,
+        isSaved: outfitId ? favoriteIds.includes(outfitId) : false,
+      }
+    })
+  }, [justInQuery.data, buildInspirationFromEntry, favoriteIds])
+
   const isFavoritesActive = activeMoodboardId === "favorites"
   const filteredRecentItems = useMemo(
     () => (isFavoritesActive ? recentStyleItems.filter((item) => item.outfitId && favoriteIds.includes(item.outfitId)) : recentStyleItems),
@@ -246,6 +271,23 @@ export function HomeScreenView() {
     () => (isFavoritesActive ? curatedStyleItems.filter((item) => item.outfitId && favoriteIds.includes(item.outfitId)) : curatedStyleItems),
     [curatedStyleItems, favoriteIds, isFavoritesActive],
   )
+  // Single For-you grid: the newest ingestions ride the top of "Outfits curated
+  // for you" (deduped), so there's one avatar feed, not two near-identical ones.
+  // On the favorites view we keep only the curated (already favorite-filtered) set.
+  const curatedFeedItems = useMemo(() => {
+    if (isFavoritesActive) return filteredCuratedItems
+    const seen = new Set<string>()
+    const merged: typeof filteredCuratedItems = []
+    for (const item of [...justInItems, ...filteredCuratedItems]) {
+      const id = item.outfitId ?? item.outfit?.id ?? null
+      if (id) {
+        if (seen.has(id)) continue
+        seen.add(id)
+      }
+      merged.push(item)
+    }
+    return merged
+  }, [isFavoritesActive, justInItems, filteredCuratedItems])
   const shouldShowRecentStylesSection = isRecentLoading || isRecentError || filteredRecentItems.length > 0
 
   const recentRailId = useMemo(() => buildRailId("home_moodboard", "Recent Styles by you"), [])
@@ -334,6 +376,12 @@ export function HomeScreenView() {
     return pages.flat()
   }, [moodboardItemsQuery.data?.pages])
 
+  // The board's first outfit — the target of "Style this look" on 6f.
+  const boardStyleOutfit = useMemo(() => {
+    const outfitItem = moodboardItems.find((item) => item.itemType === "outfit" && item.outfit)
+    return outfitItem?.itemType === "outfit" ? outfitItem.outfit ?? null : null
+  }, [moodboardItems])
+
   const moodboardItemPositionByKey = useMemo(() => {
     return computeBucketedRowMajorPositions(
       moodboardItems.map((item) => `${item.itemType}:${item.id}`),
@@ -360,7 +408,7 @@ export function HomeScreenView() {
   }, [favoritesItems])
 
   const moodboardTabs = useMemo<MoodboardTab[]>(() => {
-    const systemOrder = ["wardrobe", "try-ons", "favorites", "for-you", "all-outfits"]
+    const systemOrder = ["for-you", "wardrobe", "try-ons", "favorites", "all-outfits"]
     const labels: Record<string, string> = {
       wardrobe: "Wardrobe",
       "try-ons": "Try-ons",
@@ -527,7 +575,7 @@ export function HomeScreenView() {
         variant: "narrow" as const,
         title: result.outfit.name,
         chips: getOutfitChips(result.outfit),
-        attribution: resolveOutfitAttribution(result.outfit.created_by),
+        attribution: undefined,
         outfitId: result.outfit.id,
         renderedItems: result.studioOutfit?.renderedItems ?? mapLegacyOutfitItemsToStudioItems(result.outfit.items),
         items: result.outfit.items,
@@ -1185,7 +1233,7 @@ export function HomeScreenView() {
   const renderResultPlaceholder = (message: string, variant: "default" | "error" = "default") => (
     <div
       className={cn(
-        "flex flex-1 items-center justify-center rounded-2xl border px-4 py-6 text-sm",
+        "flex min-h-[220px] items-center justify-center rounded-frame border border-hairline px-4 py-10 text-center text-sm",
         variant === "error"
           ? "border-destructive/40 bg-destructive/5 text-destructive"
           : "border-dashed border-muted-foreground/30 bg-muted/10 text-muted-foreground",
@@ -1200,7 +1248,7 @@ export function HomeScreenView() {
       return (
         <div className="grid grid-cols-2 gap-3">
           {Array.from({ length: 4 }).map((_, index) => (
-            <div key={index} className="aspect-[3/4] animate-pulse rounded-2xl bg-muted/70 shadow-inner" />
+            <div key={index} className="aspect-[3/4] animate-pulse rounded-lg bg-skeleton" />
           ))}
         </div>
       )
@@ -1208,7 +1256,7 @@ export function HomeScreenView() {
 
     if (isTryOnError) {
       return (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-destructive/40 bg-destructive/5 px-4 py-6 text-sm text-destructive">
+        <div className="flex flex-col items-center justify-center gap-3 rounded-frame border border-destructive/40 bg-destructive/5 px-4 py-6 text-sm text-destructive">
           Unable to load try-ons right now.
           <Button variant="secondary" size="sm" onClick={() => tryOnsQuery.refetch()}>
             Retry
@@ -1261,7 +1309,7 @@ export function HomeScreenView() {
     return (
       <OutfitInspirationGrid
         items={outfitResultItems}
-        columns={2}
+        columns={feedColumns}
         rows={10}
         layoutMode="balanced"
         cardTotalHeight={190}
@@ -1310,7 +1358,7 @@ export function HomeScreenView() {
     return (
       <ProductResultsGrid
         items={productResultItems}
-        columns={2}
+        columns={feedColumns}
         rows={8}
         onItemSelect={handleProductResultsSelect}
       />
@@ -1406,7 +1454,7 @@ export function HomeScreenView() {
     return (
       <OutfitInspirationGrid
         items={allOutfitsStyleItems}
-        columns={2}
+        columns={feedColumns}
         rows={8}
         layoutMode="balanced"
         cardTotalHeight={320}
@@ -1414,6 +1462,7 @@ export function HomeScreenView() {
         cardMinAvatarHeight={128}
         fixedAvatarHeight={156}
         cardPreset="homeCurated"
+        stagger
         getItemWrapperRef={(item) => {
           const outfitId = item.outfitId ?? item.outfit?.id
           if (!outfitId) return undefined
@@ -1451,20 +1500,20 @@ export function HomeScreenView() {
 
   const renderCuratedGrid = () => {
     // Only show loading state if we have no cached data
-    if (isCuratedLoading && filteredCuratedItems.length === 0) {
+    if (isCuratedLoading && curatedFeedItems.length === 0) {
       return renderResultPlaceholder("Curating outfits for you…")
     }
     if (isCuratedError) {
       return renderResultPlaceholder("Unable to load curated outfits right now.", "error")
     }
-    if (filteredCuratedItems.length === 0) {
+    if (curatedFeedItems.length === 0) {
       return renderResultPlaceholder("No curated outfits available yet.")
     }
 
     return (
       <OutfitInspirationGrid
-        items={filteredCuratedItems}
-        columns={2}
+        items={curatedFeedItems}
+        columns={feedColumns}
         rows={8}
         layoutMode="balanced"
         cardTotalHeight={320}
@@ -1472,6 +1521,7 @@ export function HomeScreenView() {
         cardMinAvatarHeight={128}
         fixedAvatarHeight={156}
         cardPreset="homeCurated"
+        stagger
         getItemWrapperRef={(item) => {
           const outfitId = item.outfitId ?? item.outfit?.id
           if (!outfitId) return undefined
@@ -1518,7 +1568,7 @@ export function HomeScreenView() {
     }
     if (moodboardItemsQuery.isError) {
       return (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-destructive/40 bg-destructive/5 px-4 py-6 text-sm text-destructive">
+        <div className="flex flex-col items-center justify-center gap-3 rounded-frame border border-destructive/40 bg-destructive/5 px-4 py-6 text-sm text-destructive">
           Unable to load this moodboard right now.
           <Button variant="secondary" size="sm" onClick={() => moodboardItemsQuery.refetch()}>
             Retry
@@ -1531,7 +1581,7 @@ export function HomeScreenView() {
         <button
           type="button"
           onClick={() => navigate("/search")}
-          className="flex flex-1 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-muted-foreground/30 bg-muted/10 px-4 py-6 text-sm text-muted-foreground transition-colors hover:bg-muted/20"
+          className="flex flex-1 flex-col items-center justify-center gap-2 rounded-frame border border-dashed border-hairline-dashed bg-card/40 px-4 py-6 text-sm text-muted-foreground transition-colors hover:bg-editorial/30"
         >
           <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-dashed border-muted-foreground/40">
             <span className="text-xl font-light">+</span>
@@ -1619,7 +1669,7 @@ export function HomeScreenView() {
     }
     if (favoritesItemsQuery.isError) {
       return (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-destructive/40 bg-destructive/5 px-4 py-6 text-sm text-destructive">
+        <div className="flex flex-col items-center justify-center gap-3 rounded-frame border border-destructive/40 bg-destructive/5 px-4 py-6 text-sm text-destructive">
           Unable to load favorites right now.
           <Button variant="secondary" size="sm" onClick={() => favoritesItemsQuery.refetch()}>
             Retry
@@ -1706,7 +1756,10 @@ export function HomeScreenView() {
     <div className="flex flex-1 flex-col items-center justify-start">
       <div
         className={cn(
-          `flex w-full max-w-[${CARD_MAX_WIDTH}] flex-1 flex-col rounded-[2rem] bg-card shadow-sm`,
+          // Responsive column widths: phone stays a single 24.5rem strip, tablet/
+          // desktop widen to hold 3–4 columns (see feedColumns). A template
+          // `max-w-[${…}]` class can't be generated by Tailwind, so these are static.
+          "flex w-full max-w-[24.5rem] flex-1 flex-col rounded-frame bg-background md:max-w-[47rem] lg:max-w-[62rem] xl:max-w-[78rem]",
           isResultsMode ? "pt-[4.5rem]" : "",
         )}
       >
@@ -1727,13 +1780,15 @@ export function HomeScreenView() {
         ) : (
           <div
             ref={scrollContainerRef}
-            className="flex flex-1 min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-24 pt-14"
+            className="flex flex-1 min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-24 pt-[130px]"
             onScroll={(event) => handleScroll(event.currentTarget.scrollTop)}
           >
             <div
               className={cn(
-                "fixed top-4 left-4 right-4 z-10 transition-transform transition-opacity duration-200",
-                isTopBarVisible ? "translate-y-0 opacity-100" : "-translate-y-6 opacity-0 pointer-events-none",
+                "fixed top-[88px] inset-x-0 z-10 mx-auto w-full max-w-[24.5rem] px-4 md:max-w-[47rem] lg:max-w-[62rem] xl:max-w-[78rem] transition-transform transition-opacity duration-200",
+                // Hide the tab row while the search is focused so the expanded
+                // search sheet (with its filter pill) doesn't overlap it.
+                isTopBarVisible && !isSearchFocused ? "translate-y-0 opacity-100" : "-translate-y-6 opacity-0 pointer-events-none",
               )}
             >
               <MoodboardPins
@@ -1761,10 +1816,10 @@ export function HomeScreenView() {
                       type="button"
                       onClick={() => handleAllOutfitsSortChange("newly_added")}
                       className={cn(
-                        "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                        "rounded-[3px] border px-3 py-1 text-xs font-medium transition-colors",
                         allOutfitsSort === "newly_added"
-                          ? "bg-foreground text-background"
-                          : "bg-muted text-muted-foreground hover:bg-muted/80",
+                          ? "border-foreground bg-foreground text-background"
+                          : "border-hairline bg-card text-muted-foreground hover:border-hairline-3",
                       )}
                     >
                       Newest
@@ -1773,10 +1828,10 @@ export function HomeScreenView() {
                       type="button"
                       onClick={() => handleAllOutfitsSortChange("relevance")}
                       className={cn(
-                        "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                        "rounded-[3px] border px-3 py-1 text-xs font-medium transition-colors",
                         allOutfitsSort === "relevance"
-                          ? "bg-foreground text-background"
-                          : "bg-muted text-muted-foreground hover:bg-muted/80",
+                          ? "border-foreground bg-foreground text-background"
+                          : "border-hairline bg-card text-muted-foreground hover:border-hairline-3",
                       )}
                     >
                       Popular
@@ -1795,11 +1850,75 @@ export function HomeScreenView() {
               </>
             ) : isItemMoodboardActive ? (
               <>
-                <SectionHeader title={activeMoodboardLabel} />
+                {/* 6f board-detail header — back · serif name + saves · ⋯ */}
+                <div className="flex items-center justify-between px-1">
+                  <button
+                    type="button"
+                    onClick={() => navigate("/collection")}
+                    aria-label="Back to boards"
+                    className="px-1 text-xl leading-none text-foreground"
+                  >
+                    ‹
+                  </button>
+                  <div className="text-center">
+                    <h2 className="font-display text-[20px] font-medium leading-none text-foreground">
+                      {activeMoodboardLabel}
+                    </h2>
+                    <p className="mt-1 text-[8px] font-medium uppercase tracking-[0.16em] text-faint">
+                      Moodboard · {moodboardItems.length} {moodboardItems.length === 1 ? "save" : "saves"}
+                    </p>
+                  </div>
+                  <span className="px-1 text-base leading-none text-foreground">⋯</span>
+                </div>
                 {renderMoodboardItemsContent()}
+                {/* Discovery tail — pins keyed to this board's taste (canvas 6f).
+                    Seeded from the For-you feed for now. */}
+                {moodboardItems.length > 0 && filteredCuratedItems.length > 0 ? (
+                  <>
+                    <div className="flex items-center gap-2 px-2 pt-2">
+                      <span className="h-px flex-1 bg-hairline" />
+                      <span className="text-[7.5px] font-semibold uppercase tracking-[0.16em] text-taupe">
+                        More like this board
+                      </span>
+                      <span className="h-px flex-1 bg-hairline" />
+                    </div>
+                    <div className="px-1 pb-2">
+                      <OutfitInspirationGrid
+                        items={filteredCuratedItems.slice(0, 8)}
+                        columns={feedColumns}
+                        layoutMode="balanced"
+                        cardTotalHeight={320}
+                        cardPreset="homeCurated"
+                        stagger
+                        onCardSelect={(item) => item.outfit && launchStudio(item.outfit)}
+                        onToggleSave={(item, nextSaved) => {
+                          const outfitId = item.outfitId ?? item.outfit?.id ?? null
+                          if (outfitId) handleToggleOutfitById(outfitId, nextSaved, { section: "board_discovery" }, "click")
+                        }}
+                      />
+                    </div>
+                  </>
+                ) : null}
               </>
             ) : (
               <>
+                {filteredCuratedItems.length >= 2 ? (
+                  <>
+                    <SectionHeader title="Trending now" />
+                    <FeedHeroBand
+                      items={filteredCuratedItems}
+                      onSelect={(item) => {
+                        // A trending "edit" opens its merchandised results shelf
+                        // (canvas 6h), not the try-on studio. Seed the search from the
+                        // look's theme (first chip), falling back to its title.
+                        const theme = item.chips?.[0] ?? item.title
+                        if (!theme) return
+                        navigate(`/search?search=${encodeURIComponent(theme)}&mode=outfits`)
+                      }}
+                      className="px-1"
+                    />
+                  </>
+                ) : null}
                 {shouldShowRecentStylesSection ? (
                   <>
                     <SectionHeader title="Recent Styles by you" />
@@ -1822,11 +1941,24 @@ export function HomeScreenView() {
         )}
       </div>
 
-      {!isResultsMode && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-[3rem] z-10">
-          <div className="pointer-events-auto mx-auto w-full px-2" style={{ maxWidth: CARD_MAX_WIDTH }}>
+      {!isResultsMode && !isItemMoodboardActive && (
+        <div className="pointer-events-none fixed inset-x-0 top-3 z-20">
+          {/* House wordmark — pinned to the far-left edge of the screen (canvas 6d),
+              its own row above the centred search. Non-interactive, so it never
+              blocks the feed behind it. */}
+          <div className="mb-1.5 pl-4 md:pl-6">
+            <WordmarkLockup size="header" />
+          </div>
+          <div
+            className={cn(
+              "pointer-events-auto mx-auto w-full px-2 max-w-[24.5rem] md:max-w-[34rem]",
+              // Opaque backing while focused so the expanded search (filter pill +
+              // input) never shows the feed through it.
+              isSearchFocused && "rounded-frame bg-background/95 backdrop-blur-sm",
+            )}
+          >
             <FilterSearchBar
-              className="rounded-t-3xl"
+              className="rounded-frame"
               value={searchTerm}
               onValueChange={handleSearchChange}
               filters={isSearchFocused ? filterChips : undefined}
@@ -1834,9 +1966,9 @@ export function HomeScreenView() {
               variant="elevated"
               onSubmit={handleSubmit}
               onClear={handleClear}
-              placeholder={isSearchFocused 
-                ? (activeFilter === "products" ? "Search products..." : "Search outfits...") 
-                : "Discover your next look"
+              placeholder={isSearchFocused
+                ? (activeFilter === "products" ? "Search products..." : "Search outfits...")
+                : "Search outfits & pieces"
               }
               trailingAction={searchTerm.trim().length > 0 ? undefined : null}
               onFocus={() => setIsSearchFocused(true)}
@@ -1862,11 +1994,10 @@ export function HomeScreenView() {
           )}
         >
           <div
-            className={cn("pointer-events-auto mx-auto w-full px-2", !isTopBarVisible && "pointer-events-none")}
-            style={{ maxWidth: CARD_MAX_WIDTH }}
+            className={cn("pointer-events-auto mx-auto w-full px-2 max-w-[24.5rem] md:max-w-[34rem]", !isTopBarVisible && "pointer-events-none")}
           >
             <FilterSearchBar
-              className="rounded-b-3xl"
+              className="rounded-frame"
               value={searchTerm}
               onValueChange={handleSearchChange}
               filters={filterChips}
@@ -1889,6 +2020,28 @@ export function HomeScreenView() {
         </div>
       )}
 
+      {/* 6f board-detail action bar — Add to board · Style this look → */}
+      {!isResultsMode && isItemMoodboardActive && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-[3.25rem] z-20 bg-gradient-to-t from-background via-background/85 to-transparent pt-6">
+          <div className="pointer-events-auto mx-auto flex w-full max-w-[24.5rem] gap-2.5 px-4 pb-2 md:max-w-[34rem]">
+            <button
+              type="button"
+              onClick={() => navigate("/search")}
+              className="flex-1 rounded-[3px] border border-hairline-dashed bg-card py-3 text-center text-[11.5px] font-semibold text-foreground transition-colors hover:bg-editorial/40"
+            >
+              ＋ Add to board
+            </button>
+            <button
+              type="button"
+              onClick={() => boardStyleOutfit && launchStudio(boardStyleOutfit)}
+              disabled={!boardStyleOutfit}
+              className="flex-[1.3] rounded-[3px] bg-primary py-3 text-center text-[11.5px] font-bold text-primary-foreground transition-opacity hover:bg-primary/90 disabled:opacity-50"
+            >
+              Style this look →
+            </button>
+          </div>
+        </div>
+      )}
 
       <MoodboardPickerDrawer
         open={isMoodboardPickerOpen}

@@ -18,6 +18,7 @@ export type OutfitInspirationCardDefaults = {
   aspectRatio?: string
   fluidLayout?: "card" | "avatar"
   renderBox?: { width: number; height: number }
+  framed?: boolean
 }
 
 export type OutfitInspirationPresetConfig = {
@@ -57,7 +58,7 @@ export const outfitInspirationPresets: Record<
     },
   },
   gridMeta: {
-    wrapperClassName: "rounded-sm bg-white px-1 py-1",
+    wrapperClassName: "",
     cardDefaults: {
       variant: "narrow",
       showTitle: true,
@@ -67,10 +68,11 @@ export const outfitInspirationPresets: Record<
       fluidLayout: "avatar",
       aspectRatio: "3 / 4",
       renderBox: CANONICAL_HERO_RENDER_BOX,
+      framed: true,
     },
   },
   homeCurated: {
-    wrapperClassName: "rounded-2xl p-0.5",
+    wrapperClassName: "",
     cardDefaults: {
       variant: "narrow",
       showTitle: true,
@@ -80,6 +82,7 @@ export const outfitInspirationPresets: Record<
       fluidLayout: "avatar",
       aspectRatio: "3 / 4",
       renderBox: CANONICAL_HERO_RENDER_BOX,
+      framed: true,
     },
   },
   rail: {

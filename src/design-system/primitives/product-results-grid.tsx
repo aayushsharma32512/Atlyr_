@@ -1,4 +1,4 @@
-import { useMemo, type RefCallback } from "react"
+import { useMemo, useState, type RefCallback } from "react"
 
 import { cn } from "@/lib/utils"
 
@@ -33,12 +33,26 @@ export function ProductResultsGrid({
   onItemSelect,
   getItemWrapperRef,
 }: ProductResultsGridProps) {
+  // Products whose image 404s / fails to load are dropped from the display —
+  // a missing photo means a broken ingestion, not something worth showing.
+  const [failedIds, setFailedIds] = useState<ReadonlySet<string>>(() => new Set())
+  const visibleItems = useMemo(() => items.filter((item) => !failedIds.has(item.id)), [items, failedIds])
+
+  const handleImageError = (id: string) => {
+    setFailedIds((prev) => {
+      if (prev.has(id)) return prev
+      const next = new Set(prev)
+      next.add(id)
+      return next
+    })
+  }
+
   const columnBuckets = useMemo(() => {
     const safeColumns = Math.max(columns, 1)
-    const effectiveRows = Math.max(rows, Math.ceil(items.length / safeColumns))
+    const effectiveRows = Math.max(rows, Math.ceil(visibleItems.length / safeColumns))
 
-    return buildGridColumns(items, safeColumns, effectiveRows, (item, index) => `${item.id}-${index}`)
-  }, [columns, items, rows])
+    return buildGridColumns(visibleItems, safeColumns, effectiveRows, (item, index) => `${item.id}-${index}`)
+  }, [columns, visibleItems, rows])
 
   const isInteractive = Boolean(onItemSelect)
 
@@ -75,6 +89,7 @@ export function ProductResultsGrid({
                 onToggleSave={item.onToggleSave}
                 onLongPressSave={item.onLongPressSave}
                 isSaved={item.isSaved}
+                onImageError={() => handleImageError(item.id)}
                 layout="fluid"
               />
             </div>

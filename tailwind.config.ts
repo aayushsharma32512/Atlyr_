@@ -106,14 +106,19 @@ export default {
 				},
 				gold: {
 					DEFAULT: 'hsl(var(--gold))',
-					deep: 'hsl(var(--gold-deep))'
+					deep: 'hsl(var(--gold-deep))',
+					muted: 'hsl(var(--gold-muted))'
 				},
 				taupe: 'hsl(var(--taupe))',
+				faint: 'hsl(var(--faint))',
+				editorial: 'hsl(var(--editorial))',
+				skeleton: 'hsl(var(--skeleton))',
 				hairline: {
 					DEFAULT: 'hsl(var(--hairline))',
 					2: 'hsl(var(--hairline-2))',
 					3: 'hsl(var(--hairline-3))',
-					4: 'hsl(var(--hairline-4))'
+					4: 'hsl(var(--hairline-4))',
+					dashed: 'hsl(var(--border-dashed))'
 				},
 				warp: 'hsl(var(--warp))'
 			},
@@ -122,7 +127,11 @@ export default {
 				lg: 'var(--radius)',
 				md: 'calc(var(--radius) - 2px)',
 				sm: 'calc(var(--radius) - 4px)',
-				'4xl': '2rem'
+				'4xl': '2rem',
+				// Kalagriha shape scale: buttons/chips/search = 3px, frames = 6px,
+				// seals/badges = 2px. Cards stay on --radius (5px).
+				frame: 'var(--radius-frame)',
+				badge: 'var(--radius-badge)'
 			},
 			keyframes: {
 				'accordion-down': {

@@ -20,7 +20,7 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
 export function TryOnGrid({ items, onSelect, onOpenStudio, overlay = true, getItemWrapperRef }: TryOnGridProps) {
   if (items.length === 0) {
     return (
-      <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-dashed border-muted-foreground/30 bg-muted/10 text-sm text-muted-foreground">
+      <div className="flex min-h-[240px] items-center justify-center rounded-frame border border-dashed border-hairline-dashed bg-card/40 text-sm text-muted-foreground">
         No try-ons yet
       </div>
     )
@@ -35,7 +35,7 @@ export function TryOnGrid({ items, onSelect, onOpenStudio, overlay = true, getIt
             key={item.id}
             ref={getItemWrapperRef?.(item, index)}
             className={cn(
-              "group relative aspect-[3/4] overflow-hidden rounded-2xl border border-muted-foreground/10 shadow-sm transition hover:-translate-y-[1px] hover:shadow-md",
+              "group relative aspect-[3/4] overflow-hidden rounded-lg border border-hairline transition hover:-translate-y-[1px] hover:shadow-md",
               item.imageUrl ? "text-foreground" : "text-muted-foreground",
             )}
             role="button"
@@ -60,11 +60,11 @@ export function TryOnGrid({ items, onSelect, onOpenStudio, overlay = true, getIt
                   draggable={false}
                 />
                 <div
-                  className="absolute bottom-1 right-1 z-10 rounded-full px-0.5 py-0 text-[10px] font-medium text-foreground"
+                  className="absolute bottom-1 right-1.5 z-10 font-deva text-[11px] leading-none text-background/85 drop-shadow-[0_1px_2px_rgba(23,20,16,0.55)]"
                   onContextMenu={(event) => event.preventDefault()}
                   style={{ WebkitTouchCallout: "none" }}
                 >
-                  Atlyr
+                  कलागृह
                 </div>
               </>
             ) : (

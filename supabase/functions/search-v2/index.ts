@@ -67,18 +67,21 @@ serve(async (req) => {
 // --- ⚡ STRATEGIES ---
 
 async function searchByText(text: string, filters: any, supabase: any, weights?: any) {
-  const textW = weights?.text ?? 0
-  const imageW = weights?.image ?? 1
+  // Restored to the original working logic: run BOTH RPCs. The `optimise-search`
+  // commit had commented out `match_products_text` and zeroed the text weight, so
+  // text search matched only `image_vector` — which almost no products carry —
+  // returning ~1 result. `text_vector` is the populated index (SigLIP joint space,
+  // so the one text vector matches both). Original weights: text 0.25 / image 0.75.
+  const textW = weights?.text ?? 0.25
+  const imageW = weights?.image ?? 0.75
 
   const vector = await getVectorFromModal({ text })
 
-  const [
-      // textHits,
-      imageHits] = await Promise.all([
-    // rpc(supabase, 'match_products_text', vector, filters),
+  const [textHits, imageHits] = await Promise.all([
+    rpc(supabase, 'match_products_text', vector, filters),
     rpc(supabase, 'match_products_image', vector, filters)
   ])
-  return fuseAndSort([], normalize(imageHits), textW, imageW)
+  return fuseAndSort(normalize(textHits), normalize(imageHits), textW, imageW)
 }
 
 async function searchByImage(imageUrl: string, filters: any, supabase: any) {

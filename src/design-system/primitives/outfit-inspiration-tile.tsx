@@ -22,6 +22,7 @@ export type OutfitInspirationCardOverrides = Partial<
     | "fluidLayout"
     | "renderBox"
     | "attribution"
+    | "framed"
   >
 >
 

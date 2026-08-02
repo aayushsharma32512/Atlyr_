@@ -18,6 +18,9 @@ export interface ProductAlternateCardProps {
   isSaved?: boolean
   className?: string
   layout?: "compact" | "fluid" | "masonry"
+  /** Fires if the product image fails to load (e.g. missing/404 in storage) —
+   *  lets a parent grid drop the card rather than show a broken image. */
+  onImageError?: () => void
 }
 
 export function ProductAlternateCard({
@@ -33,6 +36,7 @@ export function ProductAlternateCard({
   isSaved,
   className,
   layout = "compact",
+  onImageError,
 }: ProductAlternateCardProps) {
   const isFluid = layout === "fluid"
   const isMasonry = layout === "masonry"
@@ -117,38 +121,37 @@ export function ProductAlternateCard({
     >
       <div
         className={cn(
-          "relative flex items-center justify-center overflow-hidden",
+          // Uniform "clipboard" tile — the garment sits on the woven warp/weft ground
+          // (kalagriha canvas product card). Product images are pre-framed to one
+          // canvas, so every tile is the same square with a small margin around the piece.
+          "warp-weft relative flex items-center justify-center overflow-hidden",
           isMasonry
-            ? "rounded-2xl w-full flex-none h-auto"
+            ? "rounded-lg w-full aspect-square"
             : isFluid
-              ? "rounded-md w-full flex-none h-auto bg-card"
+              ? "rounded-md w-full aspect-square"
               : "rounded-sm h-28 max-h-[9rem] min-w-10 w-20 max-w-[8rem] p-0 flex-grow",
-          imageMaxHeightClass,
           isInteractive && "cursor-pointer",
         )}
-        style={{
-          background: isMasonry ? "transparent" : "foreground",
-          padding: isWide ? ".3rem" : "0",
-        }}
       >
-        <div
-          className={cn(
-            "object-contain p-2",
-            isMasonry || isFluid ? "h-auto w-full" : "h-full w-max",
-            imageMaxHeightClass,
-          )}
-        >
+        {isWide ? (
           <img
             src={imageSrc}
             alt={title}
             loading="lazy"
-            className={cn(
-              "object-contain rounded-sm",
-              isMasonry || isFluid ? "h-auto w-full" : "h-full w-full",
-              imageMaxHeightClass,
-            )}
+            onError={onImageError}
+            className="h-full w-full object-contain p-3"
           />
-        </div>
+        ) : (
+          <div className={cn("object-contain p-2 h-full w-max", imageMaxHeightClass)}>
+            <img
+              src={imageSrc}
+              alt={title}
+              loading="lazy"
+              onError={onImageError}
+              className={cn("object-contain rounded-sm h-full w-full", imageMaxHeightClass)}
+            />
+          </div>
+        )}
         <div className="absolute right-1 top-1 flex items-center">
           {/* <button
             type="button"
@@ -170,8 +173,8 @@ export function ProductAlternateCard({
             aria-label="Save alternative"
             style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none", userSelect: "none" }}
             className={cn(
-              "flex size-6 items-center justify-center rounded-xl bg-transparent text-muted-foreground/80 transition-colors hover:bg-muted/60 hover:text-destructive select-none",
-              resolvedSaved && "text-red-500 hover:text-red-500" // fill red if saved
+              "flex size-6 items-center justify-center rounded-md bg-transparent text-muted-foreground/80 transition-colors hover:bg-muted/60 hover:text-primary select-none",
+              resolvedSaved && "text-primary hover:text-primary" // saved = terracotta (was off-palette red-500)
             )}
           >
             <Heart
@@ -190,10 +193,13 @@ export function ProductAlternateCard({
           isFluid ? "w-full p-1 pb-2" : isMasonry ? "w-full" : "w-20",
         )}
       >
-        <p className="truncate text-xxs font-semibold leading-tight text-muted-foreground">{brand}</p>
+        {/* Card anatomy rule (Kalagriha Component_Specs §4): title first in ink,
+            then brand (muted) left · price (ink 700, tabular) right on one baseline.
+            Was brand-above-title with a muted price — both inverted (P1-C12/P0-C7). */}
+        <p className="truncate text-xxs font-semibold leading-tight text-foreground">{title}</p>
         <div className="grid grid-cols-[1fr_auto] items-baseline gap-1 text-xxs leading-tight">
-          <span className="truncate text-foreground">{title}</span>
-          <span className="truncate text-right font-semibold text-muted-foreground">{price}</span>
+          <span className="truncate text-muted-foreground">{brand}</span>
+          <span className="truncate text-right font-semibold tabular-nums text-foreground">{price}</span>
         </div>
       </div>
 

@@ -21,9 +21,14 @@ export function SectionHeader({
 }: SectionHeaderProps) {
   return (
     <div className={cn("flex w-full items-start justify-between px-1", className)}>
-      <div className="flex flex-col gap-0">
-        <h2 className="text-xs2 font-thin text-foreground">{title}</h2>
-        {subtitle ? <p className="text-xs font-semibold text-muted-foreground">{subtitle}</p> : null}
+      <div className="flex flex-col gap-0.5">
+        {/* Section-label role (Kalagriha §2.2): 10–11px sans caps, tracked, taupe.
+            Previously the title was font-thin and the subtitle font-semibold — the
+            hierarchy was inverted (P0-C8). */}
+        <h2 className="text-[10.5px] font-semibold uppercase leading-none tracking-[0.15em] text-muted-foreground">
+          {title}
+        </h2>
+        {subtitle ? <p className="text-xs font-normal text-taupe">{subtitle}</p> : null}
       </div>
       {actionSlot ? (
         actionSlot

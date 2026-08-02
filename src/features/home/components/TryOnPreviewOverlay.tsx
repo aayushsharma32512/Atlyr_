@@ -268,7 +268,7 @@ export function TryOnPreviewOverlay({
           {activeItem.outfitId ? (
             <Button
               variant="secondary"
-              className="pointer-events-auto h-10 rounded-full bg-transparent px-4 py-0.5 text-sm font-semibold shadow-none hover:bg-transparent"
+              className="pointer-events-auto h-10 rounded-[3px] bg-transparent px-4 py-0.5 text-sm font-semibold shadow-none hover:bg-transparent"
               onClick={() => onOpenStudio(activeItem)}
             >
               Studio
@@ -276,10 +276,10 @@ export function TryOnPreviewOverlay({
             </Button>
           ) : null}
           <div
-            className="rounded-full px-2 py-0.5 text-[14px] font-semibold text-foreground"
+            className="px-2 py-0.5 font-deva text-[15px] leading-none text-foreground"
             style={{ touchAction: "pan-y", WebkitTouchCallout: "none" }}
           >
-            Atlyr
+            कलागृह
           </div>
         </div>
       </div>

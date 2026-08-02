@@ -299,9 +299,11 @@ export function FilterDrawer({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="max-h-[95vh]">
+      {/* Centered, capped-width sheet — a full-bleed bottom drawer strands its rows
+          across the whole screen on desktop. */}
+      <DrawerContent className="mx-auto max-h-[88vh] w-full max-w-[560px] rounded-t-[14px] border border-hairline bg-secondary">
         <DrawerHeader className="flex flex-row items-center justify-between px-6 pb-4">
-          <DrawerTitle className="text-lg font-semibold">Filters</DrawerTitle>
+          <DrawerTitle className="font-display text-xl font-medium text-foreground">Filters</DrawerTitle>
           <DrawerDescription className="sr-only">
             Set filters to refine results.
           </DrawerDescription>
@@ -321,7 +323,7 @@ export function FilterDrawer({
                   <Badge
                     key={filterId}
                     variant="secondary"
-                    className="gap-1.5 px-2.5 py-1 text-xs border-sidebar-border h-8 rounded-lg"
+                    className="gap-1.5 px-2.5 py-1 text-xs border-hairline h-8 rounded-[3px] bg-card"
                   >
                     {getFilterLabel(filterId)}
                     <button
@@ -379,7 +381,7 @@ export function FilterDrawer({
                 ] as const).map(({ id, label }) => (
                   <label key={id} className="flex items-center gap-1.5 cursor-pointer">
                     <Checkbox
-                      className="border-sidebar-border size-3.5 rounded-sm"
+                      className="border-hairline size-3.5 rounded-sm"
                       checked={displayedFilters.includes(id)}
                       onCheckedChange={() => handleFilterToggle(id)}
                     />
@@ -393,7 +395,7 @@ export function FilterDrawer({
             {categories.map((category) => {
               const isExpanded = expandedCategories.has(category.id)
               return (
-                <div key={category.id} className="border-b border-border/40 last:border-0">
+                <div key={category.id} className="border-b border-hairline last:border-0">
                   <button
                     type="button"
                     className="flex w-full items-center justify-between py-2.5 text-left"
@@ -429,7 +431,7 @@ export function FilterDrawer({
                             return (
                               <div key={option.id} className="flex items-center gap-2">
                                 <Checkbox
-                                  className="border-sidebar-border size-3.5 rounded-sm"
+                                  className="border-hairline size-3.5 rounded-sm"
                                   id={option.id}
                                   checked={isChecked}
                                   onCheckedChange={() => handleFilterToggle(option.id)}
@@ -457,16 +459,17 @@ export function FilterDrawer({
         </ScrollArea>
 
         {/* Footer */}
-        <DrawerFooter className="flex flex-row gap-3 px-6 pb-6">
+        <DrawerFooter className="flex flex-row gap-3 border-t border-hairline px-6 pb-6 pt-4">
           <Button
             variant="outline"
             onClick={handleClearAll}
-            className="flex-1"
+            className="flex-1 rounded-[3px] border-hairline bg-transparent text-foreground hover:bg-editorial/40"
             disabled={displayedFilters.length === 0 && minPrice === "0" && maxPrice === "0"}
           >
             Clear All
           </Button>
-          <Button onClick={handleApply} className="flex-1 bg-foreground text-background">
+          {/* Apply is the sheet's single filled terracotta action. */}
+          <Button onClick={handleApply} className="flex-1 rounded-[3px] bg-primary font-semibold text-primary-foreground hover:bg-primary/90">
             Apply
           </Button>
         </DrawerFooter>

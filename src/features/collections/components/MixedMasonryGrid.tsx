@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefCallback } f
 import { MoreVertical, Trash2, X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { useResponsiveColumns } from "@/shared/hooks/useResponsiveColumns"
 import { OutfitInspirationTile, ProductAlternateCard } from "@/design-system/primitives"
 import type { MoodboardItem } from "@/services/collections/collectionsService"
 import { resolveOutfitAttribution } from "@/utils/outfitAttribution"
@@ -16,6 +17,15 @@ const PRICE_FORMATTER = new Intl.NumberFormat("en-IN", {
 const MASONRY_OUTFIT_CARD_TOTAL_HEIGHT = 320
 const MASONRY_OUTFIT_CARD_VERTICAL_GAP = 2
 const MASONRY_OUTFIT_CARD_MIN_AVATAR_HEIGHT = 128
+
+// Scrapbook tilt — a fixed per-item rotation so the saves masonry reads like the
+// canvas board (6e2), deterministic so cards don't re-tilt on re-mount.
+const PIN_TILTS = ["pin-tilt-1", "pin-tilt-2", "pin-tilt-3", "pin-tilt-4", "pin-tilt-5", "pin-tilt-6"]
+function tiltFor(id: string): string {
+  let h = 0
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0
+  return PIN_TILTS[Math.abs(h) % PIN_TILTS.length]
+}
 
 type OutfitMoodboardItem = Extract<MoodboardItem, { itemType: "outfit" }>
 
@@ -58,18 +68,16 @@ export function MixedMasonryGrid({
   getProductWrapperRef,
   className,
 }: MixedMasonryGridProps) {
-  const [leftColumn, rightColumn] = useMemo(() => {
-    const left: MoodboardItem[] = []
-    const right: MoodboardItem[] = []
+  // Responsive columns so cards shrink on wide screens — keeps product tiles and
+  // outfit avatars at a matching size instead of two giant mismatched columns.
+  const columnCount = useResponsiveColumns(4)
+  const buckets = useMemo(() => {
+    const cols: MoodboardItem[][] = Array.from({ length: columnCount }, () => [])
     items.forEach((item, index) => {
-      if (index % 2 === 0) {
-        left.push(item)
-      } else {
-        right.push(item)
-      }
+      cols[index % columnCount].push(item)
     })
-    return [left, right] as const
-  }, [items])
+    return cols
+  }, [items, columnCount])
 
   const formatPrice = (price: number | null | undefined, currency: string | null | undefined) => {
     if (typeof price !== "number") return "—"
@@ -84,19 +92,23 @@ export function MixedMasonryGrid({
       const isOwner = Boolean(currentUserId && item.outfit?.user_id === currentUserId)
       const moodboardSlugs = getOutfitMoodboardSlugs ? getOutfitMoodboardSlugs(item.id) : []
       return (
-        <OutfitMasonryCard
+        <div
           key={`${item.itemType}-${item.id}-${item.createdAt}`}
-          item={item}
-          isOwner={isOwner}
-          moodboardSlugs={moodboardSlugs}
-          collectionLabel={collectionLabel}
-          onOutfitSelect={onOutfitSelect}
-          onEdit={onEditOutfit ? () => onEditOutfit(item) : undefined}
-          onMoveToMoodboard={onMoveToMoodboard ? () => onMoveToMoodboard(item.id) : undefined}
-          onRemoveFromCurrentMoodboard={onRemoveFromCurrentMoodboard ? () => onRemoveFromCurrentMoodboard(item.id) : undefined}
-          onRemoveFromAll={onRemoveFromAll ? () => onRemoveFromAll(item.id) : undefined}
-          getOutfitWrapperRef={getOutfitWrapperRef}
-        />
+          className={cn("transition-transform", tiltFor(item.id))}
+        >
+          <OutfitMasonryCard
+            item={item}
+            isOwner={isOwner}
+            moodboardSlugs={moodboardSlugs}
+            collectionLabel={collectionLabel}
+            onOutfitSelect={onOutfitSelect}
+            onEdit={onEditOutfit ? () => onEditOutfit(item) : undefined}
+            onMoveToMoodboard={onMoveToMoodboard ? () => onMoveToMoodboard(item.id) : undefined}
+            onRemoveFromCurrentMoodboard={onRemoveFromCurrentMoodboard ? () => onRemoveFromCurrentMoodboard(item.id) : undefined}
+            onRemoveFromAll={onRemoveFromAll ? () => onRemoveFromAll(item.id) : undefined}
+            getOutfitWrapperRef={getOutfitWrapperRef}
+          />
+        </div>
       )
     }
 
@@ -120,7 +132,7 @@ export function MixedMasonryGrid({
               }
             : undefined
         }
-        className={cn("rounded-2xl border border-muted/20 bg-transparent p-1", isInteractive && "cursor-pointer")}
+        className={cn("rounded-lg border border-hairline bg-card p-1 transition-transform", tiltFor(item.id), isInteractive && "cursor-pointer")}
       >
         <ProductAlternateCard
           imageSrc={item.imageUrl ?? ""}
@@ -137,9 +149,15 @@ export function MixedMasonryGrid({
   }
 
   return (
-    <div className={cn("grid w-full grid-cols-2 gap-2", className)}>
-      <div className="flex min-w-0 flex-col gap-2">{leftColumn.map(renderItem)}</div>
-      <div className="flex min-w-0 flex-col gap-2">{rightColumn.map(renderItem)}</div>
+    <div
+      className={cn("grid w-full gap-2.5", className)}
+      style={{ gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))` }}
+    >
+      {buckets.map((column, index) => (
+        <div key={`masonry-col-${index}`} className="flex min-w-0 flex-col gap-2.5">
+          {column.map(renderItem)}
+        </div>
+      ))}
     </div>
   )
 }
@@ -256,7 +274,7 @@ function OutfitMasonryCard({
         <button
           type="button"
           onClick={handleEditClick}
-          className="absolute top-2 right-2 z-10 flex size-6 items-center justify-center rounded-xl bg-transparent text-muted-foreground/80 transition-colors hover:bg-muted/60"
+          className="absolute top-2 right-2 z-10 flex size-6 items-center justify-center rounded-md bg-transparent text-muted-foreground/80 transition-colors hover:bg-muted/60"
           aria-label={isOwner ? "Edit outfit" : "Move to moodboard"}
         >
           <MoreVertical className="h-4 w-4" strokeWidth={1.5} />
@@ -269,14 +287,14 @@ function OutfitMasonryCard({
           <button
             type="button"
             onClick={handleDustbinClick}
-            className="flex size-6 items-center justify-center rounded-xl bg-transparent text-muted-foreground/80 transition-colors hover:bg-muted/60 hover:text-destructive"
+            className="flex size-6 items-center justify-center rounded-md bg-transparent text-muted-foreground/80 transition-colors hover:bg-muted/60 hover:text-destructive"
             aria-label="Remove outfit"
           >
             <Trash2 className="h-4 w-4" strokeWidth={1.5} />
           </button>
 
           {showRemoveOptions && (
-            <div className="absolute left-0 bottom-full mb-1 min-w-[160px] rounded-xl border border-border bg-background shadow-lg py-1 z-20">
+            <div className="absolute left-0 bottom-full mb-1 min-w-[160px] rounded-md border border-hairline bg-background shadow-md py-1 z-20">
               {onRemoveFromCurrentMoodboard && (
                 <button
                   type="button"

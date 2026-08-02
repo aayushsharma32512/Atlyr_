@@ -159,6 +159,18 @@ img {
     --warp: 39.2308 46.43% 89.02%;
     --placeholder-grid: 39.3103 44.62% 87.25%;
 
+    /* ── Kalagriha screen-reskin additions (P0). Surfaces & provenance the
+       buyer-journey screens (6a 6b 6d 6e 6f 6g 6i) need beyond the base ramp.
+       Purely additive — nothing above is retuned, so the existing primitives
+       and ops surfaces are untouched. ── */
+    --editorial: 40 40% 86.3%;      /* #EAE1CE — moodboard / editorial pin tint */
+    --skeleton: 41 37.3% 90%;       /* #EFE9DC — shimmer base */
+    --faint: 46 14.8% 56.3%;        /* #A0987F — placeholder labels, hints, chevrons */
+    --gold-muted: 42 24.3% 43.5%;   /* #8A7A54 — ✦ YOURS text, gold-chip label (provenance) */
+    --border-dashed: 41 20% 73%;    /* #C9C0AD — dashed slots, ghost-button outline */
+    --radius-frame: 6px;            /* canvas frames, panels, editorial tiles */
+    --radius-badge: 2px;            /* provenance seals, WEARING badges */
+
     --font-sans: "Hanken Grotesk", ui-sans-serif, sans-serif, system-ui;
     --font-serif: "Bodoni Moda", ui-serif, Georgia, serif;
     --font-deva: "Noto Serif Devanagari", ui-serif, serif;
@@ -337,6 +349,37 @@ img {
       linear-gradient(90deg, hsl(var(--placeholder-grid)) 1px, transparent 1px);
     background-size: 11px 11px;
   }
+
+  /* Woven ground on DARK rooms — the sign-in door (6b) and the search room
+     (6g). Uses the dark hairline so the weave reads without glowing. */
+  .bg-warp-grid-dark {
+    background-image:
+      linear-gradient(hsl(var(--ink-line)) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--ink-line)) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+
+  /* Fixed pin rotations for the feed / boards / board-detail "pinned paper"
+     motif. Numbered (not random) so a card keeps the SAME tilt across
+     re-mounts — a random tilt would jitter every time the list re-renders on
+     scroll. Tilt is gated to browse surfaces only; never on transactional UI. */
+  .pin-tilt-1 { transform: rotate(-0.9deg); }
+  .pin-tilt-2 { transform: rotate(0.6deg); }
+  .pin-tilt-3 { transform: rotate(1.1deg); }
+  .pin-tilt-4 { transform: rotate(-0.5deg); }
+  .pin-tilt-5 { transform: rotate(0.4deg); }
+  .pin-tilt-6 { transform: rotate(-1.2deg); }
+
+  /* Loading shimmer tuned to the cream ground (replaces the grey skeleton). */
+  .skeleton-shimmer {
+    background: linear-gradient(100deg,
+      hsl(var(--skeleton)) 40%, hsl(41 47% 94%) 50%, hsl(var(--skeleton)) 60%);
+    background-size: 300px 100%;
+    animation: shimmer 1.4s infinite linear;
+  }
+
+  /* Terracotta save-toast entrance. */
+  .animate-pop-in { animation: popIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
 
   .text-display {
     font-family: var(--font-serif);
@@ -732,6 +775,58 @@ img {
 .product-card-active {
   animation: subtle-bounce 0.15s ease-in-out;
 }
+
+/* Kalagriha motion — shimmer (skeletons), popIn (save toast), floaty (caret). */
+@keyframes shimmer {
+  from { background-position: -300px 0; }
+  to { background-position: 300px 0; }
+}
+
+@keyframes popIn {
+  0% { transform: scale(0.6); opacity: 0; }
+  70% { transform: scale(1.06); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes floaty {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   KALAGRIHA — the defining textures & motion
+   warp/weft grid (avatar canvases, editorial tiles, product frames),
+   scrapbook pin-tilt (feed & boards only — fixed values so cards don't
+   re-tilt on re-mount), and the save-toast / seal keyframes.
+   ───────────────────────────────────────────────────────────────────────── */
+.warp-weft {
+  background-color: hsl(var(--card));
+  background-image:
+    linear-gradient(hsl(var(--warp)) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(var(--warp)) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+.warp-weft-dark {
+  background-color: hsl(var(--ink-deep));
+  background-image:
+    linear-gradient(hsl(var(--ink-line)) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(var(--ink-line)) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.pin-tilt-1 { transform: rotate(-1.1deg); }
+.pin-tilt-2 { transform: rotate(0.7deg); }
+.pin-tilt-3 { transform: rotate(1.2deg); }
+.pin-tilt-4 { transform: rotate(-0.6deg); }
+.pin-tilt-5 { transform: rotate(0.5deg); }
+.pin-tilt-6 { transform: rotate(-1.4deg); }
+
+@keyframes kg-pop-in {
+  0%   { transform: scale(0.6); opacity: 0; }
+  70%  { transform: scale(1.06); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.animate-pop-in { animation: kg-pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
 
 /* Scrollbar styling improvements */
 .scrollbar-hide {

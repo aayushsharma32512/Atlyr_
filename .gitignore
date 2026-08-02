@@ -180,3 +180,7 @@ image-drop/
 manual-erase/
 myntra_shoes/
 shoe_segmentation/
+
+# Local scratch
+lib_match.py
+shoes placement/

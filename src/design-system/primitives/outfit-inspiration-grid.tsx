@@ -23,11 +23,22 @@ interface OutfitInspirationGridProps {
   fixedAvatarHeight?: number
   cardPreset?: OutfitInspirationPresetKey
   cardOverrides?: OutfitInspirationCardOverrides
+  /** Scrapbook feed: deterministic tilt + uneven card heights (canvas 6d). */
+  stagger?: boolean
   onCardSelect?: (item: InspirationItem) => void
   onToggleSave?: (item: InspirationItem, isSaved: boolean) => void
   onLongPressSave?: (item: InspirationItem) => void
   getItemWrapperRef?: (item: InspirationItem) => RefCallback<HTMLDivElement> | undefined
 }
+
+// Deterministic hash so a card's tilt + height stay stable across re-mounts.
+function hashKey(s: string): number {
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
+  return Math.abs(h)
+}
+const PIN_TILTS = ["pin-tilt-1", "pin-tilt-2", "pin-tilt-3", "pin-tilt-4", "pin-tilt-5", "pin-tilt-6"]
+const HEIGHT_DELTAS = [-34, -16, 0, 18, 36]
 
 type ColumnEntry = GridEntry<InspirationItem>
 
@@ -40,6 +51,7 @@ interface ColumnBucketsProps {
   layoutMode: OutfitGridLayoutMode
   cardPreset: OutfitInspirationPresetKey
   cardOverrides?: OutfitInspirationCardOverrides
+  stagger?: boolean
   onCardSelect?: (item: InspirationItem) => void
   onToggleSave?: (item: InspirationItem, isSaved: boolean) => void
   onLongPressSave?: (item: InspirationItem) => void
@@ -65,6 +77,7 @@ export function OutfitInspirationGrid({
   fixedAvatarHeight = DEFAULT_FIXED_AVATAR_HEIGHT,
   cardPreset = "gridMeta",
   cardOverrides,
+  stagger = false,
   onCardSelect,
   onToggleSave,
   onLongPressSave,
@@ -78,7 +91,7 @@ export function OutfitInspirationGrid({
   }, [columns, items, rows])
 
   return (
-    <div className={cn("flex flex-1 gap-1 min-w-0", className)}>
+    <div className={cn("flex flex-1 gap-2.5 min-w-0", className)}>
       <GridColumns
         columns={columnBuckets}
         cardTotalHeight={cardTotalHeight}
@@ -88,6 +101,7 @@ export function OutfitInspirationGrid({
         layoutMode={layoutMode}
         cardPreset={cardPreset}
         cardOverrides={cardOverrides}
+        stagger={stagger}
         onCardSelect={onCardSelect}
         onToggleSave={onToggleSave}
         onLongPressSave={onLongPressSave}
@@ -106,6 +120,7 @@ function GridColumns({
   layoutMode,
   cardPreset,
   cardOverrides,
+  stagger,
   onCardSelect,
   onToggleSave,
   onLongPressSave,
@@ -114,7 +129,7 @@ function GridColumns({
   return (
     <>
       {columns.map((column, columnIndex) => (
-        <div className="flex w-full flex-1 flex-col gap-1 min-w-0" key={`grid-column-${columnIndex}`}>
+        <div className="flex w-full flex-1 flex-col gap-2.5 min-w-0" key={`grid-column-${columnIndex}`}>
           {column.map((entry) =>
             layoutMode === "balanced" ? (
               <BalancedGridCard
@@ -125,6 +140,7 @@ function GridColumns({
                 cardMinAvatarHeight={cardMinAvatarHeight}
                 cardPreset={cardPreset}
                 cardOverrides={cardOverrides}
+                stagger={stagger}
                 onCardSelect={onCardSelect}
                 onToggleSave={onToggleSave}
                 onLongPressSave={onLongPressSave}
@@ -164,6 +180,7 @@ interface BalancedCardProps extends GridCardProps {
   cardTotalHeight: number
   cardVerticalGap: number
   cardMinAvatarHeight: number
+  stagger?: boolean
 }
 
 function BalancedGridCard({
@@ -173,6 +190,7 @@ function BalancedGridCard({
   cardMinAvatarHeight,
   cardPreset,
   cardOverrides,
+  stagger,
   onCardSelect,
   onToggleSave,
   onLongPressSave,
@@ -184,9 +202,16 @@ function BalancedGridCard({
     setIsSaved(data.isSaved ?? false)
   }, [data.isSaved])
 
+  // Scrapbook stagger: a deterministic per-card tilt + height offset so the feed
+  // reads as an uneven masonry, not a rigid grid (canvas 6d). Fixed by id so cards
+  // don't re-tilt on re-mount.
+  const seed = hashKey(data.outfitId ?? data.outfit?.id ?? data.id ?? "")
+  const tiltClass = stagger ? PIN_TILTS[seed % PIN_TILTS.length] : ""
+  const effectiveHeight = stagger ? cardTotalHeight + HEIGHT_DELTAS[seed % HEIGHT_DELTAS.length] : cardTotalHeight
+
   const avatarHeight = Math.max(
     cardMinAvatarHeight,
-    cardTotalHeight - metaHeight - cardVerticalGap,
+    effectiveHeight - metaHeight - cardVerticalGap,
   )
 
 
@@ -205,8 +230,9 @@ function BalancedGridCard({
   return (
     <OutfitInspirationTile
       preset={cardPreset}
-      wrapperClassName="relative flex w-full flex-col"
-      wrapperStyle={{ minHeight: cardTotalHeight }}
+      variety={stagger}
+      wrapperClassName={cn("relative flex w-full flex-col transition-transform", tiltClass)}
+      wrapperStyle={{ minHeight: effectiveHeight }}
       wrapperRef={wrapperRef}
       wrapperProps={{
         role: onCardSelect ? "button" : undefined,

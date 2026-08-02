@@ -9,6 +9,7 @@ import {
   ScreenHeader,
 } from "@/design-system/primitives"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
+import { useResponsiveColumns } from "@/shared/hooks/useResponsiveColumns"
 import { useStudioContext } from "@/features/studio/context/StudioContext"
 import { useLaunchStudio } from "@/features/studio/hooks/useLaunchStudio"
 import { useStudioProduct } from "@/features/studio/hooks/useStudioProduct"
@@ -16,7 +17,6 @@ import { useStudioCategoryOutfitsInfinite } from "@/features/studio/hooks/useStu
 import { useStudioProductOutfits } from "@/features/studio/hooks/useStudioProductOutfits"
 import type { InspirationItem, StudioOutfitDTO } from "@/features/studio/types"
 import { mapLegacyOutfitItemsToStudioItems } from "@/features/studio/mappers/renderedItemMapper"
-import { resolveOutfitAttribution } from "@/utils/outfitAttribution"
 import {
   useCreateMoodboard,
   useFavorites,
@@ -36,6 +36,7 @@ const CATEGORY_PAGE_SIZE = 50
 type OutfitEntry = { outfit: Outfit; studioOutfit: StudioOutfitDTO | null }
 
 export function OutfitSuggestionsView() {
+  const feedColumns = useResponsiveColumns(4)
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { selectedProductId } = useStudioContext()
@@ -143,7 +144,7 @@ export function OutfitSuggestionsView() {
         variant: "narrow" as const,
         title: studioOutfit?.name ?? outfit.name ?? "Outfit",
         chips: [studioOutfit?.fit ?? outfit.fit, studioOutfit?.feel ?? outfit.feel].filter(Boolean) as string[],
-        attribution: resolveOutfitAttribution(outfit.created_by),
+        attribution: undefined,
         outfitId,
         renderedItems,
         gender: gender ?? "female",
@@ -364,7 +365,7 @@ export function OutfitSuggestionsView() {
 
   return (
     <div className="flex flex-1 flex-col items-center justify-start overflow-hidden px-1 pt-3">
-      <div className={`flex w-full max-w-[${CARD_MAX_WIDTH}] flex-1 flex-col overflow-hidden rounded-[2rem] bg-card shadow-sm`}>
+      <div className="flex w-full max-w-[24.5rem] flex-1 flex-col overflow-hidden rounded-frame bg-background shadow-sm md:max-w-[47rem] lg:max-w-[62rem] xl:max-w-[78rem]">
         <ScreenHeader title={screenTitle} onAction={handleBack} />
         <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
           <div className="flex flex-1 flex-col overflow-y-auto px-2 pb-20 pt-2 scrollbar-hide">
@@ -385,7 +386,7 @@ export function OutfitSuggestionsView() {
                 <>
                   <OutfitInspirationGrid
                     items={outfitItems}
-                    columns={2}
+                    columns={feedColumns}
                     rows={8}
                     layoutMode={layoutMode}
                     cardTotalHeight={290}
@@ -430,7 +431,7 @@ export function OutfitSuggestionsView() {
             ) : (
               <OutfitInspirationGrid
                 items={outfitItems}
-                columns={2}
+                columns={feedColumns}
                 rows={8}
                 layoutMode={layoutMode}
                 cardTotalHeight={290}
@@ -448,7 +449,7 @@ export function OutfitSuggestionsView() {
       </div>
 
       <div className="pointer-events-none fixed inset-x-0 bottom-[3rem] z-10">
-        <div className="pointer-events-auto mx-auto w-full px-2" style={{ maxWidth: CARD_MAX_WIDTH }}>
+        <div className="pointer-events-auto mx-auto w-full max-w-[24.5rem] px-2 md:max-w-[34rem]">
           <FilterSearchBar
             className="rounded-t-3xl"
             value={searchTerm}
