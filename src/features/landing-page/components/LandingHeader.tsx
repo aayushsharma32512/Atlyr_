@@ -44,13 +44,17 @@ export function LandingHeader({ isAuthenticated, onWaitlistScroll, onSignInClick
         </div>
 
         {/* Right: Actions. Outlined, not filled — the gate's CTA is the screen's
-            one terracotta and this must not compete with it. */}
+            one terracotta and this must not compete with it.
+
+            The label carries its own clamp instead of a --fluid-* step: 10px
+            falls between --fluid-xs and --fluid-sm, and snapping to either
+            would resize the mobile header off the spec. */}
         <div className="flex items-center gap-6">
           <motion.button
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.97 }}
             onClick={isAuthenticated ? () => navigate('/app') : onSignInClick}
-            className="rounded-[3px] border border-foreground px-6 py-2.5 text-[10px] font-bold uppercase tracking-[0.14em] text-foreground transition-colors hover:bg-foreground hover:text-background"
+            className="rounded-[3px] border border-foreground px-6 py-2.5 text-[clamp(0.625rem,0.24vw+0.567rem,0.813rem)] font-bold uppercase tracking-[0.14em] text-foreground transition-colors hover:bg-foreground hover:text-background"
           >
             {isAuthenticated ? "Enter app" : "Log in"}
           </motion.button>
