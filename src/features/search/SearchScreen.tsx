@@ -21,6 +21,8 @@ import { getOutfitChips } from "@/utils/outfitChips"
 import { useSearchBrowseCollections } from "@/features/search/hooks/useSearchBrowseCollections"
 import { useSearchOutfitResults } from "@/features/search/hooks/useSearchOutfitResults"
 import { useSearchProductResults } from "@/features/search/hooks/useSearchProductResults"
+import { SearchRoom } from "@/features/search/SearchRoomScreen"
+import MoodboardCard from "@/features/collections/components/MoodboardCard"
 import { useProductFilterOptions } from "@/features/search/hooks/useProductFilterOptions"
 import { useSearchImageUpload } from "@/features/search/hooks/useSearchImageUpload"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
@@ -195,8 +197,15 @@ export function SearchScreenView() {
   const createMoodboardMutation = useCreateMoodboard()
   const collectionsOverviewQuery = useCollectionsOverview()
   const moodboards = collectionsOverviewQuery.data?.moodboards ?? []
+  const boardPreviews = collectionsOverviewQuery.data?.previews ?? {}
   const selectableMoodboards = useMemo(
     () => moodboards.filter((m) => !m.isSystem),
+    [moodboards],
+  )
+  // Real boards to surface under the results (6h "boards for this search"). Only
+  // boards that actually have pins, so the collage renders — top few.
+  const resultBoards = useMemo(
+    () => moodboards.filter((m) => (m.itemCount ?? 0) > 0).slice(0, 4),
     [moodboards],
   )
   const productCollectionMembership = useProductCollectionMembership()
@@ -554,12 +563,33 @@ export function SearchScreenView() {
     enabled: explicitSearchTriggered && isResultsMode && activeFilter === "outfits",
   })
 
+  // Facets chosen in the 6g search room arrive as URL params. Merge them into the
+  // product filters at read-time — no clobbering of the filter-drawer state.
+  const mergedProductFilters = useMemo<ProductSearchFilters>(() => {
+    const csv = (key: string) => {
+      const raw = searchParams.get(key)
+      if (!raw) return undefined
+      const list = raw.split(",").map((s) => s.trim()).filter(Boolean)
+      return list.length ? list : undefined
+    }
+    const merge = (a?: string[], b?: string[]) => {
+      const set = new Set([...(a ?? []), ...(b ?? [])])
+      return set.size ? Array.from(set) : undefined
+    }
+    return {
+      ...productFilters,
+      fits: merge(productFilters.fits, csv("fits")),
+      feels: merge(productFilters.feels, csv("feels")),
+      vibes: merge(productFilters.vibes, csv("vibes")),
+    }
+  }, [productFilters, searchParams])
+
   // Hook uses uploadedImageUrl state
   const productResultsQuery = useSearchProductResults({
     query: committedSearchTerm,
     imageUrl: appliedImageUrl,
     enabled: explicitSearchTriggered && isResultsMode && activeFilter === "products",
-    filters: productFilters,
+    filters: mergedProductFilters,
   })
 
   // --- FILTER OPTIONS ---
@@ -1119,7 +1149,17 @@ export function SearchScreenView() {
     }
 
     return (
-      <OutfitInspirationGrid
+      <div className="flex flex-col gap-2">
+        {/* 6h results header — query as editorial title + look count. */}
+        <div className="px-1">
+          <h2 className="font-display text-[22px] font-medium capitalize leading-none text-foreground">
+            {searchParamValue.trim() || "Results"}
+            <span className="ml-2 font-sans text-[11px] font-medium lowercase text-taupe">
+              — {outfitResultItems.length} {outfitResultItems.length === 1 ? "look" : "looks"}
+            </span>
+          </h2>
+        </div>
+        <OutfitInspirationGrid
           items={outfitResultItems}
           columns={feedColumns}
           rows={8}
@@ -1129,6 +1169,7 @@ export function SearchScreenView() {
           cardMinAvatarHeight={128}
           fixedAvatarHeight={156}
           cardPreset="homeCurated"
+          stagger
           onCardSelect={handleInspirationSelect}
           onToggleSave={handleToggleFavorite}
           onLongPressSave={handleLongPressSave}
@@ -1138,6 +1179,7 @@ export function SearchScreenView() {
             return outfitImpressionRefByOutfitId.get(outfitId)
           }}
         />
+      </div>
     )
   }
 
@@ -1157,9 +1199,15 @@ export function SearchScreenView() {
 
     return (
       <div className="flex flex-col gap-2 [&_img]:aspect-[3/4] [&_img]:object-contain">
-        <p className="px-1 text-xs font-medium text-muted-foreground">
-          Found {filteredProductResultItems.length} items
-        </p>
+        {/* 6h results header — the query as an editorial title + piece count. */}
+        <div className="px-1">
+          <h2 className="font-display text-[22px] font-medium capitalize leading-none text-foreground">
+            {searchParamValue.trim() || "Results"}
+            <span className="ml-2 font-sans text-[11px] font-medium lowercase text-taupe">
+              — {filteredProductResultItems.length} {filteredProductResultItems.length === 1 ? "piece" : "pieces"}
+            </span>
+          </h2>
+        </div>
         <ProductResultsGrid
           items={filteredProductResultItems}
           columns={feedColumns}
@@ -1167,6 +1215,27 @@ export function SearchScreenView() {
           onItemSelect={handleProductGridSelect}
           getItemWrapperRef={(item) => productImpressionRefById.get(item.id)}
         />
+        {/* Boards for this search (6h bottom shelf) — real moodboards, clipboard cards. */}
+        {resultBoards.length > 0 ? (
+          <div className="mt-6 flex flex-col gap-2">
+            <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-taupe">
+              Boards for this search
+            </p>
+            <div className="grid grid-cols-2 gap-3 px-1 sm:grid-cols-3 lg:grid-cols-4">
+              {resultBoards.map((board, index) => (
+                <MoodboardCard
+                  key={board.slug}
+                  name={board.label}
+                  slug={board.slug}
+                  isSystem={board.isSystem}
+                  itemCount={board.itemCount}
+                  preview={boardPreviews[board.slug]}
+                  index={index}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
     )
   }
@@ -1441,13 +1510,19 @@ export function SearchScreenView() {
     [activeFilter, handleFilterChange, handleFilterToggle],
   )
 
+  // Entry state = the 6g charcoal search room (facets from the catalog). Submitting
+  // there navigates /search into results mode, which renders the block below.
+  if (!isResultsMode) {
+    return <SearchRoom />
+  }
+
   return (
     <div className="flex flex-1 flex-col items-center justify-start px-1 pt-6">
       <div
         className={cn(
           // Static max-width (see HomeScreen): a template-literal max-w-[…] class
           // can't be generated by Tailwind, so the column ran full desktop width.
-          "flex w-full max-w-[24rem] flex-1 flex-col rounded-frame bg-background shadow-sm md:max-w-[47rem] lg:max-w-[62rem] xl:max-w-[78rem]",
+          "flex w-full max-w-[24.5rem] flex-1 flex-col rounded-frame bg-background md:max-w-[47rem] lg:max-w-[62rem] xl:max-w-[78rem]",
           isResultsMode ? "pt-[4.5rem]" : "",
         )}
       >

@@ -197,9 +197,9 @@ export function ProductAlternateCard({
             then brand (muted) left · price (ink 700, tabular) right on one baseline.
             Was brand-above-title with a muted price — both inverted (P1-C12/P0-C7). */}
         <p className="truncate text-xxs font-semibold leading-tight text-foreground">{title}</p>
-        <div className="grid grid-cols-[1fr_auto] items-baseline gap-1 text-xxs leading-tight">
-          <span className="truncate text-muted-foreground">{brand}</span>
-          <span className="truncate text-right font-semibold tabular-nums text-foreground">{price}</span>
+        <div className="grid grid-cols-[1fr_auto] items-baseline gap-1 leading-tight">
+          <span className="truncate text-xxs text-muted-foreground">{brand}</span>
+          <span className="truncate text-right text-[13px] font-bold tabular-nums text-foreground">{price}</span>
         </div>
       </div>
 
