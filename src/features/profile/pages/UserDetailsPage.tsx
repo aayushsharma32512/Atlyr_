@@ -3,7 +3,15 @@ import { useNavigate } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
 import { ScreenHeader, WordmarkLockup } from "@/design-system/primitives"
-import { MannequinHeadAvatar } from "@/features/profile/components/MannequinHeadAvatar"
+import {
+  FirstRunBrandGround,
+  FirstRunFigure,
+  FirstRunPane,
+} from "@/features/profile/components/FirstRunPreview"
+import {
+  MannequinHeadAvatar,
+  type HeadAvatarHairStyle,
+} from "@/features/profile/components/MannequinHeadAvatar"
 import { DropdownSelector, type DropdownOption } from "@/features/profile/components/DropdownSelector"
 import { PickRow, type PickTile } from "@/features/profile/components/PickRow"
 import {
@@ -20,7 +28,11 @@ import {
   PLACEMENT_CANVAS_WIDTH,
   headCropRect,
 } from "@/features/studio/constants/mannequinAnchors"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { AppShellLayout } from "@/layouts/AppShellLayout"
+
+/** Tailwind's `lg`. Below this the figure preview moves into a pinned strip. */
+const TWO_PANE_BREAKPOINT = 1024
 import { SKIN_TONE_STEPS, skinToneChipColor } from "@/shared/skin/melanin"
 
 /**
@@ -74,6 +86,7 @@ export interface UserDetailsPageProps {
 
 export function UserDetailsPage({ forceFirstRunChrome = false }: UserDetailsPageProps = {}) {
   const navigate = useNavigate()
+  const isCompact = useIsMobile(TWO_PANE_BREAKPOINT)
   const { profile, isLoading } = useProfileContext()
   const updateProfileMutation = useProfileUpdateMutation()
 
@@ -190,7 +203,7 @@ export function UserDetailsPage({ forceFirstRunChrome = false }: UserDetailsPage
     return (hairStylesQuery.data ?? []).map((style) => ({
       id: style.id,
       label: style.styleKey,
-      imageUrl: `/hair-baked/${resolvedGender}/${style.styleKey}.png`,
+      imageUrl: `/hair-baked/${resolvedGender}/${style.styleKey}.webp`,
       imageCrop: crop,
     }))
   }, [hairStylesQuery.data, resolvedGender])
@@ -256,13 +269,25 @@ export function UserDetailsPage({ forceFirstRunChrome = false }: UserDetailsPage
 
   const single = (value: string | null, next: string) => (value === next ? null : next)
 
+  // One value for both preview hosts — the phone strip and the lg+ pane render
+  // the same figure, and only one of them is ever mounted. Annotated because an
+  // un-annotated object literal widens `gender` from the "male" | "female"
+  // union back to plain string.
+  const previewHairStyle: HeadAvatarHairStyle =
+    resolvedGender && resolvedHairStyleForPreview
+      ? { styleKey: resolvedHairStyleForPreview.styleKey, gender: resolvedGender }
+      : null
+
+  // The max-w is the measure, and everything inside hangs off one left axis at
+  // px-[26px] — see the notes in TastePage. In first run this is the left pane
+  // of a flex row; in edit mode it is the only child of AppShellLayout.
   const screen = (
-    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+    <div className="relative flex min-h-0 w-full max-w-[720px] flex-1 flex-col overflow-hidden bg-background">
         {isFirstRun ? (
           <header className="shrink-0 pt-6">
-            <WordmarkLockup size="firstRun" />
+            <WordmarkLockup size="firstRun" className="items-start px-[26px]" />
             <div className="px-[26px] pt-4">
-              <p className="flex items-center gap-2 text-[8.5px] font-semibold uppercase tracking-[0.22em] text-primary">
+              <p className="flex items-center gap-2 text-fluid-sm font-semibold uppercase tracking-[0.22em] text-primary">
                 {TASTE_IN_FIRST_RUN ? "First run · step 2 of 2" : "First run · 30 seconds"}
                 {TASTE_IN_FIRST_RUN && (
                   <span className="flex gap-[3px]" aria-hidden="true">
@@ -271,12 +296,12 @@ export function UserDetailsPage({ forceFirstRunChrome = false }: UserDetailsPage
                   </span>
                 )}
               </p>
-              <h1 className="mb-1 mt-[7px] font-display text-[26px] font-medium leading-[1.08] text-foreground">
+              <h1 className="mb-1 mt-[7px] font-display text-fluid-h1 font-medium leading-[1.08] text-foreground">
                 The figure,
                 <br />
                 roughly right.
               </h1>
-              <p className="text-[11.5px] leading-[1.5] text-muted-foreground">
+              <p className="text-fluid-lg leading-[1.5] text-muted-foreground">
                 So looks land on someone shaped like you. Photos come later, in the Studio.
               </p>
             </div>
@@ -297,7 +322,7 @@ export function UserDetailsPage({ forceFirstRunChrome = false }: UserDetailsPage
           <div className="pb-6 pt-4">
             <section className="px-6 pb-[13px]">
               <div className="flex items-center gap-2.5">
-                <span className="text-[8px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                <span className="text-fluid-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                   You
                 </span>
                 <span className="h-px flex-1 bg-hairline" aria-hidden="true" />
@@ -309,7 +334,7 @@ export function UserDetailsPage({ forceFirstRunChrome = false }: UserDetailsPage
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                     placeholder="your name"
-                    className="w-full rounded-[5px] border border-hairline bg-card px-3 py-2 text-[11px] text-foreground placeholder:text-taupe focus:outline-none focus:ring-2 focus:ring-ring"
+                    className="w-full rounded-[5px] border border-hairline bg-card px-3 py-2 text-fluid-md text-foreground placeholder:text-taupe focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                 </label>
                 <label className="w-20">
@@ -319,7 +344,7 @@ export function UserDetailsPage({ forceFirstRunChrome = false }: UserDetailsPage
                     onChange={(event) => setAge(event.target.value.replace(/\D/g, ""))}
                     inputMode="numeric"
                     placeholder="age"
-                    className="w-full rounded-[5px] border border-hairline bg-card px-3 py-2 text-[11px] text-foreground placeholder:text-taupe focus:outline-none focus:ring-2 focus:ring-ring"
+                    className="w-full rounded-[5px] border border-hairline bg-card px-3 py-2 text-fluid-md text-foreground placeholder:text-taupe focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                 </label>
               </div>
@@ -393,7 +418,7 @@ export function UserDetailsPage({ forceFirstRunChrome = false }: UserDetailsPage
                 <button
                   type="button"
                   onClick={() => setShowExactHeight(true)}
-                  className="text-[9px] font-medium text-muted-foreground underline underline-offset-2"
+                  className="text-fluid-xs2 font-medium text-muted-foreground underline underline-offset-2"
                 >
                   {typeof heightCm === "number"
                     ? `set exactly — currently ${heightCm} cm`
@@ -411,20 +436,21 @@ export function UserDetailsPage({ forceFirstRunChrome = false }: UserDetailsPage
               onToggle={(id) => setSelectedSize(single(selectedSize, id))}
             />
 
-            {resolvedGender && (
-              <div className="flex justify-center px-6 pt-2">
+            {/* In first run the preview has moved — pinned below on a phone, in
+                the pane beside at lg+ — because as a 64px circle at the bottom
+                of the scroll you had to pass every picker to see the thing the
+                pickers were changing.
+
+                Edit mode keeps it inline: it renders inside AppShellLayout with
+                a bottom nav, so a pinned band would sit on top of the nav, and
+                neither of the first-run hosts exists here. */}
+            {!isFirstRun && resolvedGender && (
+              <div className="flex justify-start px-[26px] pt-2">
                 <MannequinHeadAvatar
                   size={64}
                   gender={resolvedGender}
                   skinToneHex={selectedSkinTone}
-                  hairStyle={
-                    resolvedHairStyleForPreview
-                      ? {
-                          styleKey: resolvedHairStyleForPreview.styleKey,
-                          gender: resolvedGender,
-                        }
-                      : null
-                  }
+                  hairStyle={previewHairStyle}
                   hairColorHex={selectedHairColorHex}
                 />
               </div>
@@ -432,16 +458,43 @@ export function UserDetailsPage({ forceFirstRunChrome = false }: UserDetailsPage
           </div>
         </div>
 
-        <footer className="shrink-0 border-t border-hairline bg-background px-[22px] pb-6 pt-3.5">
+        {/* Phone: the figure pinned between the scroller and the CTA, so a skin
+            tone or hair pick shows its effect without scrolling. Head crop, not
+            figure — a band this short at the mannequin's 1800x3072 aspect would
+            be about 59px wide. Collapsed entirely until a figure is chosen,
+            rather than pinning an empty band above the CTA. */}
+        {isCompact && isFirstRun && resolvedGender && (
+          <div className="flex h-[112px] shrink-0 items-center gap-4 border-t border-hairline bg-background px-[26px]">
+            {/* Boxed, not stretched across the band. The head crop is roughly
+                square, so given the full width it scales to fit the height and
+                leaves a ~100px head marooned in the middle of a wide strip —
+                worst on tablets. A square host on the left axis fills properly
+                at every width. */}
+            <div className="h-full w-[96px] shrink-0 py-2">
+              <FirstRunFigure
+                crop="head"
+                gender={resolvedGender}
+                skinToneHex={selectedSkinTone}
+                hairStyle={previewHairStyle}
+                hairColorHex={selectedHairColorHex}
+              />
+            </div>
+            <p className="text-fluid-base leading-[1.5] text-muted-foreground">
+              Your figure so far — it changes as you pick.
+            </p>
+          </div>
+        )}
+
+        <footer className="shrink-0 border-t border-hairline bg-background px-[26px] pb-6 pt-3.5">
           {isFirstRun ? (
             <>
-              <p className="mb-2.5 text-center text-[9.5px] font-medium text-muted-foreground">
+              <p className="mb-2.5 text-fluid-base font-medium text-muted-foreground">
                 Nothing here is a measurement — it picks a starting figure. Edit in Profile → Likeness.
               </p>
               <Button
                 onClick={handleContinue}
                 disabled={isSaving}
-                className="h-auto w-full rounded-[3px] py-[15px] text-[13px] font-bold"
+                className="h-auto w-full rounded-[3px] py-fluid-btn text-fluid-cta font-bold"
               >
                 {isSaving ? "Saving…" : "Start exploring →"}
               </Button>
@@ -449,7 +502,7 @@ export function UserDetailsPage({ forceFirstRunChrome = false }: UserDetailsPage
                 type="button"
                 onClick={handleSkip}
                 disabled={isSaving}
-                className="mt-3 w-full text-center text-[11px] font-medium text-muted-foreground"
+                className="mt-3 w-full text-left text-fluid-md font-medium text-muted-foreground"
               >
                 Skip — use a neutral figure
               </button>
@@ -471,8 +524,33 @@ export function UserDetailsPage({ forceFirstRunChrome = false }: UserDetailsPage
   // and a nav here is a trapdoor: tapping it leaves onboarding only for the
   // AppShellLayout gate to bounce you straight back. In edit mode the page is a
   // normal profile screen and keeps the shell.
+  //
+  // The gutter is 0 until the viewport passes the measure, so 390px is untouched
+  // and only tablets and up stop hugging the left edge.
   return isFirstRun ? (
-    <div className="flex h-[100dvh] flex-col bg-background">{screen}</div>
+    <div className="flex h-[100dvh] flex-row bg-background pl-[clamp(0px,(100vw_-_720px)*0.25,160px)]">
+      {screen}
+
+      {/* The whole point of the width: the figure, live, updating as you pick.
+          Until a gender is chosen there is nothing to draw — show the brand
+          ground rather than guessing at a body, since choosing it is what the
+          step is for. */}
+      {!isCompact && (
+        <FirstRunPane>
+          {resolvedGender ? (
+            <FirstRunFigure
+              crop="figure"
+              gender={resolvedGender}
+              skinToneHex={selectedSkinTone}
+              hairStyle={previewHairStyle}
+              hairColorHex={selectedHairColorHex}
+            />
+          ) : (
+            <FirstRunBrandGround caption="Pick a figure and it appears here — skin tone and hair land on it as you go." />
+          )}
+        </FirstRunPane>
+      )}
+    </div>
   ) : (
     <AppShellLayout>{screen}</AppShellLayout>
   )

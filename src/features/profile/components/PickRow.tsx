@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useMemo, useState, type CSSProperties } from "react"
 import { Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -59,8 +59,25 @@ export interface PickRowProps {
   className?: string
 }
 
-/** Inner width of a photo tile: w-[84px] less its p-1 on both sides. */
-const PHOTO_FACE_WIDTH = 76
+/**
+ * Tile widths. These are CSS variables rather than literals because the crop
+ * maths below has to agree with them, and the two used to be kept in sync by
+ * hand — a `PHOTO_FACE_WIDTH = 76` constant mirroring `w-[84px]` less its p-1.
+ * That only held while the width was fixed; the moment it scales, a JS constant
+ * is a stale copy and every cropped tile mis-frames. So the width lives in CSS,
+ * and TileFace expresses the crop as a ratio of it.
+ *
+ * `--face-w` subtracts the tile's p-1 on both sides. The padding stays literal
+ * on purpose: scaling it too would put the term back in two places.
+ */
+const TILE_WIDTHS: Record<NonNullable<PickRowProps["variant"]>, string> = {
+  photo: "clamp(84px, 6vw, 112px)",
+  swatch: "clamp(60px, 4.3vw, 80px)",
+  pill: "auto",
+}
+
+/** Native proportions of a photo face, from the 76×58 the canvas specified. */
+const PHOTO_FACE_ASPECT = "aspect-[76/58]"
 
 /**
  * Deterministic angle in roughly ±1.1° from the tile id, so a selected tile
@@ -100,7 +117,7 @@ export function PickRow({
   return (
     <section className={cn("px-6 pb-[13px]", className)}>
       <div className="flex items-center gap-2.5">
-        <span className="text-[8px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+        <span className="text-fluid-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
           {label}
         </span>
 
@@ -113,14 +130,14 @@ export function PickRow({
               onChange={(event) => setQuery(event.target.value)}
               placeholder={`search ${label.toLowerCase()}`}
               aria-label={`Search ${label.toLowerCase()}`}
-              className="w-full bg-transparent text-[9px] text-ink-body placeholder:text-taupe focus:outline-none"
+              className="w-full bg-transparent text-fluid-xs2 text-ink-body placeholder:text-taupe focus:outline-none"
             />
           </label>
         ) : (
           <>
             <span className="h-px flex-1 bg-hairline" aria-hidden="true" />
             {hint && (
-              <span className="text-[8px] font-medium text-taupe">{hint}</span>
+              <span className="text-fluid-xs font-medium text-taupe">{hint}</span>
             )}
           </>
         )}
@@ -129,6 +146,12 @@ export function PickRow({
       <div
         role={mode === "single" ? "radiogroup" : "group"}
         aria-label={label}
+        style={
+          {
+            "--tile-w": TILE_WIDTHS[variant],
+            "--face-w": `calc(${TILE_WIDTHS[variant]} - 0.5rem)`,
+          } as CSSProperties
+        }
         className={cn(
           // min-w-0 matters: without it this grows to fit its tiles and drags
           // the whole page wider than the viewport instead of scrolling.
@@ -159,8 +182,8 @@ export function PickRow({
               className={cn(
                 "relative shrink-0 rounded-[5px] border bg-card text-left transition-all",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-                variant === "photo" && "w-[84px] p-1",
-                variant === "swatch" && "w-[60px] p-1",
+                variant === "photo" && "w-[var(--tile-w)] p-1",
+                variant === "swatch" && "w-[var(--tile-w)] p-1",
                 variant === "pill" &&
                   (option.sublabel ? "px-2.5 py-[7px]" : "px-3 py-2"),
                 option.dashed
@@ -185,7 +208,7 @@ export function PickRow({
                 <>
                   <span
                     className={cn(
-                      "block text-[9px] font-semibold",
+                      "block text-fluid-xs2 font-semibold",
                       selected ? "text-background" : "text-ink-body",
                     )}
                   >
@@ -194,7 +217,9 @@ export function PickRow({
                   {option.sublabel && (
                     <span
                       className={cn(
-                        "block text-[7px]",
+                        // 7px is below the ramp's floor — the height-band cm
+                        // ranges are the only thing this small.
+                        "block text-[clamp(0.438rem,0.24vw+0.379rem,0.625rem)]",
                         selected ? "text-on-ink-1" : "text-taupe",
                       )}
                     >
@@ -208,7 +233,7 @@ export function PickRow({
                   <span
                     className={cn(
                       "block px-0 pb-0.5 pt-1 text-center",
-                      variant === "swatch" ? "text-[8px]" : "text-[8.5px]",
+                      variant === "swatch" ? "text-fluid-xs" : "text-fluid-sm",
                       selected
                         ? "font-semibold text-foreground"
                         : "font-medium text-ink-body",
@@ -223,7 +248,7 @@ export function PickRow({
         })}
 
         {visible.length === 0 && (
-          <p className="py-4 text-[9px] text-taupe">
+          <p className="py-4 text-fluid-xs2 text-taupe">
             Nothing matching “{query.trim()}” yet.
           </p>
         )}
@@ -247,7 +272,7 @@ function TileFace({
   if (variant === "swatch") {
     return (
       <span
-        className="block h-11 rounded-[3px]"
+        className="block aspect-[52/44] rounded-[3px]"
         style={{ backgroundColor: option.color }}
         aria-hidden="true"
       />
@@ -262,9 +287,19 @@ function TileFace({
       // the crop's origin lands at the face's top-left. Percentages can't do
       // this: `top` would resolve against the face's height, not its width, and
       // the two axes must share one scale factor.
-      const scale = PHOTO_FACE_WIDTH / crop.w
+      //
+      // That factor is the face width over the crop width, and every value below
+      // is therefore `face width × some ratio of the source`. The ratios are
+      // pure numbers — viewport-independent — so they can be handed to calc()
+      // and multiplied by --face-w at paint time. That is what lets the tile
+      // scale without JS ever needing to know how wide it currently is.
       return (
-        <span className="relative block h-[58px] overflow-hidden rounded-[3px] bg-background">
+        <span
+          className={cn(
+            "relative block overflow-hidden rounded-[3px] bg-background",
+            PHOTO_FACE_ASPECT,
+          )}
+        >
           <img
             src={option.imageUrl}
             alt=""
@@ -272,9 +307,9 @@ function TileFace({
             onError={() => setImageBroken(true)}
             className="absolute max-w-none"
             style={{
-              width: crop.naturalWidth * scale,
-              left: -crop.x * scale,
-              top: -crop.y * scale,
+              width: `calc(var(--face-w) * ${crop.naturalWidth / crop.w})`,
+              left: `calc(var(--face-w) * ${-crop.x / crop.w})`,
+              top: `calc(var(--face-w) * ${-crop.y / crop.w})`,
             }}
           />
         </span>
@@ -282,13 +317,20 @@ function TileFace({
     }
 
     return (
-      <span className="flex h-[58px] items-center justify-center rounded-[3px] bg-background">
+      <span
+        className={cn(
+          "flex items-center justify-center rounded-[3px] bg-background",
+          PHOTO_FACE_ASPECT,
+        )}
+      >
         <img
           src={option.imageUrl}
           alt=""
           loading="lazy"
           onError={() => setImageBroken(true)}
-          className="max-h-[50px] max-w-[88%] object-contain"
+          // 86% ≈ the old max-h-[50px] against a 58px face, held as a ratio so
+          // the inset survives the face growing.
+          className="max-h-[86%] max-w-[88%] object-contain"
         />
       </span>
     )
@@ -296,8 +338,13 @@ function TileFace({
 
   // No art yet. Say so rather than shipping an empty box.
   return (
-    <span className="bg-placeholder-grid flex h-[58px] items-end justify-center rounded-[3px] bg-background pb-1">
-      <span className="text-[6.5px] font-semibold tracking-[0.1em] text-taupe">
+    <span
+      className={cn(
+        "bg-placeholder-grid flex items-end justify-center rounded-[3px] bg-background pb-1",
+        PHOTO_FACE_ASPECT,
+      )}
+    >
+      <span className="text-fluid-2xs font-semibold tracking-[0.1em] text-taupe">
         {option.placeholder ?? "PHOTO"}
       </span>
     </span>

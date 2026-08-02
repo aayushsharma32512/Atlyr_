@@ -198,6 +198,39 @@ img {
     --radius-card: var(--radius);
     --radius-sheet: calc(var(--radius) + 0.125rem);
     --radius-chip: 9999px;
+
+    /* ── Fluid scale (Kalagriha surfaces: gate, login, first run).
+       The handoff only ever existed as a 390px frame, so those screens were
+       built from one set of literal pixel values and then rendered that phone
+       comp at every width — 11.5px body copy and a 330px column on a 1920px
+       display.
+
+       Each step is anchored so it evaluates to *exactly* its Figma value at
+       390px and grows to roughly 1.35× by ~1640px, where it caps. Phone stays
+       pixel-identical to the spec; nothing between the two ends snaps.
+
+       Written in rem, not px: a pure-px clamp() is inert under browser zoom and
+       ignores the user's font-size setting. The vw term supplies the viewport
+       response, the rem term keeps it accessible. Retune the system here rather
+       than in the components — see fontSize in tailwind.config.ts. ── */
+    --fluid-2xs: clamp(0.406rem, 0.2vw + 0.358rem, 0.563rem);    /*  6.5 →  9   */
+    --fluid-xs: clamp(0.5rem, 0.24vw + 0.442rem, 0.688rem);      /*  8   → 11   */
+    --fluid-xs2: clamp(0.563rem, 0.28vw + 0.494rem, 0.813rem);   /*  9   → 13   */
+    --fluid-sm: clamp(0.531rem, 0.24vw + 0.473rem, 0.719rem);    /*  8.5 → 11.5 */
+    --fluid-base: clamp(0.594rem, 0.28vw + 0.526rem, 0.813rem);  /*  9.5 → 13   */
+    --fluid-md: clamp(0.688rem, 0.32vw + 0.61rem, 0.938rem);     /* 11   → 15   */
+    --fluid-lg: clamp(0.719rem, 0.32vw + 0.641rem, 0.969rem);    /* 11.5 → 15.5 */
+    --fluid-cta: clamp(0.813rem, 0.32vw + 0.735rem, 1.063rem);   /* 13   → 17   */
+    --fluid-h2: clamp(1.188rem, 0.64vw + 1.032rem, 1.688rem);    /* 19   → 27   */
+    --fluid-h1: clamp(1.625rem, 0.96vw + 1.391rem, 2.375rem);    /* 26   → 38   */
+    --fluid-mark-firstrun: clamp(1.688rem, 1.04vw + 1.434rem, 2.5rem); /* 27 → 40 */
+    --fluid-mark-landing: clamp(2.5rem, 2.56vw + 1.876rem, 4.5rem);    /* 40 → 72 */
+
+    /* Rhythm tracks the type, or the copy grows while the gaps stay phone-sized
+       and the composition closes up on itself. */
+    --fluid-gap-sm: clamp(1rem, 0.48vw + 0.883rem, 1.375rem);     /* 16 → 22 */
+    --fluid-gap-lg: clamp(2.25rem, 1.28vw + 1.938rem, 3.25rem);   /* 36 → 52 */
+    --fluid-btn-y: clamp(0.938rem, 0.48vw + 0.821rem, 1.313rem);  /* 15 → 21 */
   }
 
   /* ── Ops surfaces (/admin/*, /hitl): the pre-Kalagriha stone theme, verbatim.

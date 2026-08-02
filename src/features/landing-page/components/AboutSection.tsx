@@ -75,7 +75,7 @@ export function AboutSection() {
                 rotationEnd="center center"
                 wordAnimationEnd="center center"
               >
-                About ATLYR
+                About Kalagriha
               </ScrollReveal>
             </div>
             <ScrollReveal
@@ -88,7 +88,7 @@ export function AboutSection() {
               rotationEnd="center center"
               wordAnimationEnd="center center"
             >
-              Atlyr understands your style 🎨, learns your preferences 🧠, and curates outfits that match your vibe ✨—every single time. From streetwear to smart casual, our smart platform analyzes your favorite pieces, follows your evolving taste, and helps you discover looks you never knew you needed—all personalized for your lifestyle. 
+              Kalagriha understands your style 🎨, learns your preferences 🧠, and curates outfits that match your vibe ✨—every single time. From streetwear to smart casual, our smart platform analyzes your favorite pieces, follows your evolving taste, and helps you discover looks you never knew you needed—all personalized for your lifestyle. 
             </ScrollReveal>
           </div>
         </div>

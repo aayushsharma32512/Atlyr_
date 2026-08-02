@@ -69,20 +69,20 @@ export function LoginPage() {
         }}
       />
 
-      <div className="relative z-10 w-full max-w-[330px]">
+      <div className="relative z-10 w-full max-w-[clamp(330px,32vw,460px)]">
         <WordmarkLockup size="firstRun" onDark />
 
-        <p className="mt-8 text-center text-[8.5px] font-semibold uppercase tracking-[0.22em] text-primary">
+        <p className="mt-8 text-center text-fluid-sm font-semibold uppercase tracking-[0.22em] text-primary">
           By invitation
         </p>
-        <h1 className="mt-[7px] text-center font-display text-[26px] font-medium leading-[1.12] text-background">
+        <h1 className="mt-[7px] text-center font-display text-fluid-h1 font-medium leading-[1.12] text-background">
           Come in.
         </h1>
 
         {error && (
           <p
             role="alert"
-            className="mt-5 rounded-[3px] bg-destructive/15 px-3 py-2 text-center text-[11px] text-destructive-foreground"
+            className="mt-5 rounded-[3px] bg-destructive/15 px-3 py-2 text-center text-fluid-md text-destructive-foreground"
           >
             {error}
           </p>
@@ -92,7 +92,7 @@ export function LoginPage() {
           type="button"
           onClick={handleGoogleSignIn}
           disabled={loading}
-          className="mt-7 h-auto w-full rounded-[3px] bg-secondary py-[15px] text-[13px] font-bold text-foreground hover:bg-secondary/90"
+          className="mt-7 h-auto w-full rounded-[3px] bg-secondary py-fluid-btn text-fluid-cta font-bold text-foreground hover:bg-secondary/90"
         >
           {loading ? (
             <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -119,13 +119,13 @@ export function LoginPage() {
           {isSignup ? "Continue with Google" : "Sign in with Google"}
         </Button>
 
-        <p className="mt-4 text-center text-[9.5px] leading-[1.6] text-on-ink-1">
+        <p className="mt-4 text-center text-fluid-base leading-[1.6] text-on-ink-1">
           One account: likeness, boards, try-ons.
           <br />
           Photos stay private — delete anytime.
         </p>
 
-        <p className="mt-8 text-center text-[9px] leading-[1.6] text-on-ink-1/70">
+        <p className="mt-8 text-center text-fluid-xs2 leading-[1.6] text-on-ink-1/70">
           By continuing, you agree to our{" "}
           <Link to="/terms" className="underline underline-offset-2 hover:text-on-ink-2">
             Terms of Service

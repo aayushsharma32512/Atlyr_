@@ -37,17 +37,17 @@ export function LandingGate({
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: [0.7, 0, 0.2, 1] }}
-        className="relative z-10 flex w-full max-w-[330px] flex-col items-center"
+        className="relative z-10 flex w-full max-w-[clamp(330px,38vw,520px)] flex-col items-center"
       >
         <WordmarkLockup size="landing" />
 
-        <p className="mt-9 font-display text-[19px] italic leading-[1.35] text-terracotta">
+        <p className="mt-fluid-lg font-display text-fluid-h2 italic leading-[1.35] text-terracotta">
           Own the look
           <br />
           before you buy it.
         </p>
 
-        <p className="mt-4 text-[11.5px] leading-[1.6] text-muted-foreground">
+        <p className="mt-fluid-sm text-fluid-lg leading-[1.6] text-muted-foreground">
           Indie fusion, on your likeness.
           <br />
           By invitation, for now.
@@ -57,7 +57,7 @@ export function LandingGate({
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           onClick={isAuthenticated ? onEnterApp : onWaitlistScroll}
-          className="mt-9 w-full rounded-[3px] bg-primary py-[15px] text-[13px] font-bold text-primary-foreground shadow-sm transition-shadow hover:shadow-md"
+          className="mt-fluid-lg w-full rounded-[3px] bg-primary py-fluid-btn text-fluid-cta font-bold text-primary-foreground shadow-sm transition-shadow hover:shadow-md"
         >
           {isAuthenticated ? "Enter the studio →" : "Join the waitlist →"}
         </motion.button>
@@ -69,7 +69,7 @@ export function LandingGate({
           <button
             type="button"
             onClick={onWaitlistScroll}
-            className="mt-4 text-[11px] font-medium text-muted-foreground transition-colors hover:text-terracotta"
+            className="mt-fluid-sm text-fluid-md font-medium text-muted-foreground transition-colors hover:text-terracotta"
           >
             Take a look around <span className="text-terracotta">↓</span>
           </button>
@@ -77,7 +77,7 @@ export function LandingGate({
           <button
             type="button"
             onClick={onSignInClick}
-            className="mt-4 text-[11px] font-medium text-muted-foreground transition-colors hover:text-terracotta"
+            className="mt-fluid-sm text-fluid-md font-medium text-muted-foreground transition-colors hover:text-terracotta"
           >
             Already invited? <span className="text-terracotta">Sign in →</span>
           </button>

@@ -20,6 +20,11 @@ export default {
 		extend: {
 			spacing: {
 				104: "26rem",
+				// Fluid rhythm, paired with the fontSize ramp below. See the
+				// scale definition in src/index.css.
+				'fluid-sm': 'var(--fluid-gap-sm)',
+				'fluid-lg': 'var(--fluid-gap-lg)',
+				'fluid-btn': 'var(--fluid-btn-y)',
 			},
 			fontFamily: {
 				'sans': ['var(--font-sans)'],
@@ -32,6 +37,24 @@ export default {
 			fontSize: {
 				xxs: ["0.5rem", { lineHeight: "0.75rem" }],
 				xs2: ["0.625rem", { lineHeight: "0.875rem" }],
+				// ── Fluid ramp for the Kalagriha surfaces. Values live in
+				// src/index.css; these are the names the components use.
+				// Deliberately bare strings rather than [size, { lineHeight }]
+				// tuples — the gate and first-run screens set their own
+				// leading-[1.35] / leading-[1.08], and a tuple here would ship a
+				// competing line-height for every one of them to override.
+				'fluid-2xs': 'var(--fluid-2xs)',
+				'fluid-xs': 'var(--fluid-xs)',
+				'fluid-xs2': 'var(--fluid-xs2)',
+				'fluid-sm': 'var(--fluid-sm)',
+				'fluid-base': 'var(--fluid-base)',
+				'fluid-md': 'var(--fluid-md)',
+				'fluid-lg': 'var(--fluid-lg)',
+				'fluid-cta': 'var(--fluid-cta)',
+				'fluid-h2': 'var(--fluid-h2)',
+				'fluid-h1': 'var(--fluid-h1)',
+				'fluid-mark-firstrun': 'var(--fluid-mark-firstrun)',
+				'fluid-mark-landing': 'var(--fluid-mark-landing)',
 			},
 			colors: {
 				border: 'hsl(var(--border))',

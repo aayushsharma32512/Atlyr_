@@ -19,7 +19,7 @@ const TOUR_STEPS: TourStep[] = [
     {
         id: 'intro',
         title: 'Welcome!',
-        message: "to Atlyr's interactive studio demo. Play around to design your perfect outfit",
+        message: "to Kalagriha's interactive studio demo. Play around to design your perfect outfit",
         tooltipPosition: { top: '30%', left: '20px' },
         requiresSplitView: false
     },

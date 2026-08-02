@@ -30,11 +30,17 @@ export interface WordmarkLockupProps {
 
 const MARK = "कलागृह"
 
+/**
+ * `micro` and `header` stay literal: both sit inside fixed chrome (the landing
+ * header is an h-16 bar), so growing them would push against a height that
+ * doesn't grow with them. The two brand sizes are the ones that own their
+ * space, and those scale.
+ */
 const MARK_SIZE: Record<WordmarkSize, string> = {
   micro: "text-[13px]",
   header: "text-[17px]",
-  firstRun: "text-[27px]",
-  landing: "text-[40px]",
+  firstRun: "text-fluid-mark-firstrun",
+  landing: "text-fluid-mark-landing",
 }
 
 export function WordmarkLockup({
@@ -71,8 +77,11 @@ export function WordmarkLockup({
           aria-hidden="true"
           className={cn(
             "mt-[11px] h-px",
+            // The thread reads as a measure under the mark, so it has to track
+            // the mark's growth — held at 230px it would look like a dash under
+            // a 72px wordmark.
             size === "landing"
-              ? "w-[230px] bg-[linear-gradient(90deg,transparent,hsl(var(--taupe)),transparent)]"
+              ? "w-[clamp(230px,26vw,330px)] bg-[linear-gradient(90deg,transparent,hsl(var(--taupe)),transparent)]"
               : "w-[34px] bg-taupe",
           )}
         />
@@ -82,7 +91,7 @@ export function WordmarkLockup({
         <span
           aria-hidden="true"
           className={cn(
-            "mt-[10px] text-[9px] uppercase tracking-[0.4em]",
+            "mt-[10px] text-fluid-xs2 uppercase tracking-[0.4em]",
             onDark ? "text-on-ink-1" : "text-muted-foreground",
           )}
         >
