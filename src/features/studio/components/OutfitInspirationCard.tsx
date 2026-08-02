@@ -238,18 +238,34 @@ export function OutfitInspirationCard({
   const isFluid = sizeMode === "fluid"
 
   
-  // Handler for segment clicks on bare mannequin
-  const handleSegmentSelect = (segment: MannequinSegmentName) => {
-    if (!onSlotSelect) return
-    if (segment === "legs") {
-      onSlotSelect("bottom")
-    } else if (segment === "feet") {
-      onSlotSelect("shoes")
-    } else {
-      // Default to top for torso, arms, head, neck
-      onSlotSelect("top")
-    }
-  }
+  /**
+   * Handler for segment clicks on the bare mannequin.
+   *
+   * Must be undefined when there is no `onSlotSelect`, not a function that
+   * returns early. AvatarRenderer derives `isInteractive = Boolean(onSegmentSelect)`
+   * and uses it to set `pointerEvents` on every body segment. A always-defined
+   * handler therefore made torso, arms and legs permanently click-catching —
+   * they sit above the garment images, so tapping a garment hit the segment,
+   * which then early-returned and did nothing. That is why tapping clothes on
+   * the model appeared dead for everyone except admins (the only callers that
+   * pass onSlotSelect).
+   */
+  const handleSegmentSelect = useMemo(
+    () =>
+      onSlotSelect
+        ? (segment: MannequinSegmentName) => {
+            if (segment === "legs") {
+              onSlotSelect("bottom")
+            } else if (segment === "feet") {
+              onSlotSelect("shoes")
+            } else {
+              // Default to top for torso, arms, head, neck
+              onSlotSelect("top")
+            }
+          }
+        : undefined,
+    [onSlotSelect],
+  )
   const [measuredHeight, setMeasuredHeight] = useState<number | null>(null)
   const [measuredWidth, setMeasuredWidth] = useState<number | null>(null)
   const metadataRef = useRef<HTMLDivElement | null>(null)
