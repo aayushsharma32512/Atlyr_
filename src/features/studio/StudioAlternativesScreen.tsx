@@ -27,6 +27,7 @@ import { useStudioSearchResults } from "@/features/studio/hooks/useStudioSearchR
 import { useProductFilterOptions } from "@/features/search/hooks/useProductFilterOptions"
 import type { StudioAlternativeProduct, StudioProductTraySlot } from "@/services/studio/studioService"
 import { useStudioResolvedSlots } from "@/features/studio/hooks/useStudioResolvedSlots"
+import { isPlaceableOnMannequin, shouldFilterSlotByPlacement } from "@/features/studio/utils/placementSupport"
 import { mapTrayItemToStudioRenderedItem } from "@/features/studio/mappers/renderedItemMapper"
 import { mapTrayItemToProductDetail } from "@/services/studio/studioService"
 import { useSaveOutfit } from "@/features/outfits/hooks/useSaveOutfit"
@@ -313,11 +314,27 @@ export function StudioAlternativesView() {
     if (rackMode === "yours") {
       return []
     }
+
+    // Drop anything the photoreal mannequin cannot actually wear — see
+    // isPlaceableOnMannequin. Applied to footwear only for now.
+    const mannequin = (outfitData?.avatarGender ?? adminGender ?? gender ?? "female") as "male" | "female"
+    const placeable = shouldFilterSlotByPlacement(slot)
+      ? filteredAlternativeProducts.filter((product) => isPlaceableOnMannequin(product, mannequin))
+      : filteredAlternativeProducts
+
     if (rackMode === "saves") {
-      return filteredAlternativeProducts.filter((product) => productSaveActions.isSaved(product.id))
+      return placeable.filter((product) => productSaveActions.isSaved(product.id))
     }
-    return filteredAlternativeProducts
-  }, [filteredAlternativeProducts, productSaveActions, rackMode])
+    return placeable
+  }, [
+    adminGender,
+    filteredAlternativeProducts,
+    gender,
+    outfitData?.avatarGender,
+    productSaveActions,
+    rackMode,
+    slot,
+  ])
 
   // --- FILTER OPTIONS ---
   const { data: filterOptions, isLoading: isFilterOptionsLoading, error: filterOptionsError } = useProductFilterOptions({

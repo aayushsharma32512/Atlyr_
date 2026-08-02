@@ -1,17 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { ChevronLeft } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { ScreenHeader, WordmarkLockup } from "@/design-system/primitives"
+import { WordmarkLockup } from "@/design-system/primitives"
 import {
   FirstRunBrandGround,
   FirstRunFigure,
   FirstRunPane,
 } from "@/features/profile/components/FirstRunPreview"
-import {
-  MannequinHeadAvatar,
-  type HeadAvatarHairStyle,
-} from "@/features/profile/components/MannequinHeadAvatar"
+import { type HeadAvatarHairStyle } from "@/features/profile/components/MannequinHeadAvatar"
 import { DropdownSelector, type DropdownOption } from "@/features/profile/components/DropdownSelector"
 import { PickRow, type PickTile } from "@/features/profile/components/PickRow"
 import {
@@ -29,7 +27,6 @@ import {
   headCropRect,
 } from "@/features/studio/constants/mannequinAnchors"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { AppShellLayout } from "@/layouts/AppShellLayout"
 
 /** Tailwind's `lg`. Below this the figure preview moves into a pinned strip. */
 const TWO_PANE_BREAKPOINT = 1024
@@ -109,7 +106,18 @@ export function UserDetailsPage({ forceFirstRunChrome = false }: UserDetailsPage
   const resolvedGender = gender === "male" || gender === "female" ? gender : null
   const hairStylesQuery = useAvatarHairStyles(resolvedGender)
 
-  const isFirstRun = forceFirstRunChrome || (!isLoading && !profile?.onboarding_complete)
+  /**
+   * The 6c2 layout is now the ONLY layout — reaching this page from Profile
+   * used to drop you into a different screen entirely (ScreenHeader, bottom
+   * nav, a 64px head thumbnail instead of the live figure), so the thing you
+   * were editing was barely visible. Same picker, same measure, same figure
+   * pane, whichever door you came through.
+   *
+   * What still varies is only what is TRUE in each case: the eyebrow, the CTA,
+   * and where it takes you. Onboarding has no way back and ends at /home;
+   * editing has a back link and returns to /profile.
+   */
+  const isOnboarding = forceFirstRunChrome || (!isLoading && !profile?.onboarding_complete)
 
   const resolvedHairStyleForPreview = useMemo(() => {
     if (!hairStylesQuery.data.length) {
@@ -283,36 +291,45 @@ export function UserDetailsPage({ forceFirstRunChrome = false }: UserDetailsPage
   // of a flex row; in edit mode it is the only child of AppShellLayout.
   const screen = (
     <div className="relative flex min-h-0 w-full max-w-[720px] flex-1 flex-col overflow-hidden bg-background">
-        {isFirstRun ? (
-          <header className="shrink-0 pt-6">
-            <WordmarkLockup size="firstRun" className="items-start px-[26px]" />
-            <div className="px-[26px] pt-4">
-              <p className="flex items-center gap-2 text-fluid-sm font-semibold uppercase tracking-[0.22em] text-primary">
-                {TASTE_IN_FIRST_RUN ? "First run · step 2 of 2" : "First run · 30 seconds"}
-                {TASTE_IN_FIRST_RUN && (
-                  <span className="flex gap-[3px]" aria-hidden="true">
-                    <span className="h-0.5 w-3 bg-primary" />
-                    <span className="h-0.5 w-3 bg-primary" />
-                  </span>
-                )}
-              </p>
-              <h1 className="mb-1 mt-[7px] font-display text-fluid-h1 font-medium leading-[1.08] text-foreground">
-                The figure,
-                <br />
-                roughly right.
-              </h1>
-              <p className="text-fluid-lg leading-[1.5] text-muted-foreground">
-                So looks land on someone shaped like you. Photos come later, in the Studio.
-              </p>
-            </div>
-          </header>
-        ) : (
-          <ScreenHeader
-            title="Your figure"
-            onAction={() => navigate("/profile")}
-            className="shrink-0"
-          />
-        )}
+        <header className="shrink-0 pt-6">
+          {/* Onboarding has nowhere to go back TO — the gate would bounce you
+              straight here again. Editing does, and without this the only exit
+              is saving, since the first-run layout has no bottom nav. */}
+          {!isOnboarding && (
+            <button
+              type="button"
+              onClick={() => navigate("/profile")}
+              className="mb-3 flex items-center gap-1 px-[26px] text-fluid-sm font-semibold text-muted-foreground"
+            >
+              <ChevronLeft className="size-4" aria-hidden="true" />
+              Profile
+            </button>
+          )}
+          <WordmarkLockup size="firstRun" className="items-start px-[26px]" />
+          <div className="px-[26px] pt-4">
+            <p className="flex items-center gap-2 text-fluid-sm font-semibold uppercase tracking-[0.22em] text-primary">
+              {isOnboarding
+                ? TASTE_IN_FIRST_RUN
+                  ? "First run · step 2 of 2"
+                  : "First run · 30 seconds"
+                : "Your figure"}
+              {isOnboarding && TASTE_IN_FIRST_RUN && (
+                <span className="flex gap-[3px]" aria-hidden="true">
+                  <span className="h-0.5 w-3 bg-primary" />
+                  <span className="h-0.5 w-3 bg-primary" />
+                </span>
+              )}
+            </p>
+            <h1 className="mb-1 mt-[7px] font-display text-fluid-h1 font-medium leading-[1.08] text-foreground">
+              The figure,
+              <br />
+              roughly right.
+            </h1>
+            <p className="text-fluid-lg leading-[1.5] text-muted-foreground">
+              So looks land on someone shaped like you. Photos come later, in the Studio.
+            </p>
+          </div>
+        </header>
 
         {/* Deliberately not Radix ScrollArea: its viewport wraps children in a
             display:table element, which sizes to content. Any row wider than the
@@ -436,25 +453,11 @@ export function UserDetailsPage({ forceFirstRunChrome = false }: UserDetailsPage
               onToggle={(id) => setSelectedSize(single(selectedSize, id))}
             />
 
-            {/* In first run the preview has moved — pinned below on a phone, in
-                the pane beside at lg+ — because as a 64px circle at the bottom
-                of the scroll you had to pass every picker to see the thing the
-                pickers were changing.
-
-                Edit mode keeps it inline: it renders inside AppShellLayout with
-                a bottom nav, so a pinned band would sit on top of the nav, and
-                neither of the first-run hosts exists here. */}
-            {!isFirstRun && resolvedGender && (
-              <div className="flex justify-start px-[26px] pt-2">
-                <MannequinHeadAvatar
-                  size={64}
-                  gender={resolvedGender}
-                  skinToneHex={selectedSkinTone}
-                  hairStyle={previewHairStyle}
-                  hairColorHex={selectedHairColorHex}
-                />
-              </div>
-            )}
+            {/* The inline 64px preview that used to sit here in edit mode is
+                gone. Both hosts now exist on every entry — pinned below on a
+                phone, in the pane beside at lg+ — so a thumbnail at the bottom
+                of the scroll would be a third copy of the same figure, and the
+                worst-placed one: you had to pass every picker to reach it. */}
           </div>
         </div>
 
@@ -463,7 +466,7 @@ export function UserDetailsPage({ forceFirstRunChrome = false }: UserDetailsPage
             figure — a band this short at the mannequin's 1800x3072 aspect would
             be about 59px wide. Collapsed entirely until a figure is chosen,
             rather than pinning an empty band above the CTA. */}
-        {isCompact && isFirstRun && resolvedGender && (
+        {isCompact && resolvedGender && (
           <div className="flex h-[112px] shrink-0 items-center gap-4 border-t border-hairline bg-background px-[26px]">
             {/* Boxed, not stretched across the band. The head crop is roughly
                 square, so given the full width it scales to fit the height and
@@ -485,49 +488,46 @@ export function UserDetailsPage({ forceFirstRunChrome = false }: UserDetailsPage
           </div>
         )}
 
+        {/* Same band, same button, both ways in — only the words and the
+            destination change, because those are the parts that actually
+            differ. Editing keeps "Save details" disabled until the form is
+            valid; onboarding never blocks you, since Skip is the escape. */}
         <footer className="shrink-0 border-t border-hairline bg-background px-[26px] pb-6 pt-3.5">
-          {isFirstRun ? (
-            <>
-              <p className="mb-2.5 text-fluid-base font-medium text-muted-foreground">
-                Nothing here is a measurement — it picks a starting figure. Edit in Profile → Likeness.
-              </p>
-              <Button
-                onClick={handleContinue}
-                disabled={isSaving}
-                className="h-auto w-full rounded-[3px] py-fluid-btn text-fluid-cta font-bold"
-              >
-                {isSaving ? "Saving…" : "Start exploring →"}
-              </Button>
-              <button
-                type="button"
-                onClick={handleSkip}
-                disabled={isSaving}
-                className="mt-3 w-full text-left text-fluid-md font-medium text-muted-foreground"
-              >
-                Skip — use a neutral figure
-              </button>
-            </>
-          ) : (
-            <Button
-              onClick={handleSave}
-              disabled={isSaving || !isFormValid}
-              className="h-11 w-full rounded-[5px]"
+          <p className="mb-2.5 text-fluid-base font-medium text-muted-foreground">
+            Nothing here is a measurement — it picks a starting figure. Edit in Profile → Likeness.
+          </p>
+          <Button
+            onClick={isOnboarding ? handleContinue : handleSave}
+            disabled={isSaving || (!isOnboarding && !isFormValid)}
+            className="h-auto w-full rounded-[3px] py-fluid-btn text-fluid-cta font-bold"
+          >
+            {isSaving ? "Saving…" : isOnboarding ? "Start exploring →" : "Save details"}
+          </Button>
+          {isOnboarding && (
+            <button
+              type="button"
+              onClick={handleSkip}
+              disabled={isSaving}
+              className="mt-3 w-full text-left text-fluid-md font-medium text-muted-foreground"
             >
-              {isSaving ? "Saving…" : "Save details"}
-            </Button>
+              Skip — use a neutral figure
+            </button>
           )}
         </footer>
     </div>
   )
 
-  // First run owns the whole viewport — no bottom nav. The canvas draws none,
-  // and a nav here is a trapdoor: tapping it leaves onboarding only for the
-  // AppShellLayout gate to bounce you straight back. In edit mode the page is a
-  // normal profile screen and keeps the shell.
+  // The page owns the whole viewport either way — no bottom nav.
+  //
+  // In onboarding a nav is a trapdoor: tapping it leaves the flow only for the
+  // AppShellLayout gate to bounce you straight back. When editing there is no
+  // gate, but the shell would cost the figure pane its height and put a nav bar
+  // under a screen whose whole point is the live figure — so the back link in
+  // the header is the way out instead.
   //
   // The gutter is 0 until the viewport passes the measure, so 390px is untouched
   // and only tablets and up stop hugging the left edge.
-  return isFirstRun ? (
+  return (
     <div className="flex h-[100dvh] flex-row bg-background pl-[clamp(0px,(100vw_-_720px)*0.25,160px)]">
       {screen}
 
@@ -551,8 +551,6 @@ export function UserDetailsPage({ forceFirstRunChrome = false }: UserDetailsPage
         </FirstRunPane>
       )}
     </div>
-  ) : (
-    <AppShellLayout>{screen}</AppShellLayout>
   )
 }
 

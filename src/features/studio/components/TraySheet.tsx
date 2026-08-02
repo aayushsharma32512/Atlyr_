@@ -10,6 +10,7 @@ import type {
   StudioProductTraySlot,
 } from "@/services/studio/studioService"
 import { cn } from "@/lib/utils"
+import { isPlaceableOnMannequin, shouldFilterSlotByPlacement } from "@/features/studio/utils/placementSupport"
 
 /**
  * Canvas 7a — the tray sheet. Handoff §8.1 names it `TraySheet` with props
@@ -85,6 +86,8 @@ export interface TraySheetProps {
   /** ⧉ — escalate to the full 7c rack, with search, filters and the peek. */
   onOpenSplitView: (slot: StudioProductTraySlot) => void
   isReadOnly?: boolean
+  /** Which body is on screen — placement is per-mannequin, not per-product. */
+  mannequin?: "male" | "female"
 }
 
 export function TraySheet({
@@ -100,6 +103,7 @@ export function TraySheet({
   onWear,
   onOpenSplitView,
   isReadOnly = false,
+  mannequin = "female",
 }: TraySheetProps) {
   // `enabled` inside the hook already gates on outfitId/slot; the drawer
   // unmounts its content when closed, so nothing fetches until it opens.
@@ -110,6 +114,12 @@ export function TraySheet({
     mode === "alternates" ? outfitId : null,
     mode === "alternates" ? slot : null,
   )
+
+  // Same rule as the 7c rack: never offer a piece the photoreal mannequin will
+  // silently refuse to draw.
+  const offerable = shouldFilterSlotByPlacement(slot)
+    ? (alternatives ?? []).filter((product) => isPlaceableOnMannequin(product, mannequin))
+    : (alternatives ?? [])
 
   const visibleWorn = wornItems.filter((item) => !hiddenSlots[item.slot])
   const lookTotal = visibleWorn.reduce((sum, item) => sum + (item.price ?? 0), 0)
@@ -193,13 +203,13 @@ export function TraySheet({
                 <Skeleton key={index} className="aspect-[4/5] rounded-[4px]" />
               ))}
             </div>
-          ) : !alternatives || alternatives.length === 0 ? (
+          ) : offerable.length === 0 ? (
             <p className="py-8 text-center text-[9px] text-muted-foreground">
               Nothing else in this slot yet.
             </p>
           ) : (
             <div className="grid grid-cols-4 gap-1.5">
-              {alternatives.map((product) => {
+              {offerable.map((product) => {
                 const isWorn = product.id === wornProductId
                 return (
                   <button

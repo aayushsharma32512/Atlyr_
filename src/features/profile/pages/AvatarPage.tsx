@@ -106,7 +106,6 @@ export function AvatarPage() {
           // pose IS what a studio try-on will use, so this is the honest door.
           onTryOn={() => navigate("/studio")}
           remainingToday={limit ? Math.max(0, limit.limit - limit.count) : null}
-          dailyLimit={limit?.limit ?? null}
           isBusy={setActiveMutation.isPending || deleteMutation.isPending}
         />
         </div>
