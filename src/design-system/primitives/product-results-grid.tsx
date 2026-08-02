@@ -5,6 +5,15 @@ import { cn } from "@/lib/utils"
 import { ProductAlternateCard, type ProductAlternateCardProps } from "./product-alternate-card"
 import { buildGridColumns } from "./balanced-grid-utils"
 
+// Clipboard/pinboard tilt — deterministic per item (hashed from its id) so a card
+// keeps its angle across scrolls/re-renders, matching the boards & search room.
+const CARD_TILT = ["-1.2deg", "0.9deg", "-0.6deg", "1.1deg", "-1deg", "0.6deg"]
+const hashId = (id: string) => {
+  let h = 0
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0
+  return h
+}
+
 interface ProductResultsGridItem
   extends Pick<
     ProductAlternateCardProps,
@@ -77,7 +86,11 @@ export function ProductResultsGrid({
                     }
                   : undefined
               }
-              className={cn(isInteractive && "cursor-pointer")}
+              style={{ transform: `rotate(${CARD_TILT[hashId(item.id) % CARD_TILT.length]})` }}
+              className={cn(
+                "drop-shadow-[0_3px_9px_rgba(46,42,36,0.12)] transition-transform",
+                isInteractive && "cursor-pointer",
+              )}
             >
               <ProductAlternateCard
                 imageSrc={item.imageSrc}
