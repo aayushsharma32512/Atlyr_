@@ -6,7 +6,9 @@ import type { HeroGarment } from "./types";
  *
  * They were stock Western pieces -- blazer, leather jacket, loafers -- which read oddly orbiting a
  * card demoing ethnic wear. Womenswear and menswear alternate so the ring isn't one-sided, and the
- * two slots that used to hold shoes now hold bottoms: the catalog has no ethnic footwear.
+ * two slots that used to hold shoes now hold bottoms. That last swap was forced by the catalog
+ * having no ethnic footwear at the time; it since does (six placed Kolhapuri/leather sandals, now
+ * in the mini-studio tray), so those slots could hold shoes again if the ring ever wants them.
  *
  * Positions, width classes and breakpoints are the pre-rebrand layout VERBATIM -- only the
  * clothes changed. Each image is padded to the aspect ratio of the photo that used to sit in its

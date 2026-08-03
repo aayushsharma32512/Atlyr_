@@ -9,11 +9,17 @@
  *   bun run scripts/list-placed-outfit-candidates.ts --list [--filter kurta,saree]
  *   bun run scripts/list-placed-outfit-candidates.ts --emit <topId>,<bottomId> --gender female
  *   bun run scripts/list-placed-outfit-candidates.ts --emit-alternates --gender female [--limit 24]
+ *   bun run scripts/list-placed-outfit-candidates.ts --emit-alternates --gender female --ids <id>,<id>,…
+ *
+ * --ids emits exactly the products named, bucketed into their own zones, instead of the first
+ * --limit that match --filter. Use it when the selection is a judgement call --filter cannot make:
+ * it ORs its terms across all zones at once, and cannot tell an embroidered crop top from an
+ * embroidered kurta. Ids that resolve to nothing are reported, never dropped silently.
  *
  * Zones are top + bottom + shoes. Shoes were omitted while no pair was 3D-placed for male; the
- * pipeline has since placed 23 for female and 6 for male. Note the catalog still holds no ethnic
- * footwear — every placed male pair is a sneaker — so the shoe filter is deliberately left off the
- * ethnic term list, or no gender would fill the slot.
+ * pipeline has since placed 23 for female and 12 for male. The note that used to sit here — that
+ * the catalog held no ethnic footwear, every placed male pair being a sneaker — no longer holds:
+ * six Kolhapuri/leather sandals are placed for male, and the landing tray now carries them.
  *
  * 2D placement (placement_x / placement_y / image_length) is NOT required. It gates the legacy SVG
  * renderer, and the demo no longer falls back to it — every garment it can show, default or
@@ -299,17 +305,36 @@ async function runEmit(rows: Row[], ids: string[], gender: Gender) {
  * So each worn image is cached locally as a full-resolution WebP, exactly as the default outfits
  * are. Format-only, dimensions asserted unchanged. Storage and the database are untouched.
  */
-async function runEmitAlternates(rows: Row[], gender: Gender, limit: number, terms: string[]) {
+async function runEmitAlternates(
+  rows: Row[],
+  gender: Gender,
+  limit: number,
+  terms: string[],
+  ids: string[],
+) {
   const buckets = bucket(rows, terms)
   const sharp = (await import("sharp")).default
   const dir = path.join(process.cwd(), "public", "landing-alternates")
   fs.mkdirSync(dir, { recursive: true })
 
+  // --ids selects an exact, hand-curated set instead of "first N matching --filter".
+  //
+  // --filter cannot express what a fusion tray needs. It ORs its terms across every zone at once,
+  // so there is no way to say "craft-on-western-silhouette for tops, denim and trousers for
+  // bottoms" in one pass — and term matching alone cannot separate an embroidered CROP TOP from an
+  // embroidered KURTA, which is the whole distinction here. Curating upstream and naming the ids
+  // keeps that judgement in the hands of whoever picked them, and keeps this script honest about
+  // what it is: an asset downloader and literal emitter.
+  const wanted = new Set(ids)
+  const picked = new Set<string>()
+
   const out: string[] = []
   let before = 0
   let after = 0
   for (const zone of ZONES) {
-    const list = (buckets.get(`${gender}:${zone}`) ?? []).slice(0, limit)
+    const pool = buckets.get(`${gender}:${zone}`) ?? []
+    const list = wanted.size ? pool.filter((r) => wanted.has(r.id)) : pool.slice(0, limit)
+    list.forEach((r) => picked.add(r.id))
     console.error(`  ${gender} ${zone}: ${list.length}`)
     for (const r of list) {
       const file = `${r.id}.webp`
@@ -342,6 +367,14 @@ async function runEmitAlternates(rows: Row[], gender: Gender, limit: number, ter
         `(−${((1 - after / before) * 100).toFixed(0)}%)`,
     )
   }
+  // Never drop a requested id silently. An id that resolves to nothing means it is the wrong
+  // gender, the wrong zone, or — most likely — not 3D-placed, and a tray built from a short list
+  // would otherwise look like it worked.
+  const missing = ids.filter((id) => !picked.has(id))
+  if (missing.length) {
+    console.error(`\n  ⚠ ${missing.length} requested id(s) not emitted (wrong gender/zone, or no 3D placement):`)
+    missing.forEach((id) => console.error(`    ${id}`))
+  }
   const constName = gender === "male" ? "MOCK_ALTERNATIVES_MALE" : "MOCK_ALTERNATIVES_FEMALE"
   console.log(`\nexport const ${constName}: LandingMockProduct[] = [`)
   console.log(out.join("\n"))
@@ -364,10 +397,16 @@ async function main() {
 
   const gender = normalizeGender(String(args.get("gender") ?? ""))
 
+  const idsArg = args.get("ids")
+  const ids =
+    idsArg && idsArg !== true
+      ? String(idsArg).split(",").map((s) => s.trim()).filter(Boolean)
+      : []
+
   if (args.get("emit-alternates")) {
     if (!gender) throw new Error("--emit-alternates requires --gender male|female")
     const limitArg = args.get("limit")
-    await runEmitAlternates(rows, gender, limitArg && limitArg !== true ? Number(limitArg) : 24, terms)
+    await runEmitAlternates(rows, gender, limitArg && limitArg !== true ? Number(limitArg) : 24, terms, ids)
     return
   }
 
