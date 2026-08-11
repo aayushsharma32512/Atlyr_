@@ -35,6 +35,19 @@ export type PlacementEntry = {
   scale: number;
   rotationDeg: number;
   warp: Array<{ x: number; y: number }>;
+  /**
+   * Pixel size of the garment image the warp offsets were authored against.
+   *
+   * The offsets are absolute pixels in that image's space, so any renderer drawing the garment at
+   * a different resolution — a gallery tile on the 400px thumbnail, say — scales them by
+   * texW / refW. Without it the factor is unknowable: a 234x400 texture looks the same whether the
+   * lattice was measured at 768 or 2048 wide. `scale`/`tx`/`ty` need no equivalent, since the
+   * renderer's fit factor is derived from the loaded texture and self-compensates.
+   *
+   * Optional: entries written before this existed have none, and the renderer then assumes 1.
+   */
+  refW?: number;
+  refH?: number;
 };
 
 // Only body_type the studio uses today; the key stays general (gender:body_type) for the future.
@@ -62,7 +75,7 @@ export function placementKey(mannequin: 'male' | 'female', bodyType: string = DE
  * `placement` map. Returns null when there is no usable transform (so we never overwrite with 0s).
  */
 export function placementEntryFrom(
-  input: { transform?: { scale?: number; rotationDeg?: number; tx?: number; ty?: number } | null; warp?: unknown; selectedMannequin?: unknown; mannequin?: unknown } | null | undefined,
+  input: { transform?: { scale?: number; rotationDeg?: number; tx?: number; ty?: number } | null; warp?: unknown; refW?: unknown; refH?: unknown; selectedMannequin?: unknown; mannequin?: unknown } | null | undefined,
   gender?: IngestionPipelineJob['product_gender_type'] | string | null,
   bodyType: string = DEFAULT_BODY_TYPE,
 ): { key: string; entry: PlacementEntry } | null {
@@ -73,6 +86,12 @@ export function placementEntryFrom(
         !!w && typeof (w as any).x === 'number' && typeof (w as any).y === 'number')
     : [];
   const mannequin = normalizeMannequin(input?.mannequin ?? input?.selectedMannequin, gender);
+  // Only written when the caller actually measured it. A bogus 0/NaN would be worse than absent:
+  // the renderer treats a missing refW as "same size as the texture", which is the safe default.
+  const dim = (v: unknown): number | undefined =>
+    typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined;
+  const refW = dim(input?.refW);
+  const refH = dim(input?.refH);
   return {
     key: placementKey(mannequin, bodyType),
     entry: {
@@ -81,6 +100,8 @@ export function placementEntryFrom(
       scale: t.scale,
       rotationDeg: typeof t.rotationDeg === 'number' ? t.rotationDeg : 0,
       warp,
+      ...(refW ? { refW } : {}),
+      ...(refH ? { refH } : {}),
     },
   };
 }

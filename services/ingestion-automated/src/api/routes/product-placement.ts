@@ -17,6 +17,10 @@ const Body = z.object({
     ty:          z.number().finite(),
   }),
   warp: z.array(z.object({ x: z.number(), y: z.number() })).default([]),
+  // Size of the garment image the warp was measured against — lets a renderer on any other
+  // resolution scale the offsets. Optional so older editors keep working.
+  refW: z.number().positive().optional(),
+  refH: z.number().positive().optional(),
   mannequin: z.enum(['male', 'female']).optional(),
   // Which body-type key inside the placement map to write; defaults to the only value used today.
   body_type: z.string().min(1).optional(),
@@ -35,7 +39,7 @@ export async function registerProductPlacementRoute(app: FastifyInstance): Promi
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Invalid request', details: parsed.error.flatten() });
     }
-    const { image_base64, transform, warp, mannequin, body_type } = parsed.data;
+    const { image_base64, transform, warp, refW, refH, mannequin, body_type } = parsed.data;
 
     // Resolve the product on whichever table holds it (staging or live) to confirm it exists and
     // recover its gender for the mannequin fallback. Direct SQL — independent of PostgREST.
@@ -61,7 +65,7 @@ export async function registerProductPlacementRoute(app: FastifyInstance): Promi
       placedImageUrl = await uploadToSupabase(`placement/${productId}/manual-${Date.now()}.png`, bytes, 'image/png');
     }
 
-    const placement = placementEntryFrom({ transform, warp, mannequin }, gender, body_type ?? DEFAULT_BODY_TYPE);
+    const placement = placementEntryFrom({ transform, warp, refW, refH, mannequin }, gender, body_type ?? DEFAULT_BODY_TYPE);
     if (!placement) return reply.status(422).send({ error: 'transform is missing required numeric fields' });
     await writePlacementEntry(productId, placement.key, placement.entry);
 

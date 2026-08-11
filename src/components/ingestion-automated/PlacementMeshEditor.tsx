@@ -103,7 +103,14 @@ export type PlacementEditorSource = {
   reference?: { url: string; label: string } | null
   /** Saved mesh warp to restore on open, so a re-edit continues from the deformed shape. */
   warp?: { x: number; y: number }[] | null
-  onSave: (payload: { image_base64: string; transform: PlacementTransform; warp: { x: number; y: number }[] }) => Promise<void>
+  onSave: (payload: {
+    image_base64: string
+    transform: PlacementTransform
+    warp: { x: number; y: number }[]
+    /** Size of the garment image the warp was measured against; consumers persist it verbatim. */
+    refW?: number
+    refH?: number
+  }) => Promise<void>
   /** Shown as the header subtitle (e.g. the product / job label). */
   label?: string
 }
@@ -293,6 +300,10 @@ function PlacementMeshEditorCore({ source, open, onOpenChange, onSaved }: CorePr
   // offsets from here rather than from the canvas centre, so the cloth-centre pivot cancels out.
   const homeRef = useRef<PointData>({ x: CANVAS_W / 2, y: CANVAS_H / 2 })
   const fitRef = useRef(1)
+  // Size of the garment texture the lattice is being authored against. Saved with the placement so
+  // a renderer using a different resolution (e.g. a gallery tile on the thumbnail) can scale the
+  // offsets — they are absolute pixels in THIS image's space.
+  const texSizeRef = useRef<{ w: number; h: number } | null>(null)
   // Actual on-screen scale applied to the world (frames the mannequin, not the full canvas).
   const viewScaleRef = useRef(VIEW_SCALE)
   const dragRef = useRef<Drag>(null)
@@ -570,6 +581,12 @@ function PlacementMeshEditorCore({ source, open, onOpenChange, onSaved }: CorePr
           ty: garment.y - homeRef.current.y,
         },
         warp,
+        // The image these offsets are measured against. Without it a renderer on a different
+        // resolution has no way to know the scale factor — a 234x400 texture looks identical
+        // whether the lattice was authored at 768 or 2048 wide.
+        ...(texSizeRef.current
+          ? { refW: texSizeRef.current.w, refH: texSizeRef.current.h }
+          : {}),
       })
 
       toast({ title: 'Placement saved' })
@@ -655,6 +672,7 @@ function PlacementMeshEditorCore({ source, open, onOpenChange, onSaved }: CorePr
         const texH = garImg.height
         const fit = Math.min(CANVAS_W / texW, CANVAS_H / texH)
         fitRef.current = fit
+        texSizeRef.current = { w: texW, h: texH }
 
         // Learn where the cloth actually is inside its mostly-transparent frame (reuses the decode).
         const probe = await probeGarment(garImg, texW, texH)

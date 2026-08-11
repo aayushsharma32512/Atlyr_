@@ -28,6 +28,21 @@ export interface StudioPlacementTransform {
   ty: number
   warp: { x: number; y: number }[]
   mannequin: "male" | "female"
+  /**
+   * Pixel dimensions of the garment image the warp lattice was authored against.
+   *
+   * The 88 warp offsets are absolute pixels in that image's space, so a texture of any other size
+   * needs them scaled by texW / refW — without this the renderer cannot know the factor, since a
+   * 234x400 texture looks the same whether the offsets were measured at 768 or 2048 wide.
+   *
+   * `scale`, `tx` and `ty` need no such treatment: the renderer's `fit` factor is derived from the
+   * loaded texture, so it already self-compensates for resolution.
+   *
+   * Optional because entries written before this existed carry no reference size. The renderer
+   * treats a missing value as "same size as the texture" (factor 1), i.e. exactly the old behaviour.
+   */
+  refW?: number | null
+  refH?: number | null
 }
 
 /**

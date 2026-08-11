@@ -93,6 +93,9 @@ export interface SavePlacementBody {
   transform: { scale: number; rotationDeg: number; tx: number; ty: number }
   /** Warp lattice offsets in garment geometry space, so the edit stays re-openable. */
   warp: { x: number; y: number }[]
+  /** Size of the garment image the warp was measured against — see PlacementEntry.refW. */
+  refW?: number
+  refH?: number
 }
 
 /** One entry inside the product's `placement` JSONB map (value of a "gender:body_type" key). */
@@ -102,6 +105,13 @@ export interface PlacementEntry {
   scale: number
   rotationDeg: number
   warp: { x: number; y: number }[]
+  /**
+   * Pixel size of the garment image the warp offsets were authored against. The offsets are
+   * absolute pixels in that space, so a renderer using any other resolution scales them by
+   * texW / refW. Absent on entries written before this was recorded (renderer then assumes 1).
+   */
+  refW?: number
+  refH?: number
 }
 
 /** Product-keyed placement save — works for both pipeline jobs and legacy catalog-only products. */
@@ -110,6 +120,9 @@ export interface SavePlacementForProductBody {
   image_base64?: string
   transform: { scale: number; rotationDeg: number; tx: number; ty: number }
   warp: { x: number; y: number }[]
+  /** Size of the garment image the warp was measured against — see PlacementEntry.refW. */
+  refW?: number
+  refH?: number
   /** Mannequin the transform targets; falls back to the product's gender server-side if omitted. */
   mannequin?: 'male' | 'female'
   /** Body-type key inside the placement map; defaults to 'bodytype1' server-side. */

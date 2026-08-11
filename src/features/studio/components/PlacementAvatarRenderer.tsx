@@ -436,13 +436,24 @@ export function PlacementAvatarRenderer({
           mesh.position.set(-texW / 2, -texH / 2)
 
           // Apply the saved warp lattice (base vertices + per-vertex offsets).
+          //
+          // The offsets are absolute pixels in the space of whatever image they were authored
+          // against (t.refW/refH), so a texture of a different size needs them scaled — otherwise
+          // a 165px fold measured on a 1200px-wide image becomes a 70% displacement on a 234px
+          // thumbnail and the garment tears apart. `scale`/`tx`/`ty` need no equivalent because
+          // `fit` above is derived from the loaded texture and already self-compensates.
+          //
+          // No refW (entries written before it was recorded) → factor 1, i.e. the previous
+          // behaviour, which is correct as long as the texture is the image it was authored on.
           if (t.warp && t.warp.length) {
+            const warpScaleX = t.refW ? texW / t.refW : 1
+            const warpScaleY = t.refH ? texH / t.refH : 1
             const buf = mesh.geometry.getBuffer("aPosition")
             const pos = buf.data as Float32Array
             const n = Math.min(t.warp.length, pos.length / 2)
             for (let i = 0; i < n; i++) {
-              pos[i * 2] += t.warp[i].x
-              pos[i * 2 + 1] += t.warp[i].y
+              pos[i * 2] += t.warp[i].x * warpScaleX
+              pos[i * 2 + 1] += t.warp[i].y * warpScaleY
             }
             buf.update()
           }
