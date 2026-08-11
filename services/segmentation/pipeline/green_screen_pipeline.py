@@ -20,6 +20,7 @@ from pipeline import db_store
 from pipeline import result_store
 from pipeline.types import StepResult
 
+from pipeline.category import resolve_category
 from pipeline.core_segmentation import (
     extract_class_mask,
     run_schp_parsing,
@@ -133,16 +134,18 @@ def run_green_screen_pipeline_e2e(
         fashn = FashnHumanParser()
         seg_map = fashn.predict(img_rgb)
 
-        # Resolve category
-        category = "top"
-        best_area = 0
-        for cat, class_ids in GARMENT_CLASSES_LOCAL.items():
-            mask = extract_class_mask(seg_map, class_ids)
-            area = mask.sum() // 255
-            if area > best_area:
-                best_area = area
-                category = cat
-        print(f"  Resolved category: {category}")
+        # Resolve category — constrained by what the caller asked for. See CATEGORY_CANDIDATES.
+        areas = {
+            cat: int(extract_class_mask(seg_map, class_ids).sum()) // 255
+            for cat, class_ids in GARMENT_CLASSES_LOCAL.items()
+        }
+        requested_category = category
+        category, category_debug = resolve_category(requested_category, areas)
+        print(
+            f"  Resolved category: {category}"
+            f"  (requested={requested_category}, unconstrained={category_debug['category_unconstrained']},"
+            f" source={category_debug['category_source']}, areas={areas})"
+        )
 
         fashn_g_ids = FASHN_GARMENT_CLASSES.get(category, [3])
         coarse_garment_mask = extract_class_mask(seg_map, fashn_g_ids)
@@ -154,9 +157,12 @@ def run_green_screen_pipeline_e2e(
         exclusion_path = os.path.join(output_dir, "02_fashn_exclusion.png")
         cv2.imwrite(exclusion_path, skin_mask)
 
+        # category_* keys make "how many jobs did the constraint actually change" a SQL query
+        # against segmentation_step_results rather than a guess.
         upload_and_record_step(seg_job_id, config_id, "fashn_parse", step_order,
                                "completed", garment_path, exclusion_path,
-                               {"category": category}, started_at=step_start,
+                               {"category": category, "class_areas": areas, **category_debug},
+                               started_at=step_start,
                                skip_upload=skip_intermediate_uploads)
 
         # ------------------------------------------------------------------
