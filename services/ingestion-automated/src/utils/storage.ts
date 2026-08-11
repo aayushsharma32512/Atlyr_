@@ -23,6 +23,23 @@ export function getPublicUrl(path: string): string {
 }
 
 /**
+ * Extract { bucket, path } from a Supabase public storage URL (…/object/public/<bucket>/<path>).
+ *
+ * The bucket is derived from the URL rather than assumed to be config.STORAGE_BUCKET: these images
+ * live in at least two buckets (ingestion-automated and ingested_inventory), and anything pinned to
+ * one silently skips the other's products.
+ */
+export function parsePublicUrl(url: string): { bucket: string; path: string } | null {
+  const marker = '/storage/v1/object/public/';
+  const i = url.indexOf(marker);
+  if (i === -1) return null;
+  const rest = url.slice(i + marker.length).split('?')[0];
+  const slash = rest.indexOf('/');
+  if (slash <= 0) return null;
+  return { bucket: rest.slice(0, slash), path: decodeURIComponent(rest.slice(slash + 1)) };
+}
+
+/**
  * Best-effort recursive removal of everything under a storage prefix (e.g. "<jobId>/"). Supabase
  * .list() is one level deep, so we recurse into subfolders. Never throws — used during job delete.
  */

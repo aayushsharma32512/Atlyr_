@@ -6,6 +6,12 @@
  *   bun run scripts/backfill-fullres-webp.ts --apply
  *   bun run scripts/backfill-fullres-webp.ts --apply --limit 20
  *
+ * The automated pipeline now does this conversion inline when it stages a product
+ * (services/ingestion-automated/src/utils/fullres-webp.ts, called from upsertIngestedProduct), so
+ * this script is the mop-up for rows ingested before that and for the odd inline failure. Rows whose
+ * image_url already carries the suffix are skipped, so re-running it is a no-op on new products.
+ * Keep the suffix and the webp() options below in step with that module.
+ *
  * image_url is the image WORN on the mannequin — loaded at full size on every try-on, 1.4-2.5MB of
  * PNG each. thumbnail_url already covers grid tiles at 400px; that thumbnail can NOT be worn,
  * because shrinking the texture amplifies every warp offset by the same factor.

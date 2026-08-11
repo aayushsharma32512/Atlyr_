@@ -4,6 +4,7 @@ import { pgPool } from '../db/pg';
 import { getLatestArtifact, getArtifacts } from './artifacts';
 import { updateJob } from './job-catalog';
 import { removeStoragePrefix } from '../utils/storage';
+import { ensureFullresWebp } from '../utils/fullres-webp';
 import type { IngestionPipelineJob } from './types';
 
 // item_type enum (supabase/migrations/20250717195740_initial_schema.sql):
@@ -182,6 +183,11 @@ export async function writePlacement2D(productId: string, values: Placement2D): 
  * image_url is the SEGMENTED cloth (ghost-mannequin style) to match existing catalog convention.
  * Enrichment columns the pipeline doesn't produce (vectors, vibes, fit, category_id, ...) are
  * left unset → NULL.
+ *
+ * `wornImageUrl` is that same cut-out re-encoded as a full-resolution WebP (upsertIngestedProduct
+ * does the conversion — this function stays pure). It is the image the studio WEARS, so it must be
+ * the same pixels at the same dimensions as segmented_image_url; falls back to the PNG when the
+ * conversion was skipped or failed.
  */
 export function buildCatalogRow(
   job: IngestionPipelineJob,
@@ -189,10 +195,11 @@ export function buildCatalogRow(
   garmentSummary: Record<string, unknown> | null | undefined,
   enrichment?: Record<string, unknown> | null,
   placement?: Record<string, unknown> | null,
+  wornImageUrl?: string | null,
 ): Record<string, unknown> {
   const c = (crawl ?? {}) as Record<string, unknown>;
   const e = (enrichment ?? {}) as Record<string, unknown>;
-  const image = job.segmented_image_url;
+  const image = wornImageUrl || job.segmented_image_url;
   if (!image) throw new Error('segmented_image_url missing — cannot build catalog row');
 
   // Note: `placement` is written separately via writePlacementEntry (a merge) so we never clobber
@@ -269,7 +276,11 @@ function mapView(stage2Winner: unknown): 'front' | 'back' | 'side' | 'detail' | 
   return (['front', 'back', 'side', 'detail'] as const).find((v) => s.includes(v)) ?? null;
 }
 
-async function buildImageRows(job: IngestionPipelineJob): Promise<ImageRow[]> {
+/**
+ * `wornImageUrl` mirrors buildCatalogRow: the ghost row IS the catalog hero (image_url), so it must
+ * carry the same URL — the `.fullres.webp` when one exists, the segmented PNG otherwise.
+ */
+async function buildImageRows(job: IngestionPipelineJob, wornImageUrl?: string | null): Promise<ImageRow[]> {
   const [classifications, rawImages] = await Promise.all([
     getArtifacts(job.job_id, 'image_classification'),
     getArtifacts(job.job_id, 'raw_image'),
@@ -317,9 +328,10 @@ async function buildImageRows(job: IngestionPipelineJob): Promise<ImageRow[]> {
   }
 
   // 3) Segmented ghost-mannequin image — this is the catalog hero (image_url), so mark it primary.
-  if (job.segmented_image_url) {
+  const ghostUrl = wornImageUrl || job.segmented_image_url;
+  if (ghostUrl) {
     rows.push({
-      url: job.segmented_image_url, kind: 'ghost', product_view: 'front', sort_order: order++,
+      url: ghostUrl, kind: 'ghost', product_view: 'front', sort_order: order++,
       is_primary: true, vto_eligible: false, ghost_eligible: true, summary_eligible: false, gender,
     });
   }
@@ -356,6 +368,11 @@ export async function upsertIngestedProduct(job: IngestionPipelineJob): Promise<
     getLatestArtifact(job.job_id, 'placement'),
   ]);
 
+  // The image the studio wears: same cut-out, same dimensions, ~85% fewer bytes. Best-effort — a
+  // failed conversion falls back to the PNG (the behaviour before this existed) rather than failing
+  // the stage, and scripts/backfill-fullres-webp.ts can convert it later.
+  const wornImageUrl = (await ensureFullresWebp(job.segmented_image_url)) ?? job.segmented_image_url;
+
   const row: Record<string, unknown> = {
     ...buildCatalogRow(
       job,
@@ -363,8 +380,11 @@ export async function upsertIngestedProduct(job: IngestionPipelineJob): Promise<
       garment?.data as Record<string, unknown> | null,
       enrichment?.data as Record<string, unknown> | null,
       placement?.data as Record<string, unknown> | null,
+      wornImageUrl,
     ),
     pipeline_job_id: job.job_id,
+    // Provenance: stays the original PNG the segmentation step produced. The segmented-image editor
+    // works off the job row, and the Modal placement service is handed this URL, not the WebP.
     segmented_image_url: job.segmented_image_url,
   };
   const id = row.id as string;
@@ -373,7 +393,7 @@ export async function upsertIngestedProduct(job: IngestionPipelineJob): Promise<
   if (error) throw new Error(`upsert ingested_products failed: ${error.message}`);
 
   // Catalog image rows (FK → ingested_products, so only after the product row exists).
-  const imageRows = await buildImageRows(job);
+  const imageRows = await buildImageRows(job, wornImageUrl);
   await syncImageRows('ingested_product_images', id, imageRows, job.job_id);
 
   // Placement (auto from Modal, or a prior manual edit) → merge into the `placement` map so it
@@ -412,7 +432,9 @@ export async function publishToProducts(job: IngestionPipelineJob): Promise<stri
   if (prodErr) throw new Error(`upsert products failed: ${prodErr.message}`);
 
   // Mirror the image rows into the live product_images table (no pipeline_job_id column there).
-  const imageRows = await buildImageRows(job);
+  // Reuse the staged row's image_url rather than re-converting: upsertIngestedProduct just wrote it,
+  // so this keeps product_images in step with products.image_url for one less encode.
+  const imageRows = await buildImageRows(job, staged.image_url as string | null);
   await syncImageRows('product_images', id, imageRows);
 
   // verdict check constraint allows only 'approved' | 'discarded' — 'approved' marks it live.
