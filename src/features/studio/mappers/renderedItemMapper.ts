@@ -18,7 +18,19 @@ import type {
  * Build the canvas-transform placement from the new placement_* columns. Returns null when the
  * product has not been placed on the new mannequin yet (→ item renders via the legacy SVG path).
  */
-type PlacementMapEntry = { tx?: number; ty?: number; scale?: number; rotationDeg?: number; warp?: unknown }
+type PlacementMapEntry = {
+  tx?: number
+  ty?: number
+  scale?: number
+  rotationDeg?: number
+  warp?: unknown
+  /** Size of the image the warp was authored against — see StudioPlacementTransform.refW. */
+  refW?: unknown
+  refH?: unknown
+}
+
+const positiveNumber = (v: unknown): number | null =>
+  typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null
 
 function readEntry(
   rec: Record<string, PlacementMapEntry>,
@@ -40,6 +52,8 @@ function readEntry(
     ty: entry.ty,
     warp,
     mannequin,
+    refW: positiveNumber(entry.refW),
+    refH: positiveNumber(entry.refH),
   }
 }
 

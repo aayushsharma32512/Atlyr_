@@ -22,6 +22,10 @@ const PlacementBody = z.object({
   // Warp lattice offsets in garment geometry space — kept so re-opening can restore the
   // editable state rather than starting over from the flattened PNG.
   warp: z.array(z.object({ x: z.number(), y: z.number() })).default([]),
+  // Size of the garment image the warp was measured against. Lets a renderer on any other
+  // resolution scale the offsets; optional so older editors keep working.
+  refW: z.number().positive().optional(),
+  refH: z.number().positive().optional(),
 });
 
 export async function registerPlacementRoute(app: FastifyInstance): Promise<void> {
@@ -32,7 +36,7 @@ export async function registerPlacementRoute(app: FastifyInstance): Promise<void
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Invalid request', details: parsed.error.flatten() });
     }
-    const { image_base64, transform, warp } = parsed.data;
+    const { image_base64, transform, warp, refW, refH } = parsed.data;
 
     const job = await getJob(jobId).catch(() => null);
     if (!job) return reply.status(404).send({ error: 'Job not found' });
@@ -67,6 +71,8 @@ export async function registerPlacementRoute(app: FastifyInstance): Promise<void
         selectedMannequin,
         transform,
         warp,
+        ...(refW ? { refW } : {}),
+        ...(refH ? { refH } : {}),
         source: 'manual',
         createdAt: new Date().toISOString(),
       },
@@ -75,7 +81,7 @@ export async function registerPlacementRoute(app: FastifyInstance): Promise<void
     // Persist the transform into the `placement` map so the studio renders it immediately.
     // Deliberately no updateState: editing a placement never advances or resets the job.
     const productId = catalogId(jobId);
-    const placement = placementEntryFrom({ transform, warp, mannequin: selectedMannequin }, job.product_gender_type);
+    const placement = placementEntryFrom({ transform, warp, refW, refH, mannequin: selectedMannequin }, job.product_gender_type);
     if (placement) await writePlacementEntry(productId, placement.key, placement.entry);
 
     logger.info({ jobId, productId, storagePath, bytes: bytes.length }, 'manual placement saved');
