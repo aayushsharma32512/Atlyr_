@@ -1,8 +1,8 @@
 import { describe, expect, it } from "@jest/globals"
 
-import { useLikenessJobStatus, type LikenessJobState } from "../useLikenessJobStatus"
+import { deriveLikenessJobState, type LikenessJobState } from "../useLikenessJobStatus"
 
-describe("useLikenessJobStatus", () => {
+describe("deriveLikenessJobState", () => {
   const cases: Array<{
     uploadStatus: "idle" | "pending" | "success" | "error"
     selectStatus: "idle" | "pending" | "success" | "error"
@@ -19,7 +19,7 @@ describe("useLikenessJobStatus", () => {
 
   cases.forEach(({ uploadStatus, selectStatus, hasSavedPoses, expected }) => {
     it(`returns ${expected} for upload=${uploadStatus}, select=${selectStatus}, saved=${hasSavedPoses}`, () => {
-      const state = useLikenessJobStatus({ uploadStatus, selectStatus, hasSavedPoses })
+      const state = deriveLikenessJobState({ uploadStatus, selectStatus, hasSavedPoses })
       expect(state).toBe(expected)
     })
   })
