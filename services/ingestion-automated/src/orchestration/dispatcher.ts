@@ -1,4 +1,4 @@
-import { TERMINAL_STATES } from '../orchestration/state-machine';
+import { TERMINAL_STATES, HITL_STATES } from '../orchestration/state-machine';
 import { getJob, markJobFailed } from '../domain/job-catalog';
 import type { StepHandler } from '../domain/types';
 import { PendingHandler } from '../steps/pending.handler';
@@ -29,6 +29,15 @@ export async function dispatch(jobId: string): Promise<void> {
 
   if (TERMINAL_STATES.includes(job.current_state as never)) {
     logger.info({ jobId, state: job.current_state }, 'Job is in terminal state, skipping dispatch');
+    return;
+  }
+
+  // A HITL state is a resting state waiting on a person, so it deliberately has no handler. Without
+  // this guard it fell through to the "no handler registered" branch below and was marked FAILED —
+  // any stray dispatch (a duplicate queue row, a pg-boss retry of an expired job) would destroy a
+  // job that had already completed VTON and segmentation and was sitting in the review queue.
+  if (HITL_STATES.includes(job.current_state as never)) {
+    logger.info({ jobId, state: job.current_state }, 'Job is awaiting human input, skipping dispatch');
     return;
   }
 

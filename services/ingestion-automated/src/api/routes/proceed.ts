@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import type PgBoss from 'pg-boss';
+import type { BossHandle } from '../../queue/boss';
 import { z } from 'zod';
 import type { PipelineState } from '../../domain/types';
 import { getJob, updateJob } from '../../domain/job-catalog';
@@ -17,7 +17,7 @@ const ProceedBody = z.object({
 
 const PROCEED_ALLOWED_STATES = ['awaiting_hitl_identification', 'awaiting_hitl_segmentation', 'placement'];
 
-export async function registerProceedRoute(app: FastifyInstance, boss: PgBoss): Promise<void> {
+export async function registerProceedRoute(app: FastifyInstance, boss: BossHandle): Promise<void> {
   app.post('/jobs/:jobId/proceed', async (req: FastifyRequest, reply: FastifyReply) => {
     const { jobId } = req.params as { jobId: string };
 

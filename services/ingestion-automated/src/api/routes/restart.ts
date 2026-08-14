@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import type PgBoss from 'pg-boss';
+import type { BossHandle } from '../../queue/boss';
 import { z } from 'zod';
 import { getJob, updateState } from '../../domain/job-catalog';
 import { deleteArtifactsForSteps } from '../../domain/artifacts';
@@ -35,7 +35,7 @@ async function cleanSegmentationData(jobId: string): Promise<void> {
   if (error) throw new Error(`Failed to clean segmentation data: ${error.message}`);
 }
 
-export async function registerRestartRoute(app: FastifyInstance, boss: PgBoss): Promise<void> {
+export async function registerRestartRoute(app: FastifyInstance, boss: BossHandle): Promise<void> {
   app.post('/jobs/:jobId/restart', async (req: FastifyRequest, reply: FastifyReply) => {
     const { jobId } = req.params as { jobId: string };
 

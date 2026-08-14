@@ -1,4 +1,4 @@
-import type PgBoss from 'pg-boss';
+import type { BossHandle } from './boss';
 import { config } from '../config/index';
 
 // The ONE place a pipeline step is enqueued. Every caller goes through here so the send-time
@@ -20,22 +20,30 @@ import { config } from '../config/index';
 // so if the timeout lapses while Modal is still working, the retry runs CONCURRENTLY with the
 // original — and SegmentingHandler deletes the existing segmentation_jobs row before inserting,
 // so a concurrent retry would wipe the record of the run still in progress.
+//
+// Modal-driven steps also run on their OWN queue. They hold a worker slot for minutes waiting on
+// a GPU; on a shared queue those waits crowd out the fast steps and cap real throughput at far
+// below teamSize. Both queues dispatch identically — the handler is chosen by the job row's
+// current_state, not by which queue delivered the message.
 const MODAL_DRIVEN_STATES = new Set(['segmenting', 'placement']);
 
+export const PIPELINE_QUEUE = 'run-pipeline-step';
+export const MODAL_QUEUE = 'run-modal-step';
+
 export function sendPipelineStep(
-  boss: PgBoss,
+  boss: BossHandle,
   jobId: string,
   targetState?: string,
 ): Promise<string | null> {
-  const expireInSeconds = targetState && MODAL_DRIVEN_STATES.has(targetState)
-    ? config.BOSS_MODAL_STEP_TIMEOUT_SECONDS
-    : config.BOSS_STEP_TIMEOUT_SECONDS;
+  const isModalStep = Boolean(targetState && MODAL_DRIVEN_STATES.has(targetState));
 
   return boss.send(
-    'run-pipeline-step',
+    isModalStep ? MODAL_QUEUE : PIPELINE_QUEUE,
     { jobId },
     {
-      expireInSeconds,
+      expireInSeconds: isModalStep
+        ? config.BOSS_MODAL_STEP_TIMEOUT_SECONDS
+        : config.BOSS_STEP_TIMEOUT_SECONDS,
       retryLimit: config.BOSS_STEP_RETRY_LIMIT,
       retryDelay: config.BOSS_STEP_RETRY_DELAY_SECONDS,
       retryBackoff: true,

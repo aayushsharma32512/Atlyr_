@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import type PgBoss from 'pg-boss';
+import type { BossHandle } from '../../queue/boss';
 import { z } from 'zod';
 import { insertJob, findJobByDedupeKey, findLatestJobByDedupeKey } from '../../domain/job-catalog';
 import { computeDedupeKey } from '../../domain/dedup';
@@ -21,7 +21,7 @@ const SubmitBody = z.object({
   created_by:               z.string().optional(),
 });
 
-export async function registerSubmitRoute(app: FastifyInstance, boss: PgBoss): Promise<void> {
+export async function registerSubmitRoute(app: FastifyInstance, boss: BossHandle): Promise<void> {
   app.post('/jobs', async (req: FastifyRequest, reply: FastifyReply) => {
     const parsed = SubmitBody.safeParse(req.body);
     if (!parsed.success) {

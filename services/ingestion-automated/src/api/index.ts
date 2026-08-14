@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import fastifyCors from '@fastify/cors';
-import type PgBoss from 'pg-boss';
+import type { BossHandle } from '../queue/boss';
 import { config } from '../config/index';
 import { registerSubmitRoute } from './routes/submit';
 import { registerStatusRoutes } from './routes/status';
@@ -21,7 +21,7 @@ function bearerAuth(req: { headers: Record<string, string | string[] | undefined
   return header === `Bearer ${token}`;
 }
 
-export async function buildApp(boss: PgBoss) {
+export async function buildApp(boss: BossHandle) {
   // 25 MB: manual placement saves POST a full 1800x3072 PNG as base64, which inflates ~33%.
   const app = Fastify({ logger: false, bodyLimit: 25 * 1024 * 1024 });
 
