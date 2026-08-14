@@ -77,6 +77,12 @@ const EnvSchema = z.object({
   // mutate nothing. Flip to 'fail' once the logged candidates have proven to be genuinely stuck;
   // a false positive here fails work that is actually still running.
   REAPER_MODE: z.enum(['off', 'log', 'fail']).default('log'),
+  // What boot recovery does with work the previous process died holding. 'resume' re-dispatches
+  // each job at the step it stopped on — the point being that a crash or a Ctrl-C should never
+  // need a human to re-drive a batch. Unlike the reaper this is safe to act on automatically:
+  // it runs before the workers register, so anything still marked `active` provably belongs to a
+  // process that no longer exists. 'log' reports only; 'off' disables it.
+  BOOT_RECOVERY: z.enum(['off', 'log', 'resume']).default('resume'),
   BOSS_RESTART_BASE_MS: z.string().default('1000'),
   BOSS_RESTART_MAX_MS: z.string().default('15000'),
   BOSS_RESTART_MAX_ATTEMPTS: z.string().default('5'),

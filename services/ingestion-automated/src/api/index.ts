@@ -6,6 +6,7 @@ import { registerSubmitRoute } from './routes/submit';
 import { registerStatusRoutes } from './routes/status';
 import { registerProceedRoute } from './routes/proceed';
 import { registerRestartRoute } from './routes/restart';
+import { registerRecoverRoute } from './routes/recover';
 import { registerRetagRoute } from './routes/retag';
 import { registerDeletePhotoRoute } from './routes/delete-photo';
 import { registerDetailsRoute } from './routes/details';
@@ -44,6 +45,7 @@ export async function buildApp(boss: BossHandle) {
   await registerStatusRoutes(app);
   await registerProceedRoute(app, boss);
   await registerRestartRoute(app, boss);
+  await registerRecoverRoute(app, boss);
   await registerRetagRoute(app);
   await registerDeletePhotoRoute(app);
   await registerDetailsRoute(app);

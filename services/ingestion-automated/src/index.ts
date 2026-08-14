@@ -4,6 +4,7 @@ import { initBoss } from './queue/boss';
 import { startWorker } from './queue/worker';
 import { buildApp } from './api/index';
 import { reapStrandedJobs } from './orchestration/reaper';
+import { recoverOrphanedJobs } from './orchestration/boot-recovery';
 import { ensureBucketExists } from './utils/ensure-bucket';
 
 const logger = createLogger({ stage: 'bootstrap' });
@@ -13,14 +14,22 @@ async function main() {
   await ensureBucketExists();
 
   const boss = await initBoss(logger, {
-    registerWorkers: (bossInstance) => {
+    registerWorkers: async (bossInstance, ctx) => {
+      // BEFORE the workers start consuming, and only on a genuine process start: recover the work
+      // the previous process died holding. Ordering is load-bearing — once this process is
+      // consuming, its own in-flight jobs are indistinguishable from a dead process's and would be
+      // recovered out from under themselves. A pg-boss restart (ctx.reason === 'restart') is not a
+      // process restart: those handlers are still running, so there is nothing to recover.
+      if (ctx.reason === 'start') {
+        await recoverOrphanedJobs(bossInstance);
+      }
       startWorker(bossInstance);
     },
   });
 
-  // Once at boot: fail any row left mid-pipeline by a previous crash so it stops rendering as
-  // "in progress" with nothing driving it. Safe to run alongside the worker — it only touches
-  // jobs that have no created/retry/active queue job at all.
+  // Separate from the above: fail rows that have been idle far longer than a step may take. Those
+  // are not "the process died a moment ago" — they are long-abandoned, and failing surfaces them
+  // in the UI with the Restart-from-step path rather than silently re-running partial work.
   await reapStrandedJobs();
 
   const app = await buildApp(boss);
