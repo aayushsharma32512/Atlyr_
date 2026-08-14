@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button'
 import { v2Api, type PipelineJob } from '@/utils/ingestionV2Api'
 import { supabase } from '@/integrations/supabase/client'
-import { summarizeBatches, estimateCost, actualCost, usd, type ArtifactRow, type BatchProgress } from './bulkIngest'
+import { summarizeBatches, estimateCost, actualCost, routeSummary, routeLabel, usd, type ArtifactRow, type BatchProgress } from './bulkIngest'
 
 /** Blue bar with white diagonal stripes; animates while work is still in flight. */
 function StripedBar({ percent, active }: { percent: number; active: boolean }) {
@@ -38,13 +38,14 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: str
 function BatchDetail({ batch, onBack }: { batch: BatchProgress; onBack: () => void }) {
   const [artifacts, setArtifacts] = useState<ArtifactRow[] | null>(null)
 
-  // Cost is billed from recorded usage once a job finishes its model calls, so we only pull
-  // artifacts when the batch has settled — mid-run the estimate is shown instead.
   const settled = batch.running === 0 && batch.total > 0
+  // Artifacts are re-pulled each time another job settles (not on every 8s poll) so the route
+  // breakdown moves during the run. Exact cost still waits for full settle below — a partial
+  // "actual" would silently undercount jobs whose calls haven't happened yet.
+  const settledCount = batch.completed + batch.hitl + batch.failed
 
   useEffect(() => {
     let cancelled = false
-    if (!settled) { setArtifacts(null); return }
     ;(async () => {
       const ids = batch.jobs.map(j => j.job_id)
       // pipeline_step_artifacts is not in the generated types — cast, as elsewhere in the app.
@@ -57,14 +58,17 @@ function BatchDetail({ batch, onBack }: { batch: BatchProgress; onBack: () => vo
     })()
     return () => { cancelled = true }
     // batch.jobs is deliberately omitted: it is a fresh array on every 8s poll, which would
-    // refetch artifacts continuously. Batch identity + size is enough to know when to reload.
+    // refetch artifacts continuously. Identity + settled count is enough to know when to reload.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settled, batch.id, batch.total])
+  }, [batch.id, batch.total, settledCount])
 
   const cost = useMemo(() => {
-    const exact = artifacts ? actualCost(artifacts) : null
+    const exact = settled && artifacts ? actualCost(artifacts) : null
     return exact ?? estimateCost(batch.jobs)
-  }, [artifacts, batch.jobs])
+  }, [settled, artifacts, batch.jobs])
+
+  const routes = useMemo(() => routeSummary(artifacts ?? []), [artifacts])
+  const failoverEntries = Object.entries(routes.failover)
   const done = batch.jobs.filter(j => j.current_state === 'completed')
   const review = batch.jobs.filter(j => j.current_state.startsWith('awaiting_hitl'))
   const failed = batch.jobs.filter(j => ['failed', 'discarded', 'cancelled'].includes(j.current_state))
@@ -147,6 +151,33 @@ function BatchDetail({ batch, onBack }: { batch: BatchProgress; onBack: () => vo
           )}
         </div>
       </div>
+
+      {routes.routes.length > 0 && (
+        <div className="mt-3 rounded-md border border-border p-2.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Model routes
+          </p>
+          <div className="mt-1.5 space-y-0.5 text-[11px] text-muted-foreground">
+            {routes.routes.map(r => (
+              <div key={r.route} className="flex justify-between">
+                <span>
+                  {routeLabel(r.route)}
+                  {r.route.startsWith('vertex:') && <span className="text-emerald-600"> · credits</span>}
+                  {' — '}{r.calls} call{r.calls === 1 ? '' : 's'}
+                  {r.images > 0 && ` (${r.images} image${r.images === 1 ? '' : 's'})`}
+                </span>
+                <span className="tabular-nums">{r.cost > 0 ? usd(r.cost) : '—'}</span>
+              </div>
+            ))}
+            {failoverEntries.length > 0 && (
+              <p className="pt-1 text-[10px] italic">
+                Failover absorbed: {failoverEntries.map(([kind, n]) => `${n} ${kind.replace(/_/g, ' ')}`).join(' · ')}
+                {' '}— attempts that failed on one route/model and were served by the next.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto pr-1">
         <List title="Done" jobs={done} tone="text-emerald-600" />

@@ -27,7 +27,7 @@ export type ParseResult = {
 
 export function downloadTemplate(): void {
   const rows = [
-    TEMPLATE_HEADERS,
+    [...TEMPLATE_HEADERS],
     [1, 'female', 'topwear', 'Short kurtas & kurtis', 'https://example.com/product-page'],
   ]
   const ws = XLSX.utils.aoa_to_sheet(rows)
@@ -198,15 +198,17 @@ export type ArtifactRow = {
  * data — i.e. everything predates cost tracking — so the caller can fall back to the estimate.
  * Jobs that partially recorded (older retries) still contribute what they have.
  */
+const priceUsage = (u: ArtifactUsage, inRate: number, outRate: number) => {
+  const inTok = u.prompt_tokens ?? 0
+  const outTok = u.output_tokens ?? Math.max((u.total_tokens ?? 0) - inTok, 0)
+  return (inTok / 1e6) * inRate + (outTok / 1e6) * outRate
+}
+
 export function actualCost(rows: ArtifactRow[]): (CostBreakdown & { isEstimate: false }) | null {
   let geminiText = 0, geminiVton = 0, modal = 0
   let vtonRuns = 0, modalRuns = 0, withUsage = 0
 
-  const price = (u: ArtifactUsage, inRate: number, outRate: number) => {
-    const inTok = u.prompt_tokens ?? 0
-    const outTok = u.output_tokens ?? Math.max((u.total_tokens ?? 0) - inTok, 0)
-    return (inTok / 1e6) * inRate + (outTok / 1e6) * outRate
-  }
+  const price = priceUsage
 
   for (const r of rows) {
     const d = r.data ?? {}
@@ -286,3 +288,53 @@ export function estimateCost(jobs: PipelineJob[]): CostBreakdown {
 }
 
 export const usd = (n: number) => `$${n < 0.01 && n > 0 ? n.toFixed(4) : n.toFixed(2)}`
+
+// ── Route breakdown ───────────────────────────────────────────────────────────
+// Since the multi-route transport (Fix 2), Gemini-backed artifacts carry `route_used` (which
+// quota pool served the call) and `attempted` (failed route/model attempts before the one that
+// succeeded). Rolled up per batch so the dialog can show where the money went and what the
+// failover machinery absorbed. Artifacts from before Fix 2 have neither field and are skipped.
+
+export type RouteRow = { route: string; calls: number; images: number; cost: number }
+
+/** Human label for a route id: 'vertex:global' → 'Vertex · global', 'ai_studio' → 'AI Studio'. */
+export const routeLabel = (route: string) =>
+  route === 'ai_studio' ? 'AI Studio' : route.startsWith('vertex:') ? `Vertex · ${route.slice(7)}` : route
+
+export function routeSummary(rows: ArtifactRow[]): { routes: RouteRow[]; failover: Record<string, number> } {
+  const routes = new Map<string, RouteRow>()
+  const failover: Record<string, number> = {}
+
+  for (const r of rows) {
+    if (!['garment_summary', 'enrichment', 'vton_image'].includes(r.artifact_type)) continue
+    const d = r.data ?? {}
+
+    const route = typeof d.route_used === 'string' ? d.route_used : null
+    if (route) {
+      const isImage = r.artifact_type === 'vton_image'
+      const usage = d.usage as ArtifactUsage | null | undefined
+      const cost = usage
+        ? priceUsage(
+            usage,
+            isImage ? COST_RATES.imageInputPerMTok : COST_RATES.textInputPerMTok,
+            isImage ? COST_RATES.imageOutputPerMTok : COST_RATES.textOutputPerMTok,
+          )
+        : 0
+      const row = routes.get(route) ?? { route, calls: 0, images: 0, cost: 0 }
+      row.calls += 1
+      if (isImage) row.images += 1
+      row.cost += cost
+      routes.set(route, row)
+    }
+
+    const attempted = d.attempted as { errorKind?: string }[] | null | undefined
+    if (Array.isArray(attempted)) {
+      for (const a of attempted) {
+        const kind = a?.errorKind ?? 'unknown'
+        failover[kind] = (failover[kind] ?? 0) + 1
+      }
+    }
+  }
+
+  return { routes: [...routes.values()].sort((a, b) => b.calls - a.calls), failover }
+}
