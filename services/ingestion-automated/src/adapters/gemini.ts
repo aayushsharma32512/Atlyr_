@@ -1,19 +1,10 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { config } from '../config/index';
-import { withRetry, isTransientUpstreamError, errorHttpStatus } from '../utils/retry';
-import { createLogger } from '../utils/logger';
+import { withRetry } from '../utils/retry';
+import { geminiRouter, type GeminiPart, type RouteAttempt } from './llm/index';
 
-const logger = createLogger({ stage: 'adapter:gemini' });
-
-// ─── Client ──────────────────────────────────────────────────────────────────
-
-let _client: GoogleGenerativeAI | undefined;
-
-function getClient(): GoogleGenerativeAI {
-  if (!config.GOOGLE_API_KEY) throw new Error('GOOGLE_API_KEY is not set');
-  if (!_client) _client = new GoogleGenerativeAI(config.GOOGLE_API_KEY);
-  return _client;
-}
+// Calls go through the multi-route transport (adapters/llm): route failover, model fallback,
+// per-route AIMD concurrency and 429 handling all live there — this file owns only prompts,
+// parsing, and output shaping.
 
 // ─── Prompts (ported verbatim from services/ingestion/src/config/ghostPrompts.ts) ─
 
@@ -214,12 +205,24 @@ export interface GarmentSummary {
   complexity_level: 'simple' | 'complex';
   raw: string;
   model_used: string;
+  /** Which transport route served the call (e.g. 'ai_studio', 'vertex:global'). */
+  route_used: string;
+  /** Failed route/model attempts before the one that succeeded — persisted for the dashboard. */
+  attempted: RouteAttempt[];
   usage: TokenUsage | null;
 }
 
 // ─── Parser (ported from nodes.ts parseStage1) ───────────────────────────────
 
-function parseStage1(text: string): Omit<GarmentSummary, 'complexity_level' | 'model_used'> {
+type ParsedStage1 = {
+  tech_pack: string | null;
+  garment_physics: string | null;
+  item_name: string | null;
+  color_and_fabric: string | null;
+  raw: string;
+};
+
+function parseStage1(text: string): ParsedStage1 {
   const techLines: string[] = [];
   const garmentLines: string[] = [];
   let item_name: string | null = null;
@@ -257,7 +260,7 @@ function parseStage1(text: string): Omit<GarmentSummary, 'complexity_level' | 'm
 }
 
 // Derive complexity from the tech_pack content — complex if it has prints, embroidery, etc.
-function deriveComplexity(parsed: ReturnType<typeof parseStage1>): 'simple' | 'complex' {
+function deriveComplexity(parsed: ParsedStage1): 'simple' | 'complex' {
   const text = `${parsed.tech_pack ?? ''} ${parsed.garment_physics ?? ''}`.toLowerCase();
   const complexIndicators = [
     'embroidery', 'embroidered', 'print', 'printed', 'pattern', 'graphic',
@@ -275,6 +278,11 @@ function textModelCandidates(): string[] {
   return [...new Set([config.GEMINI_TEXT_MODEL, ...fallbacks])];
 }
 
+// Concatenated text parts of a router response.
+function textOf(parts: GeminiPart[]): string {
+  return parts.map((p) => p.text ?? '').join('');
+}
+
 export async function generateGarmentSummary(
   imageUrl: string,
   garmentCategory: 'topwear' | 'bottomwear' | 'dress',
@@ -283,62 +291,28 @@ export async function generateGarmentSummary(
   const promptBundle = STAGE1_FRONT[garmentCategory] ?? STAGE1_FRONT['topwear'];
   const promptText = promptBundle.prompt.replace('{PRODUCT_LINK}', productUrl);
 
-  const client = getClient();
   const inlineImage = await withRetry(() => fetchImageAsInlineData(imageUrl), {
     retries: 3,
     backoffMs: 1000,
   });
 
-  // A single Gemini model can be unavailable for hours (sustained 503 "high demand"),
-  // so after per-model retries are exhausted we move down the fallback chain.
-  const candidates = textModelCandidates();
-  let lastErr: unknown;
+  const { response, routeUsed, modelUsed, attempted } = await geminiRouter().call({
+    models: textModelCandidates(),
+    parts: [{ text: promptText }, { inlineData: inlineImage }],
+    systemInstruction: promptBundle.system,
+  });
 
-  for (const modelName of candidates) {
-    const model = client.getGenerativeModel({
-      model: modelName,
-      systemInstruction: promptBundle.system,
-    });
+  const text = textOf(response.parts);
+  const parsed = parseStage1(text);
 
-    try {
-      return await withRetry(async () => {
-        const result = await model.generateContent([
-          { text: promptText },
-          { inlineData: inlineImage },
-        ]);
-
-        const text = result.response.text();
-        const parsed = parseStage1(text);
-
-        return {
-          ...parsed,
-          complexity_level: deriveComplexity(parsed),
-          model_used: modelName,
-          usage: readUsage(result.response.usageMetadata),
-        };
-      }, {
-        retries: 4,
-        backoffMs: 2000,
-        maxBackoffMs: 30_000,
-        shouldRetry: isTransientUpstreamError,
-        onRetry: (err, attempt, delayMs) =>
-          logger.warn({ model: modelName, attempt, delayMs, error: (err as Error).message }, 'garment summary call failed, retrying'),
-      });
-    } catch (err) {
-      lastErr = err;
-      const status = errorHttpStatus(err);
-      // Overload or a missing/retired model id — the next candidate may still work.
-      if (isTransientUpstreamError(err) || status === 404) {
-        logger.warn({ model: modelName, status, error: (err as Error).message }, 'model unavailable, trying next fallback');
-        continue;
-      }
-      throw err;
-    }
-  }
-
-  throw lastErr instanceof Error
-    ? lastErr
-    : new Error(`All Gemini text models failed: ${candidates.join(', ')}`);
+  return {
+    ...parsed,
+    complexity_level: deriveComplexity(parsed),
+    model_used: modelUsed,
+    route_used: routeUsed,
+    attempted,
+    usage: readUsage(response.usageMetadata),
+  };
 }
 
 async function fetchImageAsInlineData(url: string): Promise<{ mimeType: string; data: string }> {
@@ -444,6 +418,9 @@ export interface EnrichmentResult {
   product_specifications: Record<string, unknown> | null;
   product_name_suggestion: string | null;
   model_used: string;
+  /** Which transport route served the call (e.g. 'ai_studio', 'vertex:global'). */
+  route_used: string;
+  attempted: RouteAttempt[];
   prompt_version: string;
   raw: string;
   usage: TokenUsage | null;
@@ -474,7 +451,10 @@ function stripJsonFences(text: string): string {
   return text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
 }
 
-function mapEnrichment(json: Record<string, unknown>, modelUsed: string, raw: string, usage: TokenUsage | null): EnrichmentResult {
+function mapEnrichment(
+  json: Record<string, unknown>,
+  meta: { modelUsed: string; routeUsed: string; attempted: RouteAttempt[]; raw: string; usage: TokenUsage | null },
+): EnrichmentResult {
   const materialType =
     asStringOrNull((json as Record<string, unknown>)['material type']) ?? asStringOrNull(json.material_type);
   const specs = json.product_specifications;
@@ -491,10 +471,12 @@ function mapEnrichment(json: Record<string, unknown>, modelUsed: string, raw: st
     product_specifications:
       specs && typeof specs === 'object' && !Array.isArray(specs) ? (specs as Record<string, unknown>) : null,
     product_name_suggestion: asStringOrNull(json.product_name_suggestion),
-    model_used:              modelUsed,
+    model_used:              meta.modelUsed,
+    route_used:              meta.routeUsed,
+    attempted:               meta.attempted,
     prompt_version:          ENRICH_PROMPT_VERSION,
-    raw,
-    usage,
+    raw:                     meta.raw,
+    usage:                   meta.usage,
   };
 }
 
@@ -506,7 +488,6 @@ export async function generateEnrichment(
   imageUrl: string,
   ctx: EnrichmentContext,
 ): Promise<EnrichmentResult> {
-  const client = getClient();
   const inlineImage = await withRetry(() => fetchImageAsInlineData(imageUrl), {
     retries: 3,
     backoffMs: 1000,
@@ -537,47 +518,22 @@ export async function generateEnrichment(
     '6. Produce JSON that matches the schema. Do not include any additional text or markdown formatting.',
   ].join('\n');
 
-  const candidates = textModelCandidates();
-  let lastErr: unknown;
+  const { response, routeUsed, modelUsed, attempted } = await geminiRouter().call({
+    models: textModelCandidates(),
+    parts: [{ text: prompt }, { inlineData: inlineImage }],
+    systemInstruction: ENRICH_SYSTEM_INSTRUCTION,
+    generationConfig: { responseMimeType: 'application/json' },
+  });
 
-  for (const modelName of candidates) {
-    const model = client.getGenerativeModel({
-      model: modelName,
-      systemInstruction: ENRICH_SYSTEM_INSTRUCTION,
-      generationConfig: { responseMimeType: 'application/json' },
-    });
-
-    try {
-      return await withRetry(async () => {
-        const result = await model.generateContent([
-          { text: prompt },
-          { inlineData: inlineImage },
-        ]);
-        const text = result.response.text();
-        let json: unknown = JSON.parse(stripJsonFences(text));
-        if (Array.isArray(json) && json.length > 0) json = json[0];
-        if (!json || typeof json !== 'object') throw new Error('enrichment: non-object JSON response');
-        return mapEnrichment(json as Record<string, unknown>, modelName, text, readUsage(result.response.usageMetadata));
-      }, {
-        retries: 4,
-        backoffMs: 2000,
-        maxBackoffMs: 30_000,
-        shouldRetry: isTransientUpstreamError,
-        onRetry: (err, attempt, delayMs) =>
-          logger.warn({ model: modelName, attempt, delayMs, error: (err as Error).message }, 'enrichment call failed, retrying'),
-      });
-    } catch (err) {
-      lastErr = err;
-      const status = errorHttpStatus(err);
-      if (isTransientUpstreamError(err) || status === 404) {
-        logger.warn({ model: modelName, status, error: (err as Error).message }, 'model unavailable, trying next fallback');
-        continue;
-      }
-      throw err;
-    }
-  }
-
-  throw lastErr instanceof Error
-    ? lastErr
-    : new Error(`All Gemini models failed for enrichment: ${candidates.join(', ')}`);
+  const text = textOf(response.parts);
+  let json: unknown = JSON.parse(stripJsonFences(text));
+  if (Array.isArray(json) && json.length > 0) json = json[0];
+  if (!json || typeof json !== 'object') throw new Error('enrichment: non-object JSON response');
+  return mapEnrichment(json as Record<string, unknown>, {
+    modelUsed,
+    routeUsed,
+    attempted,
+    raw: text,
+    usage: readUsage(response.usageMetadata),
+  });
 }

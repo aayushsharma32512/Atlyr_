@@ -48,6 +48,8 @@ export class VtonGenerationHandler implements StepHandler {
       data: {
         public_url: publicUrl,
         model_used: result.modelUsed,
+        route_used: result.routeUsed ?? null,
+        attempted: result.attempted?.length ? result.attempted : null,
         inference_ms: result.inferenceMs,
         usage: result.usage ?? null,
       },
@@ -55,7 +57,7 @@ export class VtonGenerationHandler implements StepHandler {
 
     await updateJob(job_id, { vton_image_url: publicUrl });
 
-    logger.info({ jobId: job_id, model: result.modelUsed, inferenceMs: result.inferenceMs }, 'vton image saved');
+    logger.info({ jobId: job_id, model: result.modelUsed, route: result.routeUsed, inferenceMs: result.inferenceMs }, 'vton image saved');
 
     const updatedJob = { ...job, vton_image_url: publicUrl };
     await advanceAndTrigger(updatedJob);

@@ -1,12 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { config } from '../../config/index';
-import { readUsage, type TokenUsage } from '../gemini';
-import { withRetry, errorHttpStatus, isTransientUpstreamError } from '../../utils/retry';
-import { createLogger } from '../../utils/logger';
+import { readUsage } from '../gemini';
+import { geminiRouter } from '../llm/index';
 import type { TryonInput, TryonOutput, TryonProvider } from '../../domain/types';
-
-const logger = createLogger({ stage: 'adapter:gemini-vton' });
 
 // Primary image model + fallbacks, tried in order when one is overloaded (503) or missing (404).
 function imageModelCandidates(): string[] {
@@ -48,9 +45,10 @@ const CATEGORY_MAP: Record<string, VtonCategory> = {
 // validated recipe per vton_intern_pack/02_MODEL_LEARNINGS.md §3.
 
 const VTON_SYSTEM_BASE = `\
-You are a virtual tryon engine. The first image is the identity-locked base avatar and must remain unchanged in pose, height and body proportions. 
+You are a virtual tryon engine. The first image is the identity-locked base avatar and must remain unchanged in pose, height and body proportions.
 Ignore faces and bodies in the reference garment images entirely, they are for garment appearance reference only. Replace clothing in avatar image, following the Garment Summaries as guiding specifications.
-BODY/SILHOUETTE LOCK: Use the base image as the geometry mask. Do not alter the body outline or internal proportions (torso, arms, legs). No scaling, slimming, elongation, widening, or warping of the body, retain the pose. 
+BODY/SILHOUETTE LOCK: Use the base image as the geometry mask. Do not alter the body outline or internal proportions (torso, arms, legs). No scaling, slimming, elongation, widening, or warping of the body, retain the pose.
+BACKGROUND: Plain uniform white studio background, exactly like the base avatar image. Never a black or dark background.
 PRIORITY: If objectives conflict, preserve pose and body proportions/silhouette, then garment blueprint, then aesthetics.
 `;
 
@@ -145,51 +143,6 @@ function buildPrompt(
   return { system, prompt };
 }
 
-async function callGemini(modelName: string, systemInstruction: string, prompt: string, avatarB64: string, avatarMime: string, garmentB64: string, garmentMime: string): Promise<{ b64: string; mimeType: string; usage: TokenUsage | null }> {
-  if (!config.GOOGLE_API_KEY) throw new Error('GOOGLE_API_KEY is not set');
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${config.GOOGLE_API_KEY}`;
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: systemInstruction }] },
-      contents: [{
-        parts: [
-          { inlineData: { mimeType: avatarMime, data: avatarB64 } },
-          { inlineData: { mimeType: garmentMime, data: garmentB64 } },
-          { text: prompt },
-        ],
-      }],
-      // Validated VTON recipe — matches the Google AI Studio settings that produce good
-      // try-ons: deterministic output (temperature 0) so the model faithfully dresses the
-      // base avatar instead of regurgitating the reference model, at portrait 9:16 / 2K.
-      // imageConfig field names verified against the v1beta gemini-3-pro-image (and the
-      // gemini-2.5-flash-image fallback) API — both accept this shape.
-      generationConfig: {
-        responseModalities: ['IMAGE'],
-        temperature: 0,
-        imageConfig: { aspectRatio: '9:16', imageSize: '2K' },
-      },
-    }),
-    signal: AbortSignal.timeout(120_000),
-  });
-
-  if (!resp.ok) throw new Error(`${modelName} ${resp.status}: ${await resp.text()}`);
-  const data = (await resp.json()) as {
-    candidates?: { content?: { parts?: { inlineData?: { mimeType: string; data: string } }[] }; finishReason?: string }[];
-    usageMetadata?: Record<string, number>;
-  };
-
-  const parts = data.candidates?.[0]?.content?.parts ?? [];
-  const imagePart = parts.find((p) => p.inlineData)?.inlineData;
-  if (!imagePart) {
-    const finishReason = data.candidates?.[0]?.finishReason ?? 'unknown';
-    throw new Error(`${modelName}: no image in response (finishReason=${finishReason})`);
-  }
-  return { b64: imagePart.data, mimeType: imagePart.mimeType, usage: readUsage(data.usageMetadata) };
-}
-
 async function fetchImageAsBase64(url: string): Promise<{ b64: string; mimeType: string }> {
   const resp = await fetch(url, { signal: AbortSignal.timeout(30_000) });
   if (!resp.ok) throw new Error(`Garment image fetch failed ${resp.status}: ${url}`);
@@ -218,43 +171,50 @@ export const geminiVtonProvider: TryonProvider = {
 
     const start = Date.now();
 
-    // A single image model can be overloaded for a while (sustained 503 "high demand"), so
-    // after per-model retries are exhausted we move down the fallback chain. A non-transient
-    // error (e.g. 400 bad request) fails fast without trying the rest.
-    const candidates = imageModelCandidates();
-    let image: { b64: string; mimeType: string; usage: TokenUsage | null } | undefined;
-    let usedModel = candidates[0];
-    let lastErr: unknown;
+    // Route failover, model fallback, 429 handling and per-route concurrency all live in the
+    // router — this adapter only assembles the request and unpacks the image.
+    const { response, routeUsed, modelUsed, attempted } = await geminiRouter().call({
+      models: imageModelCandidates(),
+      parts: [
+        { inlineData: { mimeType: avatar.mimeType, data: avatar.b64 } },
+        { inlineData: { mimeType: garment.mimeType, data: garment.b64 } },
+        { text: prompt },
+      ],
+      systemInstruction: system,
+      // A 200 with no image (finishReason=IMAGE_SAFETY on e.g. camis/lingerie-adjacent garments)
+      // walks the model chain and then the route chain instead of failing the job — safety
+      // filters are tuned differently per model and per endpoint, so a sibling often passes.
+      expectImage: true,
+      // Validated VTON recipe — deterministic output (temperature 0) so the model faithfully
+      // dresses the base avatar instead of regurgitating the reference model, at portrait 9:16 / 2K.
+      generationConfig: {
+        responseModalities: ['IMAGE'],
+        temperature: 0,
+        imageConfig: { aspectRatio: '9:16', imageSize: '2K' },
+        // This is catalogue clothing on a neutral base avatar; block only high-severity content
+        // instead of the default threshold that false-positives on fitted/strappy womenswear.
+        safetySettings: [
+          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+        ],
+      },
+    });
 
-    for (const modelName of candidates) {
-      try {
-        image = await withRetry(
-          () => callGemini(modelName, system, prompt, avatar.b64, avatar.mimeType, garment.b64, garment.mimeType),
-          { retries: 2, backoffMs: 1000, shouldRetry: isTransientUpstreamError },
-        );
-        usedModel = modelName;
-        break;
-      } catch (err) {
-        lastErr = err;
-        const status = errorHttpStatus(err);
-        if (isTransientUpstreamError(err) || status === 404) {
-          logger.warn({ model: modelName, status, error: (err as Error).message }, 'vton image model unavailable, trying next fallback');
-          continue;
-        }
-        throw err;
-      }
-    }
-
-    if (!image) {
-      throw lastErr instanceof Error ? lastErr : new Error(`All Gemini image models failed: ${candidates.join(', ')}`);
+    const imagePart = response.parts.find((p) => p.inlineData)?.inlineData;
+    if (!imagePart) {
+      throw new Error(`${modelUsed}: no image in response (finishReason=${response.finishReason ?? 'unknown'})`);
     }
 
     return {
-      bytes: Buffer.from(image.b64, 'base64'),
-      mimeType: image.mimeType,
+      bytes: Buffer.from(imagePart.data, 'base64'),
+      mimeType: imagePart.mimeType,
       inferenceMs: Date.now() - start,
-      modelUsed: usedModel,
-      usage: image.usage,
+      modelUsed,
+      routeUsed,
+      attempted,
+      usage: readUsage(response.usageMetadata),
     };
   },
 };
