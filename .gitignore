@@ -184,3 +184,11 @@ shoe_segmentation/
 # Local scratch
 lib_match.py
 shoes placement/
+
+# Local working docs and diagram scratch (not for the repo)
+docs/00-all-diagrams.excalidraw
+docs/segmentation-pipeline.excalidraw
+docs/bulk-ingestion-batching.md
+docs/economy-lane-batch-vton.md
+
+excel_batches/
