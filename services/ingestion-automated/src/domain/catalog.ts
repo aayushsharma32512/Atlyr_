@@ -1,10 +1,15 @@
 import { createHash } from 'node:crypto';
 import { supabaseAdmin } from '../db/supabase';
 import { pgPool } from '../db/pg';
+import { config } from '../config/index';
 import { getLatestArtifact, getArtifacts } from './artifacts';
 import { updateJob } from './job-catalog';
 import { removeStoragePrefix } from '../utils/storage';
+import { encodeThumbnail, parsePublicUrl, thumbnailPathFor } from '../utils/thumbnail';
+import { createLogger } from '../utils/logger';
 import type { IngestionPipelineJob } from './types';
+
+const logger = createLogger({ stage: 'catalog' });
 
 // item_type enum (supabase/migrations/20250717195740_initial_schema.sql):
 // top | bottom | shoes | accessory | occasion. Existing catalog rows for dresses are 'top'.
@@ -412,6 +417,43 @@ export async function upsertIngestedProduct(job: IngestionPipelineJob): Promise<
 }
 
 /**
+ * Write the 400px `.webp` sibling of the segmented garment and return its public URL.
+ *
+ * Catalog tiles and outfit cards resolve their image as `thumbnail_url || image_url`, so a product
+ * published without this falls back to the full-res 2K PNG — 1.3-2.5MB — in a ~90px tile.
+ * `image_url` itself is deliberately left as PNG: the studio hero wears it on the 1800x3072
+ * mannequin canvas, where a 400px texture would upscale ~7.7x.
+ *
+ * Returns null when there is nothing safe to derive, and throws only on real I/O failure.
+ */
+async function writeThumbnail(job: IngestionPipelineJob): Promise<string | null> {
+  const src = job.segmented_image_url;
+  if (!src) return null;
+
+  const parsed = parsePublicUrl(src, config.SUPABASE_URL);
+  if (!parsed) return null;
+
+  const outPath = thumbnailPathFor(parsed.path);
+  // Guard, not an optimisation: writing a 400px image onto its own source would destroy the
+  // full-res texture the mannequin wears.
+  if (outPath === parsed.path) return null;
+
+  // Deliberately not utils/storage.uploadToSupabase — that pins config.STORAGE_BUCKET, and the
+  // thumbnail has to land in the same bucket as the image it was derived from.
+  const bucket = supabaseAdmin.storage.from(parsed.bucket);
+
+  const dl = await bucket.download(parsed.path);
+  if (dl.error) throw new Error(`download ${parsed.path}: ${dl.error.message}`);
+
+  const out = await encodeThumbnail(Buffer.from(await dl.data.arrayBuffer()));
+
+  const up = await bucket.upload(outPath, out, { contentType: 'image/webp', upsert: true });
+  if (up.error) throw new Error(`upload ${outPath}: ${up.error.message}`);
+
+  return bucket.getPublicUrl(outPath).data.publicUrl;
+}
+
+/**
  * Promote a staged job to the live `products` table (idempotent upsert on the same id), then mark
  * the staging row live. Self-heals by re-staging first, so it works even if the auto-write on
  * completion was skipped or failed.
@@ -428,6 +470,20 @@ export async function publishToProducts(job: IngestionPipelineJob): Promise<stri
 
   const productRow: Record<string, unknown> = { ...staged };
   for (const col of STAGING_ONLY) delete productRow[col];
+
+  // Best-effort: a thumbnail failure must never block go-live, because consumers already fall back
+  // to image_url. The key is only ASSIGNED on success — never set to null — so a failed
+  // regeneration cannot wipe a good thumbnail off an already-published product. Publish is
+  // idempotent, so re-publishing retries it.
+  try {
+    const thumbnailUrl = await writeThumbnail(job);
+    if (thumbnailUrl) productRow.thumbnail_url = thumbnailUrl;
+  } catch (err) {
+    logger.warn(
+      { jobId: job.job_id, err: err instanceof Error ? err.message : String(err) },
+      'thumbnail generation failed — publishing with image_url fallback',
+    );
+  }
 
   const { error: prodErr } = await supabaseAdmin.from('products').upsert(productRow, { onConflict: 'id' });
   if (prodErr) throw new Error(`upsert products failed: ${prodErr.message}`);
