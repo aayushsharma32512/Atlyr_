@@ -3,6 +3,7 @@ import { config } from '../config/index';
 import { dispatch } from '../orchestration/dispatcher';
 import { setBoss } from '../orchestration/advance-and-trigger';
 import { PIPELINE_QUEUE, MODAL_QUEUE } from './send-step';
+import { registerVtonBatchSchedules } from './vton-batch-schedules';
 import { createLogger } from '../utils/logger';
 
 const logger = createLogger({ stage: 'worker' });
@@ -28,6 +29,10 @@ export function startWorker(boss: BossHandle): void {
   const teamOpts = (teamSize: number) => ({ teamSize, teamConcurrency: teamSize, teamRefill: true });
   boss.work(PIPELINE_QUEUE, teamOpts(config.BOSS_TEAM_SIZE), handler);
   boss.work(MODAL_QUEUE, teamOpts(config.BOSS_MODAL_TEAM_SIZE), handler);
+
+  // Registered here, not in index.ts: these handlers must be re-attached on every pg-boss
+  // generation or a restart leaves the persisted schedule emitting ticks nobody works.
+  registerVtonBatchSchedules(boss);
 
   logger.info(
     { teamSize: config.BOSS_TEAM_SIZE, modalTeamSize: config.BOSS_MODAL_TEAM_SIZE },

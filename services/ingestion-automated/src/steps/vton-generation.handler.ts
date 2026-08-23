@@ -1,9 +1,9 @@
 import type { StepHandler, IngestionPipelineJob } from '../domain/types';
-import { getLatestArtifact, saveArtifact } from '../domain/artifacts';
+import { getLatestArtifact } from '../domain/artifacts';
 import { updateJob } from '../domain/job-catalog';
-import { uploadToSupabase } from '../utils/storage';
 import { advanceAndTrigger } from '../orchestration/advance-and-trigger';
 import { resolveVtonModel } from '../adapters/vton/index';
+import { persistVtonResult } from './persist-vton-result';
 import { createLogger } from '../utils/logger';
 
 const logger = createLogger({ stage: 'vton-generation' });
@@ -20,18 +20,28 @@ export class VtonGenerationHandler implements StepHandler {
   async execute(job: IngestionPipelineJob): Promise<void> {
     const { job_id } = job;
 
-    // This step is the expensive one — a 2K Gemini image, 40-160s and billed per generation. The
-    // image is saved (artifact + vton_image_url) several awaits BEFORE advanceAndTrigger moves the
-    // state, so a process killed in that window leaves a finished, already-paid-for image behind
-    // with current_state still 'generating_vton'. Boot recovery then re-dispatches this step, and
-    // without this guard we would buy the same image twice.
+    // This step is the expensive one — a 2K Gemini image, 40-160s and billed per generation. Two
+    // separate paths can leave a finished image sitting here before the state has advanced:
+    //
+    //  · the instant path saves the artifact several awaits BEFORE advanceAndTrigger moves the
+    //    state, so a process killed in that window leaves an already-paid-for image with
+    //    current_state still 'generating_vton'. Boot recovery re-dispatches this step, and
+    //    without this guard we would buy the same image twice.
+    //  · the economy lane writes the artifact from the batch poller, out of band and hours later,
+    //    then resumes the job through this same edge.
+    //
+    // Either way the image is already ours. Reuse it and carry the job forward.
     //
     // Safe against a deliberate re-run: "Restart from generating_vton" calls
     // deleteArtifactsForSteps first, so the artifact is gone and generation proceeds normally.
     const existing = await getLatestArtifact(job_id, 'vton_image');
-    const existingUrl = (existing?.data as { public_url?: string } | undefined)?.public_url;
+    const existingData = existing?.data as { public_url?: string; route_used?: string } | undefined;
+    const existingUrl = existingData?.public_url;
     if (existingUrl) {
-      logger.info({ jobId: job_id, publicUrl: existingUrl }, 'vton image already generated, reusing instead of regenerating');
+      logger.info(
+        { jobId: job_id, publicUrl: existingUrl, route: existingData?.route_used ?? 'unknown' },
+        'vton image already exists, reusing instead of regenerating',
+      );
       if (!job.vton_image_url) await updateJob(job_id, { vton_image_url: existingUrl });
       await advanceAndTrigger({ ...job, vton_image_url: existingUrl });
       return;
@@ -55,27 +65,23 @@ export class VtonGenerationHandler implements StepHandler {
       colorAndFabric: (summary.color_and_fabric as string) ?? '',
     });
 
-    const storagePath = `${job_id}/tryon/front.jpg`;
-    const publicUrl = await uploadToSupabase(storagePath, result.bytes, result.mimeType);
-
-    await saveArtifact({
+    const { publicUrl } = await persistVtonResult({
       jobId: job_id,
-      stepName: 'generating_vton',
-      artifactType: 'vton_image',
-      storagePath,
-      data: {
-        public_url: publicUrl,
-        model_used: result.modelUsed,
-        route_used: result.routeUsed ?? null,
-        attempted: result.attempted?.length ? result.attempted : null,
-        inference_ms: result.inferenceMs,
-        usage: result.usage ?? null,
-      },
+      bytes: result.bytes,
+      mimeType: result.mimeType,
+      modelUsed: result.modelUsed,
+      // The router reports which pool actually served the call. Providers that do not route
+      // (FASHN, seedream) report nothing, and 'instant' is the honest label for those.
+      routeUsed: result.routeUsed ?? 'instant',
+      attempted: result.attempted,
+      inferenceMs: result.inferenceMs,
+      usage: result.usage,
     });
 
-    await updateJob(job_id, { vton_image_url: publicUrl });
-
-    logger.info({ jobId: job_id, model: result.modelUsed, route: result.routeUsed, inferenceMs: result.inferenceMs }, 'vton image saved');
+    logger.info(
+      { jobId: job_id, model: result.modelUsed, route: result.routeUsed, inferenceMs: result.inferenceMs },
+      'vton image saved',
+    );
 
     const updatedJob = { ...job, vton_image_url: publicUrl };
     await advanceAndTrigger(updatedJob);

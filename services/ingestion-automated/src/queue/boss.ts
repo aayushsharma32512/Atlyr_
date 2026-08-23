@@ -22,6 +22,17 @@ export type BossHandle = {
   ): Promise<string>;
   /** Used by boot recovery to retire queue rows a dead process left behind. */
   cancel(ids: string[]): Promise<void>;
+  /**
+   * Cron registration. Forwarded like the rest because the schedule is persisted in the DB but the
+   * WORKER for it is not: a restart that re-registers workers must re-attach through the live
+   * instance, or the schedule keeps emitting ticks nobody consumes.
+   */
+  schedule(
+    name: string,
+    cron: string,
+    data?: object,
+    options?: PgBoss.ScheduleOptions,
+  ): Promise<void>;
 };
 
 function parseExpireAfter(input: string): number {
@@ -90,6 +101,7 @@ export async function initBoss(
     send: (name, data, opts) => current.send(name, data, opts),
     work: (name, opts, handler) => current.work(name, opts, handler),
     cancel: (ids) => current.cancel(ids),
+    schedule: (name, cron, data, opts) => current.schedule(name, cron, data, opts),
   };
 
   const startAndRegister = async (reason: 'start' | 'restart') => {
