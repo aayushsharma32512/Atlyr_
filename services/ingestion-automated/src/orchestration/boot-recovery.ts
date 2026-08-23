@@ -1,6 +1,7 @@
 import { pgPool } from '../db/pg';
 import { config } from '../config/index';
 import { HITL_STATES, TERMINAL_STATES } from './state-machine';
+import { EXTERNALLY_DRIVEN_STATES } from './recovery-scope';
 import { PIPELINE_QUEUE, MODAL_QUEUE, sendPipelineStep } from '../queue/send-step';
 import type { BossHandle } from '../queue/boss';
 import { createLogger } from '../utils/logger';
@@ -21,11 +22,10 @@ const logger = createLogger({ stage: 'boot-recovery' });
 // MUST run before the workers register, or this process's own in-flight jobs look identical to a
 // dead process's and get recovered out from under themselves.
 //
-// The two Modal-driven states are excluded for the same reason the reaper excludes them: Modal
-// patches current_state out of band, so a row can legitimately sit in `segmenting` or `placement`
-// with no live queue job for as long as the GPU takes. Re-dispatching those races the Modal run,
-// and SegmentingHandler deletes the existing segmentation_jobs row before inserting.
-const EXTERNALLY_DRIVEN_STATES = ['segmenting', 'placement'];
+// Externally driven states are excluded, and the list is SHARED with the reaper rather than
+// copied — see recovery-scope.ts. It used to be copied, and the copies drifted: this one was
+// missing the parked states, so every job sitting in a batch tray (which by design never has a
+// queue row) matched as an orphan and was re-dispatched on every boot.
 
 type OrphanRow = {
   job_id: string;
