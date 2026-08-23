@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { BossHandle } from '../../queue/boss';
 import { z } from 'zod';
 import { getJob, updateState } from '../../domain/job-catalog';
-import { deleteArtifactsForSteps } from '../../domain/artifacts';
+import { restartJobFromStep, STEP_ORDER, type RestartableState } from '../../orchestration/restart-job';
 import { hasTransition, HITL_STATES, PARKED_STATES, TERMINAL_STATES } from '../../orchestration/state-machine';
 import { PARKED_STATE } from '../../domain/gemini-batches';
 import { supabaseAdmin } from '../../db/supabase';
@@ -11,30 +11,10 @@ import { createLogger } from '../../utils/logger';
 
 const logger = createLogger({ stage: 'api:restart' });
 
-// Ordered list of work states — used to determine which artifacts to clean.
-const STEP_ORDER = [
-  'scraping',
-  'identifying',
-  'generating_garment_summary',
-  'generating_vton',
-  'segmenting',
-  'placement',
-] as const;
-
-type RestartableState = typeof STEP_ORDER[number];
 
 const RestartBody = z.object({
   from_state: z.enum(STEP_ORDER),
 });
-
-async function cleanSegmentationData(jobId: string): Promise<void> {
-  // Delete segmentation_step_results via cascade when we delete segmentation_jobs
-  const { error } = await supabaseAdmin
-    .from('segmentation_jobs')
-    .delete()
-    .eq('pipeline_job_id', jobId);
-  if (error) throw new Error(`Failed to clean segmentation data: ${error.message}`);
-}
 
 export async function registerRestartRoute(app: FastifyInstance, boss: BossHandle): Promise<void> {
   app.post('/jobs/:jobId/restart', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -81,49 +61,12 @@ export async function registerRestartRoute(app: FastifyInstance, boss: BossHandl
       });
     }
 
-    // Determine which step artifacts to delete (current step and all downstream)
-    const fromIndex = STEP_ORDER.indexOf(from_state);
-    const stepsToClean = STEP_ORDER.slice(fromIndex) as unknown as string[];
-
+    const stepsToClean = STEP_ORDER.slice(STEP_ORDER.indexOf(from_state)) as unknown as string[];
     logger.info({ jobId, from_state, stepsToClean }, 'restarting job');
 
-    await deleteArtifactsForSteps(jobId, stepsToClean);
-
-    // Clean segmentation tables if restarting at or before segmenting
-    if (fromIndex <= STEP_ORDER.indexOf('segmenting')) {
-      await cleanSegmentationData(jobId);
-    }
-
-    // If restarting before placement, also clear the ingested_product link
-    if (fromIndex < STEP_ORDER.indexOf('placement') && job.ingested_product_id) {
-      await supabaseAdmin
-        .from('ingestion_pipeline_jobs')
-        .update({ ingested_product_id: null })
-        .eq('job_id', jobId);
-    }
-
-    await supabaseAdmin
-      .from('ingestion_pipeline_jobs')
-      .update({
-        current_state: from_state,
-        last_error: null,
-        last_error_step: null,
-        error_count: 0,
-        // Releasing the tray claim is unconditional — it is what makes a late batch result for
-        // this job harmless (the poller's ownership guard then matches zero rows).
-        //
-        // The LANE is only forced back to instant when the job is actually parked, i.e. a human
-        // is saying "stop waiting for the tray, do it now". A job that failed upstream of the
-        // batch station keeps the lane it was submitted with: the bulk retry loop restarts
-        // exactly those, and silently flipping them to instant would bill an economy sheet at
-        // full interactive price for every row that hit a transient scrape error.
-        ...(job.current_state === PARKED_STATE ? { vton_lane: 'instant' as const } : {}),
-        gemini_batch_id: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('job_id', jobId);
-
-    await sendPipelineStep(boss, jobId, from_state);
+    // resetErrorCount: a human looked at this and is granting a fresh retry budget. The custodian's
+    // automatic path passes false — see orchestration/restart-job.
+    await restartJobFromStep(boss, job, from_state, { resetErrorCount: true });
 
     logger.info({ jobId, from_state }, 'job restarted');
     return reply.send({

@@ -166,7 +166,7 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
           }),
         );
         if (!outcome.acquired) continue; // this key is paused or full — try the next one
-        allBusy = false;
+        allBusy = false; // at least one key was actually reachable this pass
 
         const r = outcome.value;
         if (r.ok) { resp = r; break; }
@@ -197,22 +197,39 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
       }
 
       if (!resp) {
-        if (lastError) throw lastError;
-        if (allBusy) {
-          // Nothing was even attempted. Report how long the soonest pool is actually parked, so the
-          // caller can defer the step until then instead of burning its retries inside the window.
-          const pauses = config.FIRECRAWL_API_KEYS.map((_k, i) => governor.pauseRemainingMs(poolFor(i)));
-          const soonest = pauses.filter((ms) => ms > 0);
-          const retryAfterMs = soonest.length === pauses.length && soonest.length > 0
-            ? Math.min(...soonest)
-            : SATURATED_RETRY_MS;
-          throw new UpstreamBusyError(
-            'All Firecrawl keys are rate limited or out of credits',
-            retryAfterMs,
-            soonest.length === pauses.length ? 'paused' : 'saturated',
+        // Reaching here means NO key served the request. It does NOT mean the request is bad: a
+        // genuine scrape failure (4xx/5xx) throws inside the loop above, so `lastError` at this
+        // point can only be a 402 or a 429 — the two cases we deliberately park and walk past.
+        //
+        // Throwing that error as the job's verdict was a real bug: one dead key at the END of the
+        // chain would kill a job even though a healthy key with 885 credits was merely busy for
+        // that instant. The whole point of chaining keys is that a dead one falls through, and the
+        // fall-through has to survive being the last entry in the list.
+        //
+        // "When can anyone serve us" is the min across pools of: the remaining pause for a parked
+        // key, or a short constant for one that is simply out of slots. If ANY key is unparked
+        // there is real capacity behind this and it is backpressure — the job never ran, so it
+        // must not be charged an attempt.
+        const perPool = config.FIRECRAWL_API_KEYS.map((_k, i) => governor.pauseRemainingMs(poolFor(i)));
+        const anyUnparked = perPool.some((ms) => ms === 0);
+        const retryAfterMs = perPool.length
+          ? Math.min(...perPool.map((ms) => (ms > 0 ? ms : SATURATED_RETRY_MS)))
+          : SATURATED_RETRY_MS;
+
+        if (lastError) {
+          logger.warn(
+            { url: targetUrl, anyUnparked, retryAfterMs, lastError: lastError.message.slice(0, 120) },
+            'every key declined this request — deferring rather than failing the job',
           );
         }
-        throw new Error('Firecrawl request failed on every configured key');
+
+        throw new UpstreamBusyError(
+          anyUnparked
+            ? 'Every Firecrawl key was busy — no capacity for this request right now'
+            : 'Every Firecrawl key is paused (rate limited or out of credits)',
+          retryAfterMs,
+          anyUnparked ? 'saturated' : 'paused',
+        );
       }
 
       const payload = await resp.json() as Record<string, unknown>;

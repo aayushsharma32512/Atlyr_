@@ -23,7 +23,7 @@ import {
   RESCUE_EXCLUDED_STATES,
 } from './recovery-scope';
 import { classifyError, extractRetryDelayMs } from '../utils/error-classify';
-import { decideStepFailure } from './step-retry';
+import { decideStepFailure, isRecoverableFailure } from './step-retry';
 import { ModalTimeoutError, shouldRetryModalCall } from '../adapters/modal.protocol';
 import {
   CORRELATION_KEY,
@@ -392,5 +392,86 @@ describe('drill 10 — the attempt cap is honoured', () => {
     const d = decide(2);
     expect(d.action).toBe('retry');
     if (d.action === 'retry') expect(d.attempt).toBe(3);
+  });
+});
+
+// ─── Drill 11 · a failure about conditions is not a dead end ─────────────────
+//
+// `failed` is terminal, and for a bad URL that is right. But some failures are about CONDITIONS,
+// not about the job: an exhausted API key, a rate limit that outlasted the dispatcher's patience.
+// Those heal, and until the custodian's retry pass existed nothing would ever look at them again —
+// a human had to notice and click restart. One 402 stranded a row exactly that way.
+describe('drill 11 — recoverable failures are distinguishable from dead ends', () => {
+  test('an exhausted key is recoverable — the request was fine, the money ran out', () => {
+    const err = new Error('Firecrawl error 402: {"success":false,"error":"Insufficient credits"}');
+    expect(isRecoverableFailure(err)).toBe(true);
+  });
+
+  test('a rate limit is recoverable', () => {
+    expect(isRecoverableFailure(Object.assign(new Error('429 slow down'), { status: 429 }))).toBe(true);
+  });
+
+  test('a 5xx is recoverable', () => {
+    expect(isRecoverableFailure(Object.assign(new Error('503 unavailable'), { status: 503 }))).toBe(true);
+  });
+
+  test('a bad request is NOT — no condition change fixes it', () => {
+    expect(isRecoverableFailure(Object.assign(new Error('400 bad url'), { status: 400 }))).toBe(false);
+  });
+
+  test('a retired model id is NOT', () => {
+    expect(isRecoverableFailure(Object.assign(new Error('404 model gone'), { status: 404 }))).toBe(false);
+  });
+
+  // The status is parsed out of the STORED message, because that is all a failed row keeps —
+  // last_error is text, not an Error object.
+  test('recoverability survives the round trip through last_error text', () => {
+    const stored = 'Firecrawl error 402: {"success":false,"error":"Insufficient credits to perform this request."}';
+    expect(isRecoverableFailure(new Error(stored))).toBe(true);
+  });
+
+  // 402 must NOT become an immediate deferral: it needs hours, and deferring every 60s would burn
+  // the whole attempt cap in five minutes on a key nobody has topped up yet.
+  test('402 still fails fast rather than being deferred in place', () => {
+    const err = new Error('Firecrawl error 402: Insufficient credits');
+    const d = decideStepFailure({ err, errorCount: 0, maxAttempts: 5, fallbackDelayMs: 60_000 });
+    expect(d.action).toBe('fail');
+  });
+});
+
+// ─── Drill 12 · a dead key must not become the job's verdict ─────────────────
+//
+// The chain exists so a dead key falls through to a live one. That has to hold even when the dead
+// key is LAST in the list: on 2026-08-23 a key at -12 credits killed a job with a 402 while the
+// priority-1 key still had 885 credits and was merely busy for that instant. The adapter had
+// already parked the dead key for six hours — and then threw its error anyway.
+describe('drill 12 — a fallen-through key is not a verdict', () => {
+  // What the adapter now raises instead. Recreated structurally rather than imported, because the
+  // adapter pulls in config and would kill the test process.
+  const busy = (retryAfterMs: number, saturated: boolean) =>
+    Object.assign(new Error(saturated ? 'Every Firecrawl key was busy' : 'Every Firecrawl key is paused'), {
+      retryAfterMs,
+      backpressure: saturated,
+    });
+
+  test('capacity exists but is busy → deferred, and not charged an attempt', () => {
+    const d = decideStepFailure({ err: busy(5_000, true), errorCount: 4, maxAttempts: 5, fallbackDelayMs: 60_000 });
+    expect(d.action).toBe('retry');
+    if (d.action === 'retry') expect(d.countsAgainstCap).toBe(false);
+  });
+
+  test('every key genuinely paused → still deferred, but capped', () => {
+    const d = decideStepFailure({ err: busy(57_000, false), errorCount: 0, maxAttempts: 5, fallbackDelayMs: 60_000 });
+    expect(d.action).toBe('retry');
+    if (d.action === 'retry') {
+      expect(d.countsAgainstCap).toBe(true);
+      expect(d.delayMs).toBe(57_000);
+    }
+  });
+
+  // The regression itself: the raw 402 must never reach dispatch as the job's error any more.
+  // If it somehow does, it is at least recoverable rather than a dead end.
+  test('a raw 402 is recoverable even if it does leak through', () => {
+    expect(isRecoverableFailure(new Error('Firecrawl error 402: Insufficient credits'))).toBe(true);
   });
 });

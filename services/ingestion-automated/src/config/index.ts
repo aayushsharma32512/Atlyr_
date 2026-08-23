@@ -147,6 +147,17 @@ const EnvSchema = z.object({
   // kill switch is here rather than per-pass because all three share one tick.
   CUSTODIAN_ENABLED: z.string().default('true'),
   CUSTODIAN_CRON: z.string().default('*/5 * * * *'),
+  // Retry failures that were about CONDITIONS (a dead key, a rate limit that outlasted the
+  // dispatcher's patience) rather than about the job. Without this, `failed` is a dead end that
+  // only a human clicking restart can escape — which is how one 402 stranded a row indefinitely.
+  AUTO_RETRY_FAILED: z.string().default('true'),
+  // How long a failure must sit before the custodian touches it. Long enough that an operator sees
+  // it first and that the upstream condition has had a chance to actually change; retrying a dead
+  // key every five minutes just re-asks a question already answered.
+  AUTO_RETRY_MIN_IDLE_SECONDS: z.string().default('1800'),
+  // Bound on automatic retries, read from error_count. A human restart zeroes that counter and so
+  // grants a fresh budget; the custodian only ever spends the existing one.
+  AUTO_RETRY_MAX_ATTEMPTS: z.string().default('5'),
   // How many times a step may be deferred on a retryable error (rate limit, transient upstream)
   // before the job is failed for good. Bounds the one thing a defer-instead-of-fail policy can get
   // wrong: a permanently broken upstream cycling jobs forever with no failure ever surfacing.
@@ -188,6 +199,9 @@ export const config = {
   BOSS_RESTART_MAX_ATTEMPTS: Number(parsed.data.BOSS_RESTART_MAX_ATTEMPTS),
   FIRECRAWL_MAX_CONCURRENCY: Number(parsed.data.FIRECRAWL_MAX_CONCURRENCY),
   CUSTODIAN_ENABLED: parsed.data.CUSTODIAN_ENABLED === 'true',
+  AUTO_RETRY_FAILED: parsed.data.AUTO_RETRY_FAILED === 'true',
+  AUTO_RETRY_MIN_IDLE_SECONDS: Number(parsed.data.AUTO_RETRY_MIN_IDLE_SECONDS),
+  AUTO_RETRY_MAX_ATTEMPTS: Number(parsed.data.AUTO_RETRY_MAX_ATTEMPTS),
   STEP_MAX_ATTEMPTS: Number(parsed.data.STEP_MAX_ATTEMPTS),
   STEP_RETRY_FALLBACK_SECONDS: Number(parsed.data.STEP_RETRY_FALLBACK_SECONDS),
   GEMINI_ROUTE_MAX_CONCURRENT: Number(parsed.data.GEMINI_ROUTE_MAX_CONCURRENT),

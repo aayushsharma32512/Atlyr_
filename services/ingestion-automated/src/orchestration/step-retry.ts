@@ -12,7 +12,7 @@
  * `extractRetryDelayMs`); nothing consumed it. This module is that consumer, kept pure — no config,
  * no DB, no queue — so the drills can exercise the policy rather than a log line.
  */
-import { classifyError, extractRetryDelayMs, type ErrorKind } from '../utils/error-classify';
+import { classifyError, errorHttpStatus, extractRetryDelayMs, type ErrorKind } from '../utils/error-classify';
 
 /** Kinds that mean "not now" rather than "not ever". */
 const RETRYABLE: readonly ErrorKind[] = ['rate_limited', 'transient'];
@@ -74,4 +74,33 @@ export function decideStepFailure(input: StepFailureInput): StepFailureDecision 
   if (attempt >= input.maxAttempts) return { action: 'fail', kind, reason: 'attempts-exhausted' };
 
   return { action: 'retry', kind, attempt, delayMs, countsAgainstCap: true };
+}
+
+/**
+ * HTTP statuses that mean "this could not run right now" rather than "this request is wrong".
+ *
+ * 402 is the one worth spelling out. `classifyError` reads it as `fatal_input` because it is a 4xx,
+ * but "insufficient credits" says nothing about the request — the URL, the garment and the prompt
+ * were all fine; the key ran out of money. The Firecrawl adapter already knows this and parks the
+ * key for six hours on 402, exactly as it does for a rate limit. It only becomes fatal when EVERY
+ * key is dead, and even then it heals the moment someone tops up or the billing period rolls over.
+ *
+ * It is deliberately not folded into `classifyError` as `rate_limited`: that would make the
+ * dispatcher defer it every 60s and burn the whole attempt cap inside five minutes, on something
+ * that needs hours. Failing fast is right — the operator SHOULD see a dead key — and the custodian
+ * retries it later on a much slower clock.
+ */
+const CAPACITY_STATUSES: readonly number[] = [402];
+
+/**
+ * Should a job that has already been marked `failed` be retried automatically, later?
+ *
+ * A broader question than `decideStepFailure`'s: that one asks "defer this right now", this one
+ * asks "is this worth another go once conditions may have changed". Bad URLs and retired model ids
+ * answer no to both; an exhausted key answers no to the first and yes to the second.
+ */
+export function isRecoverableFailure(err: unknown): boolean {
+  if (RETRYABLE.includes(classifyError(err))) return true;
+  const status = errorHttpStatus(err);
+  return status !== undefined && CAPACITY_STATUSES.includes(status);
 }
