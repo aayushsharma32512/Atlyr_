@@ -5,6 +5,10 @@ export type PipelineState =
   | 'awaiting_hitl_identification'
   | 'generating_garment_summary'
   | 'generating_vton'
+  // Parked: the VTON step is out with an AI Studio batch tray. Nothing in this service drives a
+  // job in this state — the poller resumes it when results come back, or demotes it to the
+  // instant lane. See docs/economy-lane-batch-vton.md.
+  | 'vton_batch_queued'
   | 'segmenting'
   | 'segmented'
   | 'awaiting_hitl_segmentation'
@@ -27,6 +31,10 @@ export interface IngestionPipelineJob {
   hitl_post_identification: boolean;
   hitl_post_segmentation: boolean;
   current_state: PipelineState;
+  /** Which lane this job's VTON step takes. 'instant' is the default and the only lane for FASHN jobs. */
+  vton_lane: 'instant' | 'batch';
+  /** The batch tray currently owning this job, or null when unclaimed. */
+  gemini_batch_id: string | null;
   v_ton_preferred_image: string | null;
   vton_image_url: string | null;
   segmented_image_url: string | null;

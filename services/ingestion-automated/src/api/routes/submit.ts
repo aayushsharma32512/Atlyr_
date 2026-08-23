@@ -18,6 +18,9 @@ const SubmitBody = z.object({
   v_ton_image_preference:   z.object({ type: z.string() }).optional(),
   hitl_post_identification: z.boolean().default(false),
   hitl_post_segmentation:   z.boolean().default(false),
+  // Economy mode. Defaults to 'instant' so an unaware caller can never route work into a batch:
+  // opting in is always explicit, per row.
+  vton_lane:                z.enum(['instant', 'batch']).default('instant'),
   created_by:               z.string().optional(),
 });
 
@@ -54,6 +57,18 @@ export async function registerSubmitRoute(app: FastifyInstance, boss: BossHandle
       });
     }
 
+    // A failed/discarded/cancelled job still holds this URL's UNIQUE dedupe_key. Without this
+    // branch the insert below hits the constraint and returns a 500 with a raw Postgres error —
+    // meaning any URL that has ever failed can never be submitted again, only restarted. Say so.
+    if (previous) {
+      return reply.status(409).send({
+        error: 'previous_attempt_exists',
+        message: `A previous job for this URL ended in '${previous.current_state}'. Restart that job instead of resubmitting.`,
+        existing_job_id: previous.job_id,
+        current_state: previous.current_state,
+      });
+    }
+
     const job = await insertJob({
       product_url:              body.product_url,
       dedupe_key:               dedupeKey,
@@ -65,6 +80,7 @@ export async function registerSubmitRoute(app: FastifyInstance, boss: BossHandle
       v_ton_image_preference:   body.v_ton_image_preference ?? null,
       hitl_post_identification: body.hitl_post_identification,
       hitl_post_segmentation:   body.hitl_post_segmentation,
+      vton_lane:                body.vton_lane,
       created_by:               body.created_by ?? null,
     });
 

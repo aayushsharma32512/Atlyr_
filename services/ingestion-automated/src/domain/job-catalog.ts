@@ -13,7 +13,10 @@ export async function getJob(jobId: string): Promise<IngestionPipelineJob> {
 }
 
 export async function insertJob(
-  input: Omit<IngestionPipelineJob, 'job_id' | 'error_count' | 'last_error' | 'last_error_step' | 'created_at' | 'updated_at' | 'current_state' | 'v_ton_preferred_image' | 'vton_image_url' | 'segmented_image_url' | 'ingested_product_id'>
+  // `vton_lane` is deliberately NOT omitted: every caller has to decide which lane a job takes
+  // rather than inherit one by accident. `gemini_batch_id` is omitted — a job is only ever
+  // claimed into a tray after it exists.
+  input: Omit<IngestionPipelineJob, 'job_id' | 'error_count' | 'last_error' | 'last_error_step' | 'created_at' | 'updated_at' | 'current_state' | 'v_ton_preferred_image' | 'vton_image_url' | 'segmented_image_url' | 'ingested_product_id' | 'gemini_batch_id'>
 ): Promise<IngestionPipelineJob> {
   const { data, error } = await supabaseAdmin
     .from('ingestion_pipeline_jobs')
