@@ -38,6 +38,7 @@ build/
 .env
 .env.local
 .env.development.local
+.env.test
 .env.test.local
 .env.production.local
 .env.bak*
@@ -184,3 +185,5 @@ shoe_segmentation/
 # Local scratch
 lib_match.py
 shoes placement/
+*.excalidraw
+
