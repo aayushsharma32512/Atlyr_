@@ -72,8 +72,12 @@ function BatchDetail({ batch, onBack }: { batch: BatchProgress; onBack: () => vo
   const done = batch.jobs.filter(j => j.current_state === 'completed')
   const review = batch.jobs.filter(j => j.current_state.startsWith('awaiting_hitl'))
   const failed = batch.jobs.filter(j => ['failed', 'discarded', 'cancelled'].includes(j.current_state))
+  // Economy rows are split out of "still running": they are parked in a batch tray at Google and
+  // genuinely will not move for minutes-to-hours. Folded into the generic running list they read
+  // as frozen, which invites someone to restart work that is already paid for.
+  const queuedAtGoogle = batch.jobs.filter(j => j.current_state === 'vton_batch_queued')
   const left = batch.jobs.filter(j =>
-    !done.includes(j) && !review.includes(j) && !failed.includes(j))
+    !done.includes(j) && !review.includes(j) && !failed.includes(j) && !queuedAtGoogle.includes(j))
 
   // Product URLs bury the readable slug at different depths — Myntra ends in
   // /<slug>/<id>/buy, Shopify uses /products/<slug>, /collections/<x>/products/<slug>.
@@ -118,6 +122,12 @@ function BatchDetail({ batch, onBack }: { batch: BatchProgress; onBack: () => vo
         <StripedBar percent={batch.percent} active={batch.running > 0} />
         <span className="text-sm font-semibold tabular-nums">{batch.percent}%</span>
       </div>
+
+      {batch.batchQueued > 0 && (
+        <p className="mt-2 text-[11px] text-sky-600">
+          {batch.batchQueued} queued at Google (economy) — try-ons are batched; these can take hours.
+        </p>
+      )}
 
       <div className="mt-3 grid grid-cols-4 gap-2">
         <Stat label="Done" value={done.length} tone="text-emerald-600" />
@@ -183,6 +193,7 @@ function BatchDetail({ batch, onBack }: { batch: BatchProgress; onBack: () => vo
         <List title="Done" jobs={done} tone="text-emerald-600" />
         <List title="Awaiting review" jobs={review} tone="text-amber-600" />
         <List title="Still running" jobs={left} tone="text-muted-foreground" />
+        <List title="Queued at Google (economy)" jobs={queuedAtGoogle} tone="text-sky-600" />
         <List title="Failed" jobs={failed} tone="text-destructive" />
       </div>
 
