@@ -52,7 +52,25 @@ image = (
     image=image,
     secrets=[modal.Secret.from_name("supabase-secret")],  # Mounts the Supabase credentials securely
     timeout=600,                                          # 10 minutes timeout limit
-    scaledown_window=10,                                  # Spin down container after 10s idle (saves 50s of idle billing!)
+    # How long a finished container waits for more work before dying. NOT a request timeout — it
+    # never delays a response; it only decides whether the NEXT job re-pays a cold start.
+    #
+    # 10s was too short: measured 94.9s cold vs 54.0s warm, and a 40s gap between jobs was enough
+    # to lose the container. But the window is billed as idle GPU, so overshooting costs real
+    # money at the tail of every sheet (one idle window per container, ~$0.011/container at 60s).
+    # 60s covers the observed inter-arrival gaps with margin while keeping that tail small, and
+    # matches the value already chosen for eraser/modal_app_eraser.py.
+    scaledown_window=60,
+    # A spend ceiling, not a throttle. Previously absent entirely: nothing anywhere capped
+    # concurrent GPU containers, so a bug or a very large sheet could fan out without limit.
+    # Matched to the caller's own ceiling (pg-boss BOSS_TEAM_SIZE=12) on purpose — setting it
+    # LOWER just serialises work into extra waves (measured: 8 containers cost ~54s more
+    # wall-clock per 21-job sheet to save ~3 cents). Guardrail, not a tuning knob.
+    #
+    # NOTE: deliberately NOT adding @modal.concurrent(max_inputs=N) here. The pipeline caches a
+    # SAM2 predictor in a module global and calls set_image() per request, so two inputs sharing
+    # one container would race on that state. Needs per-input model handles first.
+    max_containers=12,
 )
 @modal.fastapi_endpoint(method="POST")
 def segment(seg_job_id: str, pipeline_job_id: str, category: str = "top"):

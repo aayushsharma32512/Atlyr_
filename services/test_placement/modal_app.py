@@ -22,6 +22,11 @@ image = (
         "python-dotenv",
         "fastapi[standard]",
     )
+    # Bake the LoFTR weights into the image. Without this, kornia downloads them at runtime on
+    # every cold container — the segmentation image already pre-bakes its models this way.
+    .run_commands(
+        "python -c 'import kornia.feature as KF; KF.LoFTR(pretrained=\"outdoor\")'",
+    )
     .add_local_dir(local_dir, remote_path="/root")
 )
 
@@ -32,7 +37,9 @@ image = (
     image=image,
     secrets=[modal.Secret.from_name("supabase-secret")],
     timeout=600,
-    scaledown_window=10,
+    # See the segmentation app for the reasoning on both values.
+    scaledown_window=60,
+    max_containers=12,
 )
 @modal.fastapi_endpoint(method="POST")
 def place(pipeline_job_id: str, segmented_image_url: str = None, vton_image_url: str = None):
