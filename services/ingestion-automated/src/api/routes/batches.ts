@@ -33,6 +33,9 @@ const BatchBody = z.object({
     v_ton_model:              z.string().optional(),
     hitl_post_identification: z.boolean().default(false),
     hitl_post_segmentation:   z.boolean().default(true),
+    // Which VTON lane every row in this batch takes. Defaults to 'instant' for the same reason
+    // the single-submit route does: nothing should end up in a batch tray by accident.
+    vton_lane:                z.enum(['instant', 'batch']).default('instant'),
   }).default({}),
 });
 
@@ -111,6 +114,7 @@ export async function registerBatchRoutes(app: FastifyInstance, boss: BossHandle
           v_ton_image_preference:   null,
           hitl_post_identification: body.options.hitl_post_identification,
           hitl_post_segmentation:   body.options.hitl_post_segmentation,
+          vton_lane:                body.options.vton_lane,
           created_by:               body.created_by ?? null,
           batch_id:                 batch.batch_id,
         });

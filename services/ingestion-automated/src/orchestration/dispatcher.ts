@@ -1,4 +1,4 @@
-import { TERMINAL_STATES, HITL_STATES } from '../orchestration/state-machine';
+import { TERMINAL_STATES, HITL_STATES, PARKED_STATES } from '../orchestration/state-machine';
 import { getJob, markJobFailed } from '../domain/job-catalog';
 import type { StepHandler } from '../domain/types';
 import { PendingHandler } from '../steps/pending.handler';
@@ -38,6 +38,13 @@ export async function dispatch(jobId: string): Promise<void> {
   // job that had already completed VTON and segmentation and was sitting in the review queue.
   if (HITL_STATES.includes(job.current_state as never)) {
     logger.info({ jobId, state: job.current_state }, 'Job is awaiting human input, skipping dispatch');
+    return;
+  }
+
+  // Same argument, different waiter: a parked job has no handler by design either. The window is
+  // far wider here — a batch park lasts hours, so a stale retry has much more time to land on one.
+  if (PARKED_STATES.includes(job.current_state as never)) {
+    logger.info({ jobId, state: job.current_state }, 'Job is parked awaiting an external result, skipping dispatch');
     return;
   }
 

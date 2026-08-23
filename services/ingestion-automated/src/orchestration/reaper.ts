@@ -1,7 +1,7 @@
 import { pgPool } from '../db/pg';
 import { config } from '../config/index';
 import { markJobFailed } from '../domain/job-catalog';
-import { HITL_STATES, TERMINAL_STATES } from './state-machine';
+import { HITL_STATES, PARKED_STATES, TERMINAL_STATES } from './state-machine';
 import { PIPELINE_QUEUE, MODAL_QUEUE } from '../queue/send-step';
 import { createLogger } from '../utils/logger';
 
@@ -29,7 +29,10 @@ const logger = createLogger({ stage: 'reaper' });
 // Eligible rows are FAILED, not re-enqueued: a step that died halfway may have left partial
 // artifacts behind, and silently re-running it would hide that a crash happened at all. Failing
 // surfaces them in the UI with the existing "↻ Restart from <step>" recovery path.
-const EXTERNALLY_DRIVEN_STATES = ['segmenting', 'placement'];
+// 'vton_batch_queued' joins these for the same reason: a job parked in a batch tray legitimately
+// has no queue job for as long as Google takes (24h SLA), and reaping it would fail live work
+// that has already been paid for. The 48h batch deadline in the poller is what bounds it instead.
+const EXTERNALLY_DRIVEN_STATES = ['segmenting', 'placement', ...PARKED_STATES];
 interface StrandedRow {
   job_id: string;
   current_state: string;

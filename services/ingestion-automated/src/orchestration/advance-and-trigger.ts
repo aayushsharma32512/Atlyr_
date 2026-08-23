@@ -1,7 +1,7 @@
 import type { BossHandle } from '../queue/boss';
 import { updateState } from '../domain/job-catalog';
 import type { IngestionPipelineJob } from '../domain/types';
-import { nextState, HITL_STATES } from './state-machine';
+import { nextState, NO_ENQUEUE_STATES } from './state-machine';
 import { sendPipelineStep } from '../queue/send-step';
 
 let _boss: BossHandle;
@@ -14,7 +14,9 @@ export async function advanceAndTrigger(job: IngestionPipelineJob): Promise<void
   const next = nextState(job);
   await updateState(job.job_id, next);
 
-  if (HITL_STATES.includes(next)) return;
+  // A parked or HITL state is entered and then left alone — the row is the record, and something
+  // out of band (a human, or the batch poller) drives it onward.
+  if (NO_ENQUEUE_STATES.includes(next)) return;
 
   await sendPipelineStep(_boss, job.job_id, next);
 }
