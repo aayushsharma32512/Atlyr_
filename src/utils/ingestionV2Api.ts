@@ -153,6 +153,12 @@ export interface SubmitJobBody {
   v_ton_model?: string
   hitl_post_identification?: boolean
   hitl_post_segmentation?: boolean
+  /**
+   * Economy mode. 'batch' parks this job's try-on step for an AI Studio batch — roughly half the
+   * cost, but results arrive minutes-to-hours later. Omitted means 'instant', and the server
+   * defaults the same way, so an unaware caller can never route work into a batch.
+   */
+  vton_lane?: 'instant' | 'batch'
   /** Bulk uploads set this to `bulk:<sheet name>` so a batch can be tracked as a unit. */
   created_by?: string
 }
@@ -174,6 +180,8 @@ export interface SubmitBatchBody {
     v_ton_model?: string
     hitl_post_identification?: boolean
     hitl_post_segmentation?: boolean
+    /** 'batch' routes every row's VTON step through the economy lane. Server defaults to 'instant'. */
+    vton_lane?: 'instant' | 'batch'
   }
 }
 

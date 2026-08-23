@@ -9,11 +9,15 @@ const MAX_ATTEMPTS = 3          // client-driven restarts per job before we give
 const POLL_MS = 6000
 const RETRY_SWEEP_MS = 60_000   // gap between restart sweeps, letting transient upstream errors clear
 
-// A job is "settled" once it reaches a terminal state or parks at a review gate. 'failed' is
-// settled but restartable — the sweep below may put it back in flight.
+// A job is "settled" once it reaches a terminal state or parks waiting on something this runner
+// cannot influence. 'failed' is settled but restartable — the sweep below may put it back in
+// flight. 'vton_batch_queued' belongs here for the same reason the HITL gates do: the job is
+// sitting in a batch tray at Google and will not move for minutes-to-hours, and only the poller
+// can change that.
 const SETTLED = new Set([
   'completed', 'failed', 'discarded', 'cancelled',
   'awaiting_hitl_identification', 'awaiting_hitl_segmentation',
+  'vton_batch_queued',
 ])
 
 export type BulkPhase = 'idle' | 'submitting' | 'waiting' | 'retrying' | 'done' | 'stopped'
@@ -39,7 +43,13 @@ export function useBulkIngest() {
   const stop = useCallback(() => { stopRef.current = true }, [])
   const reset = useCallback(() => { stopRef.current = false; setState(INITIAL) }, [])
 
-  const run = useCallback(async (rows: BulkRow[], batchId: string, onTick?: () => void) => {
+  const run = useCallback(async (
+    rows: BulkRow[],
+    batchId: string,
+    onTick?: () => void,
+    options: { vtonLane?: 'instant' | 'batch' } = {},
+  ) => {
+    const economy = options.vtonLane === 'batch'
     stopRef.current = false
     setState({ ...INITIAL, phase: 'submitting', total: rows.length, message: `submitting ${rows.length} rows as one batch…` })
 
@@ -61,6 +71,9 @@ export function useBulkIngest() {
           hitl_post_identification: false,
           // Park before placement so a human reviews the garment; go-live stays manual.
           hitl_post_segmentation: true,
+          // Economy mode routes every row's VTON step through the AI Studio batch lane. Sent
+          // per batch rather than per row: the toggle is a property of the sheet.
+          vton_lane: options.vtonLane ?? 'instant',
         },
       })
       serverBatchId = res.batch_id
@@ -132,7 +145,12 @@ export function useBulkIngest() {
       phase: stopRef.current ? 'stopped' : 'done',
       message: stopRef.current
         ? 'stopped watching — the batch keeps running server-side'
-        : 'batch finished',
+        : economy
+          // "done" here means every row settled, not that every image exists: economy rows settle
+          // by PARKING at Google and finish out of band. Saying "batch finished" would read as
+          // "your sheet is ready" when nothing has been generated yet.
+          ? 'batch submitted — economy items are queued at Google and will finish on their own'
+          : 'batch finished',
     }))
     onTick?.()
   }, [])

@@ -56,13 +56,17 @@ export function AddItemDialog({ open, onOpenChange, onSuccess, onDuplicate, onPr
   const [fileName, setFileName] = useState('')
   const [rows, setRows] = useState<BulkRow[]>([])
   const [parseErrors, setParseErrors] = useState<string[]>([])
+  // Economy mode is per-sheet and defaults OFF. Opting in is always a deliberate act: the trade is
+  // real money against real latency, and an operator who wants an item today must not get it
+  // tomorrow because a switch was remembered from last time.
+  const [economyMode, setEconomyMode] = useState(false)
   const bulk = useBulkIngest()
 
   const handleFile = async (file: File) => {
     bulk.reset()
     try {
       const { rows: parsed, errors } = parseWorkbook(await file.arrayBuffer())
-      setFileName(file.name); setRows(parsed); setParseErrors(errors)
+      setFileName(file.name); setRows(parsed); setParseErrors(errors); setEconomyMode(false)
       if (!parsed.length) {
         toast({ title: 'Nothing to ingest', description: errors[0] ?? 'No valid rows found.', variant: 'destructive' })
       }
@@ -75,8 +79,13 @@ export function AddItemDialog({ open, onOpenChange, onSuccess, onDuplicate, onPr
   const handleBulkRun = async () => {
     if (!rows.length) return
     const batchId = batchIdFor(fileName || 'sheet')
-    toast({ title: 'Bulk ingestion started', description: `${rows.length} items — track it under Ingestion status.` })
-    await bulk.run(rows, batchId, onProgress)
+    toast({
+      title: economyMode ? 'Bulk ingestion started (economy)' : 'Bulk ingestion started',
+      description: economyMode
+        ? `${rows.length} items — try-ons are batched, results can take hours.`
+        : `${rows.length} items — track it under Ingestion status.`,
+    })
+    await bulk.run(rows, batchId, onProgress, { vtonLane: economyMode ? 'batch' : 'instant' })
   }
 
   const handleSubmit = async () => {
@@ -218,11 +227,28 @@ export function AddItemDialog({ open, onOpenChange, onSuccess, onDuplicate, onPr
               </div>
             )}
 
+            <div className="flex items-start justify-between gap-3 rounded-md border border-border p-2.5">
+              <div className="min-w-0">
+                <p className="text-xs font-medium">Economy mode</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  ~50% cheaper — try-ons go through batch processing. Results can take hours, up to a
+                  day. Best for large sheets you don't need today.
+                </p>
+              </div>
+              <Switch
+                checked={economyMode}
+                onCheckedChange={setEconomyMode}
+                disabled={bulk.isRunning}
+                aria-label="Economy mode"
+              />
+            </div>
+
             {rows.length > 0 && (
               <p className="text-xs">
                 <strong>{rows.length}</strong> valid row(s) ready — queued server-side in one go, so the
                 batch keeps running even if this tab closes. Failed jobs are retried up to 3 times from
                 the step that failed while this dialog is watching.
+                {economyMode && ' Try-ons are queued at Google and complete out of band.'}
               </p>
             )}
 

@@ -46,6 +46,9 @@ export const ACTIVE_STATES = new Set([
   'pending', 'scraping', 'scraped', 'identifying', 'identified',
   'generating_garment_summary', 'garment_summary_generated',
   'generating_vton', 'vton_generated', 'segmenting', 'segmented',
+  // Economy lane: parked in an AI Studio batch tray. Active work — just work happening at Google
+  // rather than here.
+  'vton_batch_queued',
 ])
 
 export const AWAITING_STATES = new Set([

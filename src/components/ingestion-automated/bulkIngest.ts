@@ -113,6 +113,8 @@ export const batchLabel = (createdBy: string) => createdBy.slice(BATCH_PREFIX.le
 export const TERMINAL_DONE = ['completed'] as const
 export const HITL_STATES = ['awaiting_hitl_identification', 'awaiting_hitl_segmentation'] as const
 export const FAILED_STATES = ['failed', 'discarded', 'cancelled'] as const
+/** Economy-lane rows sitting in a batch tray at Google — running, but not by us. */
+export const BATCH_QUEUED_STATES = ['vton_batch_queued'] as const
 
 export type BatchProgress = {
   id: string
@@ -122,6 +124,13 @@ export type BatchProgress = {
   hitl: number
   failed: number
   running: number
+  /**
+   * Subset of `running` that is parked in a batch tray. Counted separately so a sheet submitted
+   * in economy mode reads as "queued at Google" rather than as frozen — the rows genuinely will
+   * not move for minutes-to-hours, and a progress bar that just sits there invites someone to
+   * restart perfectly healthy work that has already been paid for.
+   */
+  batchQueued: number
   /** completed + hitl (reviewable) as a share of total — HITL items are "work done". */
   percent: number
   lastActivity: string
@@ -142,6 +151,7 @@ export function summarizeBatches(jobs: PipelineJob[]): BatchProgress[] {
     const completed = list.filter(j => TERMINAL_DONE.includes(j.current_state as never)).length
     const hitl = list.filter(j => HITL_STATES.includes(j.current_state as never)).length
     const failed = list.filter(j => FAILED_STATES.includes(j.current_state as never)).length
+    const batchQueued = list.filter(j => BATCH_QUEUED_STATES.includes(j.current_state as never)).length
     const total = list.length
     const lastActivity = list.reduce((a, j) => (j.updated_at > a ? j.updated_at : a), list[0]?.updated_at ?? '')
     return {
@@ -152,6 +162,7 @@ export function summarizeBatches(jobs: PipelineJob[]): BatchProgress[] {
       hitl,
       failed,
       running: total - completed - hitl - failed,
+      batchQueued,
       percent: total ? Math.round(((completed + hitl) / total) * 100) : 0,
       lastActivity,
       jobs: list,
@@ -169,6 +180,12 @@ export const COST_RATES = {
   geminiTextCallsPerAttempt: 2,
   /** Gemini image (VTON) — one 2K image per attempt. */
   geminiVtonPerImage: 0.134,
+  /**
+   * Economy lane multiplier. Google prices batch at 50% of the interactive rate, and
+   * gemini-3-pro-image bills 1K and 2K identically, so this holds at our output size.
+   * Note the *realised* saving is nearer 40%: refused items re-run at full instant price.
+   */
+  batchDiscount: 0.5,
   /** Modal GPU — segmentation + placement runs, averaged per successful pass. */
   modalSegmentationPerRun: 0.012,
   modalPlacementPerRun: 0.004,
@@ -180,8 +197,24 @@ export const COST_RATES = {
   /** USD per 1M tokens, Gemini image output (a 2K image bills ~2k tokens). */
   imageOutputPerMTok: 30.0,
   imageInputPerMTok: 0.30,
-  /** USD per GPU-second on Modal (A10G-class). */
-  modalPerGpuSecond: 0.000306,
+  /**
+   * USD per container-second on Modal, verified against modal.com/pricing 2026-08-22.
+   *
+   *   L4 GPU        $0.000222  / sec   (both apps run gpu="L4")
+   *   CPU 4 cores   $0.0000524 / sec   ($0.0000131/core/sec, and both apps set cpu=4.0)
+   *   ────────────────────────────
+   *                 $0.0002744 / sec
+   *
+   * Two corrections rolled in here: the old 0.000306 was the A10 rate (wrong hardware), and CPU
+   * was omitted entirely even though Modal bills it separately from GPU — a ~24% undercount.
+   * Memory is billed too ($0.00000222/GiB/sec) but is small and not pinned to a known allocation.
+   *
+   * Caveat this rate cannot fix: the `duration_ms` it multiplies is HTTP wall-clock from the Node
+   * handler, so container scheduling and cold start are billed here as compute. Separately, the
+   * idle `scaledown_window` tail after each container's last job is real spend that never appears
+   * in any job's duration, so it is invisible to this accounting entirely.
+   */
+  modalPerGpuSecond: 0.0002744,
 }
 
 /** Usage recorded on an artifact by the pipeline (absent on jobs run before cost tracking). */
@@ -218,9 +251,20 @@ export function actualCost(rows: ArtifactRow[]): (CostBreakdown & { isEstimate: 
     if (r.artifact_type === 'garment_summary' || r.artifact_type === 'enrichment') {
       if (usage) { geminiText += price(usage, COST_RATES.textInputPerMTok, COST_RATES.textOutputPerMTok); withUsage++ }
     } else if (r.artifact_type === 'vton_image') {
+      // Economy-lane images cost half. Pricing them at the interactive rate would report the
+      // batch lane as costing exactly what it was turned on to avoid.
+      const route = typeof d.route_used === 'string' ? d.route_used : ''
+      const rate = route.startsWith('batch:') ? COST_RATES.batchDiscount : 1
+
       if (usage) {
-        geminiVton += price(usage, COST_RATES.imageInputPerMTok, COST_RATES.imageOutputPerMTok)
+        geminiVton += rate * price(usage, COST_RATES.imageInputPerMTok, COST_RATES.imageOutputPerMTok)
         vtonRuns++; withUsage++
+      } else {
+        // No usage recorded. Fall back to the flat per-image rate rather than silently pricing
+        // this image at zero — an image that exists was paid for. Deliberately does NOT count
+        // toward `withUsage`: the "actual" label still has to be earned by real measurements.
+        geminiVton += rate * COST_RATES.geminiVtonPerImage
+        vtonRuns++
       }
     } else if (r.artifact_type === 'segmentation' || r.artifact_type === 'placement') {
       if (durationMs !== null) {
