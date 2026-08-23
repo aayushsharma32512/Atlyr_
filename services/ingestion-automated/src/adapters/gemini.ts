@@ -1,4 +1,5 @@
 import { config } from '../config/index';
+import { readUsage, type TokenUsage } from './gemini-usage';
 import { withRetry } from '../utils/retry';
 import { geminiRouter, type GeminiPart, type RouteAttempt } from './llm/index';
 
@@ -175,27 +176,10 @@ Product page URL: {PRODUCT_LINK}`,
 
 // ─── Output types ─────────────────────────────────────────────────────────────
 
-/**
- * Token counts returned by the Gemini API (`usageMetadata`). Persisted per call so spend can
- * be computed exactly rather than estimated — `thoughtsTokenCount` is billed as output, so
- * total_tokens (not prompt+candidates) is the figure to price against.
- */
-export interface TokenUsage {
-  prompt_tokens: number;
-  output_tokens: number;
-  total_tokens: number;
-}
-
-export function readUsage(meta: unknown): TokenUsage | null {
-  const m = meta as Record<string, number> | undefined;
-  if (!m || typeof m.totalTokenCount !== 'number') return null;
-  const prompt = m.promptTokenCount ?? 0;
-  return {
-    prompt_tokens: prompt,
-    output_tokens: (m.candidatesTokenCount ?? 0) + (m.thoughtsTokenCount ?? 0),
-    total_tokens: m.totalTokenCount,
-  };
-}
+// Token accounting moved to ./gemini-usage so the batch lane can share it without pulling
+// config (and its import-time env validation) in. Re-exported here: this is still where the
+// rest of the service imports it from.
+export { readUsage, type TokenUsage };
 
 export interface GarmentSummary {
   tech_pack: string | null;
