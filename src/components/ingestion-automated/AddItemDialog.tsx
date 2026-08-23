@@ -220,8 +220,9 @@ export function AddItemDialog({ open, onOpenChange, onSuccess, onDuplicate, onPr
 
             {rows.length > 0 && (
               <p className="text-xs">
-                <strong>{rows.length}</strong> valid row(s) ready — submitted 3 at a time, each batch
-                finishing before the next, with up to 3 retries from the step that failed.
+                <strong>{rows.length}</strong> valid row(s) ready — queued server-side in one go, so the
+                batch keeps running even if this tab closes. Failed jobs are retried up to 3 times from
+                the step that failed while this dialog is watching.
               </p>
             )}
 

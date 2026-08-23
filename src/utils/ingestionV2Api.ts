@@ -48,6 +48,8 @@ export interface PipelineJob {
   last_error: string | null
   last_error_step: string | null
   created_by: string | null
+  /** Set when the job came in through POST /batches; null for manual submissions. */
+  batch_id?: string | null
   created_at: string
   updated_at: string
 }
@@ -155,6 +157,55 @@ export interface SubmitJobBody {
   created_by?: string
 }
 
+// ── Server-side batches ───────────────────────────────────────────────────────
+
+export interface SubmitBatchBody {
+  label: string
+  /** Kept as `bulk:<sheet>` so the dashboard's created_by grouping keeps working. */
+  created_by?: string
+  rows: Array<{
+    product_url: string
+    product_gender_type: 'male' | 'female' | 'unisex'
+    product_type: 'topwear' | 'bottomwear' | 'dress'
+    product_sub_type: string
+  }>
+  options?: {
+    product_complexity?: string
+    v_ton_model?: string
+    hitl_post_identification?: boolean
+    hitl_post_segmentation?: boolean
+  }
+}
+
+export type BatchRowOutcome =
+  | { url: string; status: 'submitted'; job_id: string }
+  | { url: string; status: 'duplicate'; kind: 'already_active' | 'already_ingested' | 'in_batch'; existing_job_id: string | null }
+  | { url: string; status: 'rejected'; error: string }
+
+export interface SubmitBatchResponse {
+  batch_id: string
+  label: string
+  submitted: number
+  duplicates: number
+  rejected: number
+  outcomes: BatchRowOutcome[]
+}
+
+export interface BatchJobSummary {
+  job_id: string
+  product_url: string
+  current_state: string
+  error_count: number
+  last_error_step: string | null
+  updated_at: string
+}
+
+export interface BatchStatusResponse {
+  batch: { batch_id: string; label: string; created_by: string | null; total: number; created_at: string }
+  counts: { total: number; completed: number; hitl: number; failed: number; running: number }
+  jobs: BatchJobSummary[]
+}
+
 export const v2Api = {
   // ponytail: fixed high limit, the dashboard filters/pages client-side. Add server-side
   // paging when the queue outgrows ~1000 jobs.
@@ -185,6 +236,17 @@ export const v2Api = {
     }
     return res.json() as Promise<{ job_id: string }>
   },
+
+  // One request creates and enqueues the whole sheet server-side — the batch keeps running
+  // after the tab closes. Progress comes from getBatch, not from this call.
+  submitBatch: (body: SubmitBatchBody) =>
+    call<SubmitBatchResponse>(`/batches`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  getBatch: (batchId: string) =>
+    call<BatchStatusResponse>(`/batches/${batchId}`),
 
   deleteJob: (jobId: string) =>
     call<{ job_id: string; deleted: boolean }>(`/jobs/${jobId}`, { method: 'DELETE' }),

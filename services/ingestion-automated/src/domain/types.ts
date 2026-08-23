@@ -35,8 +35,18 @@ export interface IngestionPipelineJob {
   last_error: string | null;
   last_error_step: string | null;
   created_by: string | null;
+  /** Set when the job was created through POST /batches; null for manual submissions. */
+  batch_id?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface IngestionBatch {
+  batch_id: string;
+  label: string;
+  created_by: string | null;
+  total: number;
+  created_at: string;
 }
 
 export interface PipelineStepArtifact {

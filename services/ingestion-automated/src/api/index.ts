@@ -3,6 +3,7 @@ import fastifyCors from '@fastify/cors';
 import type { BossHandle } from '../queue/boss';
 import { config } from '../config/index';
 import { registerSubmitRoute } from './routes/submit';
+import { registerBatchRoutes } from './routes/batches';
 import { registerStatusRoutes } from './routes/status';
 import { registerProceedRoute } from './routes/proceed';
 import { registerRestartRoute } from './routes/restart';
@@ -42,6 +43,7 @@ export async function buildApp(boss: BossHandle) {
   app.get('/health', async () => ({ ok: true }));
 
   await registerSubmitRoute(app, boss);
+  await registerBatchRoutes(app, boss);
   await registerStatusRoutes(app);
   await registerProceedRoute(app, boss);
   await registerRestartRoute(app, boss);
