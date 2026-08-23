@@ -64,6 +64,17 @@ const EnvSchema = z.object({
   SEEDREAM_API_URL: optUrl,
   SEEDREAM_API_KEY: optStr,
 
+  // ─── Modal GPU endpoints ──────────────────────────────────────────────────
+  // Previously read from bare process.env inside the step handlers, so a missing or malformed
+  // value failed mid-job — after scraping, identification, summary and VTON had already been
+  // paid for. Validated here instead, so it fails at boot.
+  MODAL_SEGMENTATION_URL: optUrl,
+  MODAL_PLACEMENT_URL: optUrl,
+  // Client-side ceiling on one Modal call. Must exceed Modal's own 600s function cap plus
+  // container scheduling/cold start, and stay well under BOSS_MODAL_STEP_TIMEOUT_SECONDS so the
+  // handler fails on its own terms instead of being expired by pg-boss while still running.
+  MODAL_REQUEST_TIMEOUT_SECONDS: z.string().default('900'),
+
   FASHN_SEG_API_URL: optUrl,
   SCHP_SEG_API_URL: optUrl,
   GDINO_API_URL: optUrl,
@@ -139,4 +150,5 @@ export const config = {
     .split(',')
     .map((k) => k.trim())
     .filter(Boolean),
+  MODAL_REQUEST_TIMEOUT_SECONDS: Number(parsed.data.MODAL_REQUEST_TIMEOUT_SECONDS),
 } as const;
