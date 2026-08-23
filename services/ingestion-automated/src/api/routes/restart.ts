@@ -3,7 +3,8 @@ import type { BossHandle } from '../../queue/boss';
 import { z } from 'zod';
 import { getJob, updateState } from '../../domain/job-catalog';
 import { deleteArtifactsForSteps } from '../../domain/artifacts';
-import { hasTransition, HITL_STATES, TERMINAL_STATES } from '../../orchestration/state-machine';
+import { hasTransition, HITL_STATES, PARKED_STATES, TERMINAL_STATES } from '../../orchestration/state-machine';
+import { PARKED_STATE } from '../../domain/gemini-batches';
 import { supabaseAdmin } from '../../db/supabase';
 import { sendPipelineStep } from '../../queue/send-step';
 import { createLogger } from '../../utils/logger';
@@ -67,6 +68,9 @@ export async function registerRestartRoute(app: FastifyInstance, boss: BossHandl
       && !HITL_STATES.includes(job.current_state as never)
       && job.current_state !== 'pending'
       && job.current_state !== 'segmented'
+      // A parked job is resting, not working: it is sitting in a batch tray with nothing in this
+      // service driving it. Without this it 409s and is unrecoverable from the UI for up to 48h.
+      && !PARKED_STATES.includes(job.current_state as never)
       && !STEP_ORDER.includes(job.current_state as RestartableState);
 
     if (isActive) {
@@ -105,6 +109,16 @@ export async function registerRestartRoute(app: FastifyInstance, boss: BossHandl
         last_error: null,
         last_error_step: null,
         error_count: 0,
+        // Releasing the tray claim is unconditional — it is what makes a late batch result for
+        // this job harmless (the poller's ownership guard then matches zero rows).
+        //
+        // The LANE is only forced back to instant when the job is actually parked, i.e. a human
+        // is saying "stop waiting for the tray, do it now". A job that failed upstream of the
+        // batch station keeps the lane it was submitted with: the bulk retry loop restarts
+        // exactly those, and silently flipping them to instant would bill an economy sheet at
+        // full interactive price for every row that hit a transient scrape error.
+        ...(job.current_state === PARKED_STATE ? { vton_lane: 'instant' as const } : {}),
+        gemini_batch_id: null,
         updated_at: new Date().toISOString(),
       })
       .eq('job_id', jobId);

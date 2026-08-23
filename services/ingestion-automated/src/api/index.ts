@@ -17,6 +17,7 @@ import { registerProductPlacementRoute } from './routes/product-placement';
 import { registerProductPlacement2DRoute } from './routes/product-placement-2d';
 import { registerPublishRoute } from './routes/publish';
 import { registerDeleteRoute } from './routes/delete';
+import { registerVtonBatchRoutes } from './routes/vton-batch';
 
 function bearerAuth(req: { headers: Record<string, string | string[] | undefined> }, token: string): boolean {
   const header = req.headers['authorization'] ?? '';
@@ -57,6 +58,7 @@ export async function buildApp(boss: BossHandle) {
   await registerProductPlacement2DRoute(app);
   await registerPublishRoute(app);
   await registerDeleteRoute(app);
+  await registerVtonBatchRoutes(app, boss);
 
   return app;
 }
