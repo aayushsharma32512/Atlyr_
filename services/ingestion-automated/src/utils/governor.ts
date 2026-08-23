@@ -103,6 +103,18 @@ export class Governor {
   }
 
   /**
+   * How much of this pool's pause is left, in ms (0 when not paused).
+   *
+   * `tryAcquire` reports THAT a pool is paused but not for how long, so a caller with no free pool
+   * had to guess at a backoff — and guessing ~1s against a server that asked for 57 burned every
+   * retry inside the paused window. Callers that defer work rather than failing it need the real
+   * number.
+   */
+  pauseRemainingMs(key: string): number {
+    return Math.max(0, this.state(key).pausedUntil - Date.now());
+  }
+
+  /**
    * Non-blocking acquire: runs fn only if the key is unpaused and has a free slot RIGHT NOW,
    * otherwise reports why without waiting. For callers that have alternatives — the router's
    * model chain — where a busy pool should mean "try the next model", not "sleep in this pool's

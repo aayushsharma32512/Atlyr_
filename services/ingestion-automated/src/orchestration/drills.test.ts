@@ -23,6 +23,7 @@ import {
   RESCUE_EXCLUDED_STATES,
 } from './recovery-scope';
 import { classifyError, extractRetryDelayMs } from '../utils/error-classify';
+import { decideStepFailure } from './step-retry';
 import { ModalTimeoutError, shouldRetryModalCall } from '../adapters/modal.protocol';
 import {
   CORRELATION_KEY,
@@ -117,6 +118,52 @@ describe('drill 3 — a rate limit is distinguishable from a real failure', () =
     const delay = extractRetryDelayMs(err);
     expect(delay).toBeGreaterThanOrEqual(57_000);
   });
+
+  // The part that actually killed the jobs: knowing it is a rate limit is useless unless the
+  // failure path acts on it. These assert the policy dispatch() now runs, not just the label.
+  const decide = (err: unknown, errorCount = 0) =>
+    decideStepFailure({ err, errorCount, maxAttempts: 5, fallbackDelayMs: 60_000 });
+
+  test('a rate limit defers the step instead of failing the job', () => {
+    const err = Object.assign(new Error('429 rate limited'), { status: 429 });
+    const d = decide(err);
+    expect(d.action).toBe('retry');
+  });
+
+  test('a transient upstream also defers — a 503 storm is the same shape as a 429 storm', () => {
+    const err = Object.assign(new Error('503 upstream unavailable'), { status: 503 });
+    expect(decide(err).action).toBe('retry');
+  });
+
+  test('a bad request still fails fast — no amount of waiting fixes it', () => {
+    const err = Object.assign(new Error('400 bad url'), { status: 400 });
+    const d = decide(err);
+    expect(d.action).toBe('fail');
+    if (d.action === 'fail') expect(d.reason).toBe('not-retryable');
+  });
+
+  test('the deferral waits as long as the server asked, not a guess', () => {
+    const d = decide(new Error('Rate limit exceeded. please retry after 57s'));
+    expect(d.action).toBe('retry');
+    if (d.action === 'retry') expect(d.delayMs).toBeGreaterThanOrEqual(57_000);
+  });
+
+  // The exact error that killed the 15 jobs: a bare Error with no HTTP status. It now carries the
+  // governor's real remaining pause, so the deferral is accurate instead of a fallback guess.
+  test('an "all keys busy" error carries its own wait', () => {
+    const err = Object.assign(new Error('All Firecrawl keys are rate limited or out of credits'), {
+      retryAfterMs: 57_000,
+    });
+    const d = decide(err);
+    expect(d.action).toBe('retry');
+    if (d.action === 'retry') expect(d.delayMs).toBe(57_000);
+  });
+
+  test('with no stated delay it falls back rather than retrying immediately', () => {
+    const d = decide(Object.assign(new Error('429 slow down'), { status: 429 }));
+    expect(d.action).toBe('retry');
+    if (d.action === 'retry') expect(d.delayMs).toBe(60_000);
+  });
 });
 
 // ─── Drill 4 · a Modal timeout must never be retried ─────────────────────────
@@ -127,7 +174,7 @@ describe('drill 3 — a rate limit is distinguishable from a real failure', () =
 // leaves two containers writing the same rows.
 describe('drill 4 — a Modal timeout is not retried', () => {
   test('timeout is never retried', () => {
-    expect(shouldRetryModalCall(new ModalTimeoutError('segmentation timed out'))).toBe(false);
+    expect(shouldRetryModalCall(new ModalTimeoutError('https://modal/segment', 900_000))).toBe(false);
   });
 
   test('a connection-level failure is retried — nothing ran, nothing was billed', () => {
@@ -237,9 +284,87 @@ describe('drill 8 — fill-or-age, and what it cannot see', () => {
     expect(rule(0, 99_999).flush).toBe(false);
   });
 
-  // The finding, stated as a test: a COMPLETE 15-row sheet is indistinguishable from a
-  // still-filling one, so it waits out the full MAX_WAIT for no reason.
-  test('a complete-but-small tray is held anyway — this is F5', () => {
+  // F5, fixed. A complete 15-row sheet used to be indistinguishable from a still-filling one and
+  // waited out the full MAX_WAIT for nothing. It now ships as soon as nothing more can arrive.
+  test('a complete-but-small tray ships immediately', () => {
+    const d = shouldFlushTray({
+      waiting: 15, oldestAgeSeconds: 120, minFill: 20, maxWaitSeconds: 600, noMoreArrivals: true,
+    });
+    expect(d.flush).toBe(true);
+    expect(d.trigger).toBe('complete');
+  });
+
+  test('a still-filling tray under the fill line is still held', () => {
+    const d = shouldFlushTray({
+      waiting: 15, oldestAgeSeconds: 120, minFill: 20, maxWaitSeconds: 600, noMoreArrivals: false,
+    });
+    expect(d.flush).toBe(false);
+  });
+
+  // "Nothing more is coming" must never manufacture a tray out of nothing.
+  test('completeness does not ship an empty tray', () => {
+    const d = shouldFlushTray({
+      waiting: 0, oldestAgeSeconds: 0, minFill: 20, maxWaitSeconds: 600, noMoreArrivals: true,
+    });
+    expect(d.flush).toBe(false);
+  });
+
+  // Absent the signal the rule must behave exactly as before, so nothing changes for callers that
+  // cannot answer the question.
+  test('without the signal the old fill-or-age rule is unchanged', () => {
     expect(rule(15, 120).flush).toBe(false);
+    expect(rule(20, 0).trigger).toBe('full');
+    expect(rule(3, 600).trigger).toBe('max-wait');
+  });
+});
+
+// ─── Drill 9 · exactly one pass may claim a stuck row ────────────────────────
+//
+// F3/F4. The custodian resumes orphans AND fails timed-out Modal rows in the same tick. If a state
+// were eligible for both, the two passes would fight: one re-dispatches while the other fails.
+// The Modal states are excluded from the orphan scan for exactly this reason.
+describe('drill 9 — the custodian passes do not overlap', () => {
+  test('a Modal state is never resumed by the orphan pass', () => {
+    for (const state of MODAL_DRIVEN_STATES) {
+      expect(RESCUE_EXCLUDED_STATES).toContain(state);
+    }
+  });
+
+  test('a parked state is claimed by neither pass — the poller owns it', () => {
+    for (const state of PARKED_STATES) {
+      expect(RESCUE_EXCLUDED_STATES).toContain(state);
+      expect(MODAL_DRIVEN_STATES).not.toContain(state);
+    }
+  });
+});
+
+// ─── Drill 10 · deferring must not become an infinite loop ───────────────────
+//
+// The one thing a defer-instead-of-fail policy can get badly wrong: a permanently broken upstream —
+// a revoked key, a dead endpoint — cycling jobs forever with no failure ever surfacing in the UI.
+describe('drill 10 — the attempt cap is honoured', () => {
+  const rateLimited = () => Object.assign(new Error('429 rate limited'), { status: 429 });
+  const decide = (errorCount: number) =>
+    decideStepFailure({ err: rateLimited(), errorCount, maxAttempts: 5, fallbackDelayMs: 60_000 });
+
+  test('early attempts defer', () => {
+    expect(decide(0).action).toBe('retry');
+    expect(decide(3).action).toBe('retry');
+  });
+
+  test('at the cap it fails rather than deferring again', () => {
+    const d = decide(4);
+    expect(d.action).toBe('fail');
+    if (d.action === 'fail') expect(d.reason).toBe('attempts-exhausted');
+  });
+
+  test('past the cap it stays failed — no way back into the loop', () => {
+    expect(decide(9).action).toBe('fail');
+  });
+
+  test('the attempt number counts the failure being handled', () => {
+    const d = decide(2);
+    expect(d.action).toBe('retry');
+    if (d.action === 'retry') expect(d.attempt).toBe(3);
   });
 });

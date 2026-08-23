@@ -22,6 +22,31 @@ const logger = createLogger({ stage: 'firecrawl' });
 // Each key is its own pool, walked in priority order. A 402 (out of credits) parks that key for
 // hours rather than seconds — unlike a 429 it does not heal on its own, so retrying it inside the
 // same sheet only burns latency; the point is to fall through to a spare key immediately.
+/**
+ * Every key was paused or saturated, so the request was never attempted.
+ *
+ * This carries `retryAfterMs` because the generic form of it did not, and that cost 15 jobs: a bare
+ * Error has no HTTP status, so classifyError read it as `transient` and the caller had nothing to
+ * base a delay on but a guess. The governor already knows exactly how long each pool is parked, so
+ * the honest number is available right here. `extractRetryDelayMs` picks the field up by duck
+ * typing, the same way ModalTimeoutError is recognised by its own helper.
+ */
+export class UpstreamBusyError extends Error {
+  readonly retryAfterMs: number;
+  readonly reason: 'paused' | 'saturated';
+
+  constructor(message: string, retryAfterMs: number, reason: 'paused' | 'saturated') {
+    super(message);
+    this.name = 'UpstreamBusyError';
+    this.retryAfterMs = retryAfterMs;
+    this.reason = reason;
+  }
+}
+
+// A saturated pool frees as in-flight calls finish — seconds, not a rate-limit window. Only a
+// PAUSED pool has a duration worth reading off the governor.
+const SATURATED_RETRY_MS = 5_000;
+
 const CREDITS_EXHAUSTED_PAUSE_MS = 6 * 60 * 60 * 1000;
 const poolFor = (i: number) => `firecrawl::${i}`;
 config.FIRECRAWL_API_KEYS.forEach((_k, i) => governor.setLimit(poolFor(i), config.FIRECRAWL_MAX_CONCURRENCY));
@@ -164,13 +189,22 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
       }
 
       if (!resp) {
-        // Every key was busy/parked, or every key rejected this request. Either way withRetry's
-        // backoff is the right next move; a paused pool may free before the attempts run out.
-        throw lastError ?? new Error(
-          allBusy
-            ? 'All Firecrawl keys are rate limited or out of credits'
-            : 'Firecrawl request failed on every configured key',
-        );
+        if (lastError) throw lastError;
+        if (allBusy) {
+          // Nothing was even attempted. Report how long the soonest pool is actually parked, so the
+          // caller can defer the step until then instead of burning its retries inside the window.
+          const pauses = config.FIRECRAWL_API_KEYS.map((_k, i) => governor.pauseRemainingMs(poolFor(i)));
+          const soonest = pauses.filter((ms) => ms > 0);
+          const retryAfterMs = soonest.length === pauses.length && soonest.length > 0
+            ? Math.min(...soonest)
+            : SATURATED_RETRY_MS;
+          throw new UpstreamBusyError(
+            'All Firecrawl keys are rate limited or out of credits',
+            retryAfterMs,
+            soonest.length === pauses.length ? 'paused' : 'saturated',
+          );
+        }
+        throw new Error('Firecrawl request failed on every configured key');
       }
 
       const payload = await resp.json() as Record<string, unknown>;

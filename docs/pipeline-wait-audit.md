@@ -2,6 +2,7 @@
 
 **Service:** `services/ingestion-automated`
 **Date:** 2026-08-23
+**Status:** F1–F5 closed. F6 dissolved by F2. F7 left as a tuning note.
 **Method:** every point where the pipeline *waits* or *hands off* work, put through a fixed grid.
 
 The rate-limit bug that cost 15 jobs on 2026-08-23 was found by talking, not by testing. That is
@@ -45,7 +46,7 @@ Rows 8 and 9 are where the findings cluster.
 
 ## Findings
 
-### F1 — Boot recovery re-dispatches parked jobs · HIGH · latent, will fire on the next restart
+### F1 — Boot recovery re-dispatches parked jobs · HIGH · **FIXED**
 
 `reaper.ts` excludes parked states from its scan:
 
@@ -75,7 +76,7 @@ It has not fired yet purely by luck: the 09:53 restart happened to land when zer
 **Fix:** `EXTERNALLY_DRIVEN_STATES` in `boot-recovery.ts` must include `...PARKED_STATES`, exactly
 as the reaper's does. One line, and the asymmetry between the two files is itself the bug.
 
-### F2 — A rate-limit failure is terminal · HIGH · fired 2026-08-23, cost 15 jobs
+### F2 — A rate-limit failure is terminal · HIGH · **FIXED** (fired 2026-08-23, cost 15 jobs)
 
 `dispatch()` treats every thrown error identically: `markJobFailed` (a terminal state), then
 rethrow. `failed` is terminal, so nothing re-drives it — pg-boss's own retry returns immediately at
@@ -93,7 +94,7 @@ The information needed to tell these apart already exists and is already wired u
 `current_state` alone and re-queue with pg-boss `startAfter` ≥ the governor's pause. `fatal_input`
 keeps failing fast, which is correct. This also removes the need to hand-pace restarts.
 
-### F3 — Modal states have no deadline at all · HIGH · latent
+### F3 — Modal states have no deadline at all · HIGH · **FIXED**
 
 `segmenting` and `placement` are excluded from **both** the reaper and boot recovery, for a good
 stated reason: Modal patches `current_state` out of band, so a row legitimately sits there with no
@@ -112,7 +113,7 @@ its members forever. Modal states have no equivalent.
 beyond `BOSS_MODAL_STEP_TIMEOUT_SECONDS` + grace, with no live queue row and no `segmentation_jobs`
 progress, is dead and should be failed. Same argument, same shape, different subsystem.
 
-### F4 — The reaper runs once at boot, and by default only logs · MEDIUM
+### F4 — The reaper runs once at boot, and by default only logs · MEDIUM · **FIXED**
 
 Two compounding facts:
 
@@ -129,7 +130,7 @@ combination means the rescue path for boundary #3 has, in practice, **never run*
 logged candidates have proven genuinely stuck. If no, delete it rather than leaving a rescue path
 everything else assumes exists.
 
-### F5 — The collector cannot see whether more rows are coming · MEDIUM · ~11 min per small sheet
+### F5 — The collector cannot see whether more rows are coming · MEDIUM · **FIXED** (~11 min per small sheet)
 
 `shouldFlushTray` is fill-or-age: ship at `MIN_FILL` (20), or when the oldest parked job passes
 `MAX_WAIT` (600s). `MIN_FILL` is a **guess** at the real question, which is "are more rows still on
@@ -163,7 +164,7 @@ zero ⇒ ship now, whatever the count. Keep `MIN_FILL` as the fallback for parke
 are pinned to a non-Gemini VTON model, never park — counting them as "still coming" makes the tray
 wait forever.
 
-### F6 — `tryAcquire` never waits, so overflow dies instead of queueing · MEDIUM
+### F6 — `tryAcquire` never waits, so overflow dies instead of queueing · MEDIUM · **DISSOLVED BY F2**
 
 `governor.tryAcquire` is deliberately non-blocking, and for the Gemini router that is right: there
 are many pools, so skipping to the next one is strictly better than queueing behind a busy one.
@@ -191,22 +192,31 @@ which the governor discovers rather than configures.
 
 ---
 
-## Priority
+## Resolution
 
-| | Finding | Why now |
-|---|---|---|
-| 1 | **F2** rate-limit terminal | already cost 15 jobs, will recur every sheet |
-| 2 | **F1** boot recovery vs parked | one guard away from destroying billed work |
-| 3 | **F3** Modal has no deadline | silent forever-stuck rows, no rescue path |
-| 4 | **F5** blind `MIN_FILL` | ~11 min wasted per small sheet |
-| 5 | **F4** reaper never acts | a rescue path other code assumes works |
-| 6 | **F6 / F7** concurrency shape | mostly absorbed by F2 |
+| Finding | Fixed by |
+|---|---|
+| **F1** parked jobs treated as corpses | `recovery-scope.ts` — one shared exclusion list, so the two rescue passes cannot drift again |
+| **F2** rate limit terminal | `step-retry.ts` + `dispatch()` classify before failing; retryable errors re-queue with `startAfter` instead of dying |
+| **F3** Modal had no deadline | `custodian.ts` fails Modal rows idle past `BOSS_MODAL_STEP_TIMEOUT_SECONDS` + grace with nothing backing them |
+| **F4** reaper boot-only and log-only | folded into the custodian's 5-minute tick; `REAPER_MODE` default → `fail` |
+| **F5** blind `MIN_FILL` | `hasPendingArrivals()` + a `'complete'` flush trigger — ship when nothing more can arrive |
+| **F6** overflow dies instead of waiting | dissolved: "all keys busy" is now a deferral, and `UpstreamBusyError` carries the governor's real remaining pause |
+| **F7** scrape gate vs idle workers | left open — a tuning trade-off against the plan's per-minute limit, not a correctness bug |
 
-F1, F2 and F3 are the same mistake in three places: **a wait with no bound and no owner.** F5 is its
-mirror image — a bound that exists but is measured against the wrong thing.
+F1, F2 and F3 were the same mistake in three places: **a wait with no bound and no owner.** Each now
+has both. F5 was its mirror image — a bound measured against the wrong thing — and now measures the
+real question.
 
 ## What the drills cover
 
-`src/orchestration/drills.test.ts` encodes these as assertions rather than prose. The drill for F1
-is **red on purpose** — it is the finding, expressed as a failing test, and it goes green when the
-one-line fix lands.
+`src/orchestration/drills.test.ts` encodes these as assertions rather than prose: 39 tests across 10
+drills, all pure (no config, no DB, no network).
+
+Two of them were proven to have teeth by replaying the invariant against the pre-fix code and
+confirming it goes red — drill 1 against boot recovery's old list, drill 8 against the old
+fill-or-age rule. A test that only agrees with the code it ships alongside guards nothing.
+
+Still open as a known limitation: drill 1 asserts `recovery-scope.ts`, not `boot-recovery.ts`'s use
+of it. If someone re-declares a local list in that file the drill will not notice. Catching that
+needs a source-level check, which is brittle enough that it was left out deliberately.

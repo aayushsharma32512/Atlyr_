@@ -139,7 +139,21 @@ const EnvSchema = z.object({
   // What the boot reaper does with rows it considers stranded. Defaults to 'log' — report only,
   // mutate nothing. Flip to 'fail' once the logged candidates have proven to be genuinely stuck;
   // a false positive here fails work that is actually still running.
-  REAPER_MODE: z.enum(['off', 'log', 'fail']).default('log'),
+  // Flipped from 'log' to 'fail' when the custodian took ownership of this pass. It had run only
+  // at boot and only in 'log' mode, so in practice it had never acted at all — a rescue path the
+  // rest of the pipeline assumed existed.
+  REAPER_MODE: z.enum(['off', 'log', 'fail']).default('fail'),
+  // The periodic custodian: resumes orphans, bounds the Modal states, reaps stranded rows. The
+  // kill switch is here rather than per-pass because all three share one tick.
+  CUSTODIAN_ENABLED: z.string().default('true'),
+  CUSTODIAN_CRON: z.string().default('*/5 * * * *'),
+  // How many times a step may be deferred on a retryable error (rate limit, transient upstream)
+  // before the job is failed for good. Bounds the one thing a defer-instead-of-fail policy can get
+  // wrong: a permanently broken upstream cycling jobs forever with no failure ever surfacing.
+  STEP_MAX_ATTEMPTS: z.string().default('5'),
+  // Wait used when the upstream named no delay of its own. Long enough to outlive an ordinary rate
+  // limit window rather than landing back inside it, which is how the in-adapter retries died.
+  STEP_RETRY_FALLBACK_SECONDS: z.string().default('60'),
   // What boot recovery does with work the previous process died holding. 'resume' re-dispatches
   // each job at the step it stopped on — the point being that a crash or a Ctrl-C should never
   // need a human to re-drive a batch. Unlike the reaper this is safe to act on automatically:
@@ -173,6 +187,9 @@ export const config = {
   BOSS_RESTART_MAX_MS: Number(parsed.data.BOSS_RESTART_MAX_MS),
   BOSS_RESTART_MAX_ATTEMPTS: Number(parsed.data.BOSS_RESTART_MAX_ATTEMPTS),
   FIRECRAWL_MAX_CONCURRENCY: Number(parsed.data.FIRECRAWL_MAX_CONCURRENCY),
+  CUSTODIAN_ENABLED: parsed.data.CUSTODIAN_ENABLED === 'true',
+  STEP_MAX_ATTEMPTS: Number(parsed.data.STEP_MAX_ATTEMPTS),
+  STEP_RETRY_FALLBACK_SECONDS: Number(parsed.data.STEP_RETRY_FALLBACK_SECONDS),
   GEMINI_ROUTE_MAX_CONCURRENT: Number(parsed.data.GEMINI_ROUTE_MAX_CONCURRENT),
   /** Firecrawl keys in priority order; a single key parses to a one-element list. */
   FIRECRAWL_API_KEYS: (parsed.data.FIRECRAWL_API_KEY ?? '')
