@@ -19,6 +19,24 @@ export class VtonGenerationHandler implements StepHandler {
 
   async execute(job: IngestionPipelineJob): Promise<void> {
     const { job_id } = job;
+
+    // This step is the expensive one — a 2K Gemini image, 40-160s and billed per generation. The
+    // image is saved (artifact + vton_image_url) several awaits BEFORE advanceAndTrigger moves the
+    // state, so a process killed in that window leaves a finished, already-paid-for image behind
+    // with current_state still 'generating_vton'. Boot recovery then re-dispatches this step, and
+    // without this guard we would buy the same image twice.
+    //
+    // Safe against a deliberate re-run: "Restart from generating_vton" calls
+    // deleteArtifactsForSteps first, so the artifact is gone and generation proceeds normally.
+    const existing = await getLatestArtifact(job_id, 'vton_image');
+    const existingUrl = (existing?.data as { public_url?: string } | undefined)?.public_url;
+    if (existingUrl) {
+      logger.info({ jobId: job_id, publicUrl: existingUrl }, 'vton image already generated, reusing instead of regenerating');
+      if (!job.vton_image_url) await updateJob(job_id, { vton_image_url: existingUrl });
+      await advanceAndTrigger({ ...job, vton_image_url: existingUrl });
+      return;
+    }
+
     logger.info({ jobId: job_id }, 'generating vton image');
 
     const summaryArtifact = await getLatestArtifact(job_id, 'garment_summary');
