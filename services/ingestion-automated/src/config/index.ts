@@ -83,6 +83,35 @@ const EnvSchema = z.object({
   VITMATTE_API_URL: optUrl,
   BIREFNET_API_URL: optUrl,
 
+  // ─── Economy lane (AI Studio batch VTON) ───────────────────────────────────
+  // Off by default. Disabling stops the COLLECTOR ONLY — the poller, janitor and deadline keep
+  // running until every in-flight tray drains, because switching the lane off must never strand
+  // jobs already parked at Google.
+  VTON_BATCH_ENABLED: z.string().default('false'),
+  // Pinned by the Phase 0 spike (2026-08-18): gemini-3-pro-image, verified to return 2K in batch.
+  VTON_BATCH_MODEL: z.string().default('gemini-3-pro-image'),
+  // Tray size. 30 bounds both the blast radius of a failed tray and the response memory a poller
+  // tick holds (~30 x ~1.3 MB of base64 image). Raising it wants the JSONL path with streaming.
+  VTON_BATCH_FLUSH_SIZE: z.string().default('30'),
+  // A tray is SUBMITTED when it is full OR when its oldest member has waited too long. Without
+  // an explicit trigger the collector ships whatever happens to be parked on each tick, which
+  // produces trays of one or two whenever jobs arrive slower than the cron — many tiny batches
+  // instead of one real one. FLUSH_SIZE alone is only an upper bound, never a reason to wait.
+  VTON_BATCH_MIN_FILL: z.string().default('10'),
+  // The escape hatch that stops a trickle being stranded forever below MIN_FILL.
+  VTON_BATCH_MAX_WAIT_SECONDS: z.string().default('900'),
+  VTON_BATCH_FLUSH_CRON: z.string().default('*/5 * * * *'),
+  VTON_BATCH_POLL_CRON: z.string().default('*/3 * * * *'),
+  // How long a 'submitting' row may sit with no provider_batch_name before the janitor releases
+  // its claimed jobs. Covers a crash between claiming and submitting; zero spend either way.
+  VTON_BATCH_SUBMIT_GRACE_SECONDS: z.string().default('900'),
+  // Warn (and badge the dashboard) when a tray has been pending this long. Without it the first
+  // signal of a broken lane is the bill.
+  VTON_BATCH_STALE_WARN_SECONDS: z.string().default('21600'),
+  // Concurrent garment fetches while a tray is built. Bounded so one collector tick cannot
+  // saturate the network for the rest of the pipeline.
+  VTON_BATCH_FETCH_CONCURRENCY: z.string().default('6'),
+
   BOSS_SCHEMA: z.string().default('pgboss_ingestion_v2'),
   BOSS_TEAM_SIZE: z.string().default('5'),
   // Worker slots for the Modal-driven queue (segmenting, placement). Those steps block a slot for
@@ -151,4 +180,11 @@ export const config = {
     .map((k) => k.trim())
     .filter(Boolean),
   MODAL_REQUEST_TIMEOUT_SECONDS: Number(parsed.data.MODAL_REQUEST_TIMEOUT_SECONDS),
+  VTON_BATCH_ENABLED: parsed.data.VTON_BATCH_ENABLED === 'true',
+  VTON_BATCH_FLUSH_SIZE: Number(parsed.data.VTON_BATCH_FLUSH_SIZE),
+  VTON_BATCH_MIN_FILL: Number(parsed.data.VTON_BATCH_MIN_FILL),
+  VTON_BATCH_MAX_WAIT_SECONDS: Number(parsed.data.VTON_BATCH_MAX_WAIT_SECONDS),
+  VTON_BATCH_SUBMIT_GRACE_SECONDS: Number(parsed.data.VTON_BATCH_SUBMIT_GRACE_SECONDS),
+  VTON_BATCH_STALE_WARN_SECONDS: Number(parsed.data.VTON_BATCH_STALE_WARN_SECONDS),
+  VTON_BATCH_FETCH_CONCURRENCY: Number(parsed.data.VTON_BATCH_FETCH_CONCURRENCY),
 } as const;

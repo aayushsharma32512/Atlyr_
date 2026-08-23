@@ -5,6 +5,7 @@ import { startWorker } from './queue/worker';
 import { buildApp } from './api/index';
 import { reapStrandedJobs } from './orchestration/reaper';
 import { recoverOrphanedJobs } from './orchestration/boot-recovery';
+import { runVtonBatchBootPass } from './queue/vton-batch-schedules';
 import { ensureBucketExists } from './utils/ensure-bucket';
 
 const logger = createLogger({ stage: 'bootstrap' });
@@ -31,6 +32,10 @@ async function main() {
   // are not "the process died a moment ago" — they are long-abandoned, and failing surfaces them
   // in the UI with the Restart-from-step path rather than silently re-running partial work.
   await reapStrandedJobs();
+
+  // Catch up on anything the economy lane left mid-flight across the restart before the first
+  // cron tick would have.
+  await runVtonBatchBootPass(boss);
 
   const app = await buildApp(boss);
 
