@@ -30,6 +30,20 @@ from pipeline.core_segmentation import (
 )
 from fashn_human_parser import FashnHumanParser
 
+# Module-global parser cache, matching how core_segmentation caches SAM2/SCHP/LoFTR. Without it
+# the SegFormer-B4 parser was re-constructed on EVERY request — including on a warm container,
+# where every other model is already resident. Containers are reused across invocations, so this
+# survives for the life of the container; a cold start pays it once.
+_FASHN_PARSER_CACHE = None
+
+
+def _get_fashn_parser():
+    global _FASHN_PARSER_CACHE
+    if _FASHN_PARSER_CACHE is None:
+        print("  [FASHN] Loading SegFormer-B4 parser (first request on this container)...")
+        _FASHN_PARSER_CACHE = FashnHumanParser()
+    return _FASHN_PARSER_CACHE
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -131,7 +145,7 @@ def run_green_screen_pipeline_e2e(
 
         cv2.imwrite(os.path.join(output_dir, "01_original.png"), img_bgr)
 
-        fashn = FashnHumanParser()
+        fashn = _get_fashn_parser()
         seg_map = fashn.predict(img_rgb)
 
         # Resolve category — constrained by what the caller asked for. See CATEGORY_CANDIDATES.
