@@ -26,6 +26,17 @@ const EnvSchema = z.object({
   DEFAULT_CURRENCY: z.string().length(3).default('INR'),
 
   GOOGLE_API_KEY: optStr,
+  // Priority-ordered Gemini routes: 'ai_studio' (API key, fixed per-project quota) and/or
+  // 'vertex:<location>' (ADC auth, Dynamic Shared Quota — each location is its own pool;
+  // 'global' lets Google pick a region). First healthy route wins; a 429 pauses the route
+  // and traffic falls through to the next. e.g. 'ai_studio,vertex:global'.
+  GEMINI_ROUTES: z.string().default('ai_studio'),
+  // GCP project id serving the vertex:* routes. Auth comes from Application Default
+  // Credentials — set GOOGLE_APPLICATION_CREDENTIALS to the service-account key path locally.
+  GOOGLE_VERTEX_PROJECT: optStr,
+  // Max concurrent in-flight requests per route (the AIMD governor halves it on a 429 and
+  // recovers toward it on sustained success).
+  GEMINI_ROUTE_MAX_CONCURRENT: z.string().default('8'),
   GEMINI_TEXT_MODEL: z.string().default('gemini-3.5-flash'),
   // Comma-separated models tried in order when the primary is unavailable (503/404).
   GEMINI_TEXT_MODEL_FALLBACKS: z.string().default('gemini-3.6-flash,gemini-flash-latest'),
@@ -110,4 +121,5 @@ export const config = {
   BOSS_RESTART_MAX_MS: Number(parsed.data.BOSS_RESTART_MAX_MS),
   BOSS_RESTART_MAX_ATTEMPTS: Number(parsed.data.BOSS_RESTART_MAX_ATTEMPTS),
   FIRECRAWL_MAX_CONCURRENCY: Number(parsed.data.FIRECRAWL_MAX_CONCURRENCY),
+  GEMINI_ROUTE_MAX_CONCURRENT: Number(parsed.data.GEMINI_ROUTE_MAX_CONCURRENT),
 } as const;
