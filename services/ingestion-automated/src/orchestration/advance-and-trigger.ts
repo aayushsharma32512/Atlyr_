@@ -1,12 +1,12 @@
-import type PgBoss from 'pg-boss';
+import type { BossHandle } from '../queue/boss';
 import { updateState } from '../domain/job-catalog';
 import type { IngestionPipelineJob } from '../domain/types';
 import { nextState, HITL_STATES } from './state-machine';
 import { sendPipelineStep } from '../queue/send-step';
 
-let _boss: PgBoss;
+let _boss: BossHandle;
 
-export function setBoss(boss: PgBoss) {
+export function setBoss(boss: BossHandle) {
   _boss = boss;
 }
 

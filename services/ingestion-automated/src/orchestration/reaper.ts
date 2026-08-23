@@ -2,6 +2,7 @@ import { pgPool } from '../db/pg';
 import { config } from '../config/index';
 import { markJobFailed } from '../domain/job-catalog';
 import { HITL_STATES, TERMINAL_STATES } from './state-machine';
+import { PIPELINE_QUEUE, MODAL_QUEUE } from '../queue/send-step';
 import { createLogger } from '../utils/logger';
 
 const logger = createLogger({ stage: 'reaper' });
@@ -53,11 +54,11 @@ export async function findStrandedJobs(): Promise<StrandedRow[]> {
         and not exists (
           select 1
             from ${config.BOSS_SCHEMA}.job b
-           where b.name = 'run-pipeline-step'
+           where b.name = any($5::text[])
              and b.state in ('created', 'retry', 'active')
              and b.data->>'jobId' = j.job_id::text)
       order by j.updated_at asc`,
-    [TERMINAL_STATES, HITL_STATES, idleSeconds, EXTERNALLY_DRIVEN_STATES],
+    [TERMINAL_STATES, HITL_STATES, idleSeconds, EXTERNALLY_DRIVEN_STATES, [PIPELINE_QUEUE, MODAL_QUEUE]],
   );
 
   return rows;

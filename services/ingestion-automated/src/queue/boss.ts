@@ -4,7 +4,24 @@ import { createLogger } from '../utils/logger';
 
 type RegisterWorkersContext = { generation: number; reason: 'start' | 'restart' };
 type InitBossOptions = {
-  registerWorkers?: (boss: PgBoss, ctx: RegisterWorkersContext) => Promise<void> | void;
+  registerWorkers?: (boss: BossHandle, ctx: RegisterWorkersContext) => Promise<void> | void;
+  /** Instance factory. Overridden in tests so the restart path can run without a database. */
+  createBoss?: () => PgBoss;
+};
+
+// What callers hold instead of the PgBoss instance itself. A restart swaps the instance underneath
+// (see below), so anything that captured the raw object at boot — the route closures, the
+// advance-and-trigger singleton — would keep enqueueing onto a stopped one and silently drop work.
+// The handle always forwards to whichever instance is live.
+export type BossHandle = {
+  send(name: string, data: object, options: PgBoss.SendOptions): Promise<string | null>;
+  work<ReqData>(
+    name: string,
+    options: PgBoss.WorkOptions,
+    handler: PgBoss.WorkHandler<ReqData>,
+  ): Promise<string>;
+  /** Used by boot recovery to retire queue rows a dead process left behind. */
+  cancel(ids: string[]): Promise<void>;
 };
 
 function parseExpireAfter(input: string): number {
@@ -15,17 +32,20 @@ function parseExpireAfter(input: string): number {
 
 export async function initBoss(
   logger = createLogger({ stage: 'boss' }),
-  options: InitBossOptions = {}
-): Promise<PgBoss> {
+  options: InitBossOptions = {},
+): Promise<BossHandle> {
   const { registerWorkers } = options;
 
-  const boss = new PgBoss({
-    connectionString: config.DATABASE_URL_DIRECT,
-    schema: config.BOSS_SCHEMA,
-    // Retention for COMPLETED rows, not a step timeout. The per-step limit is set at send time
-    // via expireInSeconds (see queue/send-step.ts) — BOSS_EXPIRE_AFTER has never governed it.
-    archiveCompletedAfterSeconds: parseExpireAfter(config.BOSS_EXPIRE_AFTER),
-  });
+  const construct =
+    options.createBoss ??
+    (() =>
+      new PgBoss({
+        connectionString: config.DATABASE_URL_DIRECT,
+        schema: config.BOSS_SCHEMA,
+        // Retention for COMPLETED rows, not a step timeout. The per-step limit is set at send time
+        // via expireInSeconds (see queue/send-step.ts) — BOSS_EXPIRE_AFTER has never governed it.
+        archiveCompletedAfterSeconds: parseExpireAfter(config.BOSS_EXPIRE_AFTER),
+      }));
 
   const restartState = {
     attempts: 0,
@@ -42,11 +62,43 @@ export async function initBoss(
     return Math.min(config.BOSS_RESTART_MAX_MS, raw + jitter);
   };
 
+  // A pg-boss v9 instance is single-use: stop() sets `stopped` on the internal Boss and start()
+  // never clears it, so a restarted instance runs a maintenance timer whose every tick throws
+  // (`Cannot destructure property 'secondsAgo'`) while expire/archive/purge silently no-op. Worse,
+  // that thrown tick arrives as an 'error' event, which restarts us again and leaks one more timer
+  // each time. So a restart builds a NEW instance and retires the old one.
+  const createInstance = (): PgBoss => {
+    const instance = construct();
+
+    // Left attached even after retirement: PgBoss is an EventEmitter, and an 'error' emitted with
+    // no listener would take the process down. A retired instance only gets to log.
+    instance.on('error', (err) => {
+      if (instance !== current) {
+        logger.warn({ error: err.message, generation }, 'pg-boss error from retired instance');
+        return;
+      }
+      logger.error({ error: err.message }, 'pg-boss error');
+      void restartBoss(err);
+    });
+
+    return instance;
+  };
+
+  let current = createInstance();
+
+  const handle: BossHandle = {
+    send: (name, data, opts) => current.send(name, data, opts),
+    work: (name, opts, handler) => current.work(name, opts, handler),
+    cancel: (ids) => current.cancel(ids),
+  };
+
   const startAndRegister = async (reason: 'start' | 'restart') => {
-    await boss.start();
+    await current.start();
     generation += 1;
     logger.info({ schema: config.BOSS_SCHEMA, generation }, `pg-boss ${reason}`);
-    if (registerWorkers) await registerWorkers(boss, { generation, reason });
+    // Workers are registered through the handle, which already points at the new instance —
+    // subscriptions live on the instance, so they have to be re-established every restart.
+    if (registerWorkers) await registerWorkers(handle, { generation, reason });
   };
 
   const restartBoss = async (cause?: Error) => {
@@ -56,7 +108,9 @@ export async function initBoss(
     while (restartState.attempts < config.BOSS_RESTART_MAX_ATTEMPTS) {
       await sleep(backoffMs(restartState.attempts));
       try {
-        await boss.stop({ destroy: true, graceful: false, timeout: 10_000 }).catch(() => {});
+        const retired = current;
+        await retired.stop({ destroy: true, graceful: false, timeout: 10_000 }).catch(() => {});
+        current = createInstance();
         await startAndRegister('restart');
         restartState.attempts = 0;
         restartState.restarting = false;
@@ -78,11 +132,6 @@ export async function initBoss(
     }
   };
 
-  boss.on('error', (err) => {
-    logger.error({ error: err.message }, 'pg-boss error');
-    void restartBoss(err);
-  });
-
   await startAndRegister('start');
-  return boss;
+  return handle;
 }

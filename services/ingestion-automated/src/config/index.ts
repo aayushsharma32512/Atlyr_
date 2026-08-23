@@ -51,6 +51,10 @@ const EnvSchema = z.object({
 
   BOSS_SCHEMA: z.string().default('pgboss_ingestion_v2'),
   BOSS_TEAM_SIZE: z.string().default('5'),
+  // Worker slots for the Modal-driven queue (segmenting, placement). Those steps block a slot for
+  // minutes waiting on a GPU, so they get their own pool — otherwise, at any useful BOSS_TEAM_SIZE,
+  // most slots end up parked on Modal while fast steps (scrape/identify/summary/vton) queue behind.
+  BOSS_MODAL_TEAM_SIZE: z.string().default('5'),
   // How long COMPLETED pg-boss rows are kept before being archived. Housekeeping only —
   // this has never governed how long a running step may take (see BOSS_STEP_TIMEOUT_SECONDS).
   BOSS_EXPIRE_AFTER: z.string().default('PT2H'),
@@ -90,6 +94,7 @@ export const config = {
   ...parsed.data,
   PORT: Number(parsed.data.PORT),
   BOSS_TEAM_SIZE: Number(parsed.data.BOSS_TEAM_SIZE),
+  BOSS_MODAL_TEAM_SIZE: Number(parsed.data.BOSS_MODAL_TEAM_SIZE),
   BOSS_STEP_TIMEOUT_SECONDS: Number(parsed.data.BOSS_STEP_TIMEOUT_SECONDS),
   BOSS_MODAL_STEP_TIMEOUT_SECONDS: Number(parsed.data.BOSS_MODAL_STEP_TIMEOUT_SECONDS),
   BOSS_STEP_RETRY_LIMIT: Number(parsed.data.BOSS_STEP_RETRY_LIMIT),
