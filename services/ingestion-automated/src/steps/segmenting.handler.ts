@@ -1,5 +1,7 @@
 import type { StepHandler, IngestionPipelineJob } from '../domain/types';
 import { supabaseAdmin } from '../db/supabase';
+import { config } from '../config/index';
+import { callModal } from '../adapters/modal';
 import { saveArtifact } from '../domain/artifacts';
 import { advanceAndTrigger } from '../orchestration/advance-and-trigger';
 import { createLogger } from '../utils/logger';
@@ -62,28 +64,22 @@ export class SegmentingHandler implements StepHandler {
 
     logger.info({ jobId: job_id, segJobId: segJob.seg_job_id, category }, 'triggering Modal segmentation endpoint');
 
-    // 4. Trigger Modal cloud GPU endpoint synchronously
-    const modalUrl = process.env.MODAL_SEGMENTATION_URL;
+    // 4. Trigger Modal cloud GPU endpoint synchronously. Guarded by callModal: bounded timeout
+    // (a hung request would otherwise hold a worker slot until the process restarts) and a retry
+    // policy that deliberately never repeats a timeout — the container is probably still working,
+    // and a second request would run the same job on a second GPU.
+    const modalUrl = config.MODAL_SEGMENTATION_URL;
     if (!modalUrl) {
       throw new Error('MODAL_SEGMENTATION_URL is not set in environment variables');
     }
-    const triggerUrl = `${modalUrl}/?seg_job_id=${segJob.seg_job_id}&pipeline_job_id=${job_id}&category=${category}`;
 
-    // Wall-clock of the Modal call — the billing proxy for GPU time (see cost accounting).
-    const modalStart = Date.now();
-    const res = await fetch(triggerUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    const { result: modalResult, durationMs } = await callModal<{ status: string; final_image_url: string }>(
+      modalUrl,
+      {
+        label: 'segmentation',
+        params: { seg_job_id: segJob.seg_job_id, pipeline_job_id: job_id, category },
       },
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Modal segmentation request failed (${res.status}): ${errText}`);
-    }
-
-    const modalResult = (await res.json()) as { status: string; final_image_url: string };
+    );
     if (modalResult.status !== 'success' && modalResult.status !== 'completed' || !modalResult.final_image_url) {
       throw new Error(`Modal segmentation pipeline failed: ${JSON.stringify(modalResult)}`);
     }
@@ -99,7 +95,7 @@ export class SegmentingHandler implements StepHandler {
         segmentedImageUrl: modalResult.final_image_url,
         configName: 'v1',
         createdAt: new Date().toISOString(),
-        duration_ms: Date.now() - modalStart,
+        duration_ms: durationMs,
       },
     });
 

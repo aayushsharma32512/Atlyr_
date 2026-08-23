@@ -1,5 +1,7 @@
 import type { StepHandler, IngestionPipelineJob } from '../domain/types';
 import { saveArtifact } from '../domain/artifacts';
+import { config } from '../config/index';
+import { callModal } from '../adapters/modal';
 import { updateState } from '../domain/job-catalog';
 import { upsertIngestedProduct } from '../domain/catalog';
 import { createLogger } from '../utils/logger';
@@ -20,28 +22,13 @@ export class PlacementHandler implements StepHandler {
     const { job_id, segmented_image_url, vton_image_url } = job;
     logger.info({ jobId: job_id }, 'starting automated garment placement');
 
-    const modalUrl = process.env.MODAL_PLACEMENT_URL;
+    const modalUrl = config.MODAL_PLACEMENT_URL;
     if (!modalUrl) {
       throw new Error('MODAL_PLACEMENT_URL is not set in environment variables');
     }
 
-    const triggerUrl = `${modalUrl}/?pipeline_job_id=${job_id}&segmented_image_url=${encodeURIComponent(segmented_image_url!)}&vton_image_url=${encodeURIComponent(vton_image_url!)}`;
-
-    // Wall-clock of the Modal call — the billing proxy for GPU time (see cost accounting).
-    const modalStart = Date.now();
-    const res = await fetch(triggerUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Modal placement request failed (${res.status}): ${errText}`);
-    }
-
-    const modalResult = (await res.json()) as {
+    // Guarded by callModal — see adapters/modal.ts for the timeout and retry rationale.
+    const { result: modalResult, durationMs } = await callModal<{
       status: string;
       final_image_url: string;
       selected_mannequin?: string;
@@ -52,7 +39,14 @@ export class PlacementHandler implements StepHandler {
       // "Female"/"Male". Superset of `transform`. Storing every one is what lets the studio put a
       // garment on the viewer's own body rather than whichever mannequin scored best.
       transforms?: Record<string, { scale: number; rotationDeg: number; tx: number; ty: number }>;
-    };
+    }>(modalUrl, {
+      label: 'placement',
+      params: {
+        pipeline_job_id: job_id,
+        segmented_image_url: segmented_image_url!,
+        vton_image_url: vton_image_url!,
+      },
+    });
     if (modalResult.status !== 'success' && modalResult.status !== 'completed' || !modalResult.final_image_url) {
       throw new Error(`Modal placement pipeline failed: ${JSON.stringify(modalResult)}`);
     }
@@ -71,7 +65,7 @@ export class PlacementHandler implements StepHandler {
         placedImageUrl: modalResult.final_image_url,
         selectedMannequin: modalResult.selected_mannequin,
         createdAt: new Date().toISOString(),
-        duration_ms: Date.now() - modalStart,
+        duration_ms: durationMs,
         // Present once the Modal pipeline is redeployed with the transform export; the mesh
         // editor reads this (usePlacementImage.ts) to reopen on the already-placed cloth.
         ...(modalResult.transform ? { transform: modalResult.transform } : {}),
