@@ -105,6 +105,10 @@ export interface TryonOutput {
   mimeType: string;
   inferenceMs: number;
   modelUsed: string;
+  /** Transport route that served the call (e.g. 'ai_studio', 'vertex:global'). Gemini provider only. */
+  routeUsed?: string;
+  /** Failed route/model attempts before the one that succeeded — persisted for the dashboard. */
+  attempted?: Array<{ route: string; model: string; errorKind: string; ms: number; message: string }>;
   /** Token counts from the provider, when it reports them — used for exact cost accounting. */
   usage?: { prompt_tokens: number; output_tokens: number; total_tokens: number } | null;
 }

@@ -15,6 +15,10 @@ const EnvSchema = z.object({
 
   STORAGE_BUCKET: z.string().default('ingestion-automated'),
 
+  // One key, or several comma-separated in priority order. A key that runs out of credits returns
+  // 402 and stays dead until someone tops it up — with a single key that kills the scrape step for
+  // the whole sheet (observed: batch 147 lost jobs to 402 mid-run). Listing spares lets the adapter
+  // walk to the next one instead.
   FIRECRAWL_API_KEY: optStr,
   FIRECRAWL_MAX_CONCURRENCY: z.string().default('3'),
   // Country whose storefront the scrape should see. Firecrawl's proxies exit in the US by default,
@@ -41,9 +45,17 @@ const EnvSchema = z.object({
   // Comma-separated models tried in order when the primary is unavailable (503/404).
   GEMINI_TEXT_MODEL_FALLBACKS: z.string().default('gemini-3.6-flash,gemini-flash-latest'),
   GEMINI_IMAGE_MODEL: z.string().default('gemini-3-pro-image'),
-  // Comma-separated image models tried in order when the primary is overloaded (503) or
-  // missing (404) — same fallback pattern as GEMINI_TEXT_MODEL_FALLBACKS.
-  GEMINI_IMAGE_MODEL_FALLBACKS: z.string().default('gemini-3-flash-image,gemini-3-flash-image-lite,gemini-2.5-flash-image'),
+  // Comma-separated image models tried in order when the primary is overloaded (503), missing
+  // (404), or refuses to produce an image (safety filter) — same pattern as the text fallbacks.
+  // 'gemini-3-flash-image'/'-lite' were never real model ids (confirmed 404 in production logs);
+  // the flash-tier image model is gemini-3.1-flash-image.
+  //
+  // gemini-2.5-flash-image was REMOVED on 2026-08-14: it accepts imageConfig.imageSize='2K'
+  // without erroring but silently returns 1K (measured 768x1376 vs the 1536x2752 the other two
+  // deliver), and it composes on a black background when the prompt does not pin one. Both are
+  // model-generation properties, not prompt problems — it predates 2K output support. Adding it
+  // back trades catalogue-grade output for capacity during 429 storms.
+  GEMINI_IMAGE_MODEL_FALLBACKS: z.string().default('gemini-3.1-flash-image'),
   SIGLIP_ENDPOINT: optUrl,
   SIGLIP_API_KEY: optStr,
 
@@ -122,4 +134,9 @@ export const config = {
   BOSS_RESTART_MAX_ATTEMPTS: Number(parsed.data.BOSS_RESTART_MAX_ATTEMPTS),
   FIRECRAWL_MAX_CONCURRENCY: Number(parsed.data.FIRECRAWL_MAX_CONCURRENCY),
   GEMINI_ROUTE_MAX_CONCURRENT: Number(parsed.data.GEMINI_ROUTE_MAX_CONCURRENT),
+  /** Firecrawl keys in priority order; a single key parses to a one-element list. */
+  FIRECRAWL_API_KEYS: (parsed.data.FIRECRAWL_API_KEY ?? '')
+    .split(',')
+    .map((k) => k.trim())
+    .filter(Boolean),
 } as const;

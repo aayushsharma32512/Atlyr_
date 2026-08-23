@@ -1,5 +1,7 @@
 import { config } from '../config/index';
 import { withRetry } from '../utils/retry';
+import { governor } from '../utils/governor';
+import { classifyError, extractRetryDelayMs } from '../utils/error-classify';
 import { selectProfile } from './sites/registry';
 import { isShopifySite, extractShopifyGenericImages } from './sites/shopify-generic';
 import { applyGenericImageFilter } from './sites/generic-filter';
@@ -8,6 +10,21 @@ import { resolveCurrency, extractOfferFromHtml, type CurrencySource } from './si
 import { createLogger } from '../utils/logger';
 
 const logger = createLogger({ stage: 'firecrawl' });
+
+// Firecrawl is rate limited per minute by plan, and BOSS_TEAM_SIZE workers all reach it at once —
+// twelve workers against a 15/min plan consumed 64 requests inside one window and failed every job
+// in the batch. The limiter belongs here rather than in BOSS_TEAM_SIZE: throttling the whole
+// pipeline to protect one adapter would also throttle VTON, which is the real throughput ceiling.
+//
+// FIRECRAWL_MAX_CONCURRENCY bounds in-flight requests; the plan's per-minute rate is discovered
+// rather than configured, because the governor pauses this key for exactly as long as the 429 body
+// asks ("please retry after 57s") and halves concurrency until the calls stop being rejected.
+// Each key is its own pool, walked in priority order. A 402 (out of credits) parks that key for
+// hours rather than seconds — unlike a 429 it does not heal on its own, so retrying it inside the
+// same sheet only burns latency; the point is to fall through to a spare key immediately.
+const CREDITS_EXHAUSTED_PAUSE_MS = 6 * 60 * 60 * 1000;
+const poolFor = (i: number) => `firecrawl::${i}`;
+config.FIRECRAWL_API_KEYS.forEach((_k, i) => governor.setLimit(poolFor(i), config.FIRECRAWL_MAX_CONCURRENCY));
 
 export interface FirecrawlProductResult {
   finalUrl: string;
@@ -69,7 +86,7 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
     };
   }
 
-  if (!config.FIRECRAWL_API_KEY) throw new Error('FIRECRAWL_API_KEY is not set');
+  if (config.FIRECRAWL_API_KEYS.length === 0) throw new Error('FIRECRAWL_API_KEY is not set');
 
   const profile = selectProfile(url);
   const targetUrl = profile?.transformUrl ? profile.transformUrl(url) : url;
@@ -87,28 +104,73 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
         { type: 'wait', milliseconds: 1000 },
       ];
 
-      const resp = await fetch('https://api.firecrawl.dev/v1/scrape', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${config.FIRECRAWL_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          url: targetUrl,
-          formats,
-          jsonOptions: { prompt },
-          actions,
-          // Render from the catalogue's home market. Firecrawl's default proxies exit in the US,
-          // and multi-currency storefronts (Fabindia, Tasva, Shopify Markets) localise off the
-          // visitor IP — so an unpinned scrape returns a converted USD price for an INR product.
-          location: { country: config.FIRECRAWL_COUNTRY, languages: [config.FIRECRAWL_LANGUAGE] },
-        }),
-        signal: AbortSignal.timeout(120_000),
+      const requestBody = JSON.stringify({
+        url: targetUrl,
+        formats,
+        jsonOptions: { prompt },
+        actions,
+        // Render from the catalogue's home market. Firecrawl's default proxies exit in the US,
+        // and multi-currency storefronts (Fabindia, Tasva, Shopify Markets) localise off the
+        // visitor IP — so an unpinned scrape returns a converted USD price for an INR product.
+        location: { country: config.FIRECRAWL_COUNTRY, languages: [config.FIRECRAWL_LANGUAGE] },
       });
 
-      if (!resp.ok) {
-        const body = await resp.text();
-        throw new Error(`Firecrawl error ${resp.status}: ${body}`);
+      // Walk the keys in priority order, skipping any whose pool is paused (out of credits, or
+      // inside a 429 window) or already at its concurrency limit. tryAcquire never blocks, so a
+      // spare key serves immediately instead of the caller queueing behind a dead one.
+      let resp: Response | undefined;
+      let lastError: Error | undefined;
+      let allBusy = true;
+
+      for (const [i, key] of config.FIRECRAWL_API_KEYS.entries()) {
+        const pool = poolFor(i);
+        const outcome = await governor.tryAcquire(pool, () =>
+          fetch('https://api.firecrawl.dev/v1/scrape', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+            body: requestBody,
+            signal: AbortSignal.timeout(120_000),
+          }),
+        );
+        if (!outcome.acquired) continue; // this key is paused or full — try the next one
+        allBusy = false;
+
+        const r = outcome.value;
+        if (r.ok) { resp = r; break; }
+
+        const body = await r.text();
+        lastError = new Error(`Firecrawl error ${r.status}: ${body}`);
+
+        if (r.status === 402) {
+          // Out of credits: dead until a human tops it up, so park it for hours rather than
+          // re-asking every scrape for the rest of the sheet.
+          governor.reportRateLimit(pool, CREDITS_EXHAUSTED_PAUSE_MS);
+          logger.error(
+            { keyIndex: i, keysConfigured: config.FIRECRAWL_API_KEYS.length },
+            'firecrawl key is OUT OF CREDITS — parking it and falling through to the next key',
+          );
+          continue;
+        }
+        if (r.status === 429) {
+          // Honour the window the server named. Previously the three retries all landed inside the
+          // same exhausted minute (~0.75s then ~1.5s apart) against a body asking for 57 seconds,
+          // so they only burned more quota before the job failed.
+          const delayMs = extractRetryDelayMs(lastError);
+          governor.reportRateLimit(pool, delayMs);
+          logger.warn({ url: targetUrl, keyIndex: i, pauseMs: delayMs ?? null }, 'firecrawl rate limited — pausing this key');
+          continue;
+        }
+        throw lastError; // a real scrape failure (4xx/5xx) — same for every key, so stop here
+      }
+
+      if (!resp) {
+        // Every key was busy/parked, or every key rejected this request. Either way withRetry's
+        // backoff is the right next move; a paused pool may free before the attempts run out.
+        throw lastError ?? new Error(
+          allBusy
+            ? 'All Firecrawl keys are rate limited or out of credits'
+            : 'Firecrawl request failed on every configured key',
+        );
       }
 
       const payload = await resp.json() as Record<string, unknown>;
@@ -205,6 +267,19 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
         imageUrls,
       };
     },
-    { retries: 3, backoffMs: 1000 }
+    {
+      retries: 3,
+      backoffMs: 1000,
+      maxBackoffMs: 30_000,
+      // A 429 is still retried, but the waiting now happens in governor.acquire() against the pause
+      // the 429 itself set — this backoff only covers ordinary transient failures. A 4xx that is
+      // not a rate limit will fail identically however many times it is re-sent.
+      shouldRetry: (err) => classifyError(err) !== 'fatal_input',
+      onRetry: (err, attempt, delayMs) =>
+        logger.warn(
+          { url: targetUrl, attempt, delayMs, error: (err as Error).message?.slice(0, 200) },
+          'firecrawl scrape failed, retrying',
+        ),
+    }
   );
 }
