@@ -34,12 +34,20 @@ const logger = createLogger({ stage: 'firecrawl' });
 export class UpstreamBusyError extends Error {
   readonly retryAfterMs: number;
   readonly reason: 'paused' | 'saturated';
+  /**
+   * True when every key was merely OUT OF SLOTS rather than rate limited — i.e. other jobs are
+   * using the capacity right now. That is backpressure, not a failure: being 19th in a queue of 24
+   * against 6 slots says nothing about this job's chances, and charging it against the retry cap
+   * kills jobs for waiting their turn. Observed doing exactly that to 9 rows of batch_158.
+   */
+  readonly backpressure: boolean;
 
   constructor(message: string, retryAfterMs: number, reason: 'paused' | 'saturated') {
     super(message);
     this.name = 'UpstreamBusyError';
     this.retryAfterMs = retryAfterMs;
     this.reason = reason;
+    this.backpressure = reason === 'saturated';
   }
 }
 

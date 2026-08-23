@@ -362,6 +362,32 @@ describe('drill 10 — the attempt cap is honoured', () => {
     expect(decide(9).action).toBe('fail');
   });
 
+  // Regression: backpressure is NOT an error. Every upstream slot being busy means this job never
+  // ran, so charging it against the cap kills jobs for queue position. 24 jobs against 6 slots
+  // failed 9 of them in ~25 seconds that way on 2026-08-23.
+  test('backpressure never charges an attempt, however long the queue', () => {
+    const busy = Object.assign(new Error('All Firecrawl keys are rate limited or out of credits'), {
+      retryAfterMs: 5_000,
+      backpressure: true,
+    });
+    for (const errorCount of [0, 4, 9, 50]) {
+      const d = decideStepFailure({ err: busy, errorCount, maxAttempts: 5, fallbackDelayMs: 60_000 });
+      expect(d.action).toBe('retry');
+      if (d.action === 'retry') expect(d.countsAgainstCap).toBe(false);
+    }
+  });
+
+  // The distinction that matters: a PAUSED upstream (it told us to stop) is still capped.
+  test('a real rate limit is still capped', () => {
+    const paused = Object.assign(new Error('all keys paused'), {
+      retryAfterMs: 57_000,
+      backpressure: false,
+      status: 429,
+    });
+    const d = decideStepFailure({ err: paused, errorCount: 4, maxAttempts: 5, fallbackDelayMs: 60_000 });
+    expect(d.action).toBe('fail');
+  });
+
   test('the attempt number counts the failure being handled', () => {
     const d = decide(2);
     expect(d.action).toBe('retry');

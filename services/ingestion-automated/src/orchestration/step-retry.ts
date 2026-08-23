@@ -18,7 +18,18 @@ import { classifyError, extractRetryDelayMs, type ErrorKind } from '../utils/err
 const RETRYABLE: readonly ErrorKind[] = ['rate_limited', 'transient'];
 
 export type StepFailureDecision =
-  | { action: 'retry'; delayMs: number; kind: ErrorKind; attempt: number }
+  | {
+      action: 'retry';
+      delayMs: number;
+      kind: ErrorKind;
+      attempt: number;
+      /**
+       * False when the deferral is pure backpressure — every upstream slot was busy, so this job
+       * never even got to try. Waiting your turn is not an error, and counting it burns the retry
+       * budget on queue position: 24 jobs against 6 slots killed 9 of them in ~25s that way.
+       */
+      countsAgainstCap: boolean;
+    }
   | { action: 'fail'; kind: ErrorKind; reason: 'not-retryable' | 'attempts-exhausted' };
 
 export interface StepFailureInput {
@@ -31,6 +42,15 @@ export interface StepFailureInput {
   fallbackDelayMs: number;
 }
 
+/**
+ * Pure backpressure: every upstream slot was in use, so the request was never attempted. Duck-typed
+ * so this module keeps its zero dependencies — adapters set it when they can tell the difference
+ * between "the upstream told us to stop" and "our own capacity is busy".
+ */
+function isBackpressure(err: unknown): boolean {
+  return (err as { backpressure?: unknown })?.backpressure === true;
+}
+
 export function decideStepFailure(input: StepFailureInput): StepFailureDecision {
   const kind = classifyError(input.err);
 
@@ -39,15 +59,19 @@ export function decideStepFailure(input: StepFailureInput): StepFailureDecision 
   // that cannot succeed. Fail fast, exactly as before.
   if (!RETRYABLE.includes(kind)) return { action: 'fail', kind, reason: 'not-retryable' };
 
+  const delayMs = extractRetryDelayMs(input.err) ?? input.fallbackDelayMs;
+
+  // Backpressure is exempt from the cap. The job did not fail — it did not run. The bound here is
+  // the pipeline's own throughput: slots free as the jobs holding them finish, so this resolves on
+  // its own. A genuinely dead upstream reports `paused`, not `saturated`, and is capped below.
+  if (isBackpressure(input.err)) {
+    return { action: 'retry', kind, attempt: input.errorCount, delayMs, countsAgainstCap: false };
+  }
+
   // The cap is what stops a permanently broken upstream — a revoked key, a dead endpoint — from
   // cycling jobs forever with no failure ever surfacing in the UI.
   const attempt = input.errorCount + 1;
   if (attempt >= input.maxAttempts) return { action: 'fail', kind, reason: 'attempts-exhausted' };
 
-  return {
-    action: 'retry',
-    kind,
-    attempt,
-    delayMs: extractRetryDelayMs(input.err) ?? input.fallbackDelayMs,
-  };
+  return { action: 'retry', kind, attempt, delayMs, countsAgainstCap: true };
 }

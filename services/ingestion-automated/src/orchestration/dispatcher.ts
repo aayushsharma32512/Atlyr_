@@ -82,13 +82,19 @@ export async function dispatch(jobId: string): Promise<void> {
     if (decision.action === 'retry' && boss) {
       const delaySeconds = Math.ceil(decision.delayMs / 1000);
       // current_state is deliberately untouched, so the job stays non-terminal and the step below
-      // is genuinely runnable again.
-      await markJobRetrying(jobId, msg, job.current_state);
+      // is genuinely runnable again. error_count is bumped ONLY when the deferral is a real error —
+      // pure backpressure means the job never ran, and charging it would kill jobs for queue
+      // position rather than for anything wrong with them.
+      if (decision.countsAgainstCap) await markJobRetrying(jobId, msg, job.current_state);
       await sendPipelineStep(boss, jobId, job.current_state, { startAfterSeconds: delaySeconds });
       logger.warn(
-        { jobId, state: job.current_state, kind: decision.kind, attempt: decision.attempt,
-          maxAttempts: config.STEP_MAX_ATTEMPTS, delaySeconds, error: msg },
-        'step deferred — upstream asked us to wait, re-queued rather than failed',
+        { jobId, state: job.current_state, kind: decision.kind,
+          attempt: decision.countsAgainstCap ? decision.attempt : null,
+          maxAttempts: decision.countsAgainstCap ? config.STEP_MAX_ATTEMPTS : null,
+          backpressure: !decision.countsAgainstCap, delaySeconds, error: msg },
+        decision.countsAgainstCap
+          ? 'step deferred — upstream asked us to wait, re-queued rather than failed'
+          : 'step deferred — every upstream slot busy, re-queued without charging an attempt',
       );
       // Swallowed on purpose: we have scheduled the replacement ourselves, so this queue job is
       // COMPLETE rather than failed. pg-boss's own retryLimit deliberately does not see these —
