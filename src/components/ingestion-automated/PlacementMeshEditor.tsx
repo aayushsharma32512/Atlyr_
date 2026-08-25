@@ -1157,7 +1157,8 @@ type ProductProps = {
 export function ProductPlacementEditor({ product, open, onOpenChange, onSaved }: ProductProps) {
   const source: PlacementEditorSource | null = product
     ? (() => {
-        // Mannequin comes from the product's own gender (unisex → male default).
+        // Mannequin comes from the product's own gender (unisex/unknown → female, per
+        // normalizeMannequin: `gender === 'male' ? 'male' : 'female'`).
         const mannequin = normalizeMannequin(null, product.gender)
         const entry = product.placement?.[`${mannequin}:${DEFAULT_BODY_TYPE}`] ?? null
         return {
@@ -1172,9 +1173,17 @@ export function ProductPlacementEditor({ product, open, onOpenChange, onSaved }:
           label: product.product_name ?? product.id.slice(0, 8),
           // Skip the composite upload: the studio renders from the transform map, not a preview image,
           // so a product save is just a fast JSONB merge (no multi-MB PNG round-trip).
-          onSave: ({ transform, warp }) =>
+          // Forward refW/refH. The core measures them (PlacementMeshEditorCore's texSizeRef — the
+          // size of the texture the warp lattice was drawn on) and BOTH the client body and the
+          // server route already accept them. Destructuring only { transform, warp } dropped them
+          // silently, so every placement authored on /admin/placement saved without its scale
+          // factor: correct in the studio, which wears image_url at the authoring size, and torn
+          // apart anywhere the texture differs — a gallery tile wearing the 400px thumbnail turns
+          // a 165px fold into a ~70% displacement. The job-keyed wrapper above never had this bug
+          // because it forwards the payload whole.
+          onSave: ({ transform, warp, refW, refH }) =>
             v2Api
-              .savePlacementForProduct(product.id, { transform, warp, mannequin })
+              .savePlacementForProduct(product.id, { transform, warp, refW, refH, mannequin })
               .then(() => undefined),
         }
       })()
