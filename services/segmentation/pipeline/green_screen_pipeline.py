@@ -20,7 +20,7 @@ from pipeline import db_store
 from pipeline import result_store
 from pipeline.types import StepResult
 
-from pipeline.category import resolve_category
+from pipeline.category import resolve_category, should_remove_bare_torso
 from pipeline.core_segmentation import (
     extract_class_mask,
     run_schp_parsing,
@@ -29,6 +29,15 @@ from pipeline.core_segmentation import (
     SCHP_GARMENT_CLASSES,
 )
 from fashn_human_parser import FashnHumanParser
+
+# ── Bare-torso removal on skin-hued bottomwear ────────────────────────────────────────────────────
+# How far the garment is dilated before its own pixels are protected from the skin colour rule.
+# On a nude/beige garment the rule flags garment and skin alike, so the only thing separating them
+# is the parser's mask — and this absorbs its edge error. Measured over the 20 skin-hued bottomwear
+# jobs in the catalogue: at 25px every detached torso blob is still caught in full, while the worst
+# garment loss falls to 634px (0.10%) and 18 of the 20 lose nothing at all.
+TORSO_SKIN_GUARD_PX = 25
+
 
 # Module-global parser cache, matching how core_segmentation caches SAM2/SCHP/LoFTR. Without it
 # the SegFormer-B4 parser was re-constructed on EVERY request — including on a warm container,
@@ -266,13 +275,44 @@ def run_green_screen_pipeline_e2e(
         else:
             color_skin_mask = np.zeros_like(parser_skin_mask)
 
+        # ── Bare torso on skin-hued bottomwear ────────────────────────────────────────────────
+        # The colour rule above is switched off entirely when the garment reads as skin, because on a
+        # nude/beige garment it flags garment and skin alike. That is correct for topwear, but on
+        # BOTTOMWEAR it also discards the only signal that removes the mannequin's bare torso: the
+        # parser mask does not cover it (LIP has no bare-torso class), so nothing else does either.
+        # SAM2 then keeps the midriff and it survives to the cut-out as a detached ribcage blob —
+        # 3 of the 20 skin-hued bottomwear jobs in the catalogue, and 0 of the 56 normal-hued ones.
+        #
+        # Gated by should_remove_bare_torso so top/dress take a byte-identical path, and by the
+        # non-green-screen input, where the garment is protected by subtracting its own mask rather
+        # than by this bail-out. Kept in its own mask, not folded into color_skin_mask, because that
+        # one is gated by the head/neck region downstream — a gate a mid-torso patch cannot pass
+        # (it reaches at most 13% of these blobs), which is why the subtraction below is ungated.
+        torso_skin_mask = np.zeros_like(parser_skin_mask)
+        if should_remove_bare_torso(category, is_garment_skin_colored, is_green_screen):
+            b_ch = img_bgr[:, :, 0].astype(np.float32)
+            g_ch = img_bgr[:, :, 1].astype(np.float32)
+            r_ch = img_bgr[:, :, 2].astype(np.float32)
+            color_skin = (r_ch > 95) & (g_ch > 40) & (b_ch > 20) & (r_ch - g_ch > 15) & (r_ch - b_ch > 15) & (r_ch > g_ch) & (r_ch > b_ch)
+            guard_k = cv2.getStructuringElement(
+                cv2.MORPH_ELLIPSE, (2 * TORSO_SKIN_GUARD_PX + 1, 2 * TORSO_SKIN_GUARD_PX + 1)
+            )
+            guard = cv2.dilate(coarse_garment_mask, guard_k)
+            torso_skin_mask = cv2.bitwise_and(
+                color_skin.astype(np.uint8) * 255, cv2.bitwise_not(guard)
+            )
+            skin_mask = np.maximum(skin_mask, torso_skin_mask)
+            print(f"  Bottomwear + skin-hued garment: added {int((torso_skin_mask > 127).sum())}px "
+                  f"of bare-torso skin to the exclusion mask (guard {TORSO_SKIN_GUARD_PX}px)")
+
         exclusion_final_path = os.path.join(output_dir, "06_exclusion_mask.png")
         cv2.imwrite(exclusion_final_path, skin_mask)
 
         upload_and_record_step(seg_job_id, config_id, "chroma_key", step_order,
                                "completed", exclusion_final_path, None,
                                {"is_green_screen": bool(is_green_screen), "green_coverage": round(float(green_coverage), 4),
-                                "is_garment_skin_colored": bool(is_garment_skin_colored)},
+                                "is_garment_skin_colored": bool(is_garment_skin_colored),
+                                "torso_skin_px": int((torso_skin_mask > 127).sum())},
                                started_at=step_start, skip_upload=skip_intermediate_uploads)
 
         # ------------------------------------------------------------------
@@ -328,6 +368,9 @@ def run_green_screen_pipeline_e2e(
         dilated_hn = cv2.dilate(head_neck_mask, kernel_hn)
         color_skin_guided = cv2.bitwise_and(color_skin_mask, dilated_hn)
         combined_exclusion = cv2.bitwise_or(parser_skin_mask, color_skin_guided)
+        # Ungated — see the torso_skin_mask comment above: the head/neck gate cannot reach a
+        # mid-torso patch. Empty for every category except skin-hued bottomwear.
+        combined_exclusion = cv2.bitwise_or(combined_exclusion, torso_skin_mask)
         sam2_only_alpha[combined_exclusion > 127] = 0
 
         # Multi-component cleanup

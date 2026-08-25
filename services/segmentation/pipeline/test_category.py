@@ -83,9 +83,39 @@ check("debug records the request", dbg["category_requested"], "top")
 check("debug records the branch", dbg["category_source"], "constrained")
 
 
+# ── should_remove_bare_torso ──────────────────────────────────────────────────────────────────────
+# The gate that keeps the bare-torso subtraction off every path except skin-hued bottomwear.
+torso = category.should_remove_bare_torso
+
+# The case it exists for: beige trousers on a white background.
+check("pants, skin-hued, white bg", torso("pants", True, False), True)
+check("skirt, skin-hued, white bg", torso("skirt", True, False), True)
+check("caller alias 'bottom' normalises", torso("bottom", True, False), True)
+check("caller alias 'bottomwear' normalises", torso("bottomwear", True, False), True)
+
+# Topwear and dresses must not be touched at all — this is the whole point of the gate.
+check("top is never affected", torso("top", True, False), False)
+check("dress is never affected", torso("dress", True, False), False)
+check("footwear is never affected", torso("footwear", True, False), False)
+check("alias 'tops' is never affected", torso("tops", True, False), False)
+check("alias 'dresses' is never affected", torso("dresses", True, False), False)
+
+# A normal-hued garment already runs the colour rule; it must keep its existing path.
+check("normal-hued bottomwear unchanged", torso("pants", False, False), False)
+
+# On green input the garment is not protected by its own mask subtraction, so the rule stays off.
+check("green screen bottomwear unchanged", torso("pants", True, True), False)
+check("green screen + normal hue unchanged", torso("pants", False, True), False)
+
+# Degenerate input must not enable it.
+check("missing category", torso(None, True, False), False)
+check("unknown category", torso("outerwear", True, False), False)
+check("empty category", torso("", True, False), False)
+check("whitespace/case tolerated", torso("  PANTS ", True, False), True)
+
 if FAILURES:
     print(f"FAILED ({len(FAILURES)}):")
     for f in FAILURES:
         print(f"  - {f}")
     sys.exit(1)
-print("all category resolution tests passed")
+print("all category resolution + bare-torso gate tests passed")

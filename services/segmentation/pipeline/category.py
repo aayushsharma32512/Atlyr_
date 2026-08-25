@@ -55,6 +55,35 @@ CATEGORY_ALIASES = {
 }
 
 
+# Categories whose try-on frame leaves the torso bare, so skin ABOVE the garment has to be removed.
+# Deliberately excludes top/dress: there the torso is covered by the garment itself, and their
+# necklines are already handled by the head/neck-gated punch in core_segmentation.
+BOTTOMWEAR_CATEGORIES = ("pants", "skirt")
+
+
+def should_remove_bare_torso(category, is_garment_skin_colored, is_green_screen):
+    """
+    Whether to subtract colour-detected skin lying outside the garment.
+
+    The colour skin rule is normally switched off when the garment itself reads as skin, because it
+    cannot then tell garment from mannequin. That is right for topwear, but on bottomwear it also
+    throws away the only signal that removes the bare midriff — the parser has no bare-torso class,
+    so nothing else covers it, and SAM2 keeps it as a detached blob above the waistband.
+
+    Narrow by design. All three conditions must hold:
+      · bottomwear      — top/dress keep their existing path byte for byte
+      · skin-hued       — a normal-hued garment already has the rule running and never blobs
+      · not green screen — on green input the garment is not protected by its own mask subtraction
+    """
+    key = (category or "").strip().lower()
+    key = CATEGORY_ALIASES.get(key, key)
+    return (
+        key in BOTTOMWEAR_CATEGORIES
+        and bool(is_garment_skin_colored)
+        and not bool(is_green_screen)
+    )
+
+
 def resolve_category(requested, areas):
     """
     Pick the garment category.
