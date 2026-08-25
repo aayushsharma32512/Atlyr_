@@ -12,6 +12,13 @@ export type PipelineState =
   | 'segmenting'
   | 'segmented'
   | 'awaiting_hitl_segmentation'
+  // The manual asset lane's four gates. Each waits on an operator and is resumed by
+  // POST /jobs/:id/proceed, exactly like the awaiting_hitl_* pair above. Introduced in
+  // supabase/migrations/20260825140000_add_manual_asset_lane.sql.
+  | 'awaiting_manual_identification'
+  | 'awaiting_manual_vton'
+  | 'awaiting_manual_segmentation'
+  | 'awaiting_manual_placement'
   | 'placement'
   | 'completed'
   | 'failed'
@@ -23,7 +30,7 @@ export interface IngestionPipelineJob {
   product_url: string;
   dedupe_key: string | null;
   product_gender_type: 'male' | 'female' | 'unisex';
-  product_type: 'topwear' | 'bottomwear' | 'dress';
+  product_type: 'topwear' | 'bottomwear' | 'dress' | 'footwear';
   product_sub_type: string;
   product_complexity: string;
   v_ton_model: string | null;
@@ -33,6 +40,13 @@ export interface IngestionPipelineJob {
   current_state: PipelineState;
   /** Which lane this job's VTON step takes. 'instant' is the default and the only lane for FASHN jobs. */
   vton_lane: 'instant' | 'batch';
+  /**
+   * Which lane produces this job's VTON and segmented images. 'automated' runs the normal
+   * pipeline; 'manual' replaces the identification, VTON, segmentation and placement steps with
+   * operator gates. Read by the `scraping` transition, so it must survive every `{...job}` spread
+   * on the path to that fork — nextState() reads the in-memory object, never the DB.
+   */
+  asset_lane: 'automated' | 'manual';
   /** The batch tray currently owning this job, or null when unclaimed. */
   gemini_batch_id: string | null;
   v_ton_preferred_image: string | null;

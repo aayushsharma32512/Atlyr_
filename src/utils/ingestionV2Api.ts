@@ -40,6 +40,11 @@ export interface PipelineJob {
   v_ton_image_preference: { type: string } | null
   hitl_post_identification: boolean
   hitl_post_segmentation: boolean
+  /**
+   * Which lane produced this job's try-on and cut-out. 'manual' means an operator uploaded both by
+   * hand — the footwear path, which has no automated VTON or segmentation step.
+   */
+  asset_lane?: 'automated' | 'manual'
   v_ton_preferred_image: string | null
   vton_image_url: string | null
   segmented_image_url: string | null
@@ -147,7 +152,7 @@ export interface SavePlacement2DForProductBody {
 export interface SubmitJobBody {
   product_url: string
   product_gender_type: 'male' | 'female' | 'unisex'
-  product_type: 'topwear' | 'bottomwear' | 'dress'
+  product_type: 'topwear' | 'bottomwear' | 'dress' | 'footwear'
   product_sub_type: string
   product_complexity: string
   v_ton_model?: string
@@ -159,6 +164,13 @@ export interface SubmitJobBody {
    * defaults the same way, so an unaware caller can never route work into a batch.
    */
   vton_lane?: 'instant' | 'batch'
+  /**
+   * 'manual' replaces identification, try-on, segmentation and placement with operator gates.
+   * Required when product_type is 'footwear' — the server rejects the automated combination,
+   * because a shoe on the automated lane fails silently rather than loudly (SigLIP's vocabulary is
+   * garment wording and the VTON prompt bank has no footwear entry).
+   */
+  asset_lane?: 'automated' | 'manual'
   /** Bulk uploads set this to `bulk:<sheet name>` so a batch can be tracked as a unit. */
   created_by?: string
 }
@@ -325,6 +337,27 @@ export const v2Api = {
   // the browser anon key can't write to the storage bucket). imageBase64 is a PNG data URL.
   saveSegmentedImage: (jobId: string, imageBase64: string) =>
     call<{ job_id: string; segmented_image_url: string }>(`/jobs/${jobId}/segmented-image`, {
+      method: 'POST',
+      body: JSON.stringify({ image_base64: imageBase64 }),
+    }),
+
+  // ── Manual asset lane ───────────────────────────────────────────────────────────────────────
+  // These CREATE the first copy of an asset, where saveSegmentedImage above overwrites one the
+  // pipeline already produced. Each is accepted only while the job sits at its own gate.
+
+  /** The operator's try-on image. PNG or JPEG; no alpha required, it is only ever looked at. */
+  uploadManualVton: (jobId: string, imageBase64: string) =>
+    call<{ job_id: string; vton_image_url: string }>(`/jobs/${jobId}/manual/vton`, {
+      method: 'POST',
+      body: JSON.stringify({ image_base64: imageBase64 }),
+    }),
+
+  /**
+   * The hand-made cut-out. The server rejects a PNG without an alpha channel — a Photoshop export
+   * that was flattened looks fine locally but would place as an opaque rectangle.
+   */
+  uploadManualSegmented: (jobId: string, imageBase64: string) =>
+    call<{ job_id: string; segmented_image_url: string }>(`/jobs/${jobId}/manual/segmented`, {
       method: 'POST',
       body: JSON.stringify({ image_base64: imageBase64 }),
     }),

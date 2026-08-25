@@ -3,6 +3,15 @@ import type { IngestionPipelineJob, PipelineState } from '../domain/types';
 export const HITL_STATES: PipelineState[] = [
   'awaiting_hitl_identification',
   'awaiting_hitl_segmentation',
+  // The manual asset lane's four gates. HITL, not PARKED: a parked state deliberately has no
+  // TRANSITIONS entry and is resumed by replaying its predecessor's edge (see the poller), while
+  // these are resumed by POST /proceed calling nextState() — the HITL shape. Membership here is
+  // load-bearing well beyond the enqueue guard: it is also what keeps the dispatcher, the reaper,
+  // boot recovery and restart.ts's isActive check off a job that is simply waiting on a person.
+  'awaiting_manual_identification',
+  'awaiting_manual_vton',
+  'awaiting_manual_segmentation',
+  'awaiting_manual_placement',
 ];
 
 // States where a job waits on something this service does not drive. Nothing enqueues a message
@@ -26,7 +35,12 @@ export const TERMINAL_STATES: PipelineState[] = [
 // Maps current_state → next state. Only states that have an automatic transition are listed.
 const TRANSITIONS: Record<string, (job: IngestionPipelineJob) => PipelineState> = {
   pending:                      () => 'scraping',
-  scraping:                     () => 'identifying',
+  // The manual-lane fork. It sits here rather than inside the scraping handler so the state
+  // machine keeps describing the whole pipeline; a fork hidden in a handler is invisible to
+  // nextState() and to every test that reasons about reachability.
+  scraping:                     (j) => j.asset_lane === 'manual'
+                                         ? 'awaiting_manual_identification'
+                                         : 'identifying',
   identifying:                  (j) => j.hitl_post_identification
                                          ? 'awaiting_hitl_identification'
                                          : 'generating_garment_summary',
@@ -45,6 +59,15 @@ const TRANSITIONS: Record<string, (job: IngestionPipelineJob) => PipelineState> 
                                          : 'placement',
   awaiting_hitl_segmentation:   () => 'placement',
   placement:                    () => 'completed',
+
+  // The manual lane. Every edge is an operator clicking Proceed. Nothing is enqueued on entry to
+  // any of them — all four are in HITL_STATES, so advanceAndTrigger returns before sendPipelineStep
+  // — and the lane never reaches identifying, generating_garment_summary, generating_vton or
+  // segmenting, which is why no handler needs to know the lane exists.
+  awaiting_manual_identification: () => 'awaiting_manual_vton',
+  awaiting_manual_vton:           () => 'awaiting_manual_segmentation',
+  awaiting_manual_segmentation:   () => 'awaiting_manual_placement',
+  awaiting_manual_placement:      () => 'completed',
 };
 
 export function nextState(job: IngestionPipelineJob): PipelineState {

@@ -115,6 +115,10 @@ export async function registerBatchRoutes(app: FastifyInstance, boss: BossHandle
           hitl_post_identification: body.options.hitl_post_identification,
           hitl_post_segmentation:   body.options.hitl_post_segmentation,
           vton_lane:                body.options.vton_lane,
+          // Bulk ingest is the automated garment path. The manual lane is driven one URL at a
+          // time from /admin/shoes, so there is no batch affordance for it yet; stated explicitly
+          // rather than defaulted because insertJob deliberately makes every caller choose.
+          asset_lane:               'automated',
           created_by:               body.created_by ?? null,
           batch_id:                 batch.batch_id,
         });

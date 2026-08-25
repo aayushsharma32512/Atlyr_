@@ -11,7 +11,7 @@ const logger = createLogger({ stage: 'api:submit' });
 const SubmitBody = z.object({
   product_url:              z.string().url(),
   product_gender_type:      z.enum(['male', 'female', 'unisex']),
-  product_type:             z.enum(['topwear', 'bottomwear', 'dress']),
+  product_type:             z.enum(['topwear', 'bottomwear', 'dress', 'footwear']),
   product_sub_type:         z.string().min(1),
   product_complexity:       z.string().min(1),
   v_ton_model:              z.string().optional(),
@@ -21,8 +21,26 @@ const SubmitBody = z.object({
   // Economy mode. Defaults to 'instant' so an unaware caller can never route work into a batch:
   // opting in is always explicit, per row.
   vton_lane:                z.enum(['instant', 'batch']).default('instant'),
+  // Which lane produces the VTON and segmented images. 'manual' replaces identification, VTON,
+  // segmentation and placement with operator gates. Defaults to 'automated' so an unaware caller
+  // cannot accidentally create a job that nothing will ever drive.
+  asset_lane:               z.enum(['automated', 'manual']).default('automated'),
   created_by:               z.string().optional(),
-});
+})
+  .superRefine((b, ctx) => {
+    // Footwear has no automated path and would fail SILENTLY rather than loudly: SigLIP's
+    // vocabulary is garment wording, garment-summary's resolveCategory falls through to
+    // 'topwear', and the VTON prompt bank has no footwear entry at all — so an automated shoe
+    // job produces a topwear-flavoured summary and a try-on prompt that says "dress the full
+    // body avatar". Reject it here instead.
+    if (b.product_type === 'footwear' && b.asset_lane !== 'manual') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['asset_lane'],
+        message: "product_type 'footwear' requires asset_lane 'manual' — there is no automated VTON or segmentation path for shoes",
+      });
+    }
+  });
 
 export async function registerSubmitRoute(app: FastifyInstance, boss: BossHandle): Promise<void> {
   app.post('/jobs', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -81,6 +99,7 @@ export async function registerSubmitRoute(app: FastifyInstance, boss: BossHandle
       hitl_post_identification: body.hitl_post_identification,
       hitl_post_segmentation:   body.hitl_post_segmentation,
       vton_lane:                body.vton_lane,
+      asset_lane:               body.asset_lane,
       created_by:               body.created_by ?? null,
     });
 

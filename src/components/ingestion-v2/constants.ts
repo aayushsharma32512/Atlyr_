@@ -12,6 +12,12 @@ export const STATE_LABELS: Record<string, string> = {
   segmenting:                   'Segmenting',
   segmented:                    'Segmented',
   awaiting_hitl_segmentation:   'Review: Segmentation',
+  // Manual asset lane (footwear). Each label names the file the operator owes, because the row's
+  // whole purpose is telling a human what to do next.
+  awaiting_manual_identification: 'Pick photo',
+  awaiting_manual_vton:           'Upload try-on',
+  awaiting_manual_segmentation:   'Upload cut-out',
+  awaiting_manual_placement:      'Place on mannequin',
   placement:                    'Placing',
   completed:                    'Completed',
   failed:                       'Failed',
@@ -35,6 +41,11 @@ export const STATE_VARIANTS: Record<string, StateVariant> = {
   segmenting:                   'secondary',
   segmented:                    'secondary',
   awaiting_hitl_segmentation:   'default',
+  // 'default' is the attention variant — every manual gate is blocked on a person.
+  awaiting_manual_identification: 'default',
+  awaiting_manual_vton:           'default',
+  awaiting_manual_segmentation:   'default',
+  awaiting_manual_placement:      'default',
   placement:                    'default',
   completed:                    'outline',
   failed:                       'destructive',
@@ -54,6 +65,12 @@ export const ACTIVE_STATES = new Set([
 export const AWAITING_STATES = new Set([
   'awaiting_hitl_identification',
   'awaiting_hitl_segmentation',
+  // Not ACTIVE_STATES: a manual gate is not work in flight, it is work waiting on a person. Put
+  // one in ACTIVE by mistake and the row spins forever instead of asking for its file.
+  'awaiting_manual_identification',
+  'awaiting_manual_vton',
+  'awaiting_manual_segmentation',
+  'awaiting_manual_placement',
   'placement',
 ])
 

@@ -19,9 +19,17 @@ const STAGE_1_STATES = new Set([
 ])
 
 // States where the /proceed endpoint actually accepts a push (see
-// services/ingestion-automated/src/api/routes/proceed.ts PROCEED_ALLOWED_STATES).
+// services/ingestion-automated/src/api/routes/proceed.ts PROCEED_ALLOWED_STATES, which derives
+// its list from HITL_STATES — keep this in step with that).
 // 'placement' reaches this state too but has no live route yet — treat as stub.
-export const PROCEED_ALLOWED_STATES = new Set(['awaiting_hitl_identification', 'awaiting_hitl_segmentation'])
+export const PROCEED_ALLOWED_STATES = new Set([
+  'awaiting_hitl_identification',
+  'awaiting_hitl_segmentation',
+  'awaiting_manual_identification',
+  'awaiting_manual_vton',
+  'awaiting_manual_segmentation',
+  'awaiting_manual_placement',
+])
 
 export function stageOf(job: PipelineJob): Stage {
   if (STAGE_1_STATES.has(job.current_state)) return 1
@@ -61,6 +69,16 @@ export function attentionNote(job: PipelineJob): string | null {
       return 'Needs review — confirm SigLIP identification before generation'
     case 'awaiting_hitl_segmentation':
       return 'Needs review — confirm segmented image before placement'
+    // The manual lane. Each line names the exact artefact the operator owes, so a shoe sitting in
+    // the queue explains itself without anyone opening it.
+    case 'awaiting_manual_identification':
+      return 'Pick the product photo to carry forward'
+    case 'awaiting_manual_vton':
+      return 'Upload the try-on image'
+    case 'awaiting_manual_segmentation':
+      return 'Download the try-on, cut it out in Photoshop, upload the transparent PNG'
+    case 'awaiting_manual_placement':
+      return 'Place the cut-out on the mannequin'
     case 'placement':
       return 'Awaiting placement — ↻ Place to auto-place, or open the editor to place manually'
     default:
