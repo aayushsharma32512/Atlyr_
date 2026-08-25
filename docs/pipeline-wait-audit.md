@@ -220,3 +220,46 @@ fill-or-age rule. A test that only agrees with the code it ships alongside guard
 Still open as a known limitation: drill 1 asserts `recovery-scope.ts`, not `boot-recovery.ts`'s use
 of it. If someone re-declares a local list in that file the drill will not notice. Catching that
 needs a source-level check, which is brittle enough that it was left out deliberately.
+
+---
+
+## Live validation (2026-08-25)
+
+The audit was written from reading code. This is what happened when the fixes met real traffic —
+96 rows across four sheets, run as a deliberate matrix rather than a smoke test.
+
+| Case | Result |
+|---|---|
+| **F5 `'complete'` trigger** — 12-row sheet, pipeline otherwise idle | Tray complete 06:18:03, shipped 06:20:20 — **122s**. `MIN_FILL=20` made `'full'` impossible and the oldest park was ~06:14, so `'max-wait'` could not fire before ~06:24. `'complete'` is the only trigger that explains it; ~5 minutes saved, and that gap scales with `MAX_WAIT`. |
+| **`FLUSH_SIZE=30` cap** — 50 rows parked at once | `n=30` at 06:30, `n=20` at 06:35. The trigger says *ship*, the cap says *this many* — two separate decisions, both correct. |
+| **F2 backpressure at scale** — 50 rows against 12 Firecrawl slots | **0 failed.** 39 jobs finished with `error_count=0`: every wait was pure backpressure and charged nothing. This is the exact shape that killed 9 jobs before the cap exemption. |
+| **F2 real rate limit** | 6× `Every Firecrawl key is paused` — both pools genuinely parked, so `reason: 'paused'` and the deferral **was** charged. Paused and saturated behave differently in production, as designed. |
+| **F2 on an unanticipated failure** | 5× `Storage upload failed: The socket connection was closed unexpectedly` — a Supabase blip, nothing to do with rate limits. Classified `transient`, deferred 60s, **all five recovered** and reached the tray. Under the old code each would have been terminally `failed`. |
+| **Custodian auto-retry** | The 402 job recovered unattended and ran to `awaiting_hitl_segmentation` with `error_count` still 3 — the auto path did not reset the counter, which is what keeps the loop bounded. |
+| **Duplicate paths** | 4 rows of already-active URLs, each sent twice → `submitted=0`, `already_active=2`, `in_batch=2`. Duplicates are **dropped, never substituted**: a 25-row sheet with 3 repeats produces 22 jobs. |
+
+**Zero jobs failed across all 62 rows**, while 11 took charged deferrals and 39 waited on pure
+backpressure.
+
+### What the run taught that the audit did not
+
+- **F2 generalises past its own motivation.** It was built for rate limits; the failure it actually
+  caught in production was a storage socket drop. The real invariant is not "handle 429" but
+  *"a wait is not a verdict"* — and the classifier already knew the difference.
+- **`hasPendingArrivals()` is global, and that is load-bearing.** A small sheet only gets the
+  `'complete'` shortcut when the pipeline is otherwise idle; any other sheet upstream correctly
+  suppresses it, because more genuinely *is* coming. Worth knowing before reading a flush log.
+- **Free workers were never the bottleneck.** With rows still arriving, `teamRefill` refills a slot
+  the instant a job parks — 39 rows were observed working across three steps at once. The ceiling
+  was Firecrawl's slot count, which is why `FIRECRAWL_MAX_CONCURRENCY` now matches `BOSS_TEAM_SIZE`.
+
+### Still unproven
+
+- **`already_ingested` dedupe.** Jobs stop at `awaiting_hitl_segmentation` under
+  `hitl_post_segmentation: true`, so nothing reaches `completed` and that branch never runs. It
+  needs a job pushed through Go Live to test.
+- **Tray turnaround under concurrency.** Three simultaneous trays ran well past the 170–1088s
+  benchmark (30+ min for the first). Prior measurements only ever covered one tray at a time, so
+  there is no baseline to compare against. Bounded by the 6h stale warning and the 48h self-expiry,
+  but not explained.
+- **The 48h tray deadline and the Modal deadline sweep** have never fired in anger.
