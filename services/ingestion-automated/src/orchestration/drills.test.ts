@@ -1,5 +1,5 @@
 /**
- * Failure drills — the audit in docs/pipeline-wait-audit.md, expressed as assertions.
+ * Failure drills: the wait audit in docs/economy-lane-batch-vton.md, expressed as assertions.
  *
  * Every drill encodes one invariant about a place where the pipeline WAITS or HANDS OFF work.
  * They exist because the bug that cost 15 jobs on 2026-08-23 was found by talking rather than by

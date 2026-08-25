@@ -1,316 +1,397 @@
-# Bulk Ingestion — How It Runs
+# Bulk Ingestion
 
-Covers the whole bulk path: the queue and workers, what happens when a step fails, the background
-sweeper that unsticks jobs, and the economy (batch) VTON lane.
+Everything about how a bulk sheet gets processed: workers, queues, retries, the background
+supervisor, and the economy (batch) try-on lane.
 
-**Status:** live, tested on real sheets. Last full run 2026-08-25 — 121 rows across six sheets,
-**zero jobs failed**.
-
----
-
-## 1. The flow
-
-One sheet of product URLs goes in. Every row becomes a job, and every job walks the same steps.
-
-```
-Excel sheet ──► POST /batches ──► one job row per URL
-                                        │
-                                        ▼
-   ┌──────────────────── FAST QUEUE (12 slots) ────────────────────┐
-   │  scrape ──► identify ──► garment summary ──► try-on (VTON)    │
-   └───────────────────────────────────────────────────────────────┘
-                                        │
-   ┌──────────────────── MODAL QUEUE (5 slots) ────────────────────┐
-   │  segment ──► place                                            │
-   └───────────────────────────────────────────────────────────────┘
-                                        │
-                                        ▼
-                                    completed
-```
-
-Two things can interrupt that walk:
-
-- **A human gate.** With HITL on, the job stops at `awaiting_hitl_identification` or
-  `awaiting_hitl_segmentation` until someone clicks Proceed.
-- **The economy lane.** If the sheet was submitted with Economy mode on, the try-on step parks at
-  `vton_batch_queued` instead of calling Gemini per job. See section 5.
-
-Everything else is unchanged per job.
+**Status:** live and tested. Last full run 2026-08-25, 121 rows across six sheets, **zero jobs
+failed**.
 
 ---
 
-## 2. Workers and queues
+## 1. The basics
 
-**Two queues, one handler.** Fast steps and GPU steps have separate slot pools, so a pile-up of
-multi-minute segmentation waits cannot starve scraping.
+Think of it as a small factory.
 
-| Queue | Steps | Slots | Step timeout |
+**A job** is one product URL. It has to get through six steps:
+
+```
+scrape  ->  identify  ->  garment summary  ->  try-on  ->  segment  ->  place
+```
+
+**A worker** is one slot that runs one step for one job at a time. We have 12 of them.
+
+**A queue** is the waiting list. Workers pick the next job off it, run one step, then put the job
+back on the queue for its next step.
+
+So 12 workers means 12 steps can be running at the same moment, on 12 different jobs. A sheet of 25
+rows does not run one row at a time. It runs up to 12 at a time, and each row moves through the
+steps independently.
+
+Nobody holds a worker while waiting. If a job has to wait for something, it lets go of its worker so
+someone else can use it.
+
+---
+
+## 2. The flow
+
+```
+Excel sheet  ->  POST /batches  ->  one job row per URL
+                                          |
+                                          v
+   +------------------ FAST WORKERS (12) ------------------+
+   |  scrape  ->  identify  ->  summary  ->  try-on        |
+   +-------------------------------------------------------+
+                                          |
+   +------------------ GPU WORKERS (5) --------------------+
+   |  segment  ->  place                                   |
+   +-------------------------------------------------------+
+                                          |
+                                          v
+                                      completed
+```
+
+Two things can pause a job on the way:
+
+1. **A human gate.** With HITL turned on, the job stops and waits for someone to click Proceed.
+   Today most sheets stop at `awaiting_hitl_segmentation`, which is the review queue.
+2. **The economy lane.** If the sheet was uploaded with Economy mode on, the try-on step waits to be
+   bundled with other jobs instead of being done one at a time. See section 7.
+
+---
+
+## 3. Why there are two groups of workers
+
+Four of the six steps are fast, usually seconds to a couple of minutes. Two of them (segment and
+place) run on a GPU and can take many minutes.
+
+If they all shared one pool, a pile of slow GPU steps would occupy every worker and the fast steps
+would starve behind them.
+
+So there are two separate pools:
+
+| Pool | Steps | Workers | Longest a step may run |
 |---|---|---|---|
-| Fast | scrape, identify, summary, try-on | `BOSS_TEAM_SIZE=12` | 1800s |
-| Modal | segment, place | `BOSS_MODAL_TEAM_SIZE=5` | 5400s |
+| Fast | scrape, identify, summary, try-on | 12 | 30 min |
+| GPU | segment, place | 5 | 90 min |
 
-The handler is the same for both. `dispatch()` reads `current_state` from the database, so which
-queue delivered the message never decides what runs.
+Both pools run the same code. The job's own `current_state` in the database decides what actually
+runs, so it never matters which pool picked the job up.
 
-**`teamRefill: true` is load-bearing.** pg-boss v9 with a bare `teamSize` grabs a batch of jobs and
-will not fetch again until the *whole batch* finishes. One slow handler — a try-on call walking the
-model fallback chain can legitimately take 10+ minutes — then stalls the entire queue behind it.
-`teamRefill` refills each slot as its own member finishes. This was a real stall, not a theoretical
-one.
+### The stall we hit: workers waiting on each other
 
-**Scraping is the front bottleneck.** Firecrawl is capped at `FIRECRAWL_MAX_CONCURRENCY=6`
-concurrent scrapes — a real semaphore in the adapter. It used to be dead config: defined, set,
-consumed nowhere. With 12 worker slots and 6 scrape slots, rows queue at the front and then fan out.
-Free workers were never the limit; scrape slots were.
+The queue library (pg-boss) by default hands a pool a whole batch of jobs at once, and will not hand
+out a single new job until **every job in that batch has finished**.
+
+So if 11 jobs finish in 30 seconds and the 12th takes 10 minutes, those 11 workers sit idle for 10
+minutes. The queue looks busy while almost nothing is happening.
+
+A try-on call walking its model fallback chain can legitimately take 10+ minutes, so this was not
+rare.
+
+The setting `teamRefill: true` fixes it. Each worker takes a new job the moment its own job
+finishes, instead of waiting for the group.
 
 ---
 
-## 3. When a step fails
+## 4. Slots, and what backpressure actually means
 
-The old behaviour: any error → mark the job `failed`, rethrow. That is right for a bad URL and wrong
-for a rate limit.
+This is the part that confuses people, so slowly.
 
-It cost 15 jobs on 2026-08-23. Worse, the three pg-boss retries that followed did nothing — `failed`
-is terminal, so every retry returned at the terminal-state guard without running anything.
+Our 12 workers are ours. But the outside services we call have their own limits, and those limits
+are separate.
+
+**Firecrawl** (the scraping service) only lets us run **6 scrapes at the same time**. Call those 6
+"scrape slots".
+
+So the real picture during the scrape phase of a sheet:
+
+```
+12 workers all want to scrape
+   |
+   +-- 6 of them get a scrape slot and start working
+   |
+   +-- 6 of them find every slot taken, and have to wait
+```
+
+**Backpressure is that second group.** It means nothing more than: *everyone else is using the
+resource right now, wait your turn.*
+
+Nothing is wrong with those jobs. Their URLs are fine. They just arrived 7th through 12th in line.
+
+### The bug this caused
+
+Every job gets **5 strikes**. Five failures and we give up on it and mark it `failed`.
+
+We used to count "all slots busy" as a strike.
+
+So a job whose only crime was being 9th in line burned all 5 strikes in about 25 seconds and got
+killed. That is firing someone for standing in a queue. It killed 9 rows of `batch_158`.
+
+**The fix: waiting your turn costs no strike.** Only real problems cost strikes.
+
+### How we tell the difference
+
+The scraping adapter now reports two different things:
+
+| What it reports | What it means | Costs a strike? |
+|---|---|---|
+| `saturated` | Our own slots are all busy. Other jobs are actively working. They will free up in seconds. | **No** |
+| `paused` | The service told us to stop (rate limit), or the key ran out of money. | **Yes** |
+
+The difference matters because they resolve differently. A saturated pool fixes itself as running
+jobs finish. A paused key does not fix itself for hours.
+
+We still keep the 5-strike cap, because something genuinely broken (a revoked key, a dead endpoint)
+must eventually surface as a failure instead of cycling jobs forever with nobody noticing.
+
+---
+
+## 5. When a step goes wrong
+
+The old rule was: any error at all, mark the job `failed`, done.
+
+That is right for a bad URL. It is wrong for a rate limit, which is not a verdict on the job. It is
+a wait with a known length, because the server literally tells us how long to hold off.
+
+It cost 15 jobs on 2026-08-23. Worse, the three automatic retries that followed did nothing at all,
+because `failed` is a final state and every retry returned immediately without running anything.
 
 **The rule now: a wait is not a verdict.**
 
 ```
-step throws
-    │
-    ├─ bad URL, retired model, malformed request  ──► FAIL now. Waiting cannot fix it.
-    │
-    ├─ all upstream slots busy (backpressure)     ──► retry, FREE (no attempt charged)
-    │
-    └─ rate limit / transient upstream            ──► retry, charged (max 5 attempts)
+step throws an error
+    |
+    +-- bad URL, retired model, malformed request
+    |      -> FAIL now. Waiting cannot fix any of these.
+    |
+    +-- all slots busy (backpressure)
+    |      -> wait and try again. Costs no strike.
+    |
+    +-- rate limit, or a service that was briefly down
+           -> wait and try again. Costs a strike. Max 5.
 ```
 
-**Backpressure is free, and that matters.** "All 6 Firecrawl slots are in use" says nothing about
-this job's chances — it is queue position, not failure. Charging it killed 9 rows of `batch_158` in
-about 25 seconds. The adapter now tells the two apart:
+How long it waits: the server's own number if it gave one, otherwise 60 seconds.
 
-| Adapter reports | Meaning | Charged? |
-|---|---|---|
-| `saturated` | our own slots are full, others are working | **no** |
-| `paused` | the key is rate limited or out of credits | yes |
+### The one odd case: out of credits (402)
 
-Backpressure resolves on its own: slots free as the jobs holding them finish. The attempt cap still
-exists to stop a genuinely dead upstream — a revoked key, a dead endpoint — from cycling jobs forever
-with no failure ever surfacing in the UI.
+An HTTP 402 means the key ran out of money. Technically it is a 4xx, which normally means "your
+request was wrong". But the request was fine. The URL, the garment, the prompt were all correct.
 
-**Retry delay** comes from the server when it names one, otherwise 60s.
-
-**402 (out of credits) is deliberately fast-failed.** It is not a bad request — the URL and garment
-were fine, the key ran out of money. But treating it as a rate limit would burn all 5 attempts in
-five minutes on something that needs hours. So it fails, the operator sees a dead key, and the
-custodian retries it later on a much slower clock. The Firecrawl adapter also parks that key for
-6 hours.
+We deliberately fail these fast rather than retrying, because retrying every 60 seconds would burn
+all 5 strikes in five minutes on something that needs hours or a human topping up the account. So it
+fails, an operator sees a dead key in the UI, and the supervisor (next section) tries it again later
+on a much slower clock. The scraping adapter also stops using that key for 6 hours.
 
 ---
 
-## 4. The custodian (background sweeper)
+## 6. The custodian (the background supervisor)
 
-Every wait in the pipeline now has an owner. Before this, three rescue paths existed and none ran at
-steady state:
+Every 5 minutes, a background pass walks the floor looking for jobs nobody is working on.
 
-- boot recovery only ran at boot — a row stranded while the service stayed up was never looked at again
-- the reaper also only ran at boot, and defaulted to log-only, so it had never actually acted
-- `segmenting` and `placement` were excluded from both, correctly, because Modal patches state out
-  of band — but nothing else bounded them either. If the container died, the row sat there forever.
+This exists because the old rescue paths only ran **when the service restarted**. If a job got stuck
+while the service kept running normally, nothing ever looked at it again. And the GPU steps had no
+deadline at all: if the GPU container died, the job sat in `segmenting` forever, because both
+existing rescue paths deliberately skipped those states.
 
-The custodian runs on a cron (`*/5`) and does four passes, in order:
+Four passes, in order:
 
 | # | Pass | What it does |
 |---|---|---|
-| 1 | Resume orphans | Re-dispatches rows whose worker died mid-step |
-| 2 | Modal deadline | Fails rows stuck in `segmenting`/`placement` past 5400+300s **with no live run behind them** |
-| 3 | Reap | Fails long-abandoned rows in states this worker drives start to finish |
-| 4 | Auto-retry | Retries failures that were about *conditions*, not about the job |
+| 1 | Resume orphans | A worker died mid-step. Put the job back on the queue. |
+| 2 | GPU deadline | Job stuck in segment or place way past its time limit, with nothing actually running behind it. Mark failed. |
+| 3 | Reap | Job abandoned for a long time in a step we drive ourselves. Mark failed. |
+| 4 | Auto-retry | The job failed for a reason that may have gone away since. Try once more. |
 
-Details that matter:
+Things worth knowing:
 
-- **Pass 2 fails, it does not re-dispatch.** The Modal app writes `segmentation_jobs` itself and the
-  handler deletes the existing row before inserting — re-dispatching against a container that is
-  somehow still alive would wipe the record of the live run. Failing surfaces it in the UI where a
-  human decides.
-- **Pass 4 does not reset `error_count`.** That is what bounds the loop. The custodian only ever
-  spends the existing budget; a human restart grants a fresh one. It also waits 30 minutes before
-  touching anything — retrying instantly would fight the operator looking at the job and re-ask an
-  upstream that is still broken.
-- **Each pass is independent.** One failing pass cannot stop the other three, and none can take the
-  service down.
-- **`singletonKey`** stops two ticks, or two service instances, reaping the same rows at once.
-- Registered inside `registerWorkers`, not once at startup — otherwise a pg-boss restart leaves the
-  persisted schedule emitting ticks with nobody working them, silently.
+- **Pass 2 marks failed instead of restarting the job.** The GPU app writes its own progress rows,
+  and our handler deletes the existing row before inserting a new one. So restarting a job whose
+  container is somehow still alive would wipe the record of the live run. Failing puts it in the UI
+  where a human decides.
+- **Pass 4 does not reset the strike count.** That is what keeps it from looping forever. The
+  supervisor only ever spends strikes that are already there. A human clicking Restart grants a
+  fresh 5.
+- **Pass 4 waits 30 minutes** before touching a failed job. Retrying instantly would fight the
+  operator who is looking at it, and would re-ask a service that is probably still broken.
+- **Each pass is independent.** One pass breaking cannot stop the other three, and none of them can
+  take the service down.
+- It uses a lock so two ticks, or two copies of the service, cannot work the same rows at once.
 
 ---
 
-## 5. The economy lane (batch try-on)
+## 7. The economy lane (bundled try-on)
 
-Try-on is the pipeline's biggest cost: **$0.134/image** through the interactive Gemini API. Google
-sells the same model, same quality, same 2K output at **half price** through the AI Studio Batch API
-— you submit a bundle, results come back minutes to hours later.
+Try-on is the most expensive step: **$0.134 per image** through the normal Gemini API. Google sells
+the same model, same quality, same 2K output at **half price** if you submit a bundle of requests
+and wait for the results instead of asking one at a time.
 
-Opt-in is **per sheet**: an "Economy mode" toggle on the Excel upload, default off. Single
-submissions and untoggled sheets stay instant. The server defaults to instant too, so nothing can be
-batched by accident.
+Turning it on is **per sheet**: an "Economy mode" toggle on the Excel upload, off by default. Single
+submissions and untoggled sheets stay on the normal path. The server also defaults to normal, so
+nothing can end up bundled by accident.
 
-Batch is a **station, not a mode**. The job walks the normal pipeline, pauses at one bus stop, and
-continues normally afterwards.
+The important idea: **bundling is a bus stop, not a different route.** The job walks the normal
+pipeline, waits at one stop, and carries on normally afterwards.
 
 ```
-… summary ──┬─ instant (default) ──► try-on, one call per job ──► segment …
-            │
-            └─ economy ──► vton_batch_queued          (parked, inert)
-                                 │
-             COLLECTOR (*/5) ── claims 20+ parked jobs, or any job waiting
-                                over 600s, into ONE tray (max 30)
-                                 │
-                                 ├──► Google Batch API — renders the tray in parallel
-                                 │
-             POLLER (*/3) ────── matches each result to its job by job_id,
-                                 saves the image, un-parks
-                                 │
-                                 └──► segment …   (normal from here)
+... summary --+-- normal (default) --> try-on, one call per job --> segment ...
+              |
+              +-- economy --> job waits at vton_batch_queued
+                                    |
+             COLLECTOR (every 5 min) collects 20+ waiting jobs, or any job
+                                    that has waited over 10 min, into ONE tray
+                                    (max 30 per tray)
+                                    |
+                                    +--> sent to Google, whole tray rendered together
+                                    |
+             POLLER (every 3 min) -- matches each result back to its job by job id,
+                                    saves the image, releases the job
+                                    |
+                                    +--> segment ...   (normal from here)
 ```
 
-**Parked means inert.** No queue message exists for a parked job. The dispatcher skips it, the
-reaper excludes it, boot recovery leaves it alone. Nothing in this service can touch it.
+**A waiting job holds no worker.** There is no queue entry for it at all. The dispatcher skips it,
+the reaper skips it, restart recovery leaves it alone. This is why waiting in the economy lane costs
+us nothing in capacity.
 
-### Why AI Studio batch (settled — do not revisit)
+### Why AI Studio batch (settled, do not revisit)
 
 | Option | Verdict | Reason |
 |---|---|---|
-| **AI Studio batch** | **chosen** | 2K output verified live, $0.067/image (1K and 2K billed the same) |
-| Vertex batch | rejected | hard cap at 1K output; our catalogue image is 2K |
-| OpenRouter batch | rejected | text-only; rejects `image_config` at validation |
+| **AI Studio batch** | **chosen** | 2K output verified live, $0.067 per image (1K and 2K cost the same) |
+| Vertex batch | rejected | caps image output at 1K, our catalogue image is 2K |
+| OpenRouter batch | rejected | text only, rejects image config outright |
 
-### Safety rules (each one fired live at least once)
+### The safety rules
 
-- **Claim first, then call Google.** The tray row exists before any job is claimed, and jobs are
-  claimed before submission. A crash before submission leaves a recognisable orphan the janitor
-  releases after 15 min — zero spend, no double-submit. Batch creation is not idempotent, so this
-  ordering is the whole safety argument.
-- **Match by `job_id`, never by position.** Results can come back missing, unordered, or with
-  per-item errors. None of that can misroute an image.
-- **Ownership guard on apply.** One conditional UPDATE: the row must still be parked *and* still
-  owned by this tray. A stale result can never double-drive a job.
-- **Image first, state second.** A crash between the two leaves a parked job that already owns its
-  image; the next tick finishes it. The reverse would leave an advanced job with no image.
-- **Apply everything before marking the tray terminal.** A crash mid-apply leaves the tray
-  `running` and the next tick redoes it harmlessly.
-- **Every terminal outcome sweeps.** Succeeded-with-missing, failed, expired, cancelled — members
-  never stay parked behind a dead tray.
-- **48h self-expiry**, in case Google is unreachable.
-- **Kill switch drains.** `VTON_BATCH_ENABLED=false` stops the collector only; the poller keeps
-  running until every in-flight tray resolves.
-- **Reuse guard.** The instant handler skips generation if a try-on image already exists, so a batch
-  image is never paid for twice.
-- **Restart keeps the lane.** Restarting a job always releases its tray claim, but only flips it to
-  instant if it was actually parked — a job that failed *upstream* keeps its economy lane.
+Each of these has been exercised live at least once.
+
+- **Claim the jobs before calling Google.** The tray row is created first, jobs are attached to it
+  second, Google is called third. If we crash before the call, we leave a recognisable half-made
+  tray that gets cleaned up after 15 minutes, having spent nothing. This ordering is the whole
+  safety argument, because creating a batch at Google is not repeatable safely.
+- **Match results by job id, never by position in the list.** Results can come back missing, out of
+  order, or with per-item errors. None of that can put the wrong image on the wrong product.
+- **Check ownership before applying a result.** The job must still be waiting AND still belong to
+  this tray. A stale result can never drive a job twice.
+- **Save the image first, advance the job second.** Crash in between and you get a waiting job that
+  already has its image, which the next pass finishes cleanly. The other order would give you an
+  advanced job with no image.
+- **Apply every result before marking the tray done.** Crash halfway and the tray stays open, and
+  the next pass redoes it harmlessly.
+- **Every ending sweeps.** Succeeded, failed, expired, cancelled: no job is ever left waiting behind
+  a dead tray.
+- **The tray expires itself after 48 hours**, even if Google is unreachable.
+- **The off switch drains rather than strands.** Turning the lane off stops collecting new trays but
+  keeps polling until every tray already at Google is resolved.
+- **Never pay twice.** The normal try-on handler skips generation if the job already has an image.
+- **Restarting a job keeps its lane** unless it was actually waiting at the bus stop. A job that
+  failed earlier in the pipeline stays on economy when you retry it.
 
 ### Files
 
 | Piece | File |
 |---|---|
-| Protocol helpers (pure, unit-tested) | `adapters/gemini-batch.protocol.ts` |
+| Protocol helpers (pure, unit tested) | `adapters/gemini-batch.protocol.ts` |
 | Batch client | `adapters/gemini-batch.ts` |
 | Shared request builder (both lanes) | `adapters/vton/vton-request.ts` |
 | Tray data layer | `domain/gemini-batches.ts` |
-| Collector / poller | `orchestration/vton-batch-{collector,poller}.ts` |
-| Shared persist | `steps/persist-vton-result.ts` |
+| Collector and poller | `orchestration/vton-batch-{collector,poller}.ts` |
+| Shared save | `steps/persist-vton-result.ts` |
 | Schedules | `queue/vton-batch-schedules.ts` |
 | Ops routes | `api/routes/vton-batch.ts` |
 
-Migration `20260818180000_add_vton_batch_lane.sql` — adds `vton_lane`, `gemini_batch_id`, the
-`vton_batch_queued` state, the `gemini_batches` table, and partial indexes.
+Migration `20260818180000_add_vton_batch_lane.sql` adds the lane column, the tray link, the waiting
+state, the `gemini_batches` table and its indexes.
 
 ---
 
-## 6. Settings
+## 8. Settings
 
 Service `.env`:
 
 ```
-BOSS_TEAM_SIZE=12                  # fast-queue slots
-BOSS_MODAL_TEAM_SIZE=5             # GPU-queue slots (default)
-BOSS_STEP_TIMEOUT_SECONDS=1800     # how long a fast step may run
+BOSS_TEAM_SIZE=12                  # fast workers
+BOSS_MODAL_TEAM_SIZE=5             # GPU workers (default)
+BOSS_STEP_TIMEOUT_SECONDS=1800     # longest a fast step may run
 BOSS_MODAL_STEP_TIMEOUT_SECONDS=5400
-FIRECRAWL_MAX_CONCURRENCY=6        # real semaphore; the front bottleneck
+FIRECRAWL_MAX_CONCURRENCY=6        # scrape slots. The front bottleneck.
 
-STEP_MAX_ATTEMPTS=5                # charged attempts before a job fails for good
-STEP_RETRY_FALLBACK_SECONDS=60     # delay when the server names none
+STEP_MAX_ATTEMPTS=5                # strikes before a job is failed for good
+STEP_RETRY_FALLBACK_SECONDS=60     # how long to wait when the server names no delay
 
-CUSTODIAN_ENABLED=true             # defaults
+CUSTODIAN_ENABLED=true             # defaults below
 CUSTODIAN_CRON=*/5 * * * *
 AUTO_RETRY_FAILED=true
-AUTO_RETRY_MIN_IDLE_SECONDS=1800   # wait 30 min before auto-retrying a failure
+AUTO_RETRY_MIN_IDLE_SECONDS=1800   # wait 30 min before auto-retrying a failed job
 AUTO_RETRY_MAX_ATTEMPTS=5
 REAPER_MODE=fail
 BOOT_RECOVERY=resume
 
 VTON_BATCH_ENABLED=true
 VTON_BATCH_MODEL=gemini-3-pro-image
-VTON_BATCH_FLUSH_SIZE=30           # hard cap per tray
-VTON_BATCH_MIN_FILL=20             # ship when this many are parked...
+VTON_BATCH_FLUSH_SIZE=30           # hard cap on tray size
+VTON_BATCH_MIN_FILL=20             # send when this many are waiting...
 VTON_BATCH_MAX_WAIT_SECONDS=600    # ...or when the oldest has waited this long
-VTON_BATCH_FLUSH_CRON=*/5 * * * *  # a tick is permission to CONSIDER a tray,
+VTON_BATCH_FLUSH_CRON=*/5 * * * *  # a tick is permission to CONSIDER sending a tray,
 VTON_BATCH_POLL_CRON=*/3 * * * *   # never an instruction to send one
 ```
 
-Text summaries run `gemini-3.6-flash` primary, with `3.5-flash` and `flash-latest` as fallbacks.
+Text summaries use `gemini-3.6-flash` first, falling back to `3.5-flash` then `flash-latest`.
 
 ### Endpoints
 
-- `GET /vton-batches` — lane status: parked count, open trays with age and stale flag
-- `POST /vton-batches/unpark` — move all **unclaimed** parked jobs back to instant. Claimed ones are
-  already paid for; the poller resolves them.
-- `POST /vton-batches/:id/cancel` — cancel a tray at Google, release its claims
+- `GET /vton-batches` shows lane status: how many jobs are waiting, which trays are open, how old
+- `POST /vton-batches/unpark` moves all **unclaimed** waiting jobs back to the normal lane. Jobs
+  already attached to a tray are left alone, because they are already paid for.
+- `POST /vton-batches/:id/cancel` cancels a tray at Google and releases its jobs
 
-### Reading the logs
+### Log lines and what they mean
 
-| Line | Means |
+| Line | Meaning |
 |---|---|
-| `holding — tray not full…` | normal accumulation |
-| `flushing a batch tray` + `trigger` | tray going out |
-| `batch tray state changed at Google` | the only line during the render wait — silence means rendering, not dead |
-| `batch result applied` | one image landed |
-| `swept parked members` | something fell back to instant |
-| `every key declined this request — deferring` | backpressure, the job is fine |
-| `custodian tick` | the sweeper did something |
+| `holding` / `tray not full` | Normal. Still collecting. |
+| `flushing a batch tray` | A tray is going out. |
+| `batch tray state changed at Google` | The only line during the wait. Silence means rendering, not dead. |
+| `batch result applied` | One image landed. |
+| `swept parked members` | Something fell back to the normal lane. |
+| `every key declined this request` | Backpressure. The job is fine, it is waiting its turn. |
+| `custodian tick` | The supervisor did something. |
 
 ---
 
-## 7. Numbers
+## 9. Numbers
 
-### Sheet turnaround
+### How long a sheet takes
 
-| Run | Rows | Trays | Wall-clock | Note |
+| Run | Rows | Trays | Total time | Note |
 |---|---|---|---|---|
-| batch_148 | 24 | 7 | hours | found the flush gap, drip feeder, dead scrape limiter |
+| batch_148 | 24 | 7 | hours | found the missing send rule, the drip feeder, the dead scrape limit |
 | batch_149 | 25 | 3 | 29 min | old feeder split the sheet |
 | **batch_150** | **21** | **1** | **21.3 min** | the corrected stack, reference run |
 
-`batch_150` detail: feed 4.6s, upstream ~13.5 min (scrape ~5–6 of it), fill line crossed at
-T0+11:41, one tray of 21 built in 16s, Google 454s. **$1.41 vs $2.81 interactive.**
+`batch_150` in detail: feeding all 21 rows in took 4.6 seconds, the pipeline up to try-on took about
+13.5 minutes (roughly 5 to 6 of that scraping), the tray filled at 11:41 and was built in 16
+seconds, Google took 454 seconds. Cost **$1.41 against $2.81** on the normal lane.
 
-The plan priced a refusal tax of 1–2 in 8. Measured: **0 refusals in 99 images** — the full 50%
-saving, better than the design's own estimate.
+The plan assumed 1 or 2 refusals in every 8 images. Measured: **0 refusals in 99 images**, so the
+saving is the full 50%, better than the design's own estimate.
 
-### Tray turnaround depends on how many trays are in flight
+### Tray time depends on how many trays are in flight
 
 Google's turnaround is **per tray, not per image**. Measured 2026-08-25:
 
-| Trays in flight | Tray sizes | Turnaround |
+| Trays in flight | Tray sizes | Time each |
 |---|---|---|
 | 3 | 12 / 30 / 20 | **68 / 67 / 56 min** |
-| 1–2 | 25 / 30 / 4 | **19 / 15 / 6 min** |
+| 1 to 2 | 25 / 30 / 4 | **19 / 15 / 6 min** |
 
-This is new and it matters: earlier benchmarks (170–1088s, i.e. 3–18 min) only ever covered **one
-tray at a time**. Three concurrent trays cost roughly an hour each. Do not plan capacity off the
-single-tray band.
+This is new and it matters. Every earlier benchmark (170 to 1088 seconds, so 3 to 18 minutes) was
+measured with **one tray at a time**. Three trays at once cost roughly an hour each. Do not plan
+capacity off the single-tray number.
 
-Bigger trays still amortize better — tray of 1 = 294s/image, 14 = 52s, 21 = 21.6s.
+Bigger trays still spread the cost better: a tray of 1 works out to 294 seconds per image, a tray of
+14 to 52 seconds, a tray of 21 to 21.6 seconds.
 
 ### Reliability, 2026-08-25
 
@@ -320,74 +401,119 @@ Counted from the job table across all six sheets:
 |---|---|
 | Jobs | **121** |
 | Failed | **0** |
-| Finished without ever being charged an attempt | 100 |
-| Took at least one charged deferral | 21 |
-| Worst `error_count` on any job | 2 |
+| Finished without ever taking a strike | 100 |
+| Took at least one strike | 21 |
+| Worst strike count on any job | 2 |
 
-All 121 ended in `awaiting_hitl_segmentation` — the review queue — which is the expected resting
-place with HITL on.
+All 121 ended in `awaiting_hitl_segmentation`, the review queue, which is where they are supposed to
+stop with HITL on.
 
-The kinds of trouble they hit and survived (counts here are from the logs, not the table above):
+The kinds of trouble they hit and survived (these counts come from the logs, not the table above):
 
-- **Pure backpressure** — all Firecrawl slots busy. The most common wait by far, and charged
-  nothing. This is the exact shape that killed 9 jobs before the cap exemption.
-- **Firecrawl keys genuinely paused** — rate limited or out of credits. Charged, and recovered.
-- **Storage socket drops** — a Supabase blip, nothing to do with rate limits. Classified transient,
-  deferred 60s, **all recovered**. Under the old code every one would have been terminally `failed`.
-- **Scrape timeouts (408)** — recovered.
-- **One try-on fell back to `vertex:global`** (58 went through `batch:ai_studio`). First time the
-  fallback path has fired live; it worked.
+- **Backpressure**, meaning all scrape slots busy. By far the most common wait, and it cost nothing.
+  This is the exact situation that used to kill jobs.
+- **Keys genuinely paused**, rate limited or out of credits. Cost a strike, and recovered.
+- **Storage upload dropped its connection**, a Supabase blip with nothing to do with rate limits.
+  Treated as temporary, waited 60 seconds, **all recovered**. Under the old code every one of these
+  would have been marked failed permanently.
+- **Scrape timeouts (408)**, recovered.
+- **One try-on fell back** from the batch route to `vertex:global` (58 went through the batch route).
+  First time the fallback has fired live. It worked.
 
-**What the run taught that the design did not:**
+### What the runs taught that the design did not
 
-- The retry fix generalises past its own motivation. It was built for rate limits; the failure it
-  actually caught in production was a storage socket drop. The invariant is not "handle 429" — it is
-  *a wait is not a verdict*.
-- `hasPendingArrivals()` being global is load-bearing. A small sheet only gets the early-ship
-  shortcut when the pipeline is otherwise idle; another sheet upstream correctly suppresses it,
-  because more genuinely *is* coming.
-- Duplicates are **dropped, never substituted**. A 25-row sheet with 3 repeats produces 22 jobs.
-
----
-
-## 8. Bugs live testing found
-
-1. **No flush trigger.** Flush size was only a cap; every tick shipped whatever was parked, so trays
-   came out at 1–2. Now fill-or-age, unit-tested.
-2. **Restart downgraded the lane unconditionally.** Economy rows that failed *upstream* were
-   silently re-billed at full price on retry.
-3. **Re-submitting a URL whose job had failed returned HTTP 500** — the dedupe key was held forever.
-   Now a 409 naming the previous job.
-4. **The frontend drip-feeder.** `useBulkIngest` submitted 3 rows at a time and waited for each trio
-   to settle — a client-side throttle from before the queue existed. It starved the backend and
-   split sheets into small trays. Both modes now flood-feed; the backend is the governor.
-5. **`FIRECRAWL_MAX_CONCURRENCY` was dead code.** Defined, set, consumed nowhere — masked by the
-   drip-feeder. Now a real semaphore.
-6. **pg-boss teams without `teamRefill`** stall on their slowest member.
-7. **A rate limit was terminal.** Cost 15 jobs on 2026-08-23. See section 3.
-8. **Backpressure was charged against the retry cap.** Killed 9 rows of `batch_158` in ~25s.
-9. **Boot recovery re-dispatched parked jobs**, which the economy lane must never allow.
-10. **Modal states had no deadline at all.** If the GPU container died, the row sat forever.
-
-Also fixed: silent poller (now logs tray state changes), cost accounting (batch artifacts priced at
-0.5x, usage-less images at a flat fallback instead of $0), and the status dialog (economy rows show
-as "Queued at Google" rather than folded into "still running", where they looked frozen).
+- **The retry fix turned out broader than its own reason for existing.** It was built for rate
+  limits. The failure it actually caught in production was a storage connection drop. The real rule
+  is not "handle rate limits", it is *a wait is not a verdict*.
+- **Checking for pending arrivals across the whole pipeline, not per sheet, is deliberate.** A small
+  sheet only gets the early-send shortcut when the pipeline is otherwise idle. Any other sheet still
+  moving correctly suppresses it, because more jobs genuinely are coming.
+- **Free workers were never the bottleneck.** Because workers refill the instant a job parks, 39
+  rows were seen working across three different steps at once. The ceiling was scrape slots.
+- **Duplicates are dropped, never substituted.** A 25-row sheet with 3 repeats produces 22 jobs, not
+  25.
 
 ---
 
-## 9. Still open
+## 10. Bugs that live testing found
 
-- **Tray concurrency is measured but not explained.** We know three trays cost roughly an hour each;
-  we do not know whether that is Google queueing us against ourselves or ordinary variance. Bounded
-  by the 6h stale warning and the 48h self-expiry, but not understood.
-- **`already_ingested` dedupe is unproven.** Jobs stop at `awaiting_hitl_segmentation` under HITL,
-  so nothing reaches `completed` and that branch never runs. Needs a job pushed through Go Live.
-- **The 48h tray deadline and the Modal deadline sweep have never fired in anger.**
-- **Male avatar re-encode** — 12.5 MB (JPEG bytes in a `.png`). Works by `fileUri` but pays upload
-  cost on every cache refresh. Re-encode to ~2 MB **preserving exact pixel dimensions**, since
-  placement lattices are pixel-based. Affects both lanes; needs a deliberate go-ahead.
-- **Instant-lane `safetySettings`** — the instant adapter sends none; the spike passed relaxed
-  settings in batch without issue. Adopting them either way is a live-output change.
-- **Webhooks** would replace the poller cron entirely once the service has public ingress.
-- **Drill gap:** drill 1 asserts `recovery-scope.ts`, not `boot-recovery.ts`'s use of it. If someone
-  re-declares a local list in that file the drill will not notice.
+1. **No rule for when to send a tray.** The size limit was only a cap, so every tick sent whatever
+   was waiting, producing trays of 1 or 2. Now it sends when the tray is full, when the oldest job
+   has waited long enough, or when no more jobs can possibly arrive.
+2. **Restarting a job silently dropped it off the economy lane**, so retries of rows that failed
+   early were quietly re-billed at full price.
+3. **Re-submitting a URL whose job had failed returned HTTP 500**, because the duplicate key was
+   held forever. Now it returns a 409 naming the previous job.
+4. **The front end fed jobs in 3 at a time** and waited for each trio to finish, a throttle written
+   before the queue existed. It starved the workers and split sheets across small trays. Both modes
+   now submit everything at once and let the workers be the limit.
+5. **The scrape concurrency setting did nothing.** It was defined, set in `.env`, and read by
+   nobody. The drip feeder hid this. It is now a real limit.
+6. **Workers waited on each other.** Without `teamRefill`, one slow job held up the entire pool.
+7. **A rate limit killed jobs outright.** Cost 15 jobs on 2026-08-23. See section 5.
+8. **Waiting your turn counted as a strike.** Killed 9 rows of `batch_158` in about 25 seconds. See
+   section 4.
+9. **Restart recovery re-queued jobs that were waiting at the bus stop**, which the economy lane
+   must never allow. It survived only because a guard in a different file caught it, and only
+   because no jobs happened to be waiting during the one restart that would have hit it.
+10. **GPU steps had no deadline at all.** If the container died, the job sat there forever with
+    nobody looking at it.
+
+Also fixed along the way: the poller used to log nothing during the wait, batch images were priced
+at the full rate instead of half, images that came back without usage data were priced at $0, and
+the status dialog folded economy rows into "still running" where they looked frozen instead of
+showing "Queued at Google".
+
+### How we look for this kind of bug
+
+Every one of these was the same shape: **something waits, and nobody asked what happens if the other
+side never answers.**
+
+So every place the pipeline waits or hands off gets the same five questions:
+
+1. What wakes it up?
+2. What if that never happens?
+3. How long can it sit there?
+4. Who rescues it?
+5. **Has that rescue path ever actually run?**
+
+Question 5 is the one that finds things. Most of these paths were correct in the comments and had
+never executed in reality.
+
+The waiting points, for reference:
+
+| Where a job waits | Woken by | Time limit | Rescued by |
+|---|---|---|---|
+| Submitted, waiting for a worker | the queue | 30 or 90 min | restart recovery |
+| Running a step | the handler returning | step timeout | supervisor pass 1 |
+| At a human gate | a person clicking Proceed | **none, by design** | a person |
+| Economy bus stop | the collector | 10 min to send, 48h hard stop | poller |
+| Tray at Google | the poller | 48h, enforced by us too | poller cleanup |
+| Half-made tray | poller cleanup | 15 min | cleanup |
+| GPU step | the GPU app responding | GPU timeout + grace | supervisor pass 2 |
+| Scrape key paused | the pause expiring | the server's own retry delay | supervisor pass 4 |
+
+`src/orchestration/drills.test.ts` turns these into 39 assertions across 10 drills, all pure, no
+database and no network. Two of them were checked against the old broken code to confirm they
+actually go red. A test that only agrees with the code it ships beside guards nothing.
+
+---
+
+## 11. Still open
+
+- **Tray concurrency is measured but not explained.** We know three trays cost about an hour each.
+  We do not know whether Google is queueing us against ourselves or whether it is ordinary variance.
+  Bounded by the 6 hour stale warning and the 48 hour self-expiry, but not understood.
+- **The already-ingested duplicate check has never run.** Jobs stop at the review queue under HITL,
+  so nothing reaches `completed` and that branch is never reached. It needs a job pushed all the way
+  through Go Live.
+- **The 48 hour tray deadline and the GPU deadline sweep have never fired for real.**
+- **Male avatar re-encode.** The file is 12.5 MB (JPEG bytes in a `.png`). It works, but we pay the
+  upload cost every time the cache refreshes. Re-encoding to about 2 MB must **preserve the exact
+  pixel dimensions**, because placement data is measured in pixels. Affects both lanes, so it needs
+  a deliberate go-ahead.
+- **Safety settings on the normal try-on lane.** The normal adapter sends none. The spike passed
+  relaxed settings through batch with no issue. Changing either one changes live output.
+- **Webhooks** would replace the polling cron entirely, once the service has a public address.
+- **One drill gap.** Drill 1 checks the shared exclusion list, not that restart recovery actually
+  uses it. If someone re-declares a local list in that file, the drill will not notice.
