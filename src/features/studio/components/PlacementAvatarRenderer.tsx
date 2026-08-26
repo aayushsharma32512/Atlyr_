@@ -413,12 +413,25 @@ export function PlacementAvatarRenderer({
               hairDrawn,
             )
         if (disposed) return
-        const displayScale = Math.min(containerWidth / mb.w, containerHeight / mb.h)
-        world.scale.set(displayScale)
-        world.position.set(
-          containerWidth / 2 - (mb.x + mb.w / 2) * displayScale,
-          containerHeight / 2 - (mb.y + mb.h / 2) * displayScale,
-        )
+
+        // The world transform is set AFTER the garment loop, not here. mb bounds the
+        // BARE mannequin, and a garment can extend past it — a sneaker's sole hangs
+        // below the barefoot foot, so fitting mb alone put the shoe bottom outside
+        // the canvas and it rendered flat-cut at the frame edge. Same failure the
+        // hair headroom above fixes at the crown, at the other end of the figure.
+        // Each garment's alpha bounds go through its canvas transform and union into
+        // the frame; a head crop stays as authored — it deliberately excludes the body.
+        let frame = { ...mb }
+        const growFrame = (x0: number, y0: number, x1: number, y1: number) => {
+          const fx = Math.min(frame.x, x0)
+          const fy = Math.min(frame.y, y0)
+          frame = {
+            x: fx,
+            y: fy,
+            w: Math.max(frame.x + frame.w, x1) - fx,
+            h: Math.max(frame.y + frame.h, y1) - fy,
+          }
+        }
 
         // Each garment: replicate the editor's fit/home/pivot, then apply transform + warp.
         for (const item of placed) {
@@ -471,6 +484,32 @@ export function PlacementAvatarRenderer({
           garment.scale.set(fit * t.scale)
           garment.rotation = (t.rotationDeg * Math.PI) / 180
 
+          if (crop !== "head") {
+            // The garment's alpha-bounds corners through its canvas transform
+            // (pre-warp; gb already carries a sample of padding, and warp offsets
+            // are folds within the garment, not edge extensions).
+            const s = fit * t.scale
+            const cos = Math.cos(garment.rotation)
+            const sin = Math.sin(garment.rotation)
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+            for (const [cx, cy] of [
+              [gb.x, gb.y],
+              [gb.x + gb.w, gb.y],
+              [gb.x, gb.y + gb.h],
+              [gb.x + gb.w, gb.y + gb.h],
+            ]) {
+              const lx = (cx - texW / 2 - pivotX) * s
+              const ly = (cy - texH / 2 - pivotY) * s
+              const wx = home.x + t.tx + lx * cos - ly * sin
+              const wy = home.y + t.ty + lx * sin + ly * cos
+              if (wx < minX) minX = wx
+              if (wx > maxX) maxX = wx
+              if (wy < minY) minY = wy
+              if (wy > maxY) maxY = wy
+            }
+            growFrame(minX, minY, maxX, maxY)
+          }
+
           // Opt-in hit testing. This renderer is read-only for the studio, so interactivity stays
           // off unless a caller asks; enabling it everywhere would add cost to surfaces that never
           // use it.
@@ -506,6 +545,14 @@ export function PlacementAvatarRenderer({
 
           world.addChild(garment)
         }
+
+        // Fit and centre the full composition — mannequin, hair headroom, garments.
+        const displayScale = Math.min(containerWidth / frame.w, containerHeight / frame.h)
+        world.scale.set(displayScale)
+        world.position.set(
+          containerWidth / 2 - (frame.x + frame.w / 2) * displayScale,
+          containerHeight / 2 - (frame.y + frame.h / 2) * displayScale,
+        )
 
         app.render()
 

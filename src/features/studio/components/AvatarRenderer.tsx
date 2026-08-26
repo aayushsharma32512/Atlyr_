@@ -461,29 +461,8 @@ function LegacyAvatarRenderer({
   const userHeightCm = mannequinConfig?.heightCm ?? DEFAULT_USER_HEIGHT_CM[gender]
   const headDims = segmentDimensions.head ?? { width: 1, height: 1 }
 
-  const { userHeightPx, pxPerCm, headResult } = useMemo(() => {
-    let currentUserHeightPx = containerHeight
-    let pxPerCmValue = getPxPerCm(currentUserHeightPx, userHeightCm)
-    let headMetrics = computeHeadScale(headDims, userHeightCm, pxPerCmValue)
-
-    for (let i = 0; i < 3; i++) {
-      const nextUserHeightPx = Math.max(1, containerHeight - headMetrics.chinOffsetPx)
-      if (Math.abs(nextUserHeightPx - currentUserHeightPx) < 0.5) {
-        currentUserHeightPx = nextUserHeightPx
-        pxPerCmValue = getPxPerCm(currentUserHeightPx, userHeightCm)
-        headMetrics = computeHeadScale(headDims, userHeightCm, pxPerCmValue)
-        break
-      }
-      currentUserHeightPx = nextUserHeightPx
-      pxPerCmValue = getPxPerCm(currentUserHeightPx, userHeightCm)
-      headMetrics = computeHeadScale(headDims, userHeightCm, pxPerCmValue)
-    }
-
-    return { userHeightPx: currentUserHeightPx, pxPerCm: pxPerCmValue, headResult: headMetrics }
-  }, [containerHeight, userHeightCm, headDims])
-
-  const { scaledHead, headScale, chinOffsetPx } = headResult
-
+  // Resolved before the height solve below, which needs to know whether a head —
+  // and therefore hair — is actually being drawn.
   const resolvedSegments = useMemo(() => {
     let baseSegments: MannequinSegmentName[]
     if (visibleSegments !== undefined) {
@@ -506,6 +485,58 @@ function LegacyAvatarRenderer({
     return next
   }, [visibleSegments, zoneAssetOverrides, showHead, showBody])
 
+  /**
+   * Solve the figure's height so the WHOLE figure fits inside containerHeight.
+   *
+   * Two things sit above the chin: the head, and — for every hairstyle in the
+   * catalog, all of which carry a negative y_offset_pct — hair that overflows
+   * above it. `globalTopOffsetPx` shifts every layer down by that overflow so the
+   * hair is not clipped at the top.
+   *
+   * It used to be derived after this solve and applied on top of a figure already
+   * sized to fill the box exactly (userHeightPx = containerHeight - chinOffsetPx),
+   * which pushed the feet out of the bottom, where the root's overflow-hidden
+   * shaved them. Reserving it here instead means
+   * body + head + hair overflow == containerHeight, so nothing is clipped at
+   * either end.
+   */
+  const { userHeightPx, pxPerCm, headResult, globalTopOffsetPx } = useMemo(() => {
+    const headVisible = resolvedSegments.has("head")
+    const hairOverflowPx = (chinPx: number, bodyPx: number) => {
+      if (!hairStyle || !headVisible) return 0
+      const hairTop = chinPx + (hairStyle.yOffsetPct / 100) * bodyPx
+      if (!Number.isFinite(hairTop) || hairTop >= 0) return 0
+      // Small buffer to avoid pixel-rounding clipping at the top edge.
+      return Math.ceil(-hairTop) + 1
+    }
+
+    let currentUserHeightPx = containerHeight
+    let pxPerCmValue = getPxPerCm(currentUserHeightPx, userHeightCm)
+    let headMetrics = computeHeadScale(headDims, userHeightCm, pxPerCmValue)
+    let topOffsetPx = hairOverflowPx(headMetrics.chinOffsetPx, currentUserHeightPx)
+
+    // One pass more than before: the hair overflow depends on the body height it
+    // is being subtracted from, so the fixed point takes slightly longer to settle.
+    for (let i = 0; i < 4; i++) {
+      const nextUserHeightPx = Math.max(1, containerHeight - headMetrics.chinOffsetPx - topOffsetPx)
+      const settled = Math.abs(nextUserHeightPx - currentUserHeightPx) < 0.5
+      currentUserHeightPx = nextUserHeightPx
+      pxPerCmValue = getPxPerCm(currentUserHeightPx, userHeightCm)
+      headMetrics = computeHeadScale(headDims, userHeightCm, pxPerCmValue)
+      topOffsetPx = hairOverflowPx(headMetrics.chinOffsetPx, currentUserHeightPx)
+      if (settled) break
+    }
+
+    return {
+      userHeightPx: currentUserHeightPx,
+      pxPerCm: pxPerCmValue,
+      headResult: headMetrics,
+      globalTopOffsetPx: topOffsetPx,
+    }
+  }, [containerHeight, userHeightCm, headDims, hairStyle, resolvedSegments])
+
+  const { scaledHead, headScale, chinOffsetPx } = headResult
+
   const normalizedSkinTone = normalizeHex(skinToneHex)
   const clampedSkinTone = Math.min(1, Math.max(0, skinToneValue))
   const skinBaseLightness = 85 - clampedSkinTone * 40
@@ -515,18 +546,6 @@ function LegacyAvatarRenderer({
   const fallbackOutlineColor = `hsl(${skinHue} ${skinSaturation}% ${Math.max(20, skinBaseLightness - 25)}%)`
   const skinColor = normalizedSkinTone ?? fallbackSkinColor
   const outlineColor = normalizedSkinTone ? darkenHex(normalizedSkinTone, 0.7) : fallbackOutlineColor
-
-  const globalTopOffsetPx = useMemo(() => {
-    if (!hairStyle || !resolvedSegments.has("head")) {
-      return 0
-    }
-    const hairTop = chinOffsetPx + (hairStyle.yOffsetPct / 100) * userHeightPx
-    if (!Number.isFinite(hairTop) || hairTop >= 0) {
-      return 0
-    }
-    // Add a small buffer to avoid pixel-rounding clipping at the top edge.
-    return Math.ceil(-hairTop) + 1
-  }, [chinOffsetPx, hairStyle, resolvedSegments, userHeightPx])
 
   // Report layout scale to callers that need to invert the placement math (admin 2D editor).
   // Gated on assetsReady because chinOffsetPx/pxPerCm are meaningless until the head SVG's real
