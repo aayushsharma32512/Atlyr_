@@ -1028,9 +1028,12 @@ export function StudioAlternativesView() {
         pane ~190px and the rack collapses to two cramped cards. It grows with
         the viewport instead — the cards stay a readable size and the rack simply
         fits more of them per row. */}
+    {/* 55px, not 2.5rem: BottomNavBar is `h-[55px] fixed bottom-0`, so reserving
+        only 40px parked the frame's bottom edge 15px underneath the nav and
+        clipped the wearing card and the search bar. */}
     <div
       className="flex justify-center overflow-hidden bg-background"
-      style={{ height: "calc(100dvh - 2.5rem)" }}
+      style={{ height: "calc(100dvh - 55px)" }}
     >
       <div className="relative my-auto flex h-full max-h-[844px] w-full max-w-sm flex-col overflow-hidden px-2.5 md:max-h-[900px] md:max-w-3xl md:px-4 lg:max-w-5xl">
         <header className="flex shrink-0 items-center pt-2">
@@ -1064,8 +1067,13 @@ export function StudioAlternativesView() {
             <div
               className="bg-warp-grid relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-md border border-hairline bg-card"
             >
+              {/* pb-3: the avatar is scaled by min(width/240, height/580), so when the
+                  panel is wide and short the height wins and the figure renders flush
+                  to the panel edge — overflow-hidden then shaves the feet. The padding
+                  shrinks the height the scale is computed from, so the feet always land
+                  inside the box. */}
               <div
-                className="absolute inset-0 flex items-end justify-center bg-transparent"
+                className="absolute inset-0 flex items-end justify-center bg-transparent pb-3"
               >
                 {heroAvatar ? (
                   <OutfitInspirationTile
