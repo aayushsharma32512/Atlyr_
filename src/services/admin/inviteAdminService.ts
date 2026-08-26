@@ -32,11 +32,42 @@ export type WaitlistEntry = {
   invited_at?: string | null
 }
 
-// Waitlist in recency order (newest applicant first).
-export async function listWaitlist(limit = 300): Promise<WaitlistEntry[]> {
-  const { data, error } = await supabase.functions.invoke("admin-issue-invites", { body: { action: "list", limit } })
+// Row counts for the whole table, not just the page that was fetched.
+export type WaitlistTotals = Record<WaitlistStatus, number> & { all: number }
+
+export type WaitlistPage = {
+  waitlist: WaitlistEntry[]
+  totals: WaitlistTotals
+  hasMore: boolean
+}
+
+export const EMPTY_WAITLIST_TOTALS: WaitlistTotals = {
+  pending: 0,
+  invited: 0,
+  converted: 0,
+  rejected: 0,
+  all: 0,
+}
+
+export type ListWaitlistOptions = {
+  statuses?: WaitlistStatus[]
+  limit?: number
+  offset?: number
+}
+
+// One page of the waitlist in recency order (newest applicant first), plus the
+// true per-status totals so callers never have to infer a count from page size.
+export async function listWaitlist(opts: ListWaitlistOptions = {}): Promise<WaitlistPage> {
+  const { data, error } = await supabase.functions.invoke("admin-issue-invites", {
+    body: { action: "list", ...opts },
+  })
   if (error) throw new Error(error.message)
-  return ((data as { waitlist?: WaitlistEntry[] })?.waitlist ?? [])
+  const page = data as Partial<WaitlistPage> | null
+  return {
+    waitlist: page?.waitlist ?? [],
+    totals: page?.totals ?? EMPTY_WAITLIST_TOTALS,
+    hasMore: page?.hasMore ?? false,
+  }
 }
 
 // Approve (→ invited, grants access) or reject (→ rejected) a single email.

@@ -74,13 +74,47 @@ serve(async (req) => {
   // ── Email-approval actions: list waitlist / approve / reject ──────────────
   const action = payload?.action
   if (action === "list") {
-    const { data, error } = await ctx.adminClient
+    const STATUSES = ["pending", "invited", "converted", "rejected"]
+    // Optional status filter, so a caller can page through just the rows it shows
+    // instead of fetching everything and filtering client-side.
+    const wanted = Array.isArray(payload?.statuses)
+      ? payload.statuses.filter((s) => STATUSES.includes(s))
+      : null
+    const limit = Math.min(Math.max(Number(payload?.limit ?? 100) || 100, 1), 1000)
+    const offset = Math.max(Number(payload?.offset ?? 0) || 0, 0)
+
+    let query = ctx.adminClient
       .from("waitlist")
-      .select("id,name,email,status,phone_number,created_at,invited_at")
+      .select("id,name,email,status,phone_number,created_at,invited_at", { count: "exact" })
       .order("created_at", { ascending: false })   // recency: newest applicant on top
-      .limit(Number(payload?.limit ?? 300))
+      .range(offset, offset + limit - 1)
+    if (wanted?.length) query = query.in("status", wanted)
+
+    const { data, error, count } = await query
     if (error) return json({ error: "LIST_FAILED", detail: error.message }, 500)
-    return json({ waitlist: data ?? [] }, 200)
+
+    // True totals per status — COUNT(*) over the whole table, independent of the
+    // page window, so the UI never has to infer a total from the rows it got.
+    const pairs = await Promise.all(STATUSES.map(async (s) => {
+      const { count: n, error: countError } = await ctx.adminClient
+        .from("waitlist")
+        .select("id", { count: "exact", head: true })
+        .eq("status", s)
+      if (countError) throw countError
+      return [s, n ?? 0]
+    })).catch((e) => e)
+    if (!Array.isArray(pairs)) {
+      return json({ error: "LIST_FAILED", detail: pairs?.message ?? "count failed" }, 500)
+    }
+
+    const totals = Object.fromEntries(pairs)
+    totals.all = pairs.reduce((sum, [, n]) => sum + n, 0)
+
+    return json({
+      waitlist: data ?? [],
+      totals,
+      hasMore: offset + (data?.length ?? 0) < (count ?? 0),
+    }, 200)
   }
   if (action === "approve" || action === "reject") {
     const list = parseEmails(Array.isArray(payload?.emails) ? payload.emails : [])
