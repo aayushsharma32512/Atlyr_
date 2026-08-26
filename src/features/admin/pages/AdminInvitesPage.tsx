@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Check, X, RefreshCw, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -9,9 +9,11 @@ import { Badge } from "@/components/ui/badge"
 import { AppShellLayout } from "@/layouts/AppShellLayout"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
+import { adminKeys, type WaitlistTab } from "@/features/admin/queryKeys"
 import {
   listWaitlist,
   setWaitlistApproval,
+  EMPTY_WAITLIST_TOTALS,
   type WaitlistEntry,
   type WaitlistStatus,
 } from "@/services/admin/inviteAdminService"
@@ -23,6 +25,17 @@ const STATUS_BADGE: Record<WaitlistStatus, { label: string; cls: string }> = {
   rejected:  { label: "Rejected",  cls: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900" },
 }
 
+// "Approved" = accepted into the app (invited) or already signed up (converted/Joined).
+// "Pending" = everything not yet approved, so rejected rows stay visible & re-approvable.
+// The server filters on these, so each tab pages through its own rows instead of
+// truncating one shared fetch and filtering it here.
+const TAB_STATUSES: Record<WaitlistTab, WaitlistStatus[]> = {
+  pending: ["pending", "rejected"],
+  approved: ["invited", "converted"],
+}
+
+const PAGE_SIZE = 100
+
 function timeAgo(iso: string) {
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
   if (s < 60) return "just now"
@@ -33,13 +46,18 @@ function timeAgo(iso: string) {
 
 export default function AdminInvitesPage() {
   const { toast } = useToast()
+  const queryClient = useQueryClient()
   const [busyEmail, setBusyEmail] = useState<string | null>(null)
   const [quickEmail, setQuickEmail] = useState("")
-  const [tab, setTab] = useState<"pending" | "approved">("pending")
+  const [tab, setTab] = useState<WaitlistTab>("pending")
 
-  const waitlistQuery = useQuery({
-    queryKey: ["admin-waitlist"],
-    queryFn: () => listWaitlist(300),
+  const waitlistQuery = useInfiniteQuery({
+    queryKey: adminKeys.waitlistTab(tab),
+    queryFn: ({ pageParam }) =>
+      listWaitlist({ statuses: TAB_STATUSES[tab], limit: PAGE_SIZE, offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, pages) =>
+      lastPage.hasMore ? pages.reduce((n, p) => n + p.waitlist.length, 0) : undefined,
     staleTime: 30_000,
   })
 
@@ -48,7 +66,8 @@ export default function AdminInvitesPage() {
     onMutate: ({ email }) => setBusyEmail(email),
     onSuccess: (status, { email }) => {
       toast({ title: status === "invited" ? `Approved ${email}` : `Rejected ${email}` })
-      waitlistQuery.refetch()
+      // An approval moves the row between tabs, so refresh both — and their totals.
+      queryClient.invalidateQueries({ queryKey: adminKeys.waitlist() })
     },
     onError: (e) => toast({ title: "Action failed", description: e instanceof Error ? e.message : undefined, variant: "destructive" }),
     onSettled: () => setBusyEmail(null),
@@ -56,13 +75,11 @@ export default function AdminInvitesPage() {
 
   const act = (email: string, action: "approve" | "reject") => actionMutation.mutate({ email, action })
 
-  const rows = waitlistQuery.data ?? []
-  // "Approved" = accepted into the app (invited) or already signed up (converted/Joined).
-  // "Pending" = everything not yet approved, so rejected rows stay visible & re-approvable.
-  const isApproved = (r: WaitlistEntry) => r.status === "invited" || r.status === "converted"
-  const approvedRows = rows.filter(isApproved)
-  const pendingRows = rows.filter((r) => !isApproved(r))
-  const visibleRows = tab === "approved" ? approvedRows : pendingRows
+  // Rows are whatever pages have been loaded so far; the counts come from the
+  // server, which counts the whole table rather than the rows in hand.
+  const visibleRows = waitlistQuery.data?.pages.flatMap((p) => p.waitlist) ?? []
+  const totals = waitlistQuery.data?.pages[0]?.totals ?? EMPTY_WAITLIST_TOTALS
+  const tabCount = (t: WaitlistTab) => TAB_STATUSES[t].reduce((n, s) => n + totals[s], 0)
 
   return (
     <AppShellLayout>
@@ -108,12 +125,12 @@ export default function AdminInvitesPage() {
         <Card>
           <CardHeader className="pb-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <CardTitle className="text-sm">Waitlist {rows.length > 0 && <span className="text-muted-foreground font-normal">· {rows.length} total</span>}</CardTitle>
+              <CardTitle className="text-sm">Waitlist {totals.all > 0 && <span className="text-muted-foreground font-normal">· {totals.all} total</span>}</CardTitle>
               {/* Approved / Pending segmented toggle */}
               <div className="inline-flex rounded-lg bg-muted p-0.5">
                 {([
-                  { key: "pending", label: "Pending", count: pendingRows.length },
-                  { key: "approved", label: "Approved", count: approvedRows.length },
+                  { key: "pending", label: "Pending" },
+                  { key: "approved", label: "Approved" },
                 ] as const).map((t) => (
                   <button
                     key={t.key}
@@ -126,7 +143,7 @@ export default function AdminInvitesPage() {
                   >
                     {t.label}
                     <span className={cn("ml-1.5 rounded px-1.5 py-0.5 text-[10px]", tab === t.key ? "bg-muted text-muted-foreground" : "bg-background/60 text-muted-foreground")}>
-                      {t.count}
+                      {tabCount(t.key)}
                     </span>
                   </button>
                 ))}
@@ -140,13 +157,14 @@ export default function AdminInvitesPage() {
               <p className="py-8 text-center text-sm text-destructive">Couldn’t load the waitlist. Are you an admin? {(waitlistQuery.error as Error)?.message}</p>
             ) : visibleRows.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
-                {rows.length === 0
+                {totals.all === 0
                   ? "No one on the waitlist yet."
                   : tab === "pending"
                     ? "Nothing pending — all caught up."
                     : "No approved applicants yet."}
               </p>
             ) : (
+              <>
               <div className="flex flex-col divide-y divide-border">
                 {visibleRows.map((entry: WaitlistEntry) => {
                   const badge = STATUS_BADGE[entry.status] ?? STATUS_BADGE.pending
@@ -185,6 +203,23 @@ export default function AdminInvitesPage() {
                   )
                 })}
               </div>
+
+              {waitlistQuery.hasNextPage && (
+                <div className="flex flex-col items-center gap-1.5 pt-4">
+                  <Button
+                    variant="outline" size="sm"
+                    onClick={() => waitlistQuery.fetchNextPage()}
+                    disabled={waitlistQuery.isFetchingNextPage}
+                  >
+                    {waitlistQuery.isFetchingNextPage && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                    Load more
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    Showing {visibleRows.length} of {tabCount(tab)}
+                  </span>
+                </div>
+              )}
+              </>
             )}
           </CardContent>
         </Card>
