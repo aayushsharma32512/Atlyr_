@@ -2,10 +2,10 @@
 
 Production-ready local segmentation scripts to extract clean transparent garment assets from model shots.
 
-For the stateless image → category-targeted ROI/cutout → dual catalog-search harness, see
-[`../../docs/visual-search-implementation.md`](../../docs/visual-search-implementation.md). It uses
-the same green-screen pipeline with persistence disabled, preserves the production cutout, and adds
-contextual-crop versus white-cutout retrieval comparison in a temporary Modal API/UI.
+For the isolated FASHN + GroundingDINO localization hypothesis harness, see
+[`../../docs/visual-search-implementation.md`](../../docs/visual-search-implementation.md). It runs
+as the separate `atlyr-visual-search-test` Modal app, preserves every intermediate mask/box/crop,
+and does not call or alter this production pipeline, SAM2, Supabase, or an embedding model.
 
 ## Setup
 

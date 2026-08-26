@@ -20,14 +20,15 @@ function usage() {
     "  npm run test:visual-search -- --image ./photo.jpg --category upper",
     "",
     "Required environment:",
-    "  VISUAL_SEARCH_TEST_URL   Modal web URL (the app root, without /search)",
-    "  VISUAL_SEARCH_TEST_TOKEN Token stored in the Modal visual-search-test secret",
+    "  VISUAL_SEARCH_TEST_URL   Modal app root, without /analyze",
+    "  VISUAL_SEARCH_TEST_TOKEN Token stored in the visual-search-test Modal secret",
     "",
     "Options:",
     "  --category upper|lower|shoes  Required",
-    "  --threshold 0.75              Optional catalog similarity floor",
-    "  --count 12                    Optional maximum results",
     "  --output ./tmp/visual-search  Optional output directory",
+    "",
+    "This diagnostic runs FASHN + GroundingDINO only. It does not run SAM2,",
+    "generate embeddings, query Supabase, or persist uploaded images.",
   ].join("\n")
 }
 
@@ -59,34 +60,35 @@ if (!contentType) throw new Error("Image must be JPEG, PNG, or WebP")
 const form = new FormData()
 form.set("image", new Blob([imageBytes], { type: contentType }), basename(imagePath))
 form.set("category", args.category)
-form.set("threshold", args.threshold || "0.75")
-form.set("count", args.count || "12")
 
-console.log(`Running ${args.category} visual search for ${imagePath}...`)
-const response = await fetch(`${endpoint}/search`, {
+console.log(`Running ${args.category} FASHN + GroundingDINO diagnostics for ${imagePath}...`)
+const response = await fetch(`${endpoint}/analyze`, {
   method: "POST",
   headers: { "X-Visual-Search-Token": token },
   body: form,
 })
 const payload = await response.json()
 if (!response.ok) {
-  throw new Error(payload.detail || payload.error || `Visual search failed with ${response.status}`)
+  throw new Error(payload.detail || payload.error || `Visual-search diagnostics failed with ${response.status}`)
 }
 
 const outputDir = resolve(args.output || "tmp/visual-search")
 await mkdir(outputDir, { recursive: true })
 const decodeDataUrl = (dataUrl) => Buffer.from(dataUrl.split(",")[1], "base64")
+const artifacts = payload.artifacts || []
 await Promise.all([
-  writeFile(resolve(outputDir, "cutout.png"), decodeDataUrl(payload.cutoutDataUrl)),
-  writeFile(resolve(outputDir, "original-crop.png"), decodeDataUrl(payload.queryImages.originalCropDataUrl)),
-  writeFile(resolve(outputDir, "cutout-crop.png"), decodeDataUrl(payload.queryImages.segmentedCutoutDataUrl)),
+  ...artifacts.map((artifact) => writeFile(
+    resolve(outputDir, artifact.filename),
+    decodeDataUrl(artifact.dataUrl),
+  )),
   writeFile(resolve(outputDir, "results.json"), `${JSON.stringify(payload, null, 2)}\n`),
 ])
 
-console.log(`Detector: ${payload.detector}`)
-console.log(`Candidates: ${payload.candidates.length}`)
+console.log(`Box source: ${payload.boxSource}`)
+console.log(`Final box: ${JSON.stringify(payload.finalBox)}`)
+console.log(`DINO detections: ${payload.groundingDino.detections.length}`)
 console.log(`Timings: ${JSON.stringify(payload.timingsMs)}`)
-console.log(`Wrote ${resolve(outputDir, "cutout.png")}`)
-console.log(`Wrote ${resolve(outputDir, "original-crop.png")}`)
-console.log(`Wrote ${resolve(outputDir, "cutout-crop.png")}`)
+for (const artifact of artifacts) {
+  console.log(`Wrote ${resolve(outputDir, artifact.filename)}`)
+}
 console.log(`Wrote ${resolve(outputDir, "results.json")}`)

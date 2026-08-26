@@ -91,27 +91,25 @@ http://localhost:8080
 
 ### Visual-search pipeline test
 
-A stateless test surface is available at `http://localhost:8080/visual-search-test`. It sends an
-image plus an explicit `upper`, `lower`, or `shoes` selection to a Modal L4 endpoint, runs the
-production FASHN/GroundingDINO/SAM2 cutout pipeline, then builds two search queries: a padded crop
-from the original image that retains real occluders and a tightly cropped cutout composited on white.
-Both are embedded with `fashion-siglip-embed`, searched through the existing
-`match_products_image` catalog RPC, and combined with weighted rank fusion.
+A stateless diagnostic surface is available at `http://localhost:8080/visual-search-test`. It sends
+an image plus an explicit `upper`, `lower`, or `shoes` selection to the isolated
+`atlyr-visual-search-test` Modal app and runs only FASHN + GroundingDINO. The page displays raw FASHN
+segments, category and foreground masks, all detector boxes, the chosen padded box, the untouched
+crop, and two coarse background-removal comparisons.
 
-The harness does not create visual-search tables, job rows, storage objects, or wardrobe entries.
-Those production concerns are intentionally deferred. Deployment, environment, CLI, and expected
-response details are in [`docs/visual-search-implementation.md`](docs/visual-search-implementation.md).
-
-The test requires two new Modal deployments, `fashion-siglip-embed` and
-`atlyr-visual-search-test`; none of the existing Modal apps need to be redeployed. Exact secret and
-deployment commands are in the implementation guide linked above. After deploying them, run either:
+This milestone validates garment localization before adding SAM2, embeddings, catalog search, or
+persistence. It does not use Supabase credentials, create tables/job rows/Storage objects, generate
+embeddings, or modify a wardrobe. Deploying it does not require redeploying `atlyr-segmentation`,
+`fashion-siglip-embed`, `siglip-embed`, or any other production Modal app. Architecture, deployment,
+artifact, CLI, and validation details are in
+[`docs/visual-search-implementation.md`](docs/visual-search-implementation.md).
 
 ```bash
 # Browser UI
 bun run dev
 # open http://localhost:8080/visual-search-test
 
-# Repeatable CLI run; writes both query crops, the raw cutout, and results.json
+# Repeatable CLI run; writes every mask/box/crop artifact and results.json
 VISUAL_SEARCH_TEST_URL=https://<modal-endpoint> \
 VISUAL_SEARCH_TEST_TOKEN=<token> \
 npm run test:visual-search -- --image ./photo.jpg --category upper

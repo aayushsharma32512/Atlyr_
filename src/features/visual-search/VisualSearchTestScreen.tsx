@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react"
-import { Footprints, Search, Shirt, Upload } from "lucide-react"
+import { BoxSelect, Footprints, ScanSearch, Shirt, Upload } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -8,10 +8,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useVisualSearchTest } from "@/features/visual-search/hooks/useVisualSearchTest"
 import type {
-  VisualSearchCandidate,
+  GroundingDinoDetection,
   VisualSearchCategory,
 } from "@/services/visualSearch/visualSearchTestService"
 
@@ -21,75 +20,39 @@ const categories: Array<{
   description: string
   icon: typeof Shirt
 }> = [
-  { value: "upper", label: "Upper", description: "Tops, shirts, jackets", icon: Shirt },
-  { value: "lower", label: "Lower", description: "Pants, skirts, shorts", icon: Shirt },
-  { value: "shoes", label: "Shoes", description: "Footwear", icon: Footprints },
+  { value: "upper", label: "Upper", description: "FASHN top + upper-garment DINO prompts", icon: Shirt },
+  { value: "lower", label: "Lower", description: "FASHN skirt/pants + lower-garment prompts", icon: Shirt },
+  { value: "shoes", label: "Shoes", description: "FASHN feet proxy + footwear DINO prompts", icon: Footprints },
 ]
 
 const defaultEndpoint = import.meta.env.VITE_VISUAL_SEARCH_TEST_URL ?? ""
 
-function formatPrice(price: number | null, currency: string | null) {
-  if (price == null) return "Price unavailable"
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: currency || "INR",
-    maximumFractionDigits: 0,
-  }).format(price)
+function formatBox(box: [number, number, number, number] | null) {
+  return box ? box.join(", ") : "Not detected"
 }
 
-function similarityLabel(similarity: number | null | undefined) {
-  return similarity == null ? "—" : `${Math.round(similarity * 100)}%`
+function percentage(value: number) {
+  return `${(value * 100).toFixed(2)}%`
 }
 
-function CandidateGrid({ candidates, fused = false }: { candidates: VisualSearchCandidate[]; fused?: boolean }) {
-  if (candidates.length === 0) {
-    return (
-      <Card className="border-dashed">
-        <CardContent className="py-10 text-center text-sm text-muted-foreground">
-          No products cleared this similarity threshold.
-        </CardContent>
-      </Card>
-    )
-  }
-
+function DetectionCard({ detection, index }: { detection: GroundingDinoDetection; index: number }) {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-      {candidates.map((candidate) => (
-        <Card key={candidate.id} className="overflow-hidden">
-          {candidate.thumbnail_url || candidate.image_url ? (
-            <img
-              src={candidate.thumbnail_url || candidate.image_url || undefined}
-              alt={candidate.product_name || "Catalog product"}
-              className="aspect-[4/5] w-full bg-muted object-contain"
-            />
-          ) : (
-            <div className="flex aspect-[4/5] items-center justify-center bg-muted text-sm text-muted-foreground">
-              No product image
-            </div>
-          )}
-          <CardContent className="space-y-2 pt-4">
-            <div className="flex items-start justify-between gap-2">
-              <p className="line-clamp-2 font-medium">
-                {candidate.product_name || candidate.type_category || "Unnamed product"}
-              </p>
-              <Badge variant="outline">{similarityLabel(candidate.similarity)}</Badge>
-            </div>
-            {fused && (
-              <p className="text-xs text-muted-foreground">
-                Crop {similarityLabel(candidate.original_crop_similarity)} · Cutout {similarityLabel(candidate.segmented_cutout_similarity)}
-              </p>
-            )}
-            <p className="text-sm text-muted-foreground">{candidate.brand || "Unknown brand"}</p>
-            <p className="text-sm font-medium">{formatPrice(candidate.price, candidate.currency)}</p>
-            {candidate.product_url && (
-              <Button asChild variant="outline" size="sm" className="w-full">
-                <a href={candidate.product_url} target="_blank" rel="noreferrer">Open product</a>
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      ))}
-    </div>
+    <Card className={detection.selected ? "border-primary" : undefined}>
+      <CardContent className="space-y-2 pt-5 text-sm">
+        <div className="flex items-center justify-between gap-2">
+          <p className="font-medium">#{index + 1} {detection.label}</p>
+          <div className="flex gap-2">
+            {!detection.eligible && <Badge variant="outline">Rejected</Badge>}
+            {detection.selected && <Badge>Selected</Badge>}
+          </div>
+        </div>
+        <p className="text-muted-foreground">Confidence {(detection.score * 100).toFixed(1)}%</p>
+        <p className="font-mono text-xs">Box [{detection.box.join(", ")}]</p>
+        <p className="text-xs text-muted-foreground">
+          FASHN coverage {percentage(detection.maskCoverage)} · Box precision {percentage(detection.boxPrecision)}
+        </p>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -99,9 +62,8 @@ export default function VisualSearchTestScreen() {
   const [token, setToken] = useState("")
   const [file, setFile] = useState<File | null>(null)
   const [category, setCategory] = useState<VisualSearchCategory>("upper")
-  const [threshold, setThreshold] = useState("0.75")
-
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+
   useEffect(() => {
     if (!file) {
       setPreviewUrl(null)
@@ -115,31 +77,28 @@ export default function VisualSearchTestScreen() {
   const onSubmit = (event: FormEvent) => {
     event.preventDefault()
     if (!file) return
-    mutation.mutate({
-      endpoint,
-      token,
-      file,
-      category,
-      threshold: Number(threshold),
-    })
+    mutation.mutate({ endpoint, token, file, category })
   }
 
   return (
     <main className="min-h-screen bg-muted/30 px-4 py-10 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl space-y-6">
+      <div className="mx-auto max-w-7xl space-y-6">
         <div>
-          <Badge variant="outline">Temporary test surface</Badge>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight">Visual search pipeline</h1>
-          <p className="mt-2 max-w-3xl text-muted-foreground">
-            Upload one image, choose the garment, and compare contextual-crop and isolated-cutout retrieval.
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="outline">Hypothesis test</Badge>
+            <Badge variant="secondary">FASHN + GroundingDINO only</Badge>
+          </div>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight">Visual-search localization diagnostics</h1>
+          <p className="mt-2 max-w-4xl text-muted-foreground">
+            Inspect raw FASHN segments, category masks, GroundingDINO boxes, the selected crop, and coarse background removal. This test does not run SAM2, generate embeddings, or write to Supabase.
           </p>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
-          <Card>
+          <Card className="h-fit">
             <CardHeader>
-              <CardTitle>Run a test</CardTitle>
-              <CardDescription>The token stays in this page&apos;s memory and is never persisted.</CardDescription>
+              <CardTitle>Run a diagnostic</CardTitle>
+              <CardDescription>The test token stays in memory and is never persisted.</CardDescription>
             </CardHeader>
             <CardContent>
               <form className="space-y-5" onSubmit={onSubmit}>
@@ -187,7 +146,7 @@ export default function VisualSearchTestScreen() {
                         className="flex cursor-pointer items-center gap-3 rounded-md border p-3"
                       >
                         <RadioGroupItem id={`visual-category-${value}`} value={value} />
-                        <Icon className="h-4 w-4" />
+                        <Icon className="h-4 w-4 shrink-0" />
                         <span>
                           <span className="block">{label}</span>
                           <span className="block text-xs font-normal text-muted-foreground">{description}</span>
@@ -196,21 +155,9 @@ export default function VisualSearchTestScreen() {
                     ))}
                   </RadioGroup>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="visual-search-threshold">Similarity threshold</Label>
-                  <Input
-                    id="visual-search-threshold"
-                    type="number"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={threshold}
-                    onChange={(event) => setThreshold(event.target.value)}
-                  />
-                </div>
                 <Button className="w-full" type="submit" disabled={!file || mutation.isPending}>
-                  {mutation.isPending ? <Upload className="animate-pulse" /> : <Search />}
-                  {mutation.isPending ? "Running pipeline…" : "Segment and search"}
+                  {mutation.isPending ? <Upload className="animate-pulse" /> : <ScanSearch />}
+                  {mutation.isPending ? "Running models…" : "Analyze localization"}
                 </Button>
               </form>
             </CardContent>
@@ -219,7 +166,7 @@ export default function VisualSearchTestScreen() {
           <section className="space-y-6">
             {mutation.error && (
               <Alert variant="destructive">
-                <AlertTitle>Pipeline failed</AlertTitle>
+                <AlertTitle>Diagnostic failed</AlertTitle>
                 <AlertDescription>{mutation.error.message}</AlertDescription>
               </Alert>
             )}
@@ -227,8 +174,8 @@ export default function VisualSearchTestScreen() {
             {!mutation.data && !mutation.isPending && (
               <Card className="flex min-h-80 items-center justify-center border-dashed">
                 <CardContent className="pt-6 text-center text-muted-foreground">
-                  <Upload className="mx-auto mb-3 h-8 w-8" />
-                  Results will appear here.
+                  <BoxSelect className="mx-auto mb-3 h-8 w-8" />
+                  Intermediate masks and boxes will appear here.
                 </CardContent>
               </Card>
             )}
@@ -237,70 +184,111 @@ export default function VisualSearchTestScreen() {
               <Card className="flex min-h-80 items-center justify-center">
                 <CardContent className="pt-6 text-center">
                   <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
-                  GPU segmentation can take a few minutes on a cold container.
+                  FASHN and GroundingDINO can take several minutes on a cold container.
                 </CardContent>
               </Card>
             )}
 
             {mutation.data && (
               <>
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardDescription>Box source</CardDescription>
+                      <CardTitle className="text-base">{mutation.data.boxSource.split("_").join(" + ")}</CardTitle>
+                    </CardHeader>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardDescription>FASHN target coverage</CardDescription>
+                      <CardTitle className="text-base">{percentage(mutation.data.fashn.targetCoverage)}</CardTitle>
+                    </CardHeader>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardDescription>DINO detections</CardDescription>
+                      <CardTitle className="text-base">{mutation.data.groundingDino.detections.length}</CardTitle>
+                    </CardHeader>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardDescription>Analysis time</CardDescription>
+                      <CardTitle className="text-base">{mutation.data.timingsMs.total.toLocaleString()} ms</CardTitle>
+                    </CardHeader>
+                  </Card>
+                </div>
+
                 <Card>
                   <CardHeader>
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <CardTitle>Query representations</CardTitle>
-                      <Badge variant="secondary">{mutation.data.detector}</Badge>
-                    </div>
+                    <CardTitle>Localization decision</CardTitle>
                     <CardDescription>
-                      {mutation.data.timingsMs.total.toLocaleString()} ms total · {mutation.data.candidates.length} fused matches
+                      Target classes {mutation.data.targetClasses.map((item) => `${item.id}:${item.label}`).join(", ")}
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="grid gap-4 md:grid-cols-3">
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium">Original garment crop</p>
-                      <img
-                        src={mutation.data.queryImages.originalCropDataUrl}
-                        alt="Original garment crop used as the primary search query"
-                        className="aspect-square w-full rounded-md border object-contain"
-                      />
-                      <p className="text-xs text-muted-foreground">Primary embedding; preserves real occluders.</p>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium">White cutout crop</p>
-                      <img
-                        src={mutation.data.queryImages.segmentedCutoutDataUrl}
-                        alt="White-composited segmented garment crop used as a secondary query"
-                        className="aspect-square w-full rounded-md border object-contain"
-                      />
-                      <p className="text-xs text-muted-foreground">Secondary embedding; transparency is composited.</p>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium">Raw segmentation</p>
-                      <img
-                        src={mutation.data.cutoutDataUrl}
-                        alt="Raw segmented garment diagnostic"
-                        className="aspect-square w-full rounded-md border bg-[linear-gradient(45deg,#eee_25%,transparent_25%),linear-gradient(-45deg,#eee_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#eee_75%),linear-gradient(-45deg,transparent_75%,#eee_75%)] bg-[length:20px_20px] object-contain"
-                      />
-                      <p className="text-xs text-muted-foreground">Diagnostic only; this full canvas is not embedded.</p>
-                    </div>
+                  <CardContent className="grid gap-3 text-sm sm:grid-cols-2">
+                    <p><span className="text-muted-foreground">Image:</span> {mutation.data.imageSize.width} × {mutation.data.imageSize.height}</p>
+                    <p><span className="text-muted-foreground">FASHN box:</span> [{formatBox(mutation.data.fashn.box)}]</p>
+                    <p><span className="text-muted-foreground">Final padded box:</span> [{formatBox(mutation.data.finalBox)}]</p>
+                    <p><span className="text-muted-foreground">All foreground coverage:</span> {percentage(mutation.data.fashn.foregroundCoverage)}</p>
+                    <p><span className="text-muted-foreground">FASHN time:</span> {mutation.data.timingsMs.fashn.toLocaleString()} ms</p>
+                    <p><span className="text-muted-foreground">GroundingDINO time:</span> {mutation.data.timingsMs.groundingDino.toLocaleString()} ms</p>
+                    <p>
+                      <span className="text-muted-foreground">FASHN target usable:</span>{" "}
+                      {mutation.data.fashn.usable ? "Yes" : `No (${mutation.data.fashn.targetPixels} / ${mutation.data.fashn.minimumTargetPixels} pixels)`}
+                    </p>
                   </CardContent>
                 </Card>
 
-                <Tabs defaultValue="fused" className="space-y-4">
-                  <TabsList className="grid h-auto w-full grid-cols-3">
-                    <TabsTrigger value="fused">Fused</TabsTrigger>
-                    <TabsTrigger value="crop">Original crop</TabsTrigger>
-                    <TabsTrigger value="cutout">White cutout</TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="fused">
-                    <CandidateGrid candidates={mutation.data.candidates} fused />
-                  </TabsContent>
-                  <TabsContent value="crop">
-                    <CandidateGrid candidates={mutation.data.candidateSets.originalCrop} />
-                  </TabsContent>
-                  <TabsContent value="cutout">
-                    <CandidateGrid candidates={mutation.data.candidateSets.segmentedCutout} />
-                  </TabsContent>
-                </Tabs>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {mutation.data.artifacts.map((artifact) => (
+                    <Card key={artifact.key} className="overflow-hidden">
+                      <img
+                        src={artifact.dataUrl}
+                        alt={artifact.title}
+                        className="aspect-square w-full border-b bg-white object-contain [image-rendering:auto]"
+                      />
+                      <CardHeader>
+                        <CardTitle className="text-base">{artifact.title}</CardTitle>
+                        <CardDescription>{artifact.description}</CardDescription>
+                      </CardHeader>
+                    </Card>
+                  ))}
+                </div>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>GroundingDINO detections</CardTitle>
+                    <CardDescription>
+                      The selected box must overlap the FASHN target when a usable FASHN mask exists. If FASHN is empty, the highest-confidence DINO box is selected.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {mutation.data.groundingDino.detections.length > 0 ? (
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {mutation.data.groundingDino.detections.map((detection, index) => (
+                          <DetectionCard key={`${detection.label}-${detection.box.join("-")}-${index}`} detection={detection} index={index} />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No category-scoped DINO boxes cleared the detector thresholds.</p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>FASHN class pixels</CardTitle>
+                    <CardDescription>Non-zero classes found anywhere in the source image.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3 lg:grid-cols-4">
+                    {Object.entries(mutation.data.classPixelCounts).map(([label, count]) => (
+                      <div key={label} className="rounded-md border p-3">
+                        <p className="font-medium capitalize">{label}</p>
+                        <p className="text-xs text-muted-foreground">{count.toLocaleString()} pixels</p>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
               </>
             )}
           </section>
