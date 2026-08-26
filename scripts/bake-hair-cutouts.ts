@@ -336,6 +336,135 @@ async function extractHair(originalRaw: Buffer, generated: Buffer, chinY: number
     }
   }
 
+  // ── Drop everything not attached to the head ────────────────────────────────────────────────────
+  // The diff mask cannot tell hair from body drift. The model re-renders the whole frame, so an arm
+  // silhouette that shifts a few px turns light background into dark arm, clears DARKEN_MIN, and is
+  // kept as "hair" — which is how a ~30x175px sliver landed at x684-715 y967-1141 in EVERY female
+  // cutout. No threshold separates it: fringe's real hair reaches y1064 while the sliver spans
+  // 966-1141, so they overlap on both axes. Topology does separate them — hair grows from the scalp
+  // and is therefore connected to the head region; drift artefacts float free.
+  //
+  // Keep every component reaching y <= chinY. Also keep a SMALL component sitting within GLUE px of
+  // one already kept: that saves curl tips the close pinches off the main mass (curly loses a 268px
+  // tip otherwise) without readmitting the slivers, which are both larger and free-floating.
+  const GLUE = 20
+  const GLUE_MAX_SIZE = 500
+  const label = new Int32Array(width * height)
+  const stack = new Int32Array(width * height)
+  const comps: number[][] = []
+  const tops: number[] = []
+  for (let i = 0; i < width * height; i++) {
+    if (label[i] !== 0 || cleaned[i * 4 + 3] <= 8) continue
+    const id = comps.length + 1
+    let sp = 0
+    stack[sp++] = i
+    label[i] = id
+    const px: number[] = []
+    let top = height
+    while (sp > 0) {
+      const c = stack[--sp]
+      px.push(c)
+      const x = c % width
+      const y = (c / width) | 0
+      if (y < top) top = y
+      if (x > 0 && label[c - 1] === 0 && cleaned[(c - 1) * 4 + 3] > 8) { label[c - 1] = id; stack[sp++] = c - 1 }
+      if (x < width - 1 && label[c + 1] === 0 && cleaned[(c + 1) * 4 + 3] > 8) { label[c + 1] = id; stack[sp++] = c + 1 }
+      if (y > 0 && label[c - width] === 0 && cleaned[(c - width) * 4 + 3] > 8) { label[c - width] = id; stack[sp++] = c - width }
+      if (y < height - 1 && label[c + width] === 0 && cleaned[(c + width) * 4 + 3] > 8) { label[c + width] = id; stack[sp++] = c + width }
+    }
+    comps.push(px)
+    tops.push(top)
+  }
+
+  const keep = tops.map((t) => t <= chinY)
+  for (let pass = 0; pass < comps.length; pass++) {
+    let grew = false
+    for (let ci = 0; ci < comps.length; ci++) {
+      if (keep[ci] || comps[ci].length > GLUE_MAX_SIZE) continue
+      let near = false
+      for (const c of comps[ci]) {
+        const cx = c % width
+        const cy = (c / width) | 0
+        for (let dy = -GLUE; dy <= GLUE && !near; dy++) {
+          const yy = cy + dy
+          if (yy < 0 || yy >= height) continue
+          for (let dx = -GLUE; dx <= GLUE; dx++) {
+            const xx = cx + dx
+            if (xx < 0 || xx >= width) continue
+            const l = label[yy * width + xx]
+            if (l !== 0 && keep[l - 1]) { near = true; break }
+          }
+        }
+        if (near) break
+      }
+      if (near) { keep[ci] = true; grew = true }
+    }
+    if (!grew) break
+  }
+
+  let droppedPx = 0
+  const droppedSizes: number[] = []
+  for (let ci = 0; ci < comps.length; ci++) {
+    if (keep[ci]) continue
+    droppedSizes.push(comps[ci].length)
+    for (const c of comps[ci]) {
+      droppedPx += 1
+      cleaned[c * 4] = 0
+      cleaned[c * 4 + 1] = 0
+      cleaned[c * 4 + 2] = 0
+      cleaned[c * 4 + 3] = 0
+    }
+  }
+
+  // ── Feather the silhouette ──────────────────────────────────────────────────────────────────────
+  // The DIFF_OFF..DIFF_ON ramp above is meant to leave a soft edge, but the close's blur-and-
+  // threshold flattens it back to binary: across the six female cutouts barely 400px out of
+  // 90-207k carried a partial alpha. Against a dark garment that hard edge reads as a torn cut —
+  // invisible until hair started drawing OVER clothing.
+  //
+  // Soften with a 1px box blur, taking the MINIMUM of blurred and original. Never raising alpha is
+  // the point: outside the mask RGB is 0, so lighting a pixel would fringe the hair with black.
+  // min() only pulls the outer edge in, sub-pixel, and leaves the interior fully opaque.
+  const FR = 1
+  const aPlane = new Uint8Array(width * height)
+  for (let i = 0; i < width * height; i++) aPlane[i] = cleaned[i * 4 + 3]
+  const fTmp = new Uint16Array(width * height)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let acc = 0
+      let n = 0
+      for (let k = -FR; k <= FR; k++) {
+        const xx = x + k
+        if (xx < 0 || xx >= width) continue
+        acc += aPlane[y * width + xx]
+        n += 1
+      }
+      fTmp[y * width + x] = acc / n
+    }
+  }
+  let feathered = 0
+  for (let x = 0; x < width; x++) {
+    for (let y = 0; y < height; y++) {
+      let acc = 0
+      let n = 0
+      for (let k = -FR; k <= FR; k++) {
+        const yy = y + k
+        if (yy < 0 || yy >= height) continue
+        acc += fTmp[yy * width + x]
+        n += 1
+      }
+      const v = Math.round(acc / n)
+      const i = y * width + x
+      if (v < cleaned[i * 4 + 3]) { cleaned[i * 4 + 3] = v; feathered += 1 }
+    }
+  }
+
+  console.log(
+    `      mask: ${comps.length} component(s), kept ${keep.filter(Boolean).length}` +
+      `, dropped ${droppedPx}px${droppedSizes.length ? ` [${droppedSizes.sort((a, b) => b - a).join(', ')}]` : ''}` +
+      `, feathered ${feathered}px`,
+  )
+
   return sharp(cleaned, { raw: { width, height, channels: 4 } })
     .png({ compressionLevel: 9 })
     .toBuffer()
