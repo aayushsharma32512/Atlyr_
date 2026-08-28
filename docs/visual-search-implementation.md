@@ -117,13 +117,34 @@ confidence and overlap metric, the chosen box source, final coordinates, and tot
 
 Inline base64 is test-only and intentionally avoids defining Storage paths or retention policy.
 
+## SerpApi key
+
+The optional online-search test uses SerpApi's free Google Lens allowance. Create an account at
+[`serpapi.com/users/sign_up`](https://serpapi.com/users/sign_up), then copy the private API key from
+[`serpapi.com/manage-api-key`](https://serpapi.com/manage-api-key). Never put this key in `.env.local`
+or a `VITE_` variable.
+
+Add `SERPAPI_API_KEY` to the existing `visual-search-test` Modal secret in the Modal dashboard while
+preserving `VISUAL_SEARCH_TEST_TOKEN` and any origin allowlist. The CLI equivalent overwrites the
+named secret, so supply every value that must remain:
+
+```bash
+modal secret create --force visual-search-test \
+  VISUAL_SEARCH_TEST_TOKEN=<existing-long-random-token> \
+  SERPAPI_API_KEY=<copied-serpapi-private-key>
+```
+
+Then redeploy only the experiment app.
+
 ## Deploy
 
 Modal CLI must be authenticated to the intended workspace/environment. Create a test-only bearer
 token and deploy only the test app:
 
 ```bash
-modal secret create visual-search-test VISUAL_SEARCH_TEST_TOKEN=<long-random-token>
+modal secret create visual-search-test \
+  VISUAL_SEARCH_TEST_TOKEN=<long-random-token> \
+  SERPAPI_API_KEY=<copied-serpapi-private-key>
 modal deploy services/segmentation/visual_search/modal_app_visual_search.py
 ```
 
@@ -139,7 +160,8 @@ Do not deploy or redeploy any of these for this experiment:
 The deployment prints the test app URL. It exposes:
 
 - `GET /health` — unauthenticated capability/liveness response;
-- `POST /analyze` — multipart diagnostic request protected by `X-Visual-Search-Token`.
+- `POST /analyze` — multipart diagnostic request protected by `X-Visual-Search-Token`;
+- `POST /search-online` — protected SerpApi Google Lens Products request using only artifact 08.
 
 The default CORS allowlist is `http://localhost:8080,http://127.0.0.1:8080`. Add a comma-separated
 `VISUAL_SEARCH_ALLOWED_ORIGINS` value to the `visual-search-test` secret only if another temporary
@@ -160,8 +182,11 @@ bun run dev
 # http://localhost:8080/visual-search-test
 ```
 
-Paste the token into the page, select an image and category, then compare every diagnostic artifact.
-The token remains in component memory and is not stored.
+Paste the test token into the page, select an image and category, then compare every diagnostic
+artifact. After analysis, **Search online** uploads only `08_fashn_foreground_crop.png`; the backend
+strips metadata, converts it to JPEG, and keeps it below SerpApi's 500 KB Image API limit. SerpApi's
+temporary image ID expires after 10 minutes. The test token remains in component memory and is not
+stored.
 
 ## CLI test
 
@@ -180,10 +205,23 @@ The CLI writes every numbered PNG plus `results.json` to the output directory.
 
 ## Request contract
 
+### `POST /analyze`
+
 | Field | Required | Contract |
 |---|---:|---|
 | `image` | yes | JPEG, PNG, or WebP; 10 MB maximum |
 | `category` | yes | `upper`, `lower`, or `shoes` |
+
+### `POST /search-online`
+
+| Field | Required | Contract |
+|---|---:|---|
+| `image` | yes | Artifact 08 as JPEG, PNG, or WebP; backend normalizes it under 500 KB |
+| `category` | yes | Category returned by the corresponding analysis |
+| `country` | no | Two-letter code; the test page currently sends `in` |
+
+The response contains normalized product cards only. Results and images are not written to Supabase
+or local persistent storage. Price and stock values are third-party search signals and may be stale.
 
 ## Validation matrix
 
@@ -212,7 +250,7 @@ For each case, record:
 - FashionSigLIP or other embeddings
 - `match_products_image` or any catalog search
 - Supabase migrations, tables, RLS policies, RPC changes, and Storage objects
-- wardrobe writes, web search, and ingestion handoff
+- wardrobe writes, ingestion handoff, and production web-search orchestration
 - production auth/orchestration, retries, rate limits, retention, and analytics
 
 The next implementation decision should be based on saved diagnostic outputs, not made in advance.

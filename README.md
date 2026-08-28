@@ -95,11 +95,14 @@ A stateless diagnostic surface is available at `http://localhost:8080/visual-sea
 an image plus an explicit `upper`, `lower`, or `shoes` selection to the isolated
 `atlyr-visual-search-test` Modal app and runs only FASHN + GroundingDINO. The page displays raw FASHN
 segments, category and foreground masks, all detector boxes, the chosen padded box, the untouched
-crop, and two coarse background-removal comparisons.
+crop, and two coarse background-removal comparisons. After localization, an optional **Search
+online** action sends only `08_fashn_foreground_crop.png` to SerpApi Google Lens Products and renders
+ephemeral merchant links, images, prices, and stock signals.
 
-This milestone validates garment localization before adding SAM2, embeddings, catalog search, or
-persistence. It does not use Supabase credentials, create tables/job rows/Storage objects, generate
-embeddings, or modify a wardrobe. Deploying it does not require redeploying `atlyr-segmentation`,
+This milestone validates garment localization and raw web-result relevance before adding SAM2,
+embeddings, catalog fusion, or persistence. It does not use Supabase credentials, create
+tables/job rows/Storage objects, generate embeddings, or modify a wardrobe. The SerpApi key stays in
+the isolated Modal secret and is never sent to the SPA. Deploying it does not require redeploying `atlyr-segmentation`,
 `fashion-siglip-embed`, `siglip-embed`, or any other production Modal app. Architecture, deployment,
 artifact, CLI, and validation details are in
 [`docs/visual-search-implementation.md`](docs/visual-search-implementation.md).

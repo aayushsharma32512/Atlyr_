@@ -7,11 +7,13 @@ per-request temporary directory is deleted after the response is prepared.
 """
 
 import base64
+import io
 import os
 import shutil
 import sys
 import time
 import uuid
+from urllib.parse import urlparse
 
 import modal
 
@@ -109,11 +111,94 @@ ARTIFACT_DETAILS = {
     ),
 }
 
+SERPAPI_CATEGORY_QUERIES = {
+    "upper": "clothing top",
+    "lower": "pants skirt",
+    "shoes": "shoes",
+}
+SERPAPI_MAX_IMAGE_BYTES = 500 * 1024
+
 
 def _encode_file(path: str) -> str:
     with open(path, "rb") as artifact_file:
         encoded = base64.b64encode(artifact_file.read()).decode("ascii")
     return f"data:image/png;base64,{encoded}"
+
+
+def _prepare_serpapi_image(payload: bytes) -> bytes:
+    """Strip metadata and fit a crop under SerpApi's 500 KB upload limit."""
+    from PIL import Image
+
+    with Image.open(io.BytesIO(payload)) as source:
+        image = source.convert("RGB")
+
+    image.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
+    quality = 90
+    while True:
+        output = io.BytesIO()
+        image.save(output, format="JPEG", quality=quality, optimize=True)
+        encoded = output.getvalue()
+        if len(encoded) <= SERPAPI_MAX_IMAGE_BYTES:
+            return encoded
+        if quality > 50:
+            quality -= 10
+            continue
+
+        next_width = max(1, round(image.width * 0.85))
+        next_height = max(1, round(image.height * 0.85))
+        if (next_width, next_height) == image.size:
+            raise ValueError("Unable to fit garment crop within SerpApi's 500 KB limit")
+        image = image.resize((next_width, next_height), Image.Resampling.LANCZOS)
+        quality = 80
+
+
+def _normalize_serpapi_matches(matches: list[dict]) -> list[dict]:
+    products = []
+    seen_links = set()
+    for index, match in enumerate(matches):
+        link = match.get("link")
+        title = match.get("title")
+        image_url = match.get("image") or match.get("thumbnail")
+        if (
+            not link
+            or not title
+            or not image_url
+            or urlparse(link).scheme not in {"http", "https"}
+            or urlparse(image_url).scheme not in {"http", "https"}
+            or link in seen_links
+        ):
+            continue
+        seen_links.add(link)
+
+        price = match.get("price")
+        if isinstance(price, dict):
+            display_price = price.get("value")
+            price_value = price.get("extracted_value")
+            currency = price.get("currency")
+        else:
+            display_price = price
+            price_value = match.get("extracted_price")
+            currency = match.get("currency")
+
+        products.append({
+            "position": match.get("position", index + 1),
+            "title": title,
+            "link": link,
+            "source": match.get("source"),
+            "image": image_url,
+            "thumbnail": match.get("thumbnail"),
+            "displayPrice": display_price,
+            "price": price_value,
+            "currency": currency,
+            "inStock": match.get("in_stock"),
+            "rating": match.get("rating"),
+            "reviews": match.get("reviews"),
+            "condition": match.get("condition"),
+            "exactMatch": match.get("exact_matches", False),
+        })
+        if len(products) >= 30:
+            break
+    return products
 
 
 @app.cls(
@@ -133,7 +218,7 @@ class VisualSearchTest:
         from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
         from fastapi.middleware.cors import CORSMiddleware
 
-        api = FastAPI(title="Atlyr FASHN + GroundingDINO test", version="0.2.0")
+        api = FastAPI(title="Atlyr FASHN + GroundingDINO test", version="0.3.0")
         allowed_origins = [
             origin.strip()
             for origin in os.environ.get(
@@ -157,6 +242,7 @@ class VisualSearchTest:
                 "usesSam2": False,
                 "generatesEmbeddings": False,
                 "writesDatabase": False,
+                "onlineSearchConfigured": bool(os.environ.get("SERPAPI_API_KEY")),
             }
 
         @api.post("/analyze")
@@ -237,5 +323,111 @@ class VisualSearchTest:
                 raise HTTPException(status_code=500, detail=str(error)) from error
             finally:
                 shutil.rmtree(work_dir, ignore_errors=True)
+
+        @api.post("/search-online")
+        async def search_online(
+            image: UploadFile = File(...),
+            category: str = Form(...),
+            country: str = Form("in"),
+            x_visual_search_token: str | None = Header(None),
+        ):
+            import requests
+
+            expected_token = os.environ.get("VISUAL_SEARCH_TEST_TOKEN")
+            if not expected_token or x_visual_search_token != expected_token:
+                raise HTTPException(status_code=401, detail="Invalid visual-search test token")
+
+            serpapi_key = os.environ.get("SERPAPI_API_KEY")
+            if not serpapi_key:
+                raise HTTPException(
+                    status_code=503,
+                    detail="SERPAPI_API_KEY is not configured on the visual-search-test Modal secret",
+                )
+
+            normalized_category = category.strip().lower()
+            if normalized_category not in SERPAPI_CATEGORY_QUERIES:
+                raise HTTPException(status_code=400, detail="category must be upper, lower, or shoes")
+            normalized_country = country.strip().lower()
+            if len(normalized_country) != 2 or not normalized_country.isalpha():
+                raise HTTPException(status_code=400, detail="country must be a two-letter country code")
+            if image.content_type not in {"image/jpeg", "image/png", "image/webp"}:
+                raise HTTPException(status_code=415, detail="image must be JPEG, PNG, or WebP")
+
+            payload = await image.read()
+            if not payload or len(payload) > 10 * 1024 * 1024:
+                raise HTTPException(status_code=413, detail="image must be between 1 byte and 10 MB")
+
+            try:
+                started = time.perf_counter()
+                upload_payload = _prepare_serpapi_image(payload)
+                upload_started = time.perf_counter()
+                upload_response = requests.post(
+                    "https://serpapi.com/image",
+                    data={"api_key": serpapi_key},
+                    files={"image": ("08_fashn_foreground_crop.jpg", upload_payload, "image/jpeg")},
+                    timeout=30,
+                )
+                upload_ms = round((time.perf_counter() - upload_started) * 1000)
+                upload_data = upload_response.json()
+                if not upload_response.ok or upload_data.get("error"):
+                    detail = upload_data.get("error") or f"SerpApi image upload failed ({upload_response.status_code})"
+                    raise HTTPException(status_code=502, detail=detail)
+
+                image_id = upload_data.get("image_id")
+                if not image_id:
+                    raise HTTPException(status_code=502, detail="SerpApi image upload returned no image_id")
+
+                lens_started = time.perf_counter()
+                lens_response = requests.get(
+                    "https://serpapi.com/search.json",
+                    params={
+                        "engine": "google_lens",
+                        "image_id": image_id,
+                        "type": "products",
+                        "q": SERPAPI_CATEGORY_QUERIES[normalized_category],
+                        "country": normalized_country,
+                        "hl": "en",
+                        "safe": "active",
+                        "auto_crop": "false",
+                        "api_key": serpapi_key,
+                    },
+                    timeout=90,
+                )
+                lens_ms = round((time.perf_counter() - lens_started) * 1000)
+                lens_data = lens_response.json()
+                if not lens_response.ok or lens_data.get("error"):
+                    detail = lens_data.get("error") or f"SerpApi Lens search failed ({lens_response.status_code})"
+                    raise HTTPException(status_code=502, detail=detail)
+
+                raw_matches = lens_data.get("visual_matches") or []
+                products = _normalize_serpapi_matches(raw_matches)
+                return {
+                    "provider": "serpapi_google_lens",
+                    "queryArtifactKey": "fashnForegroundCrop",
+                    "category": normalized_category,
+                    "country": normalized_country,
+                    "query": SERPAPI_CATEGORY_QUERIES[normalized_category],
+                    "products": products,
+                    "rawMatchCount": len(raw_matches),
+                    "searchId": lens_data.get("search_metadata", {}).get("id"),
+                    "timingsMs": {
+                        "imageUpload": upload_ms,
+                        "lens": lens_ms,
+                        "total": round((time.perf_counter() - started) * 1000),
+                    },
+                    "constraints": {
+                        "writesDatabase": False,
+                        "persistsResults": False,
+                        "generatesEmbeddings": False,
+                    },
+                }
+            except HTTPException:
+                raise
+            except requests.RequestException as error:
+                raise HTTPException(status_code=502, detail="Unable to reach SerpApi") from error
+            except ValueError as error:
+                raise HTTPException(status_code=400, detail=str(error)) from error
+            except Exception as error:
+                raise HTTPException(status_code=500, detail=str(error)) from error
 
         return api

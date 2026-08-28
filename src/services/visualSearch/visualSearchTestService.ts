@@ -63,15 +63,66 @@ export type RunVisualSearchTestInput = {
   category: VisualSearchCategory
 }
 
+export type VisualSearchOnlineProduct = {
+  position: number
+  title: string
+  link: string
+  source: string | null
+  image: string
+  thumbnail: string | null
+  displayPrice: string | null
+  price: number | null
+  currency: string | null
+  inStock: boolean | null
+  rating: number | null
+  reviews: number | null
+  condition: string | null
+  exactMatch: boolean
+}
+
+export type VisualSearchOnlineResult = {
+  provider: "serpapi_google_lens"
+  queryArtifactKey: "fashnForegroundCrop"
+  category: VisualSearchCategory
+  country: string
+  query: string
+  products: VisualSearchOnlineProduct[]
+  rawMatchCount: number
+  searchId: string | null
+  timingsMs: {
+    imageUpload: number
+    lens: number
+    total: number
+  }
+  constraints: {
+    writesDatabase: false
+    persistsResults: false
+    generatesEmbeddings: false
+  }
+}
+
+export type RunVisualSearchOnlineInput = {
+  endpoint: string
+  token: string
+  artifact: VisualSearchArtifact
+  category: VisualSearchCategory
+  country?: string
+}
+
+function getEndpointAndToken(endpoint: string, token: string) {
+  const normalizedEndpoint = endpoint.trim().replace(/\/$/, "")
+  if (!normalizedEndpoint) throw new Error("Enter the Modal test endpoint")
+  if (!token.trim()) throw new Error("Enter the visual-search test token")
+  return { normalizedEndpoint, normalizedToken: token.trim() }
+}
+
 export async function runVisualSearchTest({
   endpoint,
   token,
   file,
   category,
 }: RunVisualSearchTestInput): Promise<VisualSearchTestResult> {
-  const normalizedEndpoint = endpoint.trim().replace(/\/$/, "")
-  if (!normalizedEndpoint) throw new Error("Enter the Modal test endpoint")
-  if (!token.trim()) throw new Error("Enter the visual-search test token")
+  const { normalizedEndpoint, normalizedToken } = getEndpointAndToken(endpoint, token)
 
   const form = new FormData()
   form.set("image", file)
@@ -79,7 +130,7 @@ export async function runVisualSearchTest({
 
   const response = await fetch(`${normalizedEndpoint}/analyze`, {
     method: "POST",
-    headers: { "X-Visual-Search-Token": token.trim() },
+    headers: { "X-Visual-Search-Token": normalizedToken },
     body: form,
   })
   const payload = await response.json().catch(() => ({})) as VisualSearchTestResult & {
@@ -88,6 +139,41 @@ export async function runVisualSearchTest({
   }
   if (!response.ok) {
     throw new Error(payload.detail ?? payload.error ?? `Visual-search analysis failed (${response.status})`)
+  }
+  return payload
+}
+
+export async function runVisualSearchOnline({
+  endpoint,
+  token,
+  artifact,
+  category,
+  country = "in",
+}: RunVisualSearchOnlineInput): Promise<VisualSearchOnlineResult> {
+  if (artifact.key !== "fashnForegroundCrop") {
+    throw new Error("Online search requires artifact 08_fashn_foreground_crop.png")
+  }
+  const { normalizedEndpoint, normalizedToken } = getEndpointAndToken(endpoint, token)
+  const artifactResponse = await fetch(artifact.dataUrl)
+  if (!artifactResponse.ok) throw new Error("Unable to read the FASHN foreground crop")
+  const crop = await artifactResponse.blob()
+
+  const form = new FormData()
+  form.set("image", crop, artifact.filename)
+  form.set("category", category)
+  form.set("country", country)
+
+  const response = await fetch(`${normalizedEndpoint}/search-online`, {
+    method: "POST",
+    headers: { "X-Visual-Search-Token": normalizedToken },
+    body: form,
+  })
+  const payload = await response.json().catch(() => ({})) as VisualSearchOnlineResult & {
+    detail?: string
+    error?: string
+  }
+  if (!response.ok) {
+    throw new Error(payload.detail ?? payload.error ?? `Online garment search failed (${response.status})`)
   }
   return payload
 }

@@ -1,6 +1,6 @@
 # Visual search hypothesis-validation plan
 
-**Status:** FASHN + GroundingDINO diagnostic harness
+**Status:** FASHN + GroundingDINO diagnostics with optional raw SerpApi Lens results
 
 **Production impact:** none intended
 
@@ -55,6 +55,11 @@ renders:
 - selected and final padded boxes;
 - original, FASHN-foreground, and target-only crops;
 - class counts, coverage, box source, and timing.
+
+After analysis, the page can send only the FASHN-foreground crop to the isolated backend for a
+SerpApi Google Lens `products` search localized to India. Returned product cards remain ephemeral.
+This validates whether the crop is useful for open-web retrieval without adding embeddings,
+catalogue fusion, or persistence.
 
 ### CLI
 
@@ -122,6 +127,12 @@ Only after Gates 1–3 pass, freeze a diagnostic set and compare embeddings for:
 Use known catalog source images and rank-one self-retrieval as the initial measurement. Do not add a
 fusion weight until those results exist.
 
+### Gate 5: raw online retrieval
+
+For the same frozen crops, record whether SerpApi returns a relevant and purchasable product in the
+top 5 and top 10. Also record empty results, duplicates, broken merchant links, India relevance, and
+latency. Provider rank is displayed as-is during this gate; no embedding reranking is applied.
+
 ## Test set
 
 The diagnostic set should include:
@@ -148,7 +159,7 @@ Keep each CLI output directory unchanged so results can be compared after box-se
 - embeddings and vector search;
 - catalog candidate ranking or fusion;
 - wardrobe writes;
-- web search and ingestion;
+- production web-search fallback, reranking, and ingestion;
 - production deployment changes;
 - analytics events.
 

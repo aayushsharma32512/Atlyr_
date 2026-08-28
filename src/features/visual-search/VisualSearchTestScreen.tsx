@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react"
-import { BoxSelect, Footprints, ScanSearch, Shirt, Upload } from "lucide-react"
+import { BoxSelect, ExternalLink, Footprints, Globe2, ScanSearch, Shirt, Upload } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -8,10 +8,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { useVisualSearchOnline } from "@/features/visual-search/hooks/useVisualSearchOnline"
 import { useVisualSearchTest } from "@/features/visual-search/hooks/useVisualSearchTest"
 import type {
   GroundingDinoDetection,
   VisualSearchCategory,
+  VisualSearchOnlineProduct,
 } from "@/services/visualSearch/visualSearchTestService"
 
 const categories: Array<{
@@ -56,8 +58,47 @@ function DetectionCard({ detection, index }: { detection: GroundingDinoDetection
   )
 }
 
+function OnlineProductCard({ product }: { product: VisualSearchOnlineProduct }) {
+  const price = product.displayPrice
+    ?? (product.price != null ? `${product.currency ?? ""} ${product.price}`.trim() : null)
+
+  return (
+    <Card className="overflow-hidden">
+      <img
+        src={product.image}
+        alt={product.title}
+        className="aspect-square w-full border-b bg-white object-contain"
+        loading="lazy"
+      />
+      <CardHeader className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          {product.source && <Badge variant="outline">{product.source}</Badge>}
+          {product.exactMatch && <Badge>Exact match</Badge>}
+          {product.inStock === true && <Badge variant="secondary">In stock</Badge>}
+          {product.inStock === false && <Badge variant="destructive">Out of stock</Badge>}
+        </div>
+        <CardTitle className="line-clamp-2 text-base">{product.title}</CardTitle>
+        <CardDescription className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          {price && <span className="font-medium text-foreground">{price}</span>}
+          {product.rating != null && <span>{product.rating.toFixed(1)} rating</span>}
+          {product.reviews != null && <span>{product.reviews.toLocaleString()} reviews</span>}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button asChild className="w-full" variant="outline">
+          <a href={product.link} target="_blank" rel="noopener noreferrer">
+            View product
+            <ExternalLink />
+          </a>
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function VisualSearchTestScreen() {
   const mutation = useVisualSearchTest()
+  const onlineMutation = useVisualSearchOnline()
   const [endpoint, setEndpoint] = useState(defaultEndpoint)
   const [token, setToken] = useState("")
   const [file, setFile] = useState<File | null>(null)
@@ -77,7 +118,21 @@ export default function VisualSearchTestScreen() {
   const onSubmit = (event: FormEvent) => {
     event.preventDefault()
     if (!file) return
+    onlineMutation.reset()
     mutation.mutate({ endpoint, token, file, category })
+  }
+
+  const onlineCrop = mutation.data?.artifacts.find((artifact) => artifact.key === "fashnForegroundCrop")
+
+  const onSearchOnline = () => {
+    if (!mutation.data || !onlineCrop) return
+    onlineMutation.mutate({
+      endpoint,
+      token,
+      artifact: onlineCrop,
+      category: mutation.data.category,
+      country: "in",
+    })
   }
 
   return (
@@ -238,6 +293,83 @@ export default function VisualSearchTestScreen() {
                     </p>
                   </CardContent>
                 </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Search this garment online</CardTitle>
+                    <CardDescription>
+                      Sends only <code>08_fashn_foreground_crop.png</code> to SerpApi Google Lens Products,
+                      localized to India. It does not send the original photo, generate embeddings,
+                      or persist results.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="grid gap-5 md:grid-cols-[180px_1fr] md:items-center">
+                    {onlineCrop ? (
+                      <img
+                        src={onlineCrop.dataUrl}
+                        alt="FASHN foreground crop used for online search"
+                        className="aspect-square w-full rounded-md border bg-white object-contain"
+                      />
+                    ) : (
+                      <div className="flex aspect-square items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
+                        Crop unavailable
+                      </div>
+                    )}
+                    <div className="space-y-3">
+                      <p className="text-sm text-muted-foreground">
+                        Each click consumes one successful SerpApi search. The test backend first
+                        uploads a compressed copy of artifact 08, then requests product matches.
+                      </p>
+                      <Button
+                        type="button"
+                        onClick={onSearchOnline}
+                        disabled={!onlineCrop || onlineMutation.isPending}
+                      >
+                        <Globe2 className={onlineMutation.isPending ? "animate-pulse" : undefined} />
+                        {onlineMutation.isPending ? "Searching Google Lens…" : "Search online"}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {onlineMutation.error && (
+                  <Alert variant="destructive">
+                    <AlertTitle>Online search failed</AlertTitle>
+                    <AlertDescription>{onlineMutation.error.message}</AlertDescription>
+                  </Alert>
+                )}
+
+                {onlineMutation.data && (
+                  <Card>
+                    <CardHeader>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <CardTitle>Google Lens product matches</CardTitle>
+                          <CardDescription>
+                            {onlineMutation.data.products.length} displayable products from {onlineMutation.data.rawMatchCount} raw matches · {onlineMutation.data.timingsMs.total.toLocaleString()} ms
+                          </CardDescription>
+                        </div>
+                        <Badge variant="secondary">SerpApi · India</Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      {onlineMutation.data.products.length > 0 ? (
+                        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                          {onlineMutation.data.products.map((product) => (
+                            <OnlineProductCard
+                              key={`${product.position}-${product.link}`}
+                              product={product}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          SerpApi returned no displayable product matches for this crop.
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
 
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                   {mutation.data.artifacts.map((artifact) => (
