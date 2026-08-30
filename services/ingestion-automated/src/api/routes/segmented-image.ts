@@ -1,7 +1,9 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { getJob, updateJob } from '../../domain/job-catalog';
+import { catalogId } from '../../domain/catalog';
 import { supabaseAdmin } from '../../db/supabase';
+import { pgPool } from '../../db/pg';
 import { createLogger } from '../../utils/logger';
 
 const logger = createLogger({ stage: 'api:segmented-image' });
@@ -59,7 +61,22 @@ export async function registerSegmentedImageRoute(app: FastifyInstance): Promise
     const fresh = `${base}?v=${Date.now()}`;
     await updateJob(jobId, { segmented_image_url: fresh });
 
-    logger.info({ jobId, path: loc.path }, 'segmented image overwritten');
+    // The catalog rows carry this same URL as image_url — the garment texture the studio
+    // renders. Without re-pointing them at the fresh token, a live product keeps serving the
+    // CDN-cached old pixels under any newly saved placement transform (writePlacementEntry
+    // updates the live rows immediately; the texture must move with it or the two disagree).
+    // Guarded by the base path so a product whose catalog image is not this segmented PNG is
+    // never touched; no-op on whichever table lacks the row.
+    const productId = catalogId(jobId);
+    const pool = pgPool();
+    for (const table of ['ingested_products', 'products'] as const) {
+      await pool.query(
+        `UPDATE public.${table} SET image_url = $1 WHERE id = $2 AND image_url LIKE $3`,
+        [fresh, productId, `${base}%`],
+      );
+    }
+
+    logger.info({ jobId, path: loc.path, productId }, 'segmented image overwritten');
     return reply.send({ job_id: jobId, segmented_image_url: fresh });
   });
 }

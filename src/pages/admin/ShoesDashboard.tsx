@@ -179,7 +179,7 @@ export default function ShoesDashboard() {
   // from inside placement.handler, which this lane never runs — every gate is a HITL state, so no
   // handler executes. Publishing is therefore an explicit step here, exactly as it is on the
   // ingestion dashboard, and this is what tells the operator whether it has happened.
-  const { statuses: catalogStatuses, refetch: refetchCatalog } = useCatalogStatus(manualJobs)
+  const { statuses: catalogStatuses, stale: catalogStale, refetch: refetchCatalog } = useCatalogStatus(manualJobs)
 
   const [url, setUrl] = useState('')
   const [gender, setGender] = useState<'male' | 'female' | 'unisex'>('unisex')
@@ -464,7 +464,32 @@ export default function ShoesDashboard() {
       case 'completed': {
         const status = catalogStatuses[job.job_id]
         if (status === 'live') {
-          return <span className="text-xs text-emerald-600">Live in the catalog</span>
+          return (
+            <>
+              <span className="text-xs text-emerald-600">Live in the catalog</span>
+              {/* Publish is idempotent and re-stages from the job first, so this re-push carries
+                  edits made AFTER go-live — a re-segmented image's fresh cache-bust token, a new
+                  manual placement — into the live products row. Without it a live shoe could
+                  never be updated from this dashboard again.
+                  Shown only while something is newer than the last publish; a successful push
+                  stamps verdict_at and the refetch hides it again. Unknown staleness keeps it
+                  visible so the escape hatch is never stranded. */}
+              {catalogStale[job.job_id] !== false && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() =>
+                    runStep(job.job_id, async () => { await v2Api.publish(job.job_id); refetchCatalog() }, 'Republished to the catalog')
+                  }
+                  title="Re-publish to the live catalog — pushes edits made since this item went live"
+                >
+                  <Rocket className="mr-1.5 h-3.5 w-3.5" />
+                  Update
+                </Button>
+              )}
+            </>
+          )
         }
         return (
           <>
@@ -607,7 +632,9 @@ export default function ShoesDashboard() {
         job={byId(eraserJobId)}
         open={Boolean(eraserJobId)}
         onOpenChange={(o) => { if (!o) setEraserJobId(null) }}
-        onSaved={() => refetch()}
+        // refetchCatalog: the save bumps job.updated_at, but the catalog hook needs its own
+        // refetch to recompute staleness against verdict_at and re-surface the Update button.
+        onSaved={() => { refetch(); refetchCatalog() }}
       />
 
       {/*
@@ -621,7 +648,9 @@ export default function ShoesDashboard() {
         placement={meshJobId ? placements[meshJobId] : undefined}
         open={Boolean(meshJobId)}
         onOpenChange={(o) => { if (!o) setMeshJobId(null) }}
-        onSaved={() => { refetchPlacements(); refetch() }}
+        // refetchCatalog too: a placement save writes an artifact without touching the job row,
+        // so the staleness check only sees it on an explicit catalog refetch.
+        onSaved={() => { refetchPlacements(); refetch(); refetchCatalog() }}
       />
 
       {/*

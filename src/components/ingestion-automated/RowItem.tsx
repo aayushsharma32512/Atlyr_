@@ -90,6 +90,8 @@ type Props = {
   onOpenPlacement: (jobId: string) => void
   onOpenMesh: (jobId: string) => void
   catalogStatus: 'live' | 'staged' | undefined
+  /** Live item has edits newer than its last publish. undefined = unknown → treat as stale. */
+  catalogStale?: boolean
   onPublished: () => void
   highlighted?: boolean
   onOpenViewer: (images: ViewerImage[], index: number, jobId?: string) => void
@@ -100,7 +102,7 @@ type Props = {
 }
 
 export function RowItem({
-  job, stage, tags, selection, sourceImages, product, enrichment, refetchProduct, placementImage, selected, onToggleSelect, onOpenDetail, onOpenError, onOpenPlacement, onOpenMesh, catalogStatus, onPublished, highlighted, onOpenViewer, onOpenEraser, refetch, refetchSelection, refetchTags,
+  job, stage, tags, selection, sourceImages, product, enrichment, refetchProduct, placementImage, selected, onToggleSelect, onOpenDetail, onOpenError, onOpenPlacement, onOpenMesh, catalogStatus, catalogStale, onPublished, highlighted, onOpenViewer, onOpenEraser, refetch, refetchSelection, refetchTags,
 }: Props) {
   const [expanded, setExpanded] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
@@ -577,9 +579,31 @@ export function RowItem({
             </Button>
             {job.current_state === 'completed' && (
               catalogStatus === 'live' ? (
+                <>
                 <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10.5px] font-semibold text-emerald-600 dark:text-emerald-400">
                   ✓ Live
                 </span>
+                {/* Publish is idempotent and re-stages from the job first, so this re-push carries
+                    edits made AFTER go-live — a re-segmented image's fresh cache-bust token, a new
+                    manual placement — into the live products row. Without it the badge replaced the
+                    button permanently and post-live edits could never reach the catalog.
+                    Shown only while something is newer than the last publish; a successful push
+                    stamps verdict_at and the refetch hides it again. Unknown staleness keeps it
+                    visible so the escape hatch is never stranded. */}
+                {catalogStale !== false && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 px-2.5 text-[10.5px] font-semibold"
+                    disabled={busy !== null}
+                    onClick={runPublish}
+                    title="Re-publish to the live catalog — pushes edits made since this item went live"
+                  >
+                    {busy === 'publish' && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+                    Update →
+                  </Button>
+                )}
+                </>
               ) : (
                 <Button
                   size="sm"

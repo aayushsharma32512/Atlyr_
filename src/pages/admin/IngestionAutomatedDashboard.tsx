@@ -39,7 +39,7 @@ export default function IngestionAutomatedDashboard() {
   const { products: productMeta, refetch: refetchProduct } = useProductMeta(queue.paged.map(p => p.job))
   const enrichments = useEnrichment(queue.paged.map(p => p.job))
   const { placements, refetch: refetchPlacement } = usePlacementImage(queue.paged.map(p => p.job))
-  const { statuses: catalogStatus, refetch: refetchCatalog } = useCatalogStatus(queue.paged.map(p => p.job))
+  const { statuses: catalogStatus, stale: catalogStale, refetch: refetchCatalog } = useCatalogStatus(queue.paged.map(p => p.job))
   const eraserJob = queue.jobs.find(j => j.job_id === eraserJobId) ?? null
   const errorJob = queue.jobs.find(j => j.job_id === errorJobId) ?? null
 
@@ -85,6 +85,7 @@ export default function IngestionAutomatedDashboard() {
                   placementImage={placements[job.job_id]?.url}
                   onOpenMesh={setMeshJobId}
                   catalogStatus={catalogStatus[job.job_id]}
+                  catalogStale={catalogStale[job.job_id]}
                   onPublished={() => { refetchCatalog(); queue.refetch() }}
                   highlighted={highlightJobId === job.job_id}
                   selected={queue.model.selected.has(job.job_id)}
@@ -138,7 +139,9 @@ export default function IngestionAutomatedDashboard() {
         placement={meshJobId ? placements[meshJobId] : undefined}
         open={meshJobId !== null}
         onOpenChange={(o) => !o && setMeshJobId(null)}
-        onSaved={() => { refetchPlacement(); queue.refetch() }}
+        // refetchCatalog too: a placement save writes an artifact without touching the job row,
+        // so the staleness check only sees it on an explicit catalog refetch.
+        onSaved={() => { refetchPlacement(); refetchCatalog(); queue.refetch() }}
       />
 
       <PhotoViewerDialog
