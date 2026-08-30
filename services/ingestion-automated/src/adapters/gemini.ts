@@ -172,6 +172,57 @@ ITEM_NAME: <brand + merchandise name exactly as listed on the product page>
 
 Product page URL: {PRODUCT_LINK}`,
   },
+
+  footwear: {
+    system: `You are an expert Footwear Technologist and Product Developer for a luxury e-commerce platform. Your sole purpose is to analyze visual inputs of FOOTWEAR and extract precise, objective technical specifications.
+
+**Operational Rules:**
+1.  **Objective Analysis:** Output only technical facts based strictly on the provided images. Do not hallucinate. Focus on material textures, sole construction, toe shape, and hardware.
+2.  **Exhaustive Check:** You must evaluate all 10 categories listed in the prompt for every item.
+3.  **Handling Uncertainty:** If a detail (like the outsole pattern) is not visible, write 'unknown'.
+4.  **Strict Formatting:** Your final output must be exactly two blocks: [TECH_PACK] followed by [SHOE_PHYSICS].
+5.  **Front-Facing Bias:** When summarizing for [SHOE_PHYSICS], describe the shoe as if viewing the pair from the front, focusing on the structural integrity and how the material holds its shape.`,
+    prompt: `**Input Visuals:** [Attached: Source Shoe Image(s)]
+**Input Context:** The user is requesting a technical breakdown of the FOOTWEAR item shown.
+
+**Task Specification:**
+
+Analyze the provided images to extract technical attributes. Pay close attention to material finish (patent vs matte), sole thickness, and the height of the shaft.
+
+**Analysis Categories (Footwear Specific):**
+
+1.  **Material & Finish:** Upper material (e.g., Nappa leather, Suede, Mesh, Canvas) and finish (High-gloss, Matte, Brushed).
+2.  **Sole Construction:** Outsole type (Lug, Flat, Sneaker, Leather), Heel type (Block, Stiletto, Wedge), and visible thickness/platform height.
+3.  **Toe Box Shape:** Geometric definition (Pointed, Square, Round, Almond, Open-toe).
+4.  **Shaft & Collar:** Height (Low-top, Ankle boot, Knee-high), collar padding, and rigidity (slouchy vs structured).
+5.  **Closure System:** Laces (type/color), Zippers (placement/material), Buckles, or Slip-on goring.
+6.  **Surface Texture & Stitching:** Visible grain, perforation patterns, quilting, or contrast stitching details.
+7.  **Rigidity & Form:** How the shoe holds its shape (e.g., 'Stiff structured leather that stands upright', 'Soft suede that collapses slightly').
+8.  **Color (Hex Codes):** Dominant upper color, sole color, hardware color.
+9.  **Branding & Graphics:** Logo placement, printed patterns, or embossed details.
+10. **Hardware & Embellishments:** Metal bits, studs, chains, eyelets, tassels.
+
+**Required Output Format:**
+
+[TECH_PACK]
+Material_Finish: <single concise clause>
+Sole_Construction: <single concise clause>
+Toe_Box_Shape: <single concise clause>
+Shaft_Collar: <single concise clause>
+Closure_System: <single concise clause>
+Surface_Texture: <single concise clause>
+Rigidity_Form: <single concise clause>
+Color: <single concise clause>
+Branding: <single concise clause>
+Left/ Right foot: description of which shoe>
+Hardware_Embellishments: <single concise clause>
+
+ITEM_NAME: <brand + merchandising name exactly as listed on the product page>
+
+[SHOE_PHYSICS]
+<A single, dense, highly descriptive paragraph. Capture details on the front view. Mention which foot is being described and that both shoes are symmetrical, otherwise describe each foot separately. Start by describing the overall silhouette and volume. Explicitly describe the material's reaction to light (sheen/reflection) and its structural rigidity (does it stand up on its own?). Detail the sole unit and how it grounds the shoe. Describe all visible hardware and closure details. **CRITICAL:** Focus on the features visible from a front-facing standing angle.>
+Product page URL: {PRODUCT_LINK}`,
+  },
 };
 
 // ─── Output types ─────────────────────────────────────────────────────────────
@@ -184,6 +235,9 @@ export { readUsage, type TokenUsage };
 export interface GarmentSummary {
   tech_pack: string | null;
   garment_physics: string | null;
+  /** Footwear only — the [SHOE_PHYSICS] block. garment_physics mirrors it so downstream
+   * consumers that only know garment_physics keep working. */
+  shoe_physics: string | null;
   item_name: string | null;
   color_and_fabric: string | null;
   complexity_level: 'simple' | 'complex';
@@ -201,17 +255,19 @@ export interface GarmentSummary {
 type ParsedStage1 = {
   tech_pack: string | null;
   garment_physics: string | null;
+  shoe_physics: string | null;
   item_name: string | null;
   color_and_fabric: string | null;
   raw: string;
 };
 
-function parseStage1(text: string): ParsedStage1 {
+export function parseStage1(text: string): ParsedStage1 {
   const techLines: string[] = [];
   const garmentLines: string[] = [];
+  const shoeLines: string[] = [];
   let item_name: string | null = null;
   let color_and_fabric: string | null = null;
-  let section: 'tech' | 'garment' | null = null;
+  let section: 'tech' | 'garment' | 'shoe' | null = null;
 
   for (const rawLine of text.split('\n')) {
     const line = rawLine.trim();
@@ -219,6 +275,7 @@ function parseStage1(text: string): ParsedStage1 {
     if (!line) continue;
     if (upper === '[TECH_PACK]') { section = 'tech'; continue; }
     if (upper === '[GARMENT_PHYSICS]') { section = 'garment'; continue; }
+    if (upper === '[SHOE_PHYSICS]') { section = 'shoe'; continue; }
     if (line.startsWith('ITEM_NAME:')) {
       item_name = line.split(':', 2)[1]?.trim() ?? null;
       section = null; continue;
@@ -229,14 +286,17 @@ function parseStage1(text: string): ParsedStage1 {
     }
     if (section === 'tech') techLines.push(rawLine);
     if (section === 'garment') garmentLines.push(rawLine);
+    if (section === 'shoe') shoeLines.push(rawLine);
   }
 
   const techBlock = techLines.join('\n').trim();
   const garmentBlock = garmentLines.join('\n').trim();
+  const shoeBlock = shoeLines.join('\n').trim();
 
   return {
     tech_pack:        techBlock    ? `[TECH_PACK]\n${techBlock}`        : null,
     garment_physics:  garmentBlock ? `[GARMENT_PHYSICS]\n${garmentBlock}` : null,
+    shoe_physics:     shoeBlock    ? `[SHOE_PHYSICS]\n${shoeBlock}`     : null,
     item_name,
     color_and_fabric,
     raw: text,
@@ -269,7 +329,7 @@ function textOf(parts: GeminiPart[]): string {
 
 export async function generateGarmentSummary(
   imageUrl: string,
-  garmentCategory: 'topwear' | 'bottomwear' | 'dress',
+  garmentCategory: 'topwear' | 'bottomwear' | 'dress' | 'footwear',
   productUrl: string,
 ): Promise<GarmentSummary> {
   const promptBundle = STAGE1_FRONT[garmentCategory] ?? STAGE1_FRONT['topwear'];
@@ -291,6 +351,10 @@ export async function generateGarmentSummary(
 
   return {
     ...parsed,
+    // Footwear answers in [SHOE_PHYSICS]; mirror it so consumers that only read
+    // garment_physics (batch collector, VTON handler) work unchanged. Same precedent
+    // as the HITL service's summarize node.
+    garment_physics: parsed.garment_physics ?? parsed.shoe_physics,
     complexity_level: deriveComplexity(parsed),
     model_used: modelUsed,
     route_used: routeUsed,

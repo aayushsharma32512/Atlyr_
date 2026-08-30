@@ -45,13 +45,19 @@ const TRANSITIONS: Record<string, (job: IngestionPipelineJob) => PipelineState> 
                                          ? 'awaiting_hitl_identification'
                                          : 'generating_garment_summary',
   awaiting_hitl_identification: () => 'generating_garment_summary',
-  // The lane fork. Gating on the provider as well as the lane is not belt-and-braces: a
-  // FASHN-pinned job parked in a Gemini tray would never be collected, because the collector
-  // only ever builds Gemini requests.
-  generating_garment_summary:   (j) => j.vton_lane === 'batch'
-                                       && (j.v_ton_model ?? 'gemini_nano_banana') === 'gemini_nano_banana'
-                                         ? 'vton_batch_queued'
-                                         : 'generating_vton',
+  // Two forks meet here, checked in order:
+  //   · Manual lane first — its VTON and segmentation are hand-made, so after the summary the job
+  //     returns to the operator's gates. Checking the economy fork first would park a manual job
+  //     in a Gemini batch tray no collector would ever pick it from.
+  //   · Economy fork. Gating on the provider as well as the lane is not belt-and-braces: a
+  //     FASHN-pinned job parked in a Gemini tray would never be collected, because the collector
+  //     only ever builds Gemini requests.
+  generating_garment_summary:   (j) => j.asset_lane === 'manual'
+                                         ? 'awaiting_manual_vton'
+                                         : j.vton_lane === 'batch'
+                                             && (j.v_ton_model ?? 'gemini_nano_banana') === 'gemini_nano_banana'
+                                           ? 'vton_batch_queued'
+                                           : 'generating_vton',
   generating_vton:              () => 'segmenting',
   segmenting:                   () => 'segmented',
   segmented:                    (j) => j.hitl_post_segmentation
@@ -60,11 +66,14 @@ const TRANSITIONS: Record<string, (job: IngestionPipelineJob) => PipelineState> 
   awaiting_hitl_segmentation:   () => 'placement',
   placement:                    () => 'completed',
 
-  // The manual lane. Every edge is an operator clicking Proceed. Nothing is enqueued on entry to
-  // any of them — all four are in HITL_STATES, so advanceAndTrigger returns before sendPipelineStep
-  // — and the lane never reaches identifying, generating_garment_summary, generating_vton or
-  // segmenting, which is why no handler needs to know the lane exists.
-  awaiting_manual_identification: () => 'awaiting_manual_vton',
+  // The manual lane. Every edge below is an operator clicking Proceed; nothing is enqueued on
+  // entry to a gate (all four are in HITL_STATES, so advanceAndTrigger returns before
+  // sendPipelineStep). The one automated step the lane DOES run is generating_garment_summary:
+  // picking the photo sets v_ton_preferred_image, which is exactly the summary's input, and shoes
+  // need a [SHOE_PHYSICS] summary in the catalog for the consumer try-on. The lane still never
+  // reaches identifying, generating_vton or segmenting — those produce assets, which are hand-made
+  // here.
+  awaiting_manual_identification: () => 'generating_garment_summary',
   awaiting_manual_vton:           () => 'awaiting_manual_segmentation',
   awaiting_manual_segmentation:   () => 'awaiting_manual_placement',
   awaiting_manual_placement:      () => 'completed',
