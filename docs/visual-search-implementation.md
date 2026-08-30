@@ -1,5 +1,9 @@
 # Visual search: FASHN + GroundingDINO hypothesis harness
 
+> **Status:** hypothesis validation is complete. This document remains the source of truth for the
+> isolated diagnostic harness. The production user-flow and backend redesign are specified in
+> [`inspiration-import-implementation.md`](./inspiration-import-implementation.md).
+
 ## Purpose
 
 This milestone validates garment localization and coarse background removal before adding SAM2,

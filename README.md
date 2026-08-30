@@ -107,6 +107,14 @@ the isolated Modal secret and is never sent to the SPA. Deploying it does not re
 artifact, CLI, and validation details are in
 [`docs/visual-search-implementation.md`](docs/visual-search-implementation.md).
 
+The approved production successor is a separate, initially unlinked inspiration-import screen. It
+detects every top/bottom candidate, lets the user choose one garment, retrieves catalogue products,
+supports mannequin swapping and multi-select Wardrobe adds, and stages at most one Google Lens
+result without triggering ingestion. Its backend is two scoped Supabase Edge Functions plus
+hardened Postgres RPCs; neither `services/ingestion` nor `services/ingestion-automated` needs to be
+deployed. The frontend, backend, database, Storage, security, and rollout plan is in
+[`docs/inspiration-import-implementation.md`](docs/inspiration-import-implementation.md).
+
 ```bash
 # Browser UI
 bun run dev
