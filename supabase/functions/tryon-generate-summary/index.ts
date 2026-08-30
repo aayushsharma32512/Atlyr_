@@ -42,12 +42,27 @@ const CATEGORY_PROMPTS = {
 
 type Stage1Category = keyof typeof CATEGORY_PROMPTS
 
+// Matched as whole words so 'bootcut jeans' stays bottomwear while 'boots' routes to footwear.
+const FOOTWEAR_TOKENS = new Set([
+  'shoe', 'shoes', 'footwear', 'sneaker', 'sneakers', 'trainer', 'trainers',
+  'sandal', 'sandals', 'heel', 'heels', 'heeled', 'boot', 'boots',
+  'loafer', 'loafers', 'mule', 'mules', 'flat', 'flats',
+  'ballerina', 'ballerinas', 'ballet', 'slide', 'slides', 'slipper', 'slippers',
+  'kolhapuri', 'kolhapuris', 'jutti', 'juttis', 'derby', 'derbys', 'derbies',
+  'oxford', 'oxfords', 'brogue', 'brogues', 'espadrille', 'espadrilles',
+  'clog', 'clogs', 'pump', 'pumps', 'moccasin', 'moccasins', 'janes',
+])
+
 function resolveCategory(typeCategory?: string | null, type?: string | null): Stage1Category {
-  const normalized = (typeCategory || type || '').toLowerCase()
+  // Consider BOTH columns: type_category is a free-form label ('sneakers', 'flats', …)
+  // while type is the coarse enum ('shoes'). Only reading type_category sent every
+  // non-obvious shoe label to the topwear prompt.
+  const normalized = [typeCategory, type].filter(Boolean).join(' ').toLowerCase()
   if (normalized.includes('dress') || normalized.includes('gown') || normalized.includes('one piece')) {
     return 'dresses'
   }
-  if (normalized.includes('shoe') || normalized.includes('footwear') || normalized.includes('sandal') || normalized.includes('heel')) {
+  const tokens = normalized.split(/[^a-z]+/)
+  if (tokens.some((t) => FOOTWEAR_TOKENS.has(t))) {
     return 'footwear'
   }
   if (normalized.includes('bottom') || normalized.includes('skirt') || normalized.includes('pant') || normalized.includes('jean') || normalized.includes('short')) {

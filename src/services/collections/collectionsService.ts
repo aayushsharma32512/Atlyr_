@@ -869,10 +869,13 @@ export async function fetchTryOns(params: {
   if (!userId) return []
   const from = page * size
   const to = from + size - 1
+  // Failed generations keep the placeholder storage_path ('pending') and have no image —
+  // rendering them produced permanent "Preview unavailable" tiles in the try-ons grid.
   const { data, error } = await supabase
     .from("user_generations")
     .select("id, storage_path, status, created_at, outfit_id")
     .eq("user_id", userId)
+    .neq("status", "failed")
     .order("created_at", { ascending: false })
     .range(from, to)
 

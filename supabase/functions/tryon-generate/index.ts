@@ -97,8 +97,10 @@ function buildSummariesBlock(segments: Array<{ label: string; summary: string | 
 }
 
 function choosePromptTemplate(items: { hasTop: boolean; hasBottom: boolean; hasFootwear: boolean }) {
+  // Footwear never changes the template: it rides along as an extra summary + reference
+  // image that the prompts instruct on. (The old mapping sent top+shoes to the ONE-PIECE
+  // prompt, which describes a dress.)
   if (items.hasTop && items.hasBottom) return 'topbottom'
-  if (items.hasFootwear && (items.hasTop || items.hasBottom)) return 'onepiece'
   if (items.hasTop || items.hasBottom || items.hasFootwear) return 'single'
   throw new Error('E_NO_OUTFIT_ITEMS')
 }
@@ -112,7 +114,10 @@ async function ensureSummary(adminClient: any, productId: string) {
   if (error || !data) {
     throw new Error(`[tryon-generate] product ${productId} not found`)
   }
-  if (data.garment_summary_front && data.garment_summary_version === GARMENT_SUMMARY_VERSION) {
+  // Accept any existing summary with usable physics, whatever version wrote it. The
+  // ingestion service writes richer v1.1 summaries (with shoe_physics); gating on this
+  // function's own version made every try-on overwrite those with v1.0.0 regenerations.
+  if (data.garment_summary_front && extractPhysics(data.garment_summary_front)) {
     return data.garment_summary_front as Record<string, unknown>
   }
   await callGenerateSummary(productId)
@@ -154,12 +159,15 @@ async function fetchProductRows(adminClient: any, ids: string[]) {
   return data ?? []
 }
 
-async function generateImageFromModel(parts: any[]) {
+async function callImageModelOnce(modelName: string, parts: any[], timeoutMs: number) {
   const genai = getGeminiClient()
-  const model = genai.getGenerativeModel({
-    model: TRYON_STAGE2_MODEL,
-    systemInstruction: SYSTEM_INSTRUCTION_TRYON,
-  })
+  const model = genai.getGenerativeModel(
+    {
+      model: modelName,
+      systemInstruction: SYSTEM_INSTRUCTION_TRYON,
+    },
+    { timeout: timeoutMs },
+  )
   const response: any = await model.generateContent({
     contents: [{ role: 'user', parts }],
     generationConfig: {
@@ -179,11 +187,43 @@ async function generateImageFromModel(parts: any[]) {
       if (part?.inlineData?.data) {
         const bytes = Uint8Array.from(atob(part.inlineData.data), (c) => c.charCodeAt(0))
         const mimeType = part.inlineData.mimeType || 'image/png'
-        return { bytes, mimeType }
+        return { bytes, mimeType, modelUsed: modelName }
       }
     }
   }
-  throw new Error('E_NO_IMAGE_RETURNED')
+  const finishReason = candidates[0]?.finishReason ?? 'no_candidates'
+  throw new Error(`E_NO_IMAGE_RETURNED (finishReason=${finishReason})`)
+}
+
+// Simple two-step ladder (AI Studio only; Vertex deliberately not wired up yet):
+// one honest shot at the pro model, then the flash fallback guarantees an answer.
+// gemini-3-pro-image intermittently HANGS rather than erroring (measured 280s+ with no
+// response on requests that other times finish in 20s), so each attempt carries its own
+// timeout. Pro's cap must clear the measured 104-155s healthy range — a lower cap kills
+// generations that were on track to succeed (see the ingestion transport's comment).
+// Flash matches GEMINI_IMAGE_MODEL_FALLBACKS in services/ingestion-automated.
+const IMAGE_ATTEMPTS: Array<{ model: string; timeoutMs: number }> = [
+  { model: TRYON_STAGE2_MODEL, timeoutMs: 150_000 },
+  { model: 'gemini-3.1-flash-image', timeoutMs: 90_000 },
+]
+
+async function generateImageFromModel(parts: any[]) {
+  let lastError: Error | null = null
+  for (const [index, attempt] of IMAGE_ATTEMPTS.entries()) {
+    try {
+      const result = await callImageModelOnce(attempt.model, parts, attempt.timeoutMs)
+      console.log('[tryon-generate] image attempt succeeded', { attempt: index + 1, model: attempt.model })
+      return { ...result, attempt: index + 1 }
+    } catch (error) {
+      lastError = error as Error
+      console.warn('[tryon-generate] image attempt failed', {
+        attempt: index + 1,
+        model: attempt.model,
+        message: lastError?.message ?? 'unknown',
+      })
+    }
+  }
+  throw lastError ?? new Error('E_NO_IMAGE_RETURNED')
 }
 
 serve(async (req) => {
@@ -329,9 +369,17 @@ serve(async (req) => {
     // Update status to generating BEFORE calling the AI model
     await adminClient.from('user_generations').update({ status: 'generating' }).eq('id', generationId).eq('user_id', userId)
 
-    const imageResponse = await generateImageFromModel(contentParts)
+    const generationPath = `${userId}/${generationId}.png`
 
-    const resolvedCategory =
+    // Everything from the model call onward runs as a background task (see below): the platform's
+    // 150s request idle timeout was killing slow 2K generations mid-call, surfacing to users as
+    // "Request idle timeout limit (150s) reached". Background tasks get the full wall clock
+    // (~400s). The client learns the outcome by polling user_generations, which it already does.
+    const finishGeneration = async () => {
+      try {
+        const imageResponse = await generateImageFromModel(contentParts)
+
+        const resolvedCategory =
       typeof body?.outfitSnapshot?.category === 'string' && body.outfitSnapshot.category.trim()
         ? body.outfitSnapshot.category
         : 'others'
@@ -399,8 +447,6 @@ serve(async (req) => {
       })
     }
 
-    const generationPath = `${userId}/${generationId}.png`
-
     await putObject(GENERATIONS_BUCKET, generationPath, imageResponse.bytes, imageResponse.mimeType)
 
     await adminClient
@@ -412,12 +458,13 @@ serve(async (req) => {
           promptTemplate,
           summaryVersion: GARMENT_SUMMARY_VERSION,
           items: outfitItems,
+          imageModel: imageResponse.modelUsed,
+          imageAttempt: imageResponse.attempt,
         },
       })
       .eq('id', generationId)
       .eq('user_id', userId)
 
-    const signed = await createSignedUrl(GENERATIONS_BUCKET, generationPath, 3600)
     console.log('[tryon-generate] ready', {
       correlationId,
       userId,
@@ -425,14 +472,46 @@ serve(async (req) => {
       outfitId,
       promptTemplate,
     })
+      } catch (error) {
+        console.error('[tryon-generate] background generation failed', {
+          correlationId,
+          generationId,
+          message: (error as Error)?.message ?? 'unknown',
+        })
+        try {
+          await adminClient
+            .from('user_generations')
+            .update({
+              status: 'failed',
+              metadata: { error: (error as Error)?.message ?? 'unknown' },
+            })
+            .eq('id', generationId)
+            .eq('user_id', userId)
+        } catch (updateError) {
+          console.error('[tryon-generate] failed to mark generation failed', {
+            message: (updateError as Error)?.message ?? 'unknown',
+          })
+        }
+      }
+    }
 
+    // deno-lint-ignore no-explicit-any
+    const runtime = globalThis as any
+    if (typeof runtime.EdgeRuntime !== 'undefined' && typeof runtime.EdgeRuntime.waitUntil === 'function') {
+      runtime.EdgeRuntime.waitUntil(finishGeneration())
+    } else {
+      // Local `functions serve` has no waitUntil — run detached and hope the process outlives it.
+      finishGeneration()
+    }
+
+    console.log('[tryon-generate] accepted, generating in background', { correlationId, userId, generationId, outfitId })
     return new Response(
       JSON.stringify({
-        status: 'ready',
+        status: 'generating',
         generationId,
         outfitId,
         storagePath: generationPath,
-        signedUrl: signed?.signedUrl,
+        signedUrl: null,
         correlationId,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
