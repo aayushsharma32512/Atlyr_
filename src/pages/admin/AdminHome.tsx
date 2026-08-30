@@ -88,6 +88,7 @@ const GROUPS: Group[] = [
         blurb: "Automated scrape → identify → segment → place.",
       },
       { label: "Placement", to: "/admin/placement", blurb: "Garment placement on the mannequin." },
+      { label: "Shoes", to: "/admin/shoes", blurb: "Manual footwear lane — paste a link, upload the try-on and cut-out." },
       { label: "Studio admin", to: "/admin/studio", blurb: "Admin-side studio tooling." },
       { label: "HITL", to: "/hitl", blurb: "Inventory dashboard. Note: currently unguarded." },
       { label: "Mannequin", to: "/mannequin", blurb: "Mannequin rendering harness." },

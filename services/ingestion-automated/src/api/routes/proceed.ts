@@ -3,7 +3,7 @@ import type { BossHandle } from '../../queue/boss';
 import { z } from 'zod';
 import type { PipelineState } from '../../domain/types';
 import { getJob, updateJob } from '../../domain/job-catalog';
-import { nextState, HITL_STATES } from '../../orchestration/state-machine';
+import { nextState, HITL_STATES, NO_ENQUEUE_STATES, TERMINAL_STATES } from '../../orchestration/state-machine';
 import { updateState } from '../../domain/job-catalog';
 import { sendPipelineStep } from '../../queue/send-step';
 import { createLogger } from '../../utils/logger';
@@ -15,7 +15,10 @@ const ProceedBody = z.object({
   segmented_image_override: z.string().url().optional(),
 });
 
-const PROCEED_ALLOWED_STATES = ['awaiting_hitl_identification', 'awaiting_hitl_segmentation', 'placement'];
+// Derived from HITL_STATES rather than re-listed, so a gate added to the state machine cannot be
+// left un-resumable here. 'placement' is the odd one out: it is a WORK state that this route also
+// treats as a human gate, which is why it needs the re-trigger special case below.
+const PROCEED_ALLOWED_STATES: string[] = [...HITL_STATES, 'placement'];
 
 export async function registerProceedRoute(app: FastifyInstance, boss: BossHandle): Promise<void> {
   app.post('/jobs/:jobId/proceed', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -60,8 +63,13 @@ export async function registerProceedRoute(app: FastifyInstance, boss: BossHandl
       await updateState(jobId, next);
     }
 
-    // Enqueue step execution if not paused on HITL
-    if (!HITL_STATES.includes(next)) {
+    // Enqueue only if the target is real work. Two exclusions, both reachable now that the manual
+    // lane chains gates back to back:
+    //   · NO_ENQUEUE_STATES (not just HITL) — advanceAndTrigger has always used the wider set, and
+    //     a gate whose successor is another gate would otherwise enqueue a step no handler serves.
+    //   · TERMINAL_STATES — awaiting_manual_placement advances straight to 'completed'. The
+    //     dispatcher's terminal guard would drop that message, but queueing it at all is noise.
+    if (!NO_ENQUEUE_STATES.includes(next) && !TERMINAL_STATES.includes(next)) {
       await sendPipelineStep(boss, jobId, next);
     }
 

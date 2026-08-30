@@ -17,6 +17,10 @@ const TYPE_MAP: Record<IngestionPipelineJob['product_type'], string> = {
   topwear: 'top',
   bottomwear: 'bottom',
   dress: 'top',
+  // 'shoes' is the value the catalog's consumers already expect: Placement2DEditor's zoneOf and
+  // the studio renderer's ZONE_Z both key off it. Without this entry the `?? 'top'` fallback below
+  // files every shoe as topwear — it would render in the top zone and show under the wrong tab.
+  footwear: 'shoes',
 };
 
 // Deterministic 40-hex id from the job id — lets both ingested_products and products upsert on the

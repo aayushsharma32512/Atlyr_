@@ -26,6 +26,15 @@ export class IdentificationHandler implements StepHandler {
     const classifications = await Promise.all(
       rawImages.map(async (artifact) => {
         const publicUrl = (artifact.data as Record<string, unknown>)['public_url'] as string;
+        // SigLIP's vocabulary is garment wording only, so GarmentCategory excludes 'footwear'.
+        // A footwear job cannot reach this handler — the manual lane forks away at `scraping` — so
+        // this is an invariant, not a case to handle. Assert it loudly rather than coercing: a
+        // silent cast here is exactly how a shoe would end up classified as a t-shirt.
+        if (job.product_type === 'footwear') {
+          throw new Error(
+            'footwear reached the identifying step — it must take the manual asset lane (asset_lane: manual)',
+          );
+        }
         const result = await classifyImage(publicUrl, job.product_type, job.product_gender_type);
         return { artifact, result };
       }),

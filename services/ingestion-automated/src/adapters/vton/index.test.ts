@@ -17,6 +17,7 @@ function job(overrides: Partial<IngestionPipelineJob>): IngestionPipelineJob {
     hitl_post_segmentation: false,
     current_state: 'generating_vton',
     vton_lane: 'instant',
+    asset_lane: 'automated',
     gemini_batch_id: null,
     v_ton_preferred_image: 'https://example.com/img.jpg',
     vton_image_url: null,

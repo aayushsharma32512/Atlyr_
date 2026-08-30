@@ -11,6 +11,7 @@ import { registerRecoverRoute } from './routes/recover';
 import { registerRetagRoute } from './routes/retag';
 import { registerDeletePhotoRoute } from './routes/delete-photo';
 import { registerDetailsRoute } from './routes/details';
+import { registerManualAssetRoutes } from './routes/manual-assets';
 import { registerSegmentedImageRoute } from './routes/segmented-image';
 import { registerPlacementRoute } from './routes/placement';
 import { registerProductPlacementRoute } from './routes/product-placement';
@@ -53,6 +54,7 @@ export async function buildApp(boss: BossHandle) {
   await registerDeletePhotoRoute(app);
   await registerDetailsRoute(app);
   await registerSegmentedImageRoute(app);
+  await registerManualAssetRoutes(app);
   await registerPlacementRoute(app);
   await registerProductPlacementRoute(app);
   await registerProductPlacement2DRoute(app);

@@ -12,11 +12,19 @@ export const BULK_VTON_MODEL = 'gemini_nano_banana'
 const CATEGORIES = ['topwear', 'bottomwear', 'dress'] as const
 const GENDERS = ['female', 'male', 'unisex'] as const
 
+/**
+ * The garment types bulk ingest can submit. Deliberately NARROWER than SubmitJobBody's, which
+ * also admits 'footwear': shoes take the manual asset lane (see /admin/shoes), the batch route's
+ * own zod enum rejects them, and a footwear row here would be accepted by the sheet parser only
+ * to be refused by the server.
+ */
+export type BulkProductType = Exclude<SubmitJobBody['product_type'], 'footwear'>
+
 export type BulkRow = {
   rowNumber: number          // 1-based sheet row (for error messages)
   product_url: string
   product_gender_type: SubmitJobBody['product_gender_type']
-  product_type: SubmitJobBody['product_type']
+  product_type: BulkProductType
   product_sub_type: string
 }
 
@@ -93,7 +101,7 @@ export function parseWorkbook(data: ArrayBuffer): ParseResult {
       rowNumber,
       product_url: url,
       product_gender_type: (gender || 'female') as SubmitJobBody['product_gender_type'],
-      product_type: category as SubmitJobBody['product_type'],
+      product_type: category as BulkProductType,
       product_sub_type: sub,
     })
   })
