@@ -9,7 +9,10 @@ import { getRememberedTryonComboKey, trackTryonGenerationCompleted } from "@/int
 const STORAGE_KEY = "jobs_tracker_state"
 const POLL_INTERVAL = 4000 // 4 seconds
 const STALE_THRESHOLD = 30 * 60 * 1000 // 30 minutes
-const TRYON_STUCK_THRESHOLD = 2 * 60 * 1000 // 2 minutes - match try-on backend cleanup
+// Generation now finishes in an edge background task (up to ~400s of model time after a fast
+// accept response), so the client must wait well past the old 2-minute mark. Matches the DB
+// cleanup threshold in cleanup_stale_tryon_placeholders.
+const TRYON_STUCK_THRESHOLD = 8 * 60 * 1000 // 8 minutes - match try-on backend cleanup
 const LIKENESS_STUCK_THRESHOLD = 5 * 60 * 1000 // 5 minutes - likeness can take longer
 const MAX_COMPLETED_JOBS = 5 // Keep only last 5 completed jobs in storage
 
@@ -317,7 +320,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
       console.warn('[JobsContext] Marking stuck jobs as failed:', stuckJobs.map(j => j.id))
       const emittedIds = new Set<string>()
       stuckJobs.forEach((job) => {
-        const errorType = job.type === "tryon" ? "timeout_2m" : "timeout_5m"
+        const errorType = job.type === "tryon" ? "timeout_8m" : "timeout_5m"
         const emitted = emitTryonGenerationCompletedIfNeeded(
           job,
           { status: "failed", errorType },
@@ -334,7 +337,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
                 progress: 0,
                 metadata: {
                   ...(j.metadata ?? {}),
-                  errorType: j.type === "tryon" ? "timeout_2m" : "timeout_5m",
+                  errorType: j.type === "tryon" ? "timeout_8m" : "timeout_5m",
                   ...(emittedIds.has(j.id) ? { completionCaptured: true } : {}),
                 },
               }

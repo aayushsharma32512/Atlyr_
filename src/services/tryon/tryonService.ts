@@ -72,7 +72,9 @@ export type TryOnGeneratePayload = {
 }
 
 export type TryOnGenerateResponse = {
-  status: "ready" | "queued" | "error"
+  // "generating": the edge function accepted the request and is finishing in a background
+  // task — poll the generation row (JobsContext already does) for the final outcome.
+  status: "ready" | "queued" | "generating" | "error"
   generationId: string
   outfitId: string
   storagePath: string
