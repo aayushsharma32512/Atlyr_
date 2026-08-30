@@ -8,10 +8,11 @@ const logger = createLogger({ stage: 'garment-summary' });
 
 function resolveCategory(
   job: IngestionPipelineJob,
-): 'topwear' | 'bottomwear' | 'dress' {
+): 'topwear' | 'bottomwear' | 'dress' | 'footwear' {
   const raw = (job.product_type ?? '').toLowerCase();
   if (raw === 'bottomwear') return 'bottomwear';
   if (raw === 'dress' || raw === 'dresses') return 'dress';
+  if (raw === 'footwear') return 'footwear';
   return 'topwear';
 }
 
@@ -45,6 +46,7 @@ export class GarmentSummaryHandler implements StepHandler {
         view:             'front',
         tech_pack:        summary.tech_pack,
         garment_physics:  summary.garment_physics,
+        shoe_physics:     summary.shoe_physics,
         item_name:        summary.item_name,
         color_and_fabric: summary.color_and_fabric,
         complexity_level: summary.complexity_level,

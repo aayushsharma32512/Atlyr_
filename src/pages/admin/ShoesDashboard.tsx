@@ -98,6 +98,9 @@ async function tryOnToPngBase64(url: string): Promise<string> {
 
 /** How far along the four gates a job is; -1 once it has left the lane (completed / failed). */
 function gateIndex(state: string): number {
+  // The summary step runs between picking the photo and the try-on upload; showing it as
+  // progress toward gate 1 keeps the pills lit while Gemini writes the shoe summary.
+  if (state === 'generating_garment_summary') return 1
   return GATE_ORDER.indexOf(state as Gate)
 }
 

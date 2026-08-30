@@ -59,9 +59,12 @@ describe('the manual asset lane fork', () => {
       .toBe('awaiting_manual_identification');
   });
 
-  test('the four gates run in order and end at completed', () => {
+  test('the gates run in order, through the summary step, and end at completed', () => {
     const chain: Array<[IngestionPipelineJob['current_state'], IngestionPipelineJob['current_state']]> = [
-      ['awaiting_manual_identification', 'awaiting_manual_vton'],
+      // Picking the photo routes through the real summary step so shoes go live with a
+      // SHOE_PHYSICS summary instead of relying on lazy edge-function generation at first try-on.
+      ['awaiting_manual_identification', 'generating_garment_summary'],
+      ['generating_garment_summary', 'awaiting_manual_vton'],
       ['awaiting_manual_vton', 'awaiting_manual_segmentation'],
       ['awaiting_manual_segmentation', 'awaiting_manual_placement'],
       ['awaiting_manual_placement', 'completed'],
@@ -71,10 +74,18 @@ describe('the manual asset lane fork', () => {
     }
   });
 
-  test('the lane never reaches an automated asset step', () => {
-    // The whole point of the lane: no VTON generation, no Modal segmentation. If a future edit
-    // routes a manual job into one of these, it will burn GPU on a job whose assets are hand-made.
-    const forbidden = ['identifying', 'generating_garment_summary', 'generating_vton', 'segmenting'];
+  test('the summary step never parks a manual job in a Gemini batch tray', () => {
+    // The batch collector only builds garment VTON requests; a manual job parked there would sit
+    // until the 48h deadline swept it. The lane fork must win over the economy fork.
+    expect(nextState(job({ current_state: 'generating_garment_summary', asset_lane: 'manual', vton_lane: 'batch' })))
+      .toBe('awaiting_manual_vton');
+  });
+
+  test('the lane never reaches an automated ASSET step', () => {
+    // The point of the lane: no VTON generation, no Modal segmentation — those assets are
+    // hand-made. The summary step is deliberately NOT in this list: it is text analysis, not
+    // asset generation, and the lane now runs it after the operator picks the photo.
+    const forbidden = ['identifying', 'generating_vton', 'segmenting'];
     let state: string = 'scraping';
     const seen: string[] = [state];
     for (let i = 0; i < 10 && state !== 'completed'; i += 1) {
@@ -87,8 +98,9 @@ describe('the manual asset lane fork', () => {
 
   test('the lane disturbs no other edge', () => {
     // Every transition NOT keyed on asset_lane must be identical under both lanes.
+    // ('generating_garment_summary' now IS keyed on the lane, so it lives in its own tests above.)
     const untouched: Array<IngestionPipelineJob['current_state']> = [
-      'pending', 'identifying', 'awaiting_hitl_identification', 'generating_garment_summary',
+      'pending', 'identifying', 'awaiting_hitl_identification',
       'generating_vton', 'segmenting', 'segmented', 'awaiting_hitl_segmentation', 'placement',
     ];
     for (const st of untouched) {
