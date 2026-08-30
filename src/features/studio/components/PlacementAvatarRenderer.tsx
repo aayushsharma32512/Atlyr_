@@ -433,17 +433,31 @@ export function PlacementAvatarRenderer({
           }
         }
 
+        // Load all garment textures in parallel (not sequential)
+        // Load all textures in parallel (needed for rendering)
+        const textures = await Promise.all(
+          placed.map(item => Assets.load(item.imageUrl) as Promise<Texture>)
+        )
+        if (disposed) return
+
+        // ponytail: load all probes in parallel (not sequential). Texture load + probe load
+        // both parallel, then render. Don't await in loop.
+        const garmentProbes = await Promise.all(
+          textures.map((tex, idx) => probeGarment(placed[idx].imageUrl, tex.width, tex.height))
+        )
+        if (disposed) return
+
         // Each garment: replicate the editor's fit/home/pivot, then apply transform + warp.
-        for (const item of placed) {
+        for (let idx = 0; idx < placed.length; idx++) {
+          const item = placed[idx]
           const t = item.placement![mannequin]!
-          const tex = (await Assets.load(item.imageUrl)) as Texture
+          const tex = textures[idx]
           if (disposed) return
           const texW = tex.width
           const texH = tex.height
           const fit = Math.min(CANVAS_W / texW, CANVAS_H / texH)
 
-          const { bounds: gb, isOpaque } = await probeGarment(item.imageUrl, texW, texH)
-          if (disposed) return
+          const { bounds: gb, isOpaque } = garmentProbes[idx]
 
           const mesh = new MeshPlane({ texture: tex, verticesX: MESH_X, verticesY: MESH_Y })
           mesh.position.set(-texW / 2, -texH / 2)
