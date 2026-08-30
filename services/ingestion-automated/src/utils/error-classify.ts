@@ -60,6 +60,13 @@ function messageOf(err: unknown): string {
  * undefined when the server named no delay — the caller then falls back to its own pause default.
  */
 export function extractRetryDelayMs(err: unknown): number | undefined {
+  // An error that already computed its own wait wins over anything parsed out of a message.
+  // Duck-typed rather than importing the class, so this module keeps its zero dependencies:
+  // adapters that know exactly how long a pool is paused (see firecrawl's UpstreamBusyError)
+  // attach the number here instead of leaving the caller to guess.
+  const carried = (err as { retryAfterMs?: unknown })?.retryAfterMs;
+  if (typeof carried === 'number' && Number.isFinite(carried) && carried >= 0) return carried;
+
   const msg = messageOf(err);
 
   const retryInfo = msg.match(/retryDelay["'\s:]+(\d+(?:\.\d+)?)s/i);

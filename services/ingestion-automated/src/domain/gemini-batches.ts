@@ -236,6 +236,32 @@ export async function unparkAllUnclaimed(): Promise<string[]> {
   return rows.map((r) => r.job_id);
 }
 
+/**
+ * Can any job still arrive at the park?
+ *
+ * The collector's real question is "should I wait for more?", and VTON_BATCH_MIN_FILL is only a
+ * proxy for it — one that is always wrong for a sheet smaller than the fill line. This answers it
+ * directly, and the predicate deliberately mirrors the state machine's park condition
+ * (state-machine.ts): a job on the instant lane, or pinned to a non-Gemini VTON model, will NEVER
+ * park, so counting it as "still coming" would hold the tray open forever.
+ *
+ * Global rather than per-batch on purpose: if nothing anywhere can still park, waiting is pointless
+ * regardless of which sheet the parked rows came from — and this needs no per-batch bookkeeping and
+ * covers manual single submissions too.
+ */
+export async function hasPendingArrivals(): Promise<boolean> {
+  const { rows } = await pgPool().query<{ pending: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1
+         FROM ingestion_pipeline_jobs
+        WHERE vton_lane = 'batch'
+          AND coalesce(v_ton_model, 'gemini_nano_banana') = 'gemini_nano_banana'
+          AND current_state IN ('pending','scraping','identifying','generating_garment_summary')
+     ) AS pending`,
+  );
+  return rows[0]?.pending === true;
+}
+
 /** Count of parked jobs waiting for a tray — the collector's "is there work" check. */
 export async function countUnclaimedParked(): Promise<number> {
   return (await unclaimedParkedStats()).count;

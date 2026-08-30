@@ -1,5 +1,9 @@
 import { TERMINAL_STATES, HITL_STATES, PARKED_STATES } from '../orchestration/state-machine';
-import { getJob, markJobFailed } from '../domain/job-catalog';
+import { config } from '../config/index';
+import { getJob, markJobFailed, markJobRetrying } from '../domain/job-catalog';
+import { decideStepFailure } from './step-retry';
+import { getBoss } from './advance-and-trigger';
+import { sendPipelineStep } from '../queue/send-step';
 import type { StepHandler } from '../domain/types';
 import { PendingHandler } from '../steps/pending.handler';
 import { ScrapingHandler } from '../steps/scraping.handler';
@@ -62,7 +66,47 @@ export async function dispatch(jobId: string): Promise<void> {
     await handler.execute(job);
   } catch (err) {
     const msg = (err as Error).message;
-    logger.error({ jobId, state: job.current_state, error: msg }, 'Step failed');
+    const boss = getBoss();
+
+    // Not every error is a verdict. A rate limit or a transient upstream is a WAIT with a duration
+    // the server usually names, and failing the job there is what killed 15 jobs on 2026-08-23 —
+    // `failed` is terminal, so the pg-boss retries that followed all returned at the terminal-state
+    // guard above without doing anything.
+    const decision = decideStepFailure({
+      err,
+      errorCount: job.error_count,
+      maxAttempts: config.STEP_MAX_ATTEMPTS,
+      fallbackDelayMs: config.STEP_RETRY_FALLBACK_SECONDS * 1000,
+    });
+
+    if (decision.action === 'retry' && boss) {
+      const delaySeconds = Math.ceil(decision.delayMs / 1000);
+      // current_state is deliberately untouched, so the job stays non-terminal and the step below
+      // is genuinely runnable again. error_count is bumped ONLY when the deferral is a real error —
+      // pure backpressure means the job never ran, and charging it would kill jobs for queue
+      // position rather than for anything wrong with them.
+      if (decision.countsAgainstCap) await markJobRetrying(jobId, msg, job.current_state);
+      await sendPipelineStep(boss, jobId, job.current_state, { startAfterSeconds: delaySeconds });
+      logger.warn(
+        { jobId, state: job.current_state, kind: decision.kind,
+          attempt: decision.countsAgainstCap ? decision.attempt : null,
+          maxAttempts: decision.countsAgainstCap ? config.STEP_MAX_ATTEMPTS : null,
+          backpressure: !decision.countsAgainstCap, delaySeconds, error: msg },
+        decision.countsAgainstCap
+          ? 'step deferred — upstream asked us to wait, re-queued rather than failed'
+          : 'step deferred — every upstream slot busy, re-queued without charging an attempt',
+      );
+      // Swallowed on purpose: we have scheduled the replacement ourselves, so this queue job is
+      // COMPLETE rather than failed. pg-boss's own retryLimit deliberately does not see these —
+      // it exists for a worker dying mid-step, which is a different failure.
+      return;
+    }
+
+    logger.error(
+      { jobId, state: job.current_state, kind: decision.kind,
+        reason: decision.action === 'fail' ? decision.reason : 'no-queue-handle', error: msg },
+      'Step failed',
+    );
     await markJobFailed(jobId, msg, job.current_state);
     // Re-throw so pg-boss marks the job as failed and can retry if configured
     throw err;

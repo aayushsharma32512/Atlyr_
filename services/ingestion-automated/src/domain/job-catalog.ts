@@ -80,6 +80,35 @@ export async function findLatestJobByDedupeKey(
   return data as IngestionPipelineJob | null;
 }
 
+/**
+ * Record an error WITHOUT ending the job.
+ *
+ * The counterpart to markJobFailed for errors that are waits rather than verdicts: `error_count`
+ * still climbs (it is what bounds the retry loop) and the message is still visible in the UI, but
+ * `current_state` is left exactly where it was so the step can be re-queued and run again. Setting
+ * it to 'failed' here would be terminal, and dispatch's terminal-state guard would then make every
+ * subsequent retry a no-op — which is precisely the bug this exists to fix.
+ */
+export async function markJobRetrying(
+  jobId: string,
+  errorMsg: string,
+  step: string
+): Promise<void> {
+  const job = await getJob(jobId);
+
+  const { error } = await supabaseAdmin
+    .from('ingestion_pipeline_jobs')
+    .update({
+      last_error: errorMsg,
+      last_error_step: step,
+      error_count: job.error_count + 1,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('job_id', jobId);
+
+  if (error) throw new Error(`markJobRetrying failed: ${error.message ?? error.code ?? JSON.stringify(error)}`);
+}
+
 export async function markJobFailed(
   jobId: string,
   errorMsg: string,

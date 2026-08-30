@@ -1,3 +1,6 @@
 automated-ingestion-service-dashboard/
 
 spike-output/
+
+# Throwaway diagnostic/watcher scripts
+*.tmp.ts

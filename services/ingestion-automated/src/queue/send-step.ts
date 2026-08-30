@@ -30,10 +30,20 @@ const MODAL_DRIVEN_STATES = new Set(['segmenting', 'placement']);
 export const PIPELINE_QUEUE = 'run-pipeline-step';
 export const MODAL_QUEUE = 'run-modal-step';
 
+export interface SendStepOptions {
+  /**
+   * Hold the step in the queue this long before it becomes runnable. Used when a step failed for a
+   * reason that is a WAIT rather than a verdict — a rate limit naming its own window, a transient
+   * upstream — so the retry lands after the pause instead of inside it. See orchestration/step-retry.
+   */
+  startAfterSeconds?: number;
+}
+
 export function sendPipelineStep(
   boss: BossHandle,
   jobId: string,
   targetState?: string,
+  opts: SendStepOptions = {},
 ): Promise<string | null> {
   const isModalStep = Boolean(targetState && MODAL_DRIVEN_STATES.has(targetState));
 
@@ -47,6 +57,9 @@ export function sendPipelineStep(
       retryLimit: config.BOSS_STEP_RETRY_LIMIT,
       retryDelay: config.BOSS_STEP_RETRY_DELAY_SECONDS,
       retryBackoff: true,
+      // pg-boss takes a plain number as seconds. Omitted entirely when not deferring, so ordinary
+      // sends keep their existing shape.
+      ...(opts.startAfterSeconds ? { startAfter: Math.ceil(opts.startAfterSeconds) } : {}),
     },
   );
 }

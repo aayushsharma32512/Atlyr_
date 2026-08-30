@@ -10,6 +10,14 @@ export function setBoss(boss: BossHandle) {
   _boss = boss;
 }
 
+/**
+ * The same handle, for the other places in orchestration that need to enqueue. Undefined until
+ * startWorker has run — callers must cope, so a unit test that never wired a queue still works.
+ */
+export function getBoss(): BossHandle | undefined {
+  return _boss;
+}
+
 export async function advanceAndTrigger(job: IngestionPipelineJob): Promise<void> {
   const next = nextState(job);
   await updateState(job.job_id, next);

@@ -231,8 +231,17 @@ export function shouldFlushTray(input: {
   oldestAgeSeconds: number;
   minFill: number;
   maxWaitSeconds: number;
-}): { flush: boolean; trigger: 'full' | 'max-wait' | 'none' } {
+  /**
+   * True when nothing upstream can still park — no job anywhere is in a pre-park state on this
+   * lane. `minFill` is only ever a GUESS at that question, and for any sheet smaller than it the
+   * guess is always wrong: a complete 15-row tray under minFill=20 sat for ~11 minutes waiting out
+   * maxWait, on work that was ready at two. When the real answer is available, use it.
+   */
+  noMoreArrivals?: boolean;
+}): { flush: boolean; trigger: 'complete' | 'full' | 'max-wait' | 'none' } {
   if (input.waiting <= 0) return { flush: false, trigger: 'none' };
+  // Checked first: a complete tray should never be held back by a fill line it can never reach.
+  if (input.noMoreArrivals) return { flush: true, trigger: 'complete' };
   if (input.waiting >= input.minFill) return { flush: true, trigger: 'full' };
   if (input.oldestAgeSeconds >= input.maxWaitSeconds) return { flush: true, trigger: 'max-wait' };
   return { flush: false, trigger: 'none' };

@@ -22,6 +22,7 @@ import {
   unclaimedParkedStats,
   demoteToInstantLane,
   discardBatch,
+  hasPendingArrivals,
   markBatchSubmitted,
   openBatch,
   releaseClaims,
@@ -171,15 +172,21 @@ export async function collectVtonBatch(boss: BossHandle): Promise<CollectResult>
   // shipping whatever is parked every tick turns a slow arrival rate into a stream of one- and
   // two-item batches, which costs the same per image but multiplies trays, polling and pressure
   // on the 100-concurrent-batch ceiling — and defeats the point of batching at all.
+  // Ask whether more can still arrive rather than guessing from the count. A sheet smaller than
+  // MIN_FILL is complete the moment its last row parks, and waiting out MAX_WAIT after that is
+  // dead time on work that is ready to ship.
+  const noMoreArrivals = !(await hasPendingArrivals());
+
   const decision = shouldFlushTray({
     waiting,
     oldestAgeSeconds,
     minFill: config.VTON_BATCH_MIN_FILL,
     maxWaitSeconds: config.VTON_BATCH_MAX_WAIT_SECONDS,
+    noMoreArrivals,
   });
   if (!decision.flush) {
     logger.info(
-      { waiting, minFill: config.VTON_BATCH_MIN_FILL, oldestAgeSeconds, maxWait: config.VTON_BATCH_MAX_WAIT_SECONDS },
+      { waiting, minFill: config.VTON_BATCH_MIN_FILL, oldestAgeSeconds, maxWait: config.VTON_BATCH_MAX_WAIT_SECONDS, noMoreArrivals },
       'holding — tray not full and nothing has waited long enough yet',
     );
     return { batchId: null, submitted: 0, demoted: 0, reason: `holding (${waiting}/${config.VTON_BATCH_MIN_FILL})` };
