@@ -143,7 +143,7 @@ export function StepThreeForm({
   return (
     <Form {...form}>
       <div
-        className={`flex flex-1 flex-col min-h-0 h-full w-auto mx-auto ${
+        className={`flex flex-1 flex-col min-h-0 h-full w-full min-w-0 ${
           type === "drawer" ? "border-none shadow-none" : ""
         }`}
       >
@@ -174,7 +174,7 @@ export function StepThreeForm({
               </p>
             </div>
 
-            <div className="flex min-h-0 shrink-0 gap-2 overflow-x-auto px-5 py-3 scrollbar-hide">
+            <div className="flex min-h-0 w-full min-w-0 max-w-full shrink-0 gap-2 overflow-x-auto px-5 py-3 scrollbar-hide">
               {sortedPoses.map((pose) => {
                 const isSelected = selectedAvatar === pose.id
                 return (
