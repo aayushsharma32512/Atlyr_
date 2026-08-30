@@ -31,7 +31,6 @@ import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { studioKeys } from "@/features/studio/queryKeys"
 import { prefetchStudioAlternatives } from "@/features/studio/hooks/useStudioAlternatives"
 import { useStudioSwapActions } from "@/features/studio/hooks/useStudioSwapActions"
-import { prefetchStudioSearchResults } from "@/features/studio/hooks/useStudioSearchResults"
 import { useStudioResolvedSlots } from "@/features/studio/hooks/useStudioResolvedSlots"
 import type { StudioAlternativeProduct, StudioProductTraySlot } from "@/services/studio/studioService"
 import { buildStudioSearchParams, buildStudioUrl, parseStudioSearchParams, type SlotIdMap } from "@/features/studio/utils/studioUrlState"
@@ -255,34 +254,9 @@ export function StudioScreenView() {
     }
   }, [resolvedOutfitId, topIdParam, bottomIdParam, shoesIdParam, slotProductIds, parsedParams.hiddenSlots])
 
-  // Prefetch search alternatives for all 3 slots when outfit loads
-  // (The alternatives screen auto-searches with the current item's image)
-  useEffect(() => {
-    if (!resolvedOutfitId || !studioAvatar || tour.isActive) return
-
-    const slots: StudioProductTraySlot[] = ["top", "bottom", "shoes"]
-    
-    slots.forEach((slot) => {
-      // Find the product item for this slot to get its image URL
-      const item = studioAvatar.items.find((i) => i.type === slot)
-      const imageUrl = item?.thumbnailUrl ?? item?.imageUrl ?? null
-      const productId = item?.id ?? null
-
-      if (productId || isHttpUrl(imageUrl)) {
-        // Use hook-layer prefetch function (side effects live in hooks layer)
-        prefetchStudioSearchResults(queryClient, {
-          slot,
-          query: "",
-          imageUrl,
-          productId,
-          filters: {},
-          gender: adminGender ?? gender,
-        }).catch(() => {
-          // Prefetch failures should not block the UI
-        })
-      }
-    })
-  }, [resolvedOutfitId, studioAvatar, queryClient, tour.isActive, adminGender, gender])
+  // ponytail: deferred prefetch: only fetch alternatives when user opens alternatives panel,
+  // not on page load. Eliminates 3.5s search-v2 blocking on initial render.
+  // Lazy load when TraySheet actually opens (onOpenAlternatives).
 
   useEffect(() => {
     if (!hasHydratedFromUrl || !syncOutfitId) {
