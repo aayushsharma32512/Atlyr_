@@ -2,6 +2,18 @@
 
 Production-ready local segmentation scripts to extract clean transparent garment assets from model shots.
 
+For the isolated FASHN + GroundingDINO localization hypothesis harness, see
+[`../../docs/visual-search-implementation.md`](../../docs/visual-search-implementation.md). It runs
+as the separate `atlyr-visual-search-test` Modal app, preserves every intermediate mask/box/crop,
+and does not call or alter this production pipeline, SAM2, Supabase, or an embedding model.
+
+The user-facing multi-candidate detector is implemented separately in
+`visual_search/modal_app_inspiration_import.py`. It runs FASHN once and GroundingDINO once, returns
+all viable top/bottom candidates plus contextual and retrieval crops, and uses GroundingDINO person
+boxes to keep touching FASHN regions on adjacent people separate. It does not remove skin or
+generate embeddings. It creates the new `atlyr-inspiration-import` app only when explicitly
+deployed; existing Modal apps are unchanged.
+
 ## Setup
 
 ```bash
