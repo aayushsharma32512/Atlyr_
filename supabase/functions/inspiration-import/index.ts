@@ -3,10 +3,17 @@ import {
   INSPIRATION_BUCKET, HttpError, asObject, env, json, optionalString, publicError,
   requireUser, requiredString, safeHttpUrl, signedUrl,
 } from "../_shared/inspiration-import.ts"
+import { filterShoppingResults, getLensPriceLabel } from "../_shared/inspiration-lens.ts"
+import {
+  signInspirationWebSelection,
+  verifyInspirationWebSelection,
+  type InspirationWebSelectionPayload,
+} from "../_shared/inspiration-web-token.ts"
 
 type AnyClient = Awaited<ReturnType<typeof requireUser>>["admin"]
 type ImportRow = Record<string, any>
 const MIME_EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" }
+const DEFAULT_DETECTION_TIMEOUT_SECONDS = 180
 
 function queryError(error: { message: string } | null, message: string) {
   if (error) throw new Error(`${message}: ${error.message}`)
@@ -18,6 +25,44 @@ async function ownedImport(admin: AnyClient, userId: string, importId: string): 
   queryError(error, "Unable to read import")
   if (!data) throw new HttpError(404, "import_not_found", "Import not found")
   return data
+}
+
+function detectionTimeoutSeconds(): number {
+  const configured = Number(Deno.env.get("INSPIRATION_DETECTION_TIMEOUT_S"))
+  return Number.isFinite(configured) && configured > 0
+    ? Math.floor(configured)
+    : DEFAULT_DETECTION_TIMEOUT_SECONDS
+}
+
+async function expireStaleDetection(
+  context: Awaited<ReturnType<typeof requireUser>>,
+  importRow: ImportRow,
+): Promise<ImportRow> {
+  if (importRow.status !== "detecting" || typeof importRow.detection_started_at !== "string") {
+    return importRow
+  }
+
+  const cutoffMs = Date.now() - detectionTimeoutSeconds() * 1000
+  const startedAtMs = Date.parse(importRow.detection_started_at)
+  if (!Number.isFinite(startedAtMs) || startedAtMs > cutoffMs) return importRow
+  const cutoff = new Date(cutoffMs).toISOString()
+
+  const { data, error } = await context.admin.from("inspiration_imports")
+    .update({
+      status: "failed",
+      error_code: "detection_timeout",
+      error_message: "Garment detection took too long. Please try again.",
+    })
+    .eq("id", importRow.id)
+    .eq("user_id", context.userId)
+    .eq("status", "detecting")
+    .lte("detection_started_at", cutoff)
+    .select("*")
+    .maybeSingle()
+  queryError(error, "Unable to expire garment detection")
+
+  // A callback or a newer attempt may have won the conditional-update race.
+  return data ?? ownedImport(context.admin, context.userId, importRow.id)
 }
 
 async function createImport(context: Awaited<ReturnType<typeof requireUser>>, body: Record<string, unknown>) {
@@ -73,7 +118,7 @@ async function startDetection(context: Awaited<ReturnType<typeof requireUser>>, 
   try {
     const { data, error } = await context.client.rpc("begin_inspiration_detection", {
       p_import_id: importId,
-      p_lease_seconds: Number(Deno.env.get("INSPIRATION_DETECTION_LEASE_S") ?? "300"),
+      p_lease_seconds: Number(Deno.env.get("INSPIRATION_DETECTION_LEASE_S") ?? "180"),
     })
     queryError(error, "Unable to begin garment detection")
     const attempt = Array.isArray(data) ? data[0] : data
@@ -113,12 +158,14 @@ async function startDetection(context: Awaited<ReturnType<typeof requireUser>>, 
 
 async function getImport(context: Awaited<ReturnType<typeof requireUser>>, body: Record<string, unknown>) {
   const importId = requiredString(body, "importId")
-  const importRow = await ownedImport(context.admin, context.userId, importId)
+  const importRow = await expireStaleDetection(
+    context,
+    await ownedImport(context.admin, context.userId, importId),
+  )
   const [candidatesResult, webResult, selectionsResult] = await Promise.all([
     context.admin.from("inspiration_import_candidates").select("*").eq("import_id", importId)
       .order("confidence", { ascending: false }),
-    context.admin.from("inspiration_import_web_results").select("*").eq("import_id", importId)
-      .gt("expires_at", new Date().toISOString()).order("rank"),
+    context.admin.from("inspiration_import_web_results").select("*").eq("import_id", importId).order("rank"),
     context.admin.from("inspiration_import_selections").select("source,product_id,web_result_id,status").eq("import_id", importId),
   ])
   queryError(candidatesResult.error, "Unable to read candidates")
@@ -135,6 +182,7 @@ async function getImport(context: Awaited<ReturnType<typeof requireUser>>, body:
     import: {
       id: importRow.id, status: importRow.status,
       errorCode: importRow.error_code, errorMessage: importRow.error_message,
+      studioOutfitId: importRow.studio_outfit_id ?? null,
     },
     sourceUrl: await signedUrl(context.admin, importRow.source_path), candidates,
     selectedCandidateId: selectedCandidates[0]?.id ?? null,
@@ -145,13 +193,16 @@ async function getImport(context: Awaited<ReturnType<typeof requireUser>>, body:
       if (!listingUrl || !imageUrl) return []
       return [{
         id: result.id, candidateId: result.candidate_id,
+        providerResultId: result.provider_result_id,
         title: result.title, merchantDomain: result.merchant_domain,
-        listingUrl, imageUrl, rank: result.rank,
+        listingUrl, imageUrl, rank: result.rank, priceLabel: null, selectionToken: null,
       }]
     }),
     selections: {
       catalogueProductIds: (selectionsResult.data ?? []).filter((row: ImportRow) => row.source === "catalogue").map((row: ImportRow) => row.product_id),
-      webResultId: (selectionsResult.data ?? []).find((row: ImportRow) => row.source === "web")?.web_result_id ?? null,
+      webResultIds: (selectionsResult.data ?? [])
+        .filter((row: ImportRow) => row.source === "web")
+        .map((row: ImportRow) => row.web_result_id),
     },
   }
 }
@@ -198,42 +249,61 @@ async function selectedCandidate(
   return { importRow, candidate: data[0] as ImportRow }
 }
 
-function normalizeLens(payload: Record<string, unknown>, imageId: string, maxResults: number) {
-  const matches = Array.isArray(payload.visual_matches) ? payload.visual_matches as Record<string, unknown>[] : []
+async function normalizeLens(
+  payload: Record<string, unknown>,
+  imageId: string,
+  importId: string,
+  candidateId: string,
+) {
+  const matches = filterShoppingResults(
+    Array.isArray(payload.visual_matches) ? payload.visual_matches as Record<string, unknown>[] : [],
+  )
   const seen = new Set<string>()
-  const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
-  return matches.flatMap((raw, index) => {
+  const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60
+  const results = matches.flatMap((raw, index) => {
     const listingUrl = safeHttpUrl(raw.link)
     const imageUrl = safeHttpUrl(raw.image) ?? safeHttpUrl(raw.thumbnail)
     if (!listingUrl || !imageUrl || typeof raw.title !== "string" || seen.has(listingUrl)) return []
     seen.add(listingUrl)
+    const providerResultId = `${imageId}:${String(raw.position ?? index)}`
     return [{
-      provider: "serpapi_google_lens", provider_result_id: `${imageId}:${String(raw.position ?? index)}`,
-      rank: typeof raw.position === "number" ? raw.position : index, title: raw.title,
-      merchant_domain: new URL(listingUrl).hostname.replace(/^www\./, ""), listing_url: listingUrl,
-      image_url: imageUrl, expires_at: expiresAt,
+      version: 1 as const,
+      importId,
+      candidateId,
+      providerResultId,
+      rank: typeof raw.position === "number" ? raw.position : index,
+      title: raw.title,
+      merchantDomain: new URL(listingUrl).hostname.replace(/^www\./, ""),
+      listingUrl,
+      imageUrl,
+      priceLabel: getLensPriceLabel(raw),
+      expiresAt,
     }]
-  }).slice(0, maxResults)
+  })
+  return Promise.all(results.map(async (result) => {
+    const { priceLabel, ...selectionPayload } = result
+    return {
+      id: result.providerResultId,
+      candidateId: result.candidateId,
+      providerResultId: result.providerResultId,
+      title: result.title,
+      merchantDomain: result.merchantDomain,
+      listingUrl: result.listingUrl,
+      imageUrl: result.imageUrl,
+      rank: result.rank,
+      priceLabel,
+      selectionToken: await signInspirationWebSelection(
+        selectionPayload,
+        env("SUPABASE_SERVICE_ROLE_KEY"),
+      ),
+    }
+  }))
 }
 
 async function webSearch(context: Awaited<ReturnType<typeof requireUser>>, body: Record<string, unknown>) {
   const importId = requiredString(body, "importId")
   const candidateId = optionalString(body, "candidateId")
   const current = await selectedCandidate(context, importId, candidateId)
-  const { data: cached, error: cachedError } = await context.admin.from("inspiration_import_web_results").select("*")
-    .eq("import_id", importId).eq("candidate_id", current.candidate.id).gt("expires_at", new Date().toISOString()).order("rank")
-  queryError(cachedError, "Unable to read cached online results")
-  const cachedRows = cached ?? []
-  const invalidCachedIds = cachedRows
-    .filter((row: ImportRow) => !safeHttpUrl(row.listing_url) || !safeHttpUrl(row.image_url))
-    .map((row: ImportRow) => row.id as string)
-  if (invalidCachedIds.length) {
-    const { error } = await context.admin.from("inspiration_import_web_results").delete().in("id", invalidCachedIds)
-    queryError(error, "Unable to remove invalid online results")
-  }
-  if (cachedRows.length > invalidCachedIds.length) {
-    return { results: await getImport(context, { importId }).then((record) => record.webResults) }
-  }
   const { data: crop, error: cropError } = await context.admin.storage.from(INSPIRATION_BUCKET).download(current.candidate.retrieval_crop_path)
   queryError(cropError, "Unable to read retrieval crop")
   if (!crop || crop.size > 500 * 1024) throw new HttpError(400, "lens_image_too_large", "Garment crop is too large for online search")
@@ -244,8 +314,7 @@ async function webSearch(context: Awaited<ReturnType<typeof requireUser>>, body:
   const upload = await uploadResponse.json().catch(() => ({})) as Record<string, unknown>
   if (!uploadResponse.ok || typeof upload.image_id !== "string") throw new Error("SerpApi image upload failed")
   const params = new URLSearchParams({
-    engine: "google_lens", image_id: upload.image_id, type: "products",
-    q: current.candidate.category === "top" ? "clothing top" : "pants skirt",
+    engine: "google_lens", image_id: upload.image_id,
     country: Deno.env.get("SERPAPI_COUNTRY") ?? "us", hl: "en", safe: "active", auto_crop: "false",
     api_key: env("SERPAPI_API_KEY"),
   })
@@ -254,27 +323,100 @@ async function webSearch(context: Awaited<ReturnType<typeof requireUser>>, body:
   if (!response.ok || !Array.isArray(payload.visual_matches)) throw new Error("SerpApi Lens search failed")
   const stillSelected = await selectedCandidate(context, importId, current.candidate.id)
   if (stillSelected.candidate.id !== current.candidate.id) throw new HttpError(409, "candidate_changed", "The selected garment changed; search again")
-  const rows = normalizeLens(payload, upload.image_id, Number(Deno.env.get("SERPAPI_MAX_RESULTS") ?? "20"))
-  await context.admin.from("inspiration_import_web_results").delete().eq("import_id", importId).eq("candidate_id", current.candidate.id)
-  if (rows.length) {
-    const { error } = await context.admin.from("inspiration_import_web_results").insert(
-      rows.map((row) => ({ ...row, import_id: importId, candidate_id: current.candidate.id })),
-    )
-    queryError(error, "Unable to save online results")
+  return {
+    results: await normalizeLens(payload, upload.image_id, importId, current.candidate.id),
   }
-  return { results: await getImport(context, { importId }).then((record) => record.webResults) }
 }
 
-async function commit(context: Awaited<ReturnType<typeof requireUser>>, body: Record<string, unknown>) {
-  const productIds = body.catalogueProductIds
-  if (!Array.isArray(productIds) || productIds.some((id) => typeof id !== "string")) {
-    throw new HttpError(400, "invalid_products", "catalogueProductIds must be an array")
+function validSelectionPayload(value: InspirationWebSelectionPayload): boolean {
+  return value.version === 1
+    && typeof value.providerResultId === "string" && Boolean(value.providerResultId)
+    && Number.isInteger(value.rank) && value.rank >= 0
+    && typeof value.title === "string" && Boolean(value.title.trim())
+    && typeof value.merchantDomain === "string" && Boolean(value.merchantDomain.trim())
+    && Boolean(safeHttpUrl(value.listingUrl))
+    && Boolean(safeHttpUrl(value.imageUrl))
+    && Number.isInteger(value.expiresAt)
+}
+
+async function stageSelections(context: Awaited<ReturnType<typeof requireUser>>, body: Record<string, unknown>) {
+  const importId = requiredString(body, "importId")
+  if (!Array.isArray(body.selections) || body.selections.length < 1 || body.selections.length > 2) {
+    throw new HttpError(400, "invalid_web_selections", "Choose at most one online top and one online bottom")
   }
-  const { data, error } = await context.client.rpc("commit_inspiration_import", {
-    p_import_id: requiredString(body, "importId"), p_catalogue_product_ids: productIds,
-    p_web_result_id: optionalString(body, "webResultId"),
+  if (!Array.isArray(body.catalogueSelections) || body.catalogueSelections.length > 1
+    || body.catalogueSelections.length + body.selections.length > 2) {
+    throw new HttpError(400, "invalid_catalogue_selections", "Choose at most one inventory item per garment")
+  }
+
+  const catalogueSelections: Array<{ candidateId: string; productId: string }> = []
+  const verified: InspirationWebSelectionPayload[] = []
+  const seenCandidates = new Set<string>()
+  for (const raw of body.catalogueSelections) {
+    const input = asObject(raw)
+    const candidateId = requiredString(input, "candidateId")
+    const productId = requiredString(input, "productId")
+    if (seenCandidates.has(candidateId)) {
+      throw new HttpError(400, "invalid_catalogue_selections", "Each garment can have only one final selection")
+    }
+    seenCandidates.add(candidateId)
+    await selectedCandidate(context, importId, candidateId)
+    catalogueSelections.push({ candidateId, productId })
+  }
+  for (const raw of body.selections) {
+    const input = asObject(raw)
+    const candidateId = requiredString(input, "candidateId")
+    const selectionToken = requiredString(input, "selectionToken")
+    if (seenCandidates.has(candidateId)) {
+      throw new HttpError(400, "invalid_web_selections", "Each garment can have only one final selection")
+    }
+    seenCandidates.add(candidateId)
+    await selectedCandidate(context, importId, candidateId)
+    const selection = await verifyInspirationWebSelection(selectionToken, env("SUPABASE_SERVICE_ROLE_KEY"))
+    if (!selection || !validSelectionPayload(selection)
+      || selection.importId !== importId || selection.candidateId !== candidateId
+      || selection.expiresAt <= Math.floor(Date.now() / 1000)) {
+      throw new HttpError(400, "invalid_web_selection", "An online result expired. Search online again and reselect it")
+    }
+    verified.push(selection)
+  }
+
+  const { data, error } = await context.admin.rpc("stage_inspiration_import_selections", {
+    p_user_id: context.userId,
+    p_import_id: importId,
+    p_catalogue_results: catalogueSelections,
+    p_web_results: verified.map((selection) => ({
+      candidateId: selection.candidateId,
+      providerResultId: selection.providerResultId,
+      rank: selection.rank,
+      title: selection.title,
+      merchantDomain: selection.merchantDomain,
+      listingUrl: selection.listingUrl,
+      imageUrl: selection.imageUrl,
+      expiresAt: selection.expiresAt,
+    })),
   })
-  if (error) throw new HttpError(409, "commit_failed", "Selections could not be saved")
+  if (error) {
+    console.error("[inspiration-import] selection staging failed", {
+      importId,
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    })
+    throw new HttpError(409, "selection_staging_failed", "The final selections could not be saved")
+  }
+  return data
+}
+
+async function openStudio(context: Awaited<ReturnType<typeof requireUser>>, body: Record<string, unknown>) {
+  const { data, error } = await context.client.rpc("open_inspiration_import_in_studio", {
+    p_import_id: requiredString(body, "importId"),
+    p_outfit_id: requiredString(body, "outfitId"),
+    p_top_product_id: optionalString(body, "topProductId"),
+    p_bottom_product_id: optionalString(body, "bottomProductId"),
+  })
+  if (error) throw new HttpError(409, "open_studio_failed", "The selected pieces could not be opened in Studio")
   return data
 }
 
@@ -312,7 +454,8 @@ serve(async (req) => {
       get: () => getImport(context, body),
       "select-candidate": () => selectCandidate(context, body),
       "web-search": () => webSearch(context, body),
-      commit: () => commit(context, body),
+      "stage-selections": () => stageSelections(context, body),
+      "open-studio": () => openStudio(context, body),
       delete: () => deleteImport(context, body),
     }
     if (!handlers[action]) throw new HttpError(400, "unknown_action", "Unknown import action")

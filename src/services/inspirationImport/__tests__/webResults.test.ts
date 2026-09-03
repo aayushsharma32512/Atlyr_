@@ -9,6 +9,9 @@ const validResult: InspirationWebResult = {
   listingUrl: "https://shop.example/products/blue-trousers",
   imageUrl: "https://cdn.example/images/blue-trousers.jpg",
   rank: 1,
+  priceLabel: null,
+  providerResultId: "provider-result-1",
+  selectionToken: "signed-token",
 }
 
 describe("web result URL validation", () => {

@@ -1,6 +1,6 @@
 # Inspiration Import Migration Reference
 
-The feature is introduced by [`20260828233042_inspiration_imports.sql`](../supabase/migrations/20260828233042_inspiration_imports.sql) and simplified to the target schema by [`20260830194636_simplify_inspiration_import_schema.sql`](../supabase/migrations/20260830194636_simplify_inspiration_import_schema.sql). Together they create four workflow tables and one private Storage bucket.
+The feature is introduced by [`20260828233042_inspiration_imports.sql`](../supabase/migrations/20260828233042_inspiration_imports.sql), simplified by [`20260830194636_simplify_inspiration_import_schema.sql`](../supabase/migrations/20260830194636_simplify_inspiration_import_schema.sql), and aligned with selection staging and Studio drafts by [`20260904120000_link_inspiration_selections_to_outfits.sql`](../supabase/migrations/20260904120000_link_inspiration_selections_to_outfits.sql). Together they create four workflow tables and one private Storage bucket.
 
 ## Overall relationship
 
@@ -14,8 +14,9 @@ auth.users
     │         │          ├──< inspiration_import_web_results
     │         │          │
     │         │          └──< inspiration_import_selections
-    │         │                    ├── catalogue ──> products ──> user_favorites
-    │         │                    └── web ───────> web_results
+    │         │                    ├── catalogue ──> products
+    │         │                    ├── web ───────> web_results
+    │         │                    └── outfit_id ──> private Studio outfit
     │
     └── Storage: inspiration-imports/<user-id>/<import-id>/...
 ```
@@ -44,6 +45,7 @@ created
   → detected
   → candidate_selected
   → retrieving / ready
+  → selections_staged  (when the final set contains a web result)
   → committed
 
 Any processing step may also become:
@@ -106,14 +108,19 @@ The composite uniqueness on `(import_id, id)` allows child tables to enforce tha
 
 ## 3. `inspiration_import_web_results`
 
-Stores temporary Google Lens/SerpApi product results for the selected candidate.
+Stores only Google Lens/SerpApi product results the user explicitly selected. Full search rails are
+ephemeral, candidate-scoped browser cache entries with a one-hour TTL.
 
 | Column group | Columns | What it stores |
 |---|---|---|
 | Identity | `id`, `import_id`, `candidate_id` | Result, import, and garment candidate |
 | Provider | `provider`, `provider_result_id`, `rank` | SerpApi provider identity and result order |
 | Product | `title`, `merchant_domain`, `listing_url`, `image_url` | Online listing information |
-| Lifecycle | `created_at`, `expires_at` | Cache creation and expiration |
+| Lifecycle | `created_at`, `expires_at` | Selection creation and the verified signed-result expiry |
+
+`expires_at` remains the expiry carried by the signed search result. It must still be in the future
+when the final choice is staged, but it does not make the persisted selection row temporary or
+schedule its deletion.
 
 Current provider is restricted to:
 
@@ -130,7 +137,9 @@ The composite foreign key:
 
 prevents attaching a result to a candidate from another import.
 
-The Edge Function currently gives these results approximately one hour of cache validity.
+The Edge Function signs ephemeral one-hour result payloads. Card selection remains in browser
+memory/storage. Its service-only staging RPC verifies the chosen tokens and atomically inserts only
+the final one-per-candidate set when the user saves the selections.
 
 ## 4. `inspiration_import_selections`
 
@@ -142,9 +151,9 @@ Records what the user ultimately chose to add.
 | Source | `source` | `catalogue` or `web` |
 | Catalogue item | `product_id` | Existing `products.id` |
 | Web item | `web_result_id` | Selected online result |
-| Progress | `status` | Wardrobe or future ingestion state |
-| Future ingestion | `ingestion_job_id`, `ingested_product_id` | Placeholder for eventual web-product ingestion |
-| Wardrobe | `wardrobe_added_at` | When a catalogue product was added |
+| Progress | `status` | Current selection state |
+| Reserved | `ingestion_job_id`, `ingested_product_id` | Existing nullable schema fields; unused by this delivery |
+| Studio draft | `outfit_id` | Private `outfits.id` containing the final selection |
 | Audit | `created_at`, `updated_at` | Selection timestamps |
 
 ### Source shape
@@ -158,50 +167,34 @@ Records what the user ultimately chose to add.
 
 | Status | Meaning |
 |---|---|
-| `added_to_wardrobe` | Existing catalogue product added to the wardrobe |
+| `opened_in_studio` | Final inventory product opened in the linked draft |
+| `selected_for_outfit` | Catalogue product staged while selected web products await ingestion |
 | `selected_for_ingestion` | Web result selected, but ingestion not started |
-| `queued` | Future ingestion job queued |
-| `ingesting` | Future ingestion in progress |
-| `ingested` | Future ingestion completed |
-| `failed` | Ingestion failed |
+| `queued`, `ingesting`, `ingested`, `failed` | Existing reserved values; not written by this delivery |
 
-Current implementation only uses:
-
-- `added_to_wardrobe` for catalogue products.
-- `selected_for_ingestion` for a web result.
-
-It does not trigger ingestion yet.
+Lens click state is browser-only. The staging action atomically writes catalogue rows as
+`selected_for_outfit` and web rows as `selected_for_ingestion`. Job-related states are reserved for
+the later ingestion-service integration.
 
 ### Uniqueness rules
 
 | Rule | Effect |
 |---|---|
 | `(import_id, product_id)` for catalogue rows | Same catalogue product cannot be selected twice in an import |
-| One non-failed web selection per import | User can select at most one active web result |
-| Up to 30 catalogue IDs in commit RPC | Prevents excessive bulk wardrobe writes |
+| One non-failed web selection per import/candidate | User can select at most one active web result for each top or bottom |
 
 ## Existing tables affected
 
-The migration does not change the structure of existing tables, but the commit RPC writes to them.
+The Studio finalization RPC validates and links existing product and outfit rows.
 
 | Existing table | Interaction |
 |---|---|
 | `auth.users` | Owns imports |
 | `products` | Validates catalogue IDs and ensures their `type` matches the selected `top`/`bottom` |
-| `user_favorites` | Adds selected catalogue products to the user's `wardrobe` collection |
+| `outfits` | Owns the private Studio draft referenced by the import and each final selection |
 
-Catalogue commit creates:
-
-```text
-user_favorites
-  user_id          = authenticated user
-  product_id       = selected product
-  outfit_id        = NULL
-  collection_slug  = wardrobe
-  collection_label = Wardrobe
-```
-
-Existing wardrobe entries are not duplicated.
+Favorite and Wardrobe membership remain independent UI actions backed by `user_favorites`; opening
+an inspiration selection in Studio does not add it to either collection.
 
 ## RPC functions
 
@@ -212,7 +205,8 @@ All RPCs are `SECURITY DEFINER`, so they can modify private workflow tables. Use
 | `begin_inspiration_detection` | `authenticated` | Locks import, creates attempt ID, sets `detecting`; returns existing attempt if lease is active |
 | `set_inspiration_detector_job` | `authenticated` | Saves Modal's job ID only if attempt/import still matches |
 | `select_inspiration_candidates` | `authenticated` | Atomically confirms one or two candidates, with at most one per category, and removes results outside the confirmed set |
-| `commit_inspiration_import` | `authenticated` | Validates products, adds catalogue items to wardrobe, records optional web selection, marks import committed |
+| `stage_inspiration_import_selections` | `service_role` only | Atomically persists the complete final catalogue/web selection set for later ingestion |
+| `open_inspiration_import_in_studio` | `authenticated` | Validates inventory product IDs, records provenance, and links the private Studio draft |
 | `finalize_inspiration_detection` | `service_role` only | Modal callback finalizer; atomically saves candidates or records detector failure |
 
 `finalize_inspiration_detection` is intentionally different:
@@ -333,6 +327,7 @@ Deleting only the database row would not delete Storage objects because Storage 
 - Import cleanup eligibility is derived from `created_at`; it does not automatically clean up imports or images.
 - No cron, Vault, `pg_net`, or cleanup function is installed.
 - URL imports are modeled in the table, but the current Edge Function creates image imports only.
-- Ingestion columns exist as placeholders, but web-result ingestion is not triggered.
+- Ingestion execution and automatic Studio-outfit creation are intentionally deferred; the database
+  contains the complete staged selection set for the future ingestion worker to read.
 - Changing or manually cropping a source creates a new immutable import rather than versioning an existing import.
 - The schema does not currently enforce per-user daily detector or Lens quotas; add Edge-level cost controls before a broad launch if required.

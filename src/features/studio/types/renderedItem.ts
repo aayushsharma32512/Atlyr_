@@ -2,6 +2,21 @@ import type { MannequinSegmentName } from "./mannequin"
 
 export type StudioRenderedZone = "top" | "bottom" | "shoes"
 
+export type AvatarItemBounds = {
+  id: string
+  zone: StudioRenderedZone
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+export type AvatarItemBoundsFrame = {
+  items: AvatarItemBounds[]
+  canvasWidth: number
+  canvasHeight: number
+}
+
 export interface StudioProductMetadata {
   id: string
   brand?: string | null
@@ -73,4 +88,3 @@ export interface StudioRenderedItem extends StudioProductMetadata {
 }
 
 export type ZoneVisibilityMap = Partial<Record<StudioRenderedZone, MannequinSegmentName[] | null>>
-

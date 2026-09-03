@@ -38,6 +38,7 @@ export const ENGAGEMENT_SURFACES = [
   "collections_creations",
   "collections_products",
   "profile",
+  "inspiration_import",
 
   // Studio session surfaces
   "studio_main",

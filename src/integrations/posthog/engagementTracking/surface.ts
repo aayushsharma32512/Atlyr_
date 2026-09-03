@@ -89,6 +89,10 @@ export function computeSurfaceContext(opts: {
     return { surface: "profile", props: {} }
   }
 
+  if (pathname === "/inspiration-import" || pathname.startsWith("/inspiration-import/")) {
+    return { surface: "inspiration_import", props: {} }
+  }
+
   if (pathname === "/studio") {
     return { surface: "studio_main", props: {} }
   }

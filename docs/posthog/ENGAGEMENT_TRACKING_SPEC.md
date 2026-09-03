@@ -118,6 +118,7 @@ Main tabs:
 - `collections_creations`
 - `collections_products`
 - `profile`
+- `inspiration_import` (`/inspiration-import/:importId?`)
 
 Studio session surfaces (counted in Studio session time):
 - `studio_main` (`/studio`)
@@ -385,7 +386,7 @@ Home-specific rule (locked):
 - **When:** user toggles save via click or long press.
 - **Why:** precise counting (saved vs unsaved) + method attribution.
 - **Props (always):** `session_id`, `surface`, `entity_type` (`outfit|product`), `entity_id`, `new_state` (boolean), `save_method` (`click|long_press`).
-- **Props (when applicable):** `section`, `position`, `layout`, `rail_id`, `moodboard_slug` (when `surface=home_moodboard`), `combo_key` (studio context only).
+- **Props (when applicable):** `section`, `position`, `layout`, `rail_id`, `collection_slug` (when the control has an explicit destination, such as Favorites or Wardrobe), `moodboard_slug` (when `surface=home_moodboard`), `combo_key` (studio context only).
 
 #### `saved_to_collection`
 - **When:** a save action results in the entity being saved into a named destination collection.

@@ -21,5 +21,6 @@ export const collectionsKeys = {
   moodboardItems: (slug: string, size = 20) => [...collectionsKeys.all, "moodboard-items", slug, size] as const,
   collectionProducts: (slug: string) => [...collectionsKeys.products(), "collection", slug] as const,
   products: () => [...collectionsKeys.all, "products"] as const,
+  productCollectionMembership: () => [...collectionsKeys.products(), "membership"] as const,
   productFavorites: () => [...collectionsKeys.all, "product-favorites"] as const,
 }

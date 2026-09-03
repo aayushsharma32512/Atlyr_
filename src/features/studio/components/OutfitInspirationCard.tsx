@@ -12,6 +12,7 @@ import { IconButton } from "@/design-system/primitives/icon-button"
 import { cn } from "@/lib/utils"
 import type {
   OutfitInspirationVariant,
+  AvatarItemBoundsFrame,
   StudioRenderedItem,
   StudioRenderedZone,
   MannequinSegmentName,
@@ -50,7 +51,10 @@ interface OutfitInspirationCardProps {
   animatingZone?: StudioRenderedZone | null
   /** Callback when avatar is fully loaded */
   onAvatarReady?: (ready: boolean) => void
+  onItemBoundsChange?: (frame: AvatarItemBoundsFrame) => void
   allowEmptyMannequin?: boolean
+  /** Override the data-driven mannequin choice for a dedicated preview surface. */
+  avatarPlacementMode?: "auto" | "2d" | "3d"
   onSlotSelect?: (slot: "top" | "bottom" | "shoes") => void
   /** Ref to the avatar container for snapshot capture */
   avatarRef?: React.Ref<HTMLDivElement>
@@ -119,7 +123,9 @@ export function OutfitInspirationCard({
   slotOrder,
   animatingZone,
   onAvatarReady,
+  onItemBoundsChange,
   allowEmptyMannequin = false,
+  avatarPlacementMode = "auto",
   onSlotSelect,
   avatarRef,
   framed = false,
@@ -226,9 +232,8 @@ export function OutfitInspirationCard({
     }
     return []
   }, [hasExplicitRenderedItems, hookDerivedItems, renderedItems])
-  // Which mannequin gets used is decided by the data alone — see AvatarRenderer. There is no
-  // user-facing 2D/3D toggle: an outfit renders on the placement mannequin whenever its garments
-  // carry a placement, and on the legacy SVG avatar only when none do.
+  // AvatarRenderer normally decides from placement data. Dedicated preview surfaces can override
+  // that choice (for example, the import flow shows the current 3D mannequin while it is empty).
   const visibleSegments = useMemo(() => {
     if (hookDerivedItems.length) {
       return computeOutfitVisibleSegments(hookDerivedItems)
@@ -503,8 +508,10 @@ export function OutfitInspirationCard({
                 slotOrder={slotOrder}
                 animatingZone={animatingZone}
                 onReady={onAvatarReady}
+                onItemBoundsChange={onItemBoundsChange}
                 avatarRef={avatarRef}
                 fetchPriority={isHighPriority ? "high" : "low"}
+                placementMode={avatarPlacementMode}
               />
             </div>
           ) : (
@@ -532,8 +539,10 @@ export function OutfitInspirationCard({
               slotOrder={slotOrder}
               animatingZone={animatingZone}
               onReady={onAvatarReady}
+              onItemBoundsChange={onItemBoundsChange}
               avatarRef={avatarRef}
               fetchPriority={isHighPriority ? "high" : "low"}
+              placementMode={avatarPlacementMode}
             />
           )
         ) : shouldRenderFallbackImage ? (

@@ -60,7 +60,7 @@ export function trackItemClicked(
 
 export function trackSaveToggled(
   analytics: EngagementAnalytics,
-  args: { entity_type: EntityType; entity_id: string; new_state: boolean; save_method: SaveMethod } & EntityUiContext,
+  args: { entity_type: EntityType; entity_id: string; collection_slug?: string; new_state: boolean; save_method: SaveMethod } & EntityUiContext,
 ) {
   analytics.capture("save_toggled", args as unknown as Record<string, unknown>)
 }
@@ -81,4 +81,3 @@ export function trackProductBuyClicked(
     ...args,
   } as unknown as Record<string, unknown>)
 }
-

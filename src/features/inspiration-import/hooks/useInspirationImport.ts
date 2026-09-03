@@ -1,10 +1,14 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useToast } from "@/hooks/use-toast"
-import { collectionsKeys } from "@/features/collections/queryKeys"
 import { inspirationImportKeys } from "@/features/inspiration-import/queryKeys"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { inspirationImportService } from "@/services/inspirationImport/inspirationImportService"
-import type { InspirationCommitInput, InspirationImport } from "@/services/inspirationImport/types"
+import type {
+  InspirationImport,
+  InspirationOpenStudioInput,
+  InspirationStageSelectionsInput,
+} from "@/services/inspirationImport/types"
+
+const DETECTION_POLL_INTERVAL_MS = 3_000
 
 export function useStartInspirationImport() {
   return useMutation({ mutationFn: inspirationImportService.startImageImport })
@@ -18,7 +22,7 @@ export function useInspirationImport(importId: string | null) {
     staleTime: 2_000,
     refetchInterval: (query) => {
       const record = query.state.data as InspirationImport | undefined
-      return record?.import.status === "detecting" ? 1_500 : false
+      return record?.import.status === "detecting" ? DETECTION_POLL_INTERVAL_MS : false
     },
   })
 }
@@ -70,32 +74,33 @@ export function useImportCatalogueResults(
   }))
 }
 
-export function useImportWebResults(importId: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (candidateId?: string) => inspirationImportService.searchWeb(importId, candidateId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: inspirationImportKeys.detail(importId) }),
+export function useImportWebResults(importId: string, candidateId: string | null) {
+  return useQuery({
+    queryKey: inspirationImportKeys.web(importId, candidateId ?? "none"),
+    queryFn: ({ signal }) => candidateId
+      ? inspirationImportService.searchWeb(importId, candidateId, signal)
+      : Promise.resolve([]),
+    enabled: false,
+    retry: false,
+    staleTime: 60 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
   })
 }
 
-export function useCommitImportSelections(importId: string) {
+export function useStageImportSelections(importId: string) {
   const queryClient = useQueryClient()
-  const { toast } = useToast()
   return useMutation({
-    mutationFn: (input: InspirationCommitInput) => inspirationImportService.commitSelections(importId, input),
-    onSuccess: (result) => {
-      void Promise.all([
-        queryClient.invalidateQueries({ queryKey: inspirationImportKeys.detail(importId) }),
-        queryClient.invalidateQueries({ queryKey: collectionsKeys.overview() }),
-        queryClient.invalidateQueries({ queryKey: collectionsKeys.collectionProducts("wardrobe") }),
-        queryClient.invalidateQueries({ queryKey: collectionsKeys.productFavorites() }),
-        queryClient.invalidateQueries({ queryKey: collectionsKeys.moodboardPreview("wardrobe") }),
-      ])
-      const count = result.catalogue.addedProductIds.length
-      toast({
-        title: count ? `${count} item${count === 1 ? "" : "s"} added to Wardrobe` : "Selections saved",
-        description: result.web ? "The online item is ready to import later." : undefined,
-      })
+    mutationFn: (input: InspirationStageSelectionsInput) => inspirationImportService.stageSelections(importId, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: inspirationImportKeys.detail(importId) })
     },
+  })
+}
+
+export function useOpenInspirationImportInStudio(importId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: InspirationOpenStudioInput) => inspirationImportService.openInStudio(importId, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: inspirationImportKeys.detail(importId) }),
   })
 }

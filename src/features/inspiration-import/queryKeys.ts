@@ -14,4 +14,10 @@ export const inspirationImportKeys = {
     category,
     gender ?? "all-genders",
   ] as const,
+  web: (importId: string, candidateId: string) => [
+    ...inspirationImportKeys.all,
+    "web",
+    importId,
+    candidateId,
+  ] as const,
 }
