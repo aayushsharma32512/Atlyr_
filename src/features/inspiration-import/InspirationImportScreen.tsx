@@ -99,12 +99,17 @@ function DetectionProgress({ sourceUrl, error, onBack }: DetectionProgressProps)
                 aria-hidden="true"
                 className="inspiration-scan-line absolute inset-x-0 z-10 h-0.5 bg-gradient-to-r from-transparent via-terracotta to-transparent"
               />
-              <span className="absolute inset-x-0 bottom-5 flex items-center justify-center gap-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-terracotta">
-                <Loader2 className="size-3.5 animate-spin" /> Identifying pieces
-              </span>
             </div>
           ) : null}
         </div>
+        {!error ? (
+          <p
+            className="mt-3 flex items-center justify-center gap-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-terracotta"
+            aria-live="polite"
+          >
+            <Loader2 className="size-3.5 animate-spin" /> Identifying pieces
+          </p>
+        ) : null}
         {error ? (
           <div className="mx-auto mt-4 max-w-md text-center" role="alert">
             <p className="text-sm text-destructive">{error}</p>
@@ -130,7 +135,6 @@ export default function InspirationImportScreen() {
   const importQuery = useInspirationImport(importId)
   const detectMutation = useDetectImportCandidates(importId ?? "")
   const selectMutation = useSelectImportCandidates(importId ?? "")
-  const webMutation = useImportWebResults(importId ?? "")
   const stageSelectionsMutation = useStageImportSelections(importId ?? "")
   const createDraftMutation = useCreateDraftOutfit()
   const openStudioMutation = useOpenInspirationImportInStudio(importId ?? "")
@@ -138,7 +142,6 @@ export default function InspirationImportScreen() {
   const [sourceFile, setSourceFile] = useState<File | null>(null)
   const [pendingCandidateIds, setPendingCandidateIds] = useState<string[]>([])
   const [categoryChoices, setCategoryChoices] = useState<CategoryChoiceState>({})
-  const [webResultsByCandidate, setWebResultsByCandidate] = useState<Record<string, InspirationWebResult[]>>({})
   const [choosingCandidate, setChoosingCandidate] = useState(false)
   const [activeCandidateId, setActiveCandidateId] = useState<string | null>(null)
   const [resultsSource, setResultsSource] = useState<"inventory" | "web">("inventory")
@@ -180,6 +183,9 @@ export default function InspirationImportScreen() {
   const selectedCandidate = selectedCandidates.find((item) => item.id === activeCandidateId)
     ?? selectedCandidates[0]
     ?? null
+  const webQuery = useImportWebResults(importId ?? "", selectedCandidate?.id ?? null)
+  const activeCandidateIdRef = useRef<string | null>(null)
+  activeCandidateIdRef.current = selectedCandidate?.id ?? null
   const catalogueSearches = useImportCatalogueResults(record)
   const activeCatalogueSearch = catalogueSearches.find(({ candidate }) => candidate.id === selectedCandidate?.id)
   const catalogueResults = activeCatalogueSearch?.results ?? []
@@ -189,11 +195,11 @@ export default function InspirationImportScreen() {
     for (const result of record?.webResults ?? []) {
       if (result.candidateId === selectedCandidate.id) resultsByProviderId.set(result.providerResultId, result)
     }
-    for (const result of webResultsByCandidate[selectedCandidate.id] ?? []) {
+    for (const result of webQuery.data ?? []) {
       resultsByProviderId.set(result.providerResultId, result)
     }
     return [...resultsByProviderId.values()].sort((left, right) => left.rank - right.rank)
-  }, [record?.webResults, selectedCandidate, webResultsByCandidate])
+  }, [record?.webResults, selectedCandidate, webQuery.data])
   const choices = useMemo(() => selectedCandidates.reduce<Partial<Record<InspirationCategory, InspirationResultChoice | null>>>((result, candidate) => {
     const state = categoryChoices[candidate.category]
     result[candidate.category] = state?.candidateId === candidate.id ? state.choice : null
@@ -234,6 +240,10 @@ export default function InspirationImportScreen() {
       ? current
       : record.selectedCandidateIds[0] ?? null)
   }, [record])
+
+  useEffect(() => {
+    setResultsSource("inventory")
+  }, [selectedCandidate?.id])
 
   useEffect(() => {
     if (!record) return
@@ -277,7 +287,7 @@ export default function InspirationImportScreen() {
     ?? importQuery.error?.message
     ?? selectMutation.error?.message
     ?? catalogueSearches.find(({ error }) => error)?.error?.message
-    ?? webMutation.error?.message
+    ?? webQuery.error?.message
     ?? stageSelectionsMutation.error?.message
     ?? createDraftMutation.error?.message
     ?? openStudioMutation.error?.message
@@ -332,18 +342,17 @@ export default function InspirationImportScreen() {
     })
   }
 
-  const showWebResults = () => {
+  const showWebResults = async () => {
     if (!selectedCandidate) return
-    if (Object.prototype.hasOwnProperty.call(webResultsByCandidate, selectedCandidate.id)) {
+    const candidateId = selectedCandidate.id
+    if (webQuery.data !== undefined) {
       setResultsSource("web")
       return
     }
-    webMutation.mutate(selectedCandidate.id, {
-      onSuccess: (results) => {
-        setWebResultsByCandidate((current) => ({ ...current, [selectedCandidate.id]: results }))
-        setResultsSource("web")
-      },
-    })
+    const result = await webQuery.refetch()
+    if (!result.error && result.data !== undefined && activeCandidateIdRef.current === candidateId) {
+      setResultsSource("web")
+    }
   }
 
   const setCandidateChoice = (
@@ -630,12 +639,12 @@ export default function InspirationImportScreen() {
                 <button
                   type="button"
                   className="flex h-9 items-center gap-1 rounded-[5px] border border-hairline bg-card px-3 text-[9px] font-semibold uppercase tracking-[0.13em] text-foreground disabled:cursor-wait disabled:text-muted-foreground"
-                  onClick={showWebResults}
-                  disabled={webMutation.isPending}
+                  onClick={() => void showWebResults()}
+                  disabled={webQuery.isFetching}
                 >
-                  {webMutation.isPending ? <Loader2 className="size-3 animate-spin" /> : null}
-                  {webMutation.isPending ? "Searching" : "Web search"}
-                  {webMutation.isPending ? null : <ChevronRight className="size-3" />}
+                  {webQuery.isFetching ? <Loader2 className="size-3 animate-spin" /> : null}
+                  {webQuery.isFetching ? "Searching" : "Web search"}
+                  {webQuery.isFetching ? null : <ChevronRight className="size-3" />}
                 </button>
               )}
             </div>

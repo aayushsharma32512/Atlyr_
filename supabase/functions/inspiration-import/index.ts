@@ -393,9 +393,19 @@ async function stageSelections(context: Awaited<ReturnType<typeof requireUser>>,
       merchantDomain: selection.merchantDomain,
       listingUrl: selection.listingUrl,
       imageUrl: selection.imageUrl,
+      expiresAt: selection.expiresAt,
     })),
   })
-  if (error) throw new HttpError(409, "selection_staging_failed", "The final selections could not be saved")
+  if (error) {
+    console.error("[inspiration-import] selection staging failed", {
+      importId,
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    })
+    throw new HttpError(409, "selection_staging_failed", "The final selections could not be saved")
+  }
   return data
 }
 

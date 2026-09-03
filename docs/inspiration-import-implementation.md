@@ -64,7 +64,7 @@ wording elsewhere in this plan:
   metadata, or their URL belongs to the curated popular-shopping-domain allowlist;
 - complete Lens result rails are ephemeral. The SPA keeps them in candidate-scoped
   `sessionStorage` entries with a one-hour expiry; the database is not a search-result cache;
-- the Edge Function signs every ephemeral result. The final ingestion action verifies the signature,
+- the Edge Function signs every ephemeral result. The final staging action verifies the signature,
   import/candidate binding, and expiry before storing it;
 - only each category's final selected web result is written to `inspiration_import_web_results`,
   together with its `selected_for_ingestion` selection row;
@@ -665,6 +665,10 @@ has SerpApi commerce metadata (price, explicit stock state, or rating with revie
 curated popular-shopping-domain list, and stores all qualifying rows without an application-level
 result cap. The response rail is cached in browser `sessionStorage` for one hour and is not written
 to Postgres.
+The SPA observes each candidate's search through its own TanStack Query key. Switching candidates
+cannot apply a late result to the active garment, and a request that does not settle is aborted after
+55 seconds so the Web search control becomes retryable. A completed browser-cache entry remains
+available after navigation or refresh until its TTL expires.
 The SerpApi key remains an Edge Function secret. External images remain hotlinked and attributed to
 their merchant domain.
 
@@ -782,12 +786,13 @@ merchant_domain      text not null
 listing_url          text not null
 image_url            text not null
 created_at           timestamptz not null default now()
-expires_at           timestamptz null       -- null for durable selected rows
+expires_at           timestamptz not null   -- expiry copied from the verified signed result
 ```
 
-`expires_at` is nullable for durable selected rows. Search rails do not use this table. Persisting
-only a server-signed selected result prevents a client from substituting an arbitrary listing URL
-into the later ingestion contract.
+`expires_at` must be in the future when the result is staged. It records the signed search result's
+validation window; it does not make the persisted selection temporary or schedule its deletion.
+Search rails do not use this table. Persisting only a server-signed selected result prevents a
+client from substituting an arbitrary listing URL into the later ingestion contract.
 
 ### 11.4 `inspiration_import_selections`
 

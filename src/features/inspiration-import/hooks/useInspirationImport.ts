@@ -74,9 +74,16 @@ export function useImportCatalogueResults(
   }))
 }
 
-export function useImportWebResults(importId: string) {
-  return useMutation({
-    mutationFn: (candidateId: string) => inspirationImportService.searchWeb(importId, candidateId),
+export function useImportWebResults(importId: string, candidateId: string | null) {
+  return useQuery({
+    queryKey: inspirationImportKeys.web(importId, candidateId ?? "none"),
+    queryFn: ({ signal }) => candidateId
+      ? inspirationImportService.searchWeb(importId, candidateId, signal)
+      : Promise.resolve([]),
+    enabled: false,
+    retry: false,
+    staleTime: 60 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
   })
 }
 

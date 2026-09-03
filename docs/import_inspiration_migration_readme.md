@@ -116,7 +116,11 @@ ephemeral, candidate-scoped browser cache entries with a one-hour TTL.
 | Identity | `id`, `import_id`, `candidate_id` | Result, import, and garment candidate |
 | Provider | `provider`, `provider_result_id`, `rank` | SerpApi provider identity and result order |
 | Product | `title`, `merchant_domain`, `listing_url`, `image_url` | Online listing information |
-| Lifecycle | `created_at`, `expires_at` | Selection creation; `expires_at` is null for durable selected rows |
+| Lifecycle | `created_at`, `expires_at` | Selection creation and the verified signed-result expiry |
+
+`expires_at` remains the expiry carried by the signed search result. It must still be in the future
+when the final choice is staged, but it does not make the persisted selection row temporary or
+schedule its deletion.
 
 Current provider is restricted to:
 
