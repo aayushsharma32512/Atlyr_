@@ -1,6 +1,8 @@
 import base64
 import io
+import tempfile
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 from PIL import Image
@@ -9,8 +11,51 @@ from visual_search.inspiration_candidate_pipeline import (
     MAX_CROP_EDGE,
     _deduplicate,
     _encode_webp,
+    _group_same_person_fashn_fragments,
     _partition_component_by_scopes,
+    run_inspiration_candidate_detection,
 )
+
+
+class ExifOrientationTest(unittest.TestCase):
+    def test_normalizes_exif_orientation_before_running_models(self):
+        class Parser:
+            received_shape: tuple[int, ...] | None = None
+
+            def predict(self, source: np.ndarray) -> np.ndarray:
+                self.received_shape = source.shape
+                return np.zeros(source.shape[:2], dtype=np.uint8)
+
+        parser = Parser()
+        dino_sizes: list[tuple[int, int]] = []
+
+        def run_dino(source: Image.Image, _queries: list[str]) -> list[dict]:
+            dino_sizes.append(source.size)
+            return []
+
+        # EXIF orientation 6 means the stored 4x2 pixels should display after a
+        # 90-degree clockwise rotation, producing an upright 2x4 image.
+        source = Image.new("RGB", (4, 2), (120, 80, 40))
+        exif = Image.Exif()
+        exif[274] = 6
+
+        with tempfile.NamedTemporaryFile(suffix=".jpg") as image_file:
+            source.save(image_file.name, exif=exif)
+            with (
+                patch(
+                    "visual_search.inspiration_candidate_pipeline._get_fashn_parser",
+                    return_value=parser,
+                ),
+                patch(
+                    "visual_search.inspiration_candidate_pipeline._run_grounding_dino",
+                    side_effect=run_dino,
+                ),
+            ):
+                result = run_inspiration_candidate_detection(image_file.name)
+
+        self.assertEqual(parser.received_shape, (4, 2, 3))
+        self.assertEqual(dino_sizes, [(2, 4)])
+        self.assertEqual(result["imageSize"], {"width": 2, "height": 4})
 
 
 class EncodeWebpTest(unittest.TestCase):
@@ -111,6 +156,113 @@ class DeduplicateCandidatesTest(unittest.TestCase):
         result = _deduplicate([first_top, second_top])
 
         self.assertEqual(result, [first_top, second_top])
+
+
+class GroupSamePersonFashnFragmentsTest(unittest.TestCase):
+    @staticmethod
+    def candidate(
+        box: list[int],
+        component_box: list[int],
+        pixels: int,
+        lab: tuple[float, float, float],
+        scope_id: str = "person:0",
+    ) -> dict:
+        return {
+            "category": "top",
+            "label": "top",
+            "confidence": 0.55,
+            "box": box,
+            "boxSource": "fashn_only",
+            "metrics": {"componentPixels": pixels, "personScoped": True},
+            "_scopeId": scope_id,
+            "_scopeBox": [100, 150, 370, 600],
+            "_componentBox": component_box,
+            "_componentPixels": pixels,
+            "_componentLab": lab,
+            "_rawBox": component_box,
+        }
+
+    def test_groups_same_person_sleeves_before_padding(self):
+        torso = self.candidate(
+            [164, 239, 312, 446],
+            [181, 263, 295, 422],
+            13_369,
+            (48.0, 62.0, 39.0),
+        )
+        right_sleeve = self.candidate(
+            [267, 229, 346, 513],
+            [276, 262, 337, 480],
+            5_233,
+            (49.0, 61.0, 40.0),
+        )
+        left_cuff = self.candidate(
+            [136, 307, 173, 392],
+            [140, 311, 169, 388],
+            1_265,
+            (47.0, 63.0, 38.0),
+        )
+
+        result = _group_same_person_fashn_fragments(
+            [right_sleeve, left_cuff, torso],
+            width=474,
+            height=843,
+        )
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["_rawBox"], [140, 262, 337, 480])
+        self.assertEqual(result[0]["box"], [110, 229, 367, 513])
+        self.assertEqual(result[0]["metrics"]["componentPixels"], 19_867)
+        self.assertEqual(result[0]["metrics"]["mergedFragmentCount"], 2)
+        self.assertEqual(
+            result[0]["metrics"]["fragmentGrouping"],
+            "same_person_geometry_color",
+        )
+
+    def test_keeps_central_layer_separate(self):
+        torso = self.candidate(
+            [85, 80, 215, 270],
+            [100, 100, 200, 250],
+            10_000,
+            (50.0, 20.0, 10.0),
+        )
+        central_layer = self.candidate(
+            [115, 115, 185, 235],
+            [130, 130, 170, 220],
+            3_000,
+            (51.0, 20.0, 10.0),
+        )
+
+        grouped = _group_same_person_fashn_fragments(
+            [torso, central_layer],
+            width=400,
+            height=600,
+        )
+        result = _deduplicate(grouped)
+
+        self.assertEqual(len(result), 2)
+
+    def test_keeps_different_colored_lateral_garment_separate(self):
+        torso = self.candidate(
+            [85, 80, 215, 270],
+            [100, 100, 200, 250],
+            10_000,
+            (50.0, 65.0, 40.0),
+        )
+        lateral_layer = self.candidate(
+            [185, 90, 260, 275],
+            [195, 110, 245, 255],
+            4_000,
+            (35.0, -5.0, -35.0),
+        )
+
+        grouped = _group_same_person_fashn_fragments(
+            [torso, lateral_layer],
+            width=400,
+            height=600,
+        )
+        result = _deduplicate(grouped)
+
+        self.assertEqual(len(result), 2)
 
 
 class ComponentPartitionTest(unittest.TestCase):

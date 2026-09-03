@@ -161,8 +161,14 @@ export function useSaveProductToCollection() {
     },
     onMutate: async (params) => {
       const normalizedSlug = params.slug.toLowerCase()
-      await queryClient.cancelQueries({ queryKey: collectionsKeys.productFavorites() })
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: collectionsKeys.productFavorites() }),
+        queryClient.cancelQueries({ queryKey: collectionsKeys.productCollectionMembership() }),
+      ])
       const previousFavorites = queryClient.getQueryData<string[]>(collectionsKeys.productFavorites())
+      const previousMembership = queryClient.getQueryData<Record<string, Set<string>>>(
+        collectionsKeys.productCollectionMembership(),
+      )
 
       if (normalizedSlug === "favorites") {
         queryClient.setQueryData<string[]>(collectionsKeys.productFavorites(), (current = []) => {
@@ -171,11 +177,32 @@ export function useSaveProductToCollection() {
         })
       }
 
-      return { previousFavorites }
+      queryClient.setQueryData<Record<string, Set<string>>>(
+        collectionsKeys.productCollectionMembership(),
+        (current = {}) => {
+          const nextForSlug = new Set(current[normalizedSlug] ?? [])
+          nextForSlug.add(params.productId)
+          return { ...current, [normalizedSlug]: nextForSlug }
+        },
+      )
+
+      return { previousFavorites, previousMembership }
     },
     onError: (_err, _params, context) => {
-      if (!context?.previousFavorites) return
-      queryClient.setQueryData<string[]>(collectionsKeys.productFavorites(), context.previousFavorites)
+      if (!context) return
+      if (context.previousFavorites === undefined) {
+        queryClient.removeQueries({ queryKey: collectionsKeys.productFavorites(), exact: true })
+      } else {
+        queryClient.setQueryData<string[]>(collectionsKeys.productFavorites(), context.previousFavorites)
+      }
+      if (context.previousMembership === undefined) {
+        queryClient.removeQueries({ queryKey: collectionsKeys.productCollectionMembership(), exact: true })
+      } else {
+        queryClient.setQueryData<Record<string, Set<string>>>(
+          collectionsKeys.productCollectionMembership(),
+          context.previousMembership,
+        )
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: collectionsKeys.overview() })
@@ -219,6 +246,50 @@ export function useRemoveProductFromCollection() {
         throw new Error("Please sign in to remove products")
       }
       return removeProductFromCollection({ ...params, userId: user.id })
+    },
+    onMutate: async (params) => {
+      const normalizedSlug = params.slug.toLowerCase()
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: collectionsKeys.productFavorites() }),
+        queryClient.cancelQueries({ queryKey: collectionsKeys.productCollectionMembership() }),
+      ])
+      const previousFavorites = queryClient.getQueryData<string[]>(collectionsKeys.productFavorites())
+      const previousMembership = queryClient.getQueryData<Record<string, Set<string>>>(
+        collectionsKeys.productCollectionMembership(),
+      )
+
+      if (normalizedSlug === "favorites") {
+        queryClient.setQueryData<string[]>(collectionsKeys.productFavorites(), (current = []) =>
+          current.filter((id) => id !== params.productId),
+        )
+      }
+
+      queryClient.setQueryData<Record<string, Set<string>>>(
+        collectionsKeys.productCollectionMembership(),
+        (current = {}) => {
+          const nextForSlug = new Set(current[normalizedSlug] ?? [])
+          nextForSlug.delete(params.productId)
+          return { ...current, [normalizedSlug]: nextForSlug }
+        },
+      )
+
+      return { previousFavorites, previousMembership }
+    },
+    onError: (_err, _params, context) => {
+      if (!context) return
+      if (context.previousFavorites === undefined) {
+        queryClient.removeQueries({ queryKey: collectionsKeys.productFavorites(), exact: true })
+      } else {
+        queryClient.setQueryData<string[]>(collectionsKeys.productFavorites(), context.previousFavorites)
+      }
+      if (context.previousMembership === undefined) {
+        queryClient.removeQueries({ queryKey: collectionsKeys.productCollectionMembership(), exact: true })
+      } else {
+        queryClient.setQueryData<Record<string, Set<string>>>(
+          collectionsKeys.productCollectionMembership(),
+          context.previousMembership,
+        )
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: collectionsKeys.overview() })
@@ -375,7 +446,7 @@ export function useMoodboardPreviews(slugs: string[]) {
 export function useProductCollectionMembership() {
   const { user } = useAuth()
   return useQuery({
-    queryKey: [...collectionsKeys.products(), "membership"],
+    queryKey: collectionsKeys.productCollectionMembership(),
     queryFn: async () => {
       const raw = await fetchProductCollectionMembership(user?.id ?? null)
       const result: Record<string, Set<string>> = {}

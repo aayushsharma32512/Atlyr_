@@ -1,37 +1,50 @@
-import { Check } from "lucide-react"
+import { Heart, Shirt } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { InspirationCatalogueResult } from "@/services/inspirationImport/types"
 
 type Props = {
   results: InspirationCatalogueResult[]
-  previewId: string | null
-  selectedIds: Set<string>
-  onPreview: (id: string) => void
-  onToggle: (id: string) => void
+  selectedId: string | null
+  isFavorite: (id: string) => boolean
+  isInWardrobe: (id: string) => boolean
+  isSaving?: boolean
+  onSelect: (result: InspirationCatalogueResult) => void
+  onToggleFavorite: (id: string, nextSaved: boolean, position: number) => void
+  onToggleWardrobe: (id: string, nextSaved: boolean, position: number) => void
 }
 
 export function CatalogueMatchRack({
   results,
-  previewId,
-  selectedIds,
-  onPreview,
-  onToggle,
+  selectedId,
+  isFavorite,
+  isInWardrobe,
+  isSaving = false,
+  onSelect,
+  onToggleFavorite,
+  onToggleWardrobe,
 }: Props) {
   return (
     <div className="-mx-5 overflow-x-auto px-5 pb-2">
       <div className="flex w-max gap-2.5">
-        {results.map((result) => {
-          const selected = selectedIds.has(result.id)
-          const previewed = previewId === result.id
+        {results.map((result, position) => {
+          const selected = selectedId === result.id
+          const favorite = isFavorite(result.id)
+          const inWardrobe = isInWardrobe(result.id)
           return (
             <article
               key={result.id}
               className={cn(
                 "relative w-28 overflow-hidden rounded-[7px] border-2 bg-card p-1 sm:w-40",
-                previewed ? "border-terracotta" : "border-hairline",
+                selected ? "border-terracotta" : "border-hairline",
               )}
             >
-              <button type="button" className="block w-full" onClick={() => onPreview(result.id)}>
+              <button
+                type="button"
+                aria-label={`${selected ? "Deselect" : "Select"} ${result.title} for Studio`}
+                aria-pressed={selected}
+                className="block w-full"
+                onClick={() => onSelect(result)}
+              >
                 <img src={result.thumbnailSrc} alt={result.title} className="aspect-square w-full rounded-[4px] bg-white object-contain" />
                 <span className="block px-2 pb-2 pt-3 text-left">
                   <span className="block truncate text-[11px] font-semibold text-foreground">{result.title}</span>
@@ -43,17 +56,33 @@ export function CatalogueMatchRack({
               </button>
               <button
                 type="button"
-                aria-label={selected ? `Remove ${result.title} from Wardrobe selection` : `Add ${result.title} to Wardrobe`}
-                aria-pressed={selected}
-                onClick={() => onToggle(result.id)}
+                aria-label={inWardrobe ? `Remove ${result.title} from Wardrobe` : `Add ${result.title} to Wardrobe`}
+                aria-pressed={inWardrobe}
+                disabled={isSaving}
+                onClick={() => onToggleWardrobe(result.id, !inWardrobe, position)}
                 className={cn(
-                  "absolute right-2 top-2 flex size-7 items-center justify-center rounded-full border text-[10px] transition-colors",
-                  selected
+                  "absolute left-2 top-2 flex size-7 items-center justify-center rounded-full border shadow-sm transition-colors disabled:cursor-wait",
+                  inWardrobe
                     ? "border-foreground bg-foreground text-background"
-                    : "border-hairline bg-background/95 text-foreground",
+                    : "border-white/90 bg-black/35 text-white backdrop-blur-sm hover:bg-black/50",
                 )}
               >
-                <Check className={cn("size-3.5", selected ? "opacity-100" : "opacity-35")} />
+                <Shirt className="size-3.5" />
+              </button>
+              <button
+                type="button"
+                aria-label={favorite ? `Remove ${result.title} from Favorites` : `Add ${result.title} to Favorites`}
+                aria-pressed={favorite}
+                disabled={isSaving}
+                onClick={() => onToggleFavorite(result.id, !favorite, position)}
+                className={cn(
+                  "absolute right-2 top-2 flex size-7 items-center justify-center rounded-full border shadow-sm transition-colors disabled:cursor-wait",
+                  favorite
+                    ? "border-terracotta bg-terracotta text-white"
+                    : "border-white/90 bg-black/35 text-white backdrop-blur-sm hover:bg-black/50",
+                )}
+              >
+                <Heart className={cn("size-3.5", favorite && "fill-current")} />
               </button>
             </article>
           )

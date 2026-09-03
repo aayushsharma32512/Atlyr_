@@ -12,7 +12,7 @@ import time
 from typing import Any
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 from scipy import ndimage
 
 from visual_search.fashn_gdino_pipeline import (
@@ -210,10 +210,65 @@ def _normalized_box(box: list[int], width: int, height: int) -> dict[str, float]
     }
 
 
+def _median_component_lab(
+    source: np.ndarray,
+    component: np.ndarray,
+) -> tuple[float, float, float]:
+    """Return a robust perceptual color summary for one FASHN component."""
+    median_rgb = np.median(source[component], axis=0).astype(np.float64) / 255.0
+    linear_rgb = np.where(
+        median_rgb <= 0.04045,
+        median_rgb / 12.92,
+        ((median_rgb + 0.055) / 1.055) ** 2.4,
+    )
+    x, y, z = np.array([
+        [0.4124564, 0.3575761, 0.1804375],
+        [0.2126729, 0.7151522, 0.0721750],
+        [0.0193339, 0.1191920, 0.9503041],
+    ]) @ linear_rgb
+    normalized = np.array([x / 0.95047, y, z / 1.08883])
+    delta = 6 / 29
+    transformed = np.where(
+        normalized > delta ** 3,
+        np.cbrt(normalized),
+        normalized / (3 * delta ** 2) + 4 / 29,
+    )
+    return (
+        float(116 * transformed[1] - 16),
+        float(500 * (transformed[0] - transformed[1])),
+        float(200 * (transformed[1] - transformed[2])),
+    )
+
+
+def _lab_distance(first: tuple[float, ...], second: tuple[float, ...]) -> float:
+    return float(np.linalg.norm(np.asarray(first) - np.asarray(second)))
+
+
+def _vertical_overlap_over_smaller(first: list[int], second: list[int]) -> float:
+    overlap = max(0, min(first[3], second[3]) - max(first[1], second[1]))
+    smaller_height = min(first[3] - first[1], second[3] - second[1])
+    return overlap / max(1, smaller_height)
+
+
+def _horizontal_gap(first: list[int], second: list[int]) -> int:
+    return max(0, first[0] - second[2], second[0] - first[2])
+
+
+def _is_lateral_fragment(anchor_box: list[int], fragment_box: list[int]) -> bool:
+    """Keep this fallback sleeve-shaped instead of merging central layers."""
+    anchor_width = max(1, anchor_box[2] - anchor_box[0])
+    fragment_center = (fragment_box[0] + fragment_box[2]) / 2
+    return (
+        fragment_center <= anchor_box[0] + anchor_width * 0.25
+        or fragment_center >= anchor_box[2] - anchor_width * 0.25
+    )
+
+
 def _candidate_for_component(
     category: str,
     component: np.ndarray,
     detections: list[dict[str, Any]],
+    source_array: np.ndarray,
     width: int,
     height: int,
     scope_id: str | None = None,
@@ -278,13 +333,143 @@ def _candidate_for_component(
         "boxSource": box_source,
         "metrics": metrics,
         "_scopeId": scope_id,
+        "_scopeBox": scope_box,
+        "_componentBox": component_box,
+        "_componentPixels": component_pixels,
+        "_componentLab": _median_component_lab(source_array, component),
+        "_rawBox": unpadded,
     }
+
+
+def _is_same_person_fashn_fragment(
+    anchor: dict[str, Any],
+    fragment: dict[str, Any],
+    image_width: int,
+    max_component_pixel_ratio: float,
+    max_horizontal_gap_ratio: float,
+    min_vertical_overlap: float,
+    max_color_distance: float,
+) -> tuple[bool, float]:
+    if (
+        anchor["category"] != "top"
+        or fragment["category"] != anchor["category"]
+        or anchor.get("boxSource") != "fashn_only"
+        or fragment.get("boxSource") != "fashn_only"
+        or anchor.get("_scopeId") is None
+        or fragment.get("_scopeId") != anchor.get("_scopeId")
+    ):
+        return False, float("inf")
+
+    anchor_pixels = max(1, int(anchor.get("_componentPixels", 0)))
+    fragment_pixels = int(fragment.get("_componentPixels", 0))
+    if not fragment_pixels or fragment_pixels / anchor_pixels > max_component_pixel_ratio:
+        return False, float("inf")
+
+    anchor_box = anchor.get("_componentBox")
+    fragment_box = fragment.get("_componentBox")
+    anchor_lab = anchor.get("_componentLab")
+    fragment_lab = fragment.get("_componentLab")
+    if not anchor_box or not fragment_box or anchor_lab is None or fragment_lab is None:
+        return False, float("inf")
+
+    scope_box = anchor.get("_scopeBox")
+    person_width = (scope_box[2] - scope_box[0]) if scope_box else image_width
+    maximum_gap = max(4, round(person_width * max_horizontal_gap_ratio))
+    color_distance = _lab_distance(anchor_lab, fragment_lab)
+    matches = (
+        _horizontal_gap(anchor_box, fragment_box) <= maximum_gap
+        and _vertical_overlap_over_smaller(anchor_box, fragment_box) >= min_vertical_overlap
+        and _is_lateral_fragment(anchor_box, fragment_box)
+        and color_distance <= max_color_distance
+    )
+    return matches, color_distance
+
+
+def _group_same_person_fashn_fragments(
+    candidates: list[dict[str, Any]],
+    width: int,
+    height: int,
+    max_component_pixel_ratio: float = 0.6,
+    max_horizontal_gap_ratio: float = 0.08,
+    min_vertical_overlap: float = 0.35,
+    max_color_distance: float = 18.0,
+) -> list[dict[str, Any]]:
+    """Reconnect FASHN top regions split by arms, hands, hair, or accessories.
+
+    GroundingDINO remains the preferred garment-instance signal. This fallback
+    only groups lateral, similarly colored FASHN-only regions on the same
+    detected person. Geometry is measured on raw component boxes and padding is
+    applied once after the union.
+    """
+    grouped: list[dict[str, Any]] = []
+    ordered = sorted(
+        candidates,
+        key=lambda item: int(item.get("_componentPixels", 0)),
+        reverse=True,
+    )
+    for candidate in ordered:
+        match = None
+        match_color_distance = float("inf")
+        for index, existing in enumerate(grouped):
+            matches, color_distance = _is_same_person_fashn_fragment(
+                existing,
+                candidate,
+                width,
+                max_component_pixel_ratio,
+                max_horizontal_gap_ratio,
+                min_vertical_overlap,
+                max_color_distance,
+            )
+            if matches and color_distance < match_color_distance:
+                match = index
+                match_color_distance = color_distance
+
+        if match is None:
+            grouped.append(dict(candidate))
+            continue
+
+        existing = grouped[match]
+        existing_pixels = int(existing["_componentPixels"])
+        fragment_pixels = int(candidate["_componentPixels"])
+        total_pixels = existing_pixels + fragment_pixels
+        combined_lab = tuple(
+            (
+                existing["_componentLab"][channel] * existing_pixels
+                + candidate["_componentLab"][channel] * fragment_pixels
+            ) / total_pixels
+            for channel in range(3)
+        )
+        raw_box = _union_boxes(existing["_rawBox"], candidate["_rawBox"])
+        merged_metrics = dict(existing.get("metrics", {}))
+        merged_metrics.update({
+            "componentPixels": total_pixels,
+            "mergedFragmentCount": int(merged_metrics.get("mergedFragmentCount", 0)) + 1,
+            "fragmentGrouping": "same_person_geometry_color",
+            "maxMergedColorDistance": round(max(
+                float(merged_metrics.get("maxMergedColorDistance", 0)),
+                match_color_distance,
+            ), 3),
+        })
+        grouped[match] = {
+            **existing,
+            "confidence": max(existing["confidence"], candidate["confidence"]),
+            "box": _pad_box(raw_box, width, height),
+            "metrics": merged_metrics,
+            "_componentPixels": total_pixels,
+            "_componentLab": combined_lab,
+            "_rawBox": raw_box,
+        }
+    return grouped
 
 
 def _same_scope(first: dict[str, Any], second: dict[str, Any]) -> bool:
     first_scope = first.get("_scopeId")
     second_scope = second.get("_scopeId")
     return first_scope is None or second_scope is None or first_scope == second_scope
+
+
+def _evaluated_by_fashn_fragment_grouping(candidate: dict[str, Any]) -> bool:
+    return candidate.get("boxSource") == "fashn_only" and "_componentBox" in candidate
 
 
 def _deduplicate(
@@ -308,6 +493,13 @@ def _deduplicate(
             for index, existing in enumerate(dominant)
             if existing["category"] == candidate["category"]
             and _same_scope(existing, candidate)
+            # The pre-padding grouping stage already made the higher-quality
+            # geometry/color decision for raw FASHN-only components. Do not
+            # override a deliberate rejection with this legacy padded-box rule.
+            and not (
+                _evaluated_by_fashn_fragment_grouping(existing)
+                and _evaluated_by_fashn_fragment_grouping(candidate)
+            )
             and candidate_area / _box_area(existing["box"]) <= max_fragment_area_ratio
             and _intersection_over_smaller(candidate["box"], existing["box"])
             >= fragment_overlap_threshold
@@ -343,7 +535,11 @@ def _deduplicate(
 
 def run_inspiration_candidate_detection(image_path: str, max_candidates: int = 12) -> dict[str, Any]:
     started = time.perf_counter()
-    source = Image.open(image_path).convert("RGB")
+    # Phone cameras commonly store landscape pixels plus an EXIF orientation
+    # instruction. Normalize that instruction into the pixels before either
+    # model sees the image so detection geometry matches what users see.
+    with Image.open(image_path) as opened_source:
+        source = ImageOps.exif_transpose(opened_source).convert("RGB")
     source_array = np.asarray(source)
     height, width = source_array.shape[:2]
 
@@ -385,6 +581,7 @@ def run_inspiration_candidate_detection(image_path: str, max_candidates: int = 1
                     category,
                     scoped_component,
                     category_detections,
+                    source_array,
                     width,
                     height,
                     scope_id,
@@ -406,6 +603,7 @@ def run_inspiration_candidate_detection(image_path: str, max_candidates: int = 1
                         "metrics": {"detectorConfidence": detection["score"]},
                     })
 
+    candidates = _group_same_person_fashn_fragments(candidates, width, height)
     candidates = _deduplicate(candidates)[:max_candidates]
     foreground_composite = np.full_like(source_array, 255)
     foreground_composite[foreground_mask] = source_array[foreground_mask]
@@ -413,11 +611,15 @@ def run_inspiration_candidate_detection(image_path: str, max_candidates: int = 1
 
     response_candidates = []
     for candidate in candidates:
-        box = candidate.pop("box")
-        candidate.pop("_scopeId", None)
+        box = candidate["box"]
+        public_candidate = {
+            key: value
+            for key, value in candidate.items()
+            if key != "box" and not key.startswith("_")
+        }
         retrieval = _square_crop(retrieval_source, box, fill=(255, 255, 255))
         response_candidates.append({
-            **candidate,
+            **public_candidate,
             "bbox": _normalized_box(box, width, height),
             "retrievalCropBase64": _encode_webp(retrieval),
         })

@@ -36,10 +36,10 @@ export function CandidatePicker({ sourceUrl, candidates, selectedIds, onSelect }
               aria-pressed={active}
               onClick={() => onSelect(candidate.id)}
               className={cn(
-                "absolute rounded-[6px] border-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta focus-visible:ring-offset-2",
+                "absolute cursor-pointer overflow-hidden rounded-[6px] border-2 border-white/95 backdrop-blur-[1px] transition-[background-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2",
                 active
-                  ? "border-terracotta bg-terracotta/10"
-                  : "border-dashed border-[#aaa18e] bg-foreground/10 hover:border-terracotta",
+                  ? "z-10 bg-white/10 shadow-[0_1px_6px_rgba(0,0,0,0.28)]"
+                  : "border-dashed bg-white/5 shadow-[0_1px_4px_rgba(0,0,0,0.2)] hover:bg-white/10",
               )}
               style={{
                 left: `${candidate.bbox.l * 100}%`,
@@ -48,6 +48,12 @@ export function CandidatePicker({ sourceUrl, candidates, selectedIds, onSelect }
                 height: `${candidate.bbox.h * 100}%`,
               }}
             >
+              <span className={cn(
+                "absolute bottom-1.5 left-1.5 rounded-[3px] px-1.5 py-1 text-[8px] font-bold uppercase tracking-[0.12em] shadow-sm",
+                active ? "bg-terracotta text-white" : "bg-background/90 text-foreground",
+              )}>
+                {candidate.category === "top" ? "Top" : "Bottom"}
+              </span>
               {active ? (
                 <span className="absolute right-2 top-2 flex size-7 items-center justify-center rounded-full bg-terracotta text-white shadow-sm">
                   <Check className="size-4" strokeWidth={2.5} />

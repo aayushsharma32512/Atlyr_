@@ -8,7 +8,6 @@ import {
   useFavoriteProducts,
   useCollectionsOverview,
   useProductCollectionMembership,
-  useRemoveProductFromLibrary,
   useRemoveProductFromCollection,
   useSaveProductToCollection,
 } from "@/features/collections/hooks/useMoodboards"
@@ -29,15 +28,14 @@ export function useProductSaveActions() {
   const analytics = useEngagementAnalytics()
   const favoritesQuery = useFavoriteProducts()
   const saveMutation = useSaveProductToCollection()
-  const removeMutation = useRemoveProductFromLibrary()
   const removeFromCollectionMutation = useRemoveProductFromCollection()
   const createMoodboardMutation = useCreateMoodboard()
   const collectionsOverviewQuery = useCollectionsOverview()
   const membershipQuery = useProductCollectionMembership()
-  const moodboards = collectionsOverviewQuery.data?.moodboards ?? []
   const selectableMoodboards = useMemo(
-    () => moodboards.filter((m) => !m.isSystem || m.slug === "wardrobe"),
-    [moodboards],
+    () => (collectionsOverviewQuery.data?.moodboards ?? [])
+      .filter((m) => !m.isSystem || m.slug === "wardrobe"),
+    [collectionsOverviewQuery.data?.moodboards],
   )
 
   const [state, setState] = useState<SaveActionState>({
@@ -52,6 +50,10 @@ export function useProductSaveActions() {
   const membership = useMemo(() => membershipQuery.data ?? {}, [membershipQuery.data])
 
   const isSaved = useCallback((productId: string) => favoriteSet.has(productId), [favoriteSet])
+  const isInWardrobe = useCallback(
+    (productId: string) => membership.wardrobe?.has(productId) ?? false,
+    [membership],
+  )
 
   /** Returns the custom moodboard slugs a product currently belongs to */
   const getProductMoodboardSlugs = useCallback(
@@ -67,11 +69,11 @@ export function useProductSaveActions() {
       try {
         if (nextSaved) {
           await saveMutation.mutateAsync({ productId, slug: "favorites", label: "Favorites" })
-          trackSaveToggled(analytics, { entity_type: "product", entity_id: productId, new_state: true, save_method: "click", ...uiContext })
+          trackSaveToggled(analytics, { entity_type: "product", entity_id: productId, collection_slug: "favorites", new_state: true, save_method: "click", ...uiContext })
           trackSavedToCollection(analytics, { entity_type: "product", entity_id: productId, collection_slug: "favorites", save_method: "click", ...uiContext })
         } else {
-          await removeMutation.mutateAsync({ productId })
-          trackSaveToggled(analytics, { entity_type: "product", entity_id: productId, new_state: false, save_method: "click", ...uiContext })
+          await removeFromCollectionMutation.mutateAsync({ productId, slug: "favorites" })
+          trackSaveToggled(analytics, { entity_type: "product", entity_id: productId, collection_slug: "favorites", new_state: false, save_method: "click", ...uiContext })
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unable to update favorite"
@@ -79,7 +81,27 @@ export function useProductSaveActions() {
         favoritesQuery.refetch()
       }
     },
-    [analytics, favoritesQuery, removeMutation, saveMutation, toast],
+    [analytics, favoritesQuery, removeFromCollectionMutation, saveMutation, toast],
+  )
+
+  const handleToggleWardrobe = useCallback(
+    async (productId: string, nextSaved: boolean, uiContext: EntityUiContext = {}) => {
+      try {
+        if (nextSaved) {
+          await saveMutation.mutateAsync({ productId, slug: "wardrobe", label: "Wardrobe" })
+          trackSaveToggled(analytics, { entity_type: "product", entity_id: productId, collection_slug: "wardrobe", new_state: true, save_method: "click", ...uiContext })
+          trackSavedToCollection(analytics, { entity_type: "product", entity_id: productId, collection_slug: "wardrobe", save_method: "click", ...uiContext })
+        } else {
+          await removeFromCollectionMutation.mutateAsync({ productId, slug: "wardrobe" })
+          trackSaveToggled(analytics, { entity_type: "product", entity_id: productId, collection_slug: "wardrobe", new_state: false, save_method: "click", ...uiContext })
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unable to update Wardrobe"
+        toast({ title: "Wardrobe update failed", description: message, variant: "destructive" })
+        membershipQuery.refetch()
+      }
+    },
+    [analytics, membershipQuery, removeFromCollectionMutation, saveMutation, toast],
   )
 
   const handleLongPressSave = useCallback(
@@ -89,7 +111,7 @@ export function useProductSaveActions() {
         if (!alreadySaved) {
           // Save to favorites first if not yet saved
           await saveMutation.mutateAsync({ productId, slug: "favorites", label: "Favorites" })
-          trackSaveToggled(analytics, { entity_type: "product", entity_id: productId, new_state: true, save_method: "long_press", ...uiContext })
+          trackSaveToggled(analytics, { entity_type: "product", entity_id: productId, collection_slug: "favorites", new_state: true, save_method: "long_press", ...uiContext })
           trackSavedToCollection(analytics, { entity_type: "product", entity_id: productId, collection_slug: "favorites", save_method: "long_press", ...uiContext })
         }
         const currentSlugs = getProductMoodboardSlugs(productId)
@@ -168,7 +190,9 @@ export function useProductSaveActions() {
     moodboards: selectableMoodboards as Moodboard[],
     favoriteIds,
     isSaved,
+    isInWardrobe,
     onToggleSave: handleToggleSave,
+    onToggleWardrobe: handleToggleWardrobe,
     onLongPressSave: handleLongPressSave,
     onApplyMoodboards: handleApplyMoodboards,
     onCreateMoodboard: handleCreateMoodboard,

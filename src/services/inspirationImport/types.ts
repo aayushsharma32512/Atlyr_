@@ -17,11 +17,14 @@ export type InspirationCandidate = {
 export type InspirationWebResult = {
   id: string
   candidateId: string
+  providerResultId: string
   title: string
   merchantDomain: string
   listingUrl: string
   imageUrl: string
   rank: number
+  priceLabel: string | null
+  selectionToken: string | null
 }
 
 export type InspirationImport = {
@@ -30,6 +33,7 @@ export type InspirationImport = {
     status: string
     errorCode: string | null
     errorMessage: string | null
+    studioOutfitId: string | null
   }
   sourceUrl: string | null
   candidates: InspirationCandidate[]
@@ -38,21 +42,40 @@ export type InspirationImport = {
   webResults: InspirationWebResult[]
   selections: {
     catalogueProductIds: string[]
-    webResultId: string | null
+    webResultIds: string[]
   }
 }
 
-export type InspirationCommitInput = {
-  catalogueProductIds: string[]
-  webResultId: string | null
+type InspirationWebSelectionInput = {
+  candidateId: string
+  selectionToken: string
 }
 
-export type InspirationCommitResult = {
-  catalogue: {
-    addedProductIds: string[]
-    alreadyPresentProductIds: string[]
-  }
-  web: { selectionId: string; status: "selected_for_ingestion" } | null
+type InspirationCatalogueSelectionInput = {
+  candidateId: string
+  productId: string
+}
+
+export type InspirationStageSelectionsInput = {
+  selections: InspirationWebSelectionInput[]
+  catalogueSelections: InspirationCatalogueSelectionInput[]
+}
+
+export type InspirationStageSelectionsResult = {
+  selectionCount: number
+  webSelectionIds: string[]
+}
+
+export type InspirationOpenStudioInput = {
+  outfitId: string
+  topProductId: string | null
+  bottomProductId: string | null
+}
+
+export type InspirationOpenStudioResult = {
+  outfitId: string
+  topId: string | null
+  bottomId: string | null
 }
 
 export type InspirationCatalogueResult = ProductSearchResult

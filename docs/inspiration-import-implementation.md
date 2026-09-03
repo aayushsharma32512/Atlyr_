@@ -35,6 +35,63 @@ and replacement RPC signatures. The two Inspiration Jest files are not runnable 
 current Jest setup because TypeScript/ESM transformation is not configured; the full TypeScript check
 also reports unrelated existing errors outside this feature.
 
+### Product-flow amendment (4 September 2026)
+
+This section supersedes the catalogue multi-select/Wardrobe-commit wording elsewhere in this plan:
+
+- every confirmed garment category defaults to its first `search-v2` result and keeps exactly one
+  active catalogue result for the Studio look;
+- tapping a catalogue card changes that category's Studio selection;
+- each card has independent Favorite and Wardrobe controls, backed by separate
+  `user_favorites.collection_slug` memberships;
+- removing a Favorite deletes only the `favorites` membership and does not remove Wardrobe or
+  custom-moodboard memberships;
+- the primary action creates a private, non-feed Studio draft and opens it instead of adding the
+  selected products to Wardrobe;
+- `inspiration_imports.studio_outfit_id`, plus final selection rows with `outfit_id` and
+  `status = 'opened_in_studio'`, preserve the import-to-outfit audit trail;
+- Google Lens results remain browse/staging-only and are not converted into Studio products by this
+  amendment.
+
+### Web-result and unified-selection amendment (4 September 2026)
+
+This section supersedes the older persisted-Lens-cache and independent catalogue/web-selection
+wording elsewhere in this plan:
+
+- SerpApi searches use unqualified Google Lens: neither `type` nor a text query is sent, and no
+  application result-count cap is applied;
+- results are retained only when they have price, explicit stock, or rating-plus-review commerce
+  metadata, or their URL belongs to the curated popular-shopping-domain allowlist;
+- complete Lens result rails are ephemeral. The SPA keeps them in candidate-scoped
+  `sessionStorage` entries with a one-hour expiry; the database is not a search-result cache;
+- the Edge Function signs every ephemeral result. The final ingestion action verifies the signature,
+  import/candidate binding, and expiry before storing it;
+- only each category's final selected web result is written to `inspiration_import_web_results`,
+  together with its `selected_for_ingestion` selection row;
+- top and bottom each have one choice total across inventory and web. Selecting a choice from one
+  source replaces the other source in that category, and tapping the selected card clears it;
+- a full mannequin is rendered only when both choices are inventory items. A lone inventory choice
+  is cropped from the garment's renderer-reported opaque bounds (with a static top/bottom crop while
+  those bounds load); an active web choice replaces the mannequin with an aspect-ratio-preserving
+  `object-cover` product image;
+- the import preview uses the placement mannequin only when every visible inventory garment is
+  compatible with the body that renderer will choose. Otherwise it uses the legacy renderer rather
+  than silently filtering an unplaced garment before its image is loaded.
+
+### Staging-only amendment (4 September 2026)
+
+This section supersedes every submit/poll/publish statement below for the current delivery:
+
+- when any final choice is from Lens, **Save selections for ingestion** atomically persists the
+  complete look before returning: catalogue choices become `selected_for_outfit`, web choices and
+  their product URLs become `selected_for_ingestion`, and the import becomes `selections_staged`;
+- no ingestion-service HTTP endpoint is called and no ingestion job is created or polled;
+- no outfit is created for a staged look. A later ingestion integration will create the private
+  outfit only after every selected web product succeeds;
+- the future ingestion service can read the selected garment, candidate category, and product URL
+  from `inspiration_import_selections` joined to `inspiration_import_web_results` and
+  `inspiration_import_candidates` using its service-role client.
+
 ## 1. Objective
 
 Build a separate authenticated screen where a user can upload an inspiration photo, inspect every
@@ -42,14 +99,14 @@ top and bottom candidate found in it, and choose up to one candidate from each c
 are selected, the results screen retrieves both categories in parallel and switches between their
 cached result rails without repeating either request.
 
-The user can preview catalogue results on the existing mannequin, select multiple catalogue
-products, and add all of them to the existing Wardrobe system collection. Google Lens search is an
-explicit, paid fallback for the same selected crop. Lens results use their external product images,
-cannot be previewed on the mannequin, and allow at most one selected web result.
+The user chooses zero or one result for each confirmed category across inventory and Google Lens.
+Inventory results use the existing mannequin and can open as a Studio draft. Lens is an explicit,
+paid fallback for the same selected crop; its results use external product images and are never
+passed to the mannequin renderer.
 
-The current delivery persists that web selection as **ready for ingestion**, but it does not enqueue
-or run ingestion. The later ingestion design will decide whether the resulting product is private,
-review-gated, or globally searchable.
+Web-result clicks remain browser-only. When the final selection contains a Lens result, the primary
+action becomes **Save selections for ingestion**. It verifies the signed results and atomically
+persists the complete final catalogue/web selection set. Ingestion and outfit creation are deferred.
 
 ## 2. Locked product decisions
 
@@ -61,11 +118,12 @@ review-gated, or globally searchable.
 4. When both categories are confirmed, their two catalogue retrievals run in parallel and are
    cached independently by import, candidate, category, and profile gender.
 5. Google Lens is not run in parallel with catalogue retrieval. It is an explicit user action.
-6. One catalogue result per confirmed category can be previewed on the mannequin at the same time.
-7. Catalogue selection is multi-select: several returned products can be added to Wardrobe.
-8. Google Lens selection is single-select: at most one result can be staged for ingestion.
-9. A future click on **Add to Wardrobe** for a web result will trigger ingestion. In this phase the
-   same action only records the intent and creates a truthful `Ready to import` placeholder.
+6. Top and bottom each have one active choice across inventory and web, or may be empty.
+7. Choosing an inventory result replaces that category's web choice and choosing a web result
+   replaces its inventory choice.
+8. At most one Google Lens result per confirmed category can be submitted for ingestion.
+9. Selecting and deselecting cards does not write web rows. Only the final action persists the
+   complete selected set; it does not create ingestion jobs.
 10. Image input ships first. The backend contract keeps `source_kind = image | url` so URL support
     does not require another redesign.
 11. The new route remains unlinked from Search, navigation, share sheets, and other existing entry
@@ -85,10 +143,10 @@ review-gated, or globally searchable.
 - per-selected-crop image retrieval through the existing `search-v2` path;
 - category- and profile-gender-constrained catalogue results, including unisex products;
 - mannequin swapping for catalogue products that have valid placement data;
-- multi-select catalogue products and atomic Wardrobe commit;
+- one inventory-or-web selection per confirmed category;
 - on-demand SerpApi Google Lens product search;
-- single web-result selection;
-- persisted `Ready to import` web placeholder;
+- final-action persistence of the complete catalogue/web selection set;
+- a durable staging state that a future ingestion worker can read;
 - private asset retention with explicit user-driven deletion;
 - direct, authenticated `/inspiration-import` route for development and review.
 
@@ -99,10 +157,9 @@ review-gated, or globally searchable.
 - automatic or parallel Google Lens calls;
 - SAM2 or the production garment-cutout segmentation pipeline;
 - adding the extracted inspiration crop itself to Wardrobe;
-- triggering an ingestion job;
 - deciding whether a user-ingested item is private or global;
 - rendering Google Lens results on the mannequin;
-- Studio/outfit creation, try-on, board save, or checkout;
+- try-on, board save, or checkout;
 - a Search lens-button, feed share-sheet, profile, or navigation entry point;
 - modifications or redeployments of existing production Modal applications.
 
@@ -120,25 +177,20 @@ so a jacket and shirt occupying the same pixels may collapse into one candidate.
   -> Find matches
   -> run search-v2 in parallel for every confirmed category
   -> switch between cached category result rails without another API call
-       -> tap a catalogue card: swap that category on the mannequin
-       -> independently check/uncheck multiple catalogue products for Wardrobe
+       -> tap a catalogue card: select/deselect that category on the mannequin
        -> optional Search online
             -> Lens cards use external images only
-            -> select at most one web result
-  -> Add selected to Wardrobe
-       -> catalogue product IDs are added to collection_slug = wardrobe
-       -> optional web result becomes Ready to import; no ingestion job is created
-  -> receipt: Added to Wardrobe + Ready to import
+            -> select/deselect at most one web result for that category
+  -> Open in Studio for inventory-only choices
+  -> Save selections for ingestion when either choice is from Lens
+       -> atomically persist final catalogue choice(s) and signed web choice(s)
+       -> stop at the durable selections_staged state
 ```
 
-The previewed catalogue product and selected catalogue products are separate state:
-
-- `previewedProductId`: one product currently worn on the mannequin;
-- `selectedCatalogueProductIds`: a set of products to add to Wardrobe;
-- `selectedWebResultId`: zero or one external result staged for later ingestion.
-
-Going to web search must not clear catalogue selections. The user may return to catalogue results
-without repeating detection or retrieval.
+Selection is category-scoped: `top` and `bottom` each hold either one inventory result, one web
+result, or null. Selecting a card from the other source replaces it, and tapping the active card
+clears it. Returning from Web search to Inventory clears that category's browser choice and shows
+the empty mannequin until the user explicitly selects an inventory match.
 
 ## 5. Screen states
 
@@ -170,28 +222,32 @@ without repeating detection or retrieval.
 
 - Show the selected inspiration crop as the reference.
 - Show one bare mannequin using the user's current mannequin/profile configuration.
-- Tapping a catalogue card changes the one product worn on the mannequin.
-- A separate selection control adds/removes that product from the Wardrobe selection set.
-- Products missing usable placement data remain selectable for Wardrobe, but show `Preview
-  unavailable` instead of producing a broken mannequin render.
+- Tapping a catalogue card selects it; tapping the active card clears that category.
+- Selecting it clears any browser-held web choice for the same category.
+- Products missing usable 3D placement data use their legacy placement fields instead of being
+  silently omitted from the mannequin.
 - Keep `Search online` as the final tile/action after catalogue results and also show it prominently
   in the empty-results state.
 
 ### 5.5 Web matches
 
-- Do not show or imply a mannequin preview.
-- Show the selected candidate crop alongside the external product image supplied by SerpApi.
+- Replace the mannequin pane with the external product image supplied by SerpApi, using
+  aspect-ratio-preserving cover sizing.
 - Display merchant domain and link attribution.
-- Permit one selected web result. Choosing another replaces the prior selection.
-- Keep catalogue selections when moving between catalogue and web views.
+- Permit one selected web result per category. Choosing another replaces it; tapping it clears it.
+- Selecting a web result clears the inventory choice only for the same category.
 
-### 5.6 Receipt
+### 5.6 Final Studio action
 
-- List catalogue products actually added to Wardrobe.
-- Show the web selection, when present, as `Ready to import`.
-- Do not label it `Ingesting`; no job exists in this phase.
-- Provide a retry if the catalogue commit failed and preserve local selections.
-- The receipt does not navigate to Studio in this release.
+- Inventory-only choices use **Open piece/look in Studio**.
+- Any web choice uses **Save selections for ingestion**.
+- Atomically persist all final catalogue selections and web-result URLs before showing the saved
+  receipt. Do not start, poll, or implement ingestion in this flow yet.
+- Do not create the private draft or outfit for a staged web selection. A future ingestion workflow
+  will create the outfit only after every selected web item has a published `products.id`.
+- Do not write unselected Lens results or intermediate card-click state to Postgres.
+- Provide a retry if staging failed and preserve local selections.
+- The staged receipt does not navigate to Studio in this release.
 
 ## 6. System architecture
 
@@ -265,11 +321,10 @@ Do not modify or redeploy these as part of this feature:
 - `atlyr-placement`;
 - `eraser`;
 - `services/ingestion`;
-- `services/ingestion-automated` and its deployment.
+- the implementation or deployment of `services/ingestion-automated`.
 
-Do not deploy either Fastify service for Inspiration Import or register user routes, provider
-adapters, database pools, or cleanup workers in them. The superseded prototype has been removed.
-No changes are required in `services/ingestion-automated`.
+Do not add a public browser credential or any ingestion implementation. The current Edge Function
+stops after persisting the final selected set.
 
 The only new deployable units are:
 
@@ -313,12 +368,17 @@ For each category:
 4. Union the DINO box with only the associated component extent, add 15% padding, and clamp.
 5. Retain valid FASHN-only components that have no DINO match.
 6. Retain DINO-only boxes only when FASHN has no usable local component.
-7. Deduplicate same-garment proposals in two passes. First, merge a same-category component into a
-   dominant box when the component is no more than half its area and at least 55% of the smaller
-   box overlaps the dominant box; the union becomes the candidate crop. Then apply category-aware
-   IoU suppression to similarly sized proposals. This reconnects regions split by skin or other
-   occluders without collapsing spatially separate garments or top/bottom candidates.
-8. Cap the returned set, initially 12 total candidates, after score ordering.
+7. Before padding, reconnect same-person FASHN-only top fragments to a dominant torso component
+   when their actual component-pixel ratio, horizontal proximity, vertical alignment, lateral
+   placement, and median Lab color are consistent with a sleeve or cuff. Central or differently
+   colored regions remain separate so layered tops are not collapsed merely because they share a
+   person scope. A rejected FASHN-only pair is not reconsidered by the legacy padded-box fragment
+   merge, although final IoU duplicate suppression still applies.
+8. Deduplicate the remaining same-garment proposals in two passes. First, merge a same-category
+   component into a dominant box when the component is no more than half its padded-box area and at
+   least 55% of the smaller box overlaps the dominant box; the union becomes the candidate crop.
+   Then apply category-aware IoU suppression to similarly sized proposals.
+9. Cap the returned set, initially 12 total candidates, after score ordering.
 
 Every candidate receives a stable UUID. Do not key candidates by `top` or `bottom`; multiple rows of
 the same category are expected.
@@ -345,7 +405,11 @@ Detection is asynchronous across the Supabase/Modal boundary:
    detection-attempt ID, candidate metadata, and compressed candidate images.
 4. The callback verifies the HMAC and attempt identity, uploads crop objects, atomically finalizes
    the matching attempt, and marks the import `detected` or `failed`.
-5. The SPA polls the import query while status is `detecting`; Realtime is not introduced for v1.
+5. The SPA polls the import query every 3 seconds while status is `detecting`; Realtime is not
+   introduced for v1.
+6. Once `detection_started_at` is 180 seconds old, the authenticated read path conditionally marks
+   the still-current attempt `failed` with `detection_timeout`. The Modal job uses the same
+   180-second execution timeout, and a late callback is rejected by the existing state/attempt guard.
 
 The callback payload is capped at 12 candidates. Both crops are WebP, at most 512 px on the long
 edge, and at most 500 KB; the encoder must attempt crops below that maximum dimension as well as
@@ -446,13 +510,14 @@ The two Edge Functions collectively perform the old backend responsibilities:
 - validate that the uploaded Storage object exists at the expected user/import path;
 - issue short-lived signed URLs for owned source and crop objects;
 - submit the new Modal detection job and persist its callback output;
-- call SerpApi Google Lens, normalize results, and persist server-issued result IDs;
-- call hardened Postgres RPCs for state transitions and the atomic Wardrobe commit;
+- call SerpApi Google Lens and normalize/sign ephemeral results without persisting the rail;
+- verify and persist only the final web and catalogue choices;
+- call hardened Postgres RPCs for state transitions and final selection persistence;
 - perform an explicit Storage-first Delete Import operation.
 
-It does not execute FASHN or GroundingDINO locally, generate embeddings, run vector search, render
-the mannequin, or trigger product ingestion. Model inference stays in Modal; catalogue embedding and
-retrieval stay behind the existing `search-v2` function; mannequin rendering stays in the SPA.
+It does not execute FASHN or GroundingDINO locally, generate embeddings, run vector search, ingest a
+product, or render the mannequin. Model inference stays in Modal; catalogue embedding and retrieval
+stay behind the existing `search-v2` function; mannequin rendering stays in the SPA.
 
 Use the current Supabase server auth wrapper for new functions rather than copying the repository's
 legacy `// @ts-nocheck` helper. User calls use `auth: "user"`; the handler may use the admin client
@@ -504,8 +569,8 @@ browser.
   "candidates": ["<candidates with fresh signed crop URLs>"],
   "selectedCandidateId": "uuid-or-null",
   "selectedCandidateIds": ["uuid"],
-  "webResults": ["<persisted normalized results when already requested>"],
-  "selections": { "catalogueProductIds": [], "webResultId": null }
+  "webResults": ["<only durable user-selected web results>"],
+  "selections": { "catalogueProductIds": [], "webResultIds": [] }
 }
 ```
 
@@ -577,12 +642,15 @@ user switches tabs, and is not persisted to the database; only final selections 
 {
   "results": [
     {
-      "id": "uuid",
+      "id": "provider-result-id",
       "candidateId": "uuid",
+      "providerResultId": "provider-result-id",
       "title": "...",
       "merchantDomain": "...",
       "listingUrl": "https://...",
-      "imageUrl": "https://..."
+      "imageUrl": "https://...",
+      "priceLabel": "₹2,450 or null",
+      "selectionToken": "signed-one-hour-token"
     }
   ]
 }
@@ -591,54 +659,48 @@ user switches tabs, and is not persisted to the database; only final selections 
 `candidateId` may be omitted while exactly one candidate is selected; it is required to disambiguate
 top and bottom once both are confirmed. The function reads that selected candidate's retrieval crop
 and uploads the bytes directly to SerpApi's Image API. SerpApi currently accepts JPG/JPEG, PNG, or WebP up to 500 KB, so Modal must
-produce a compliant retrieval crop; Edge does not use `sharp`. The function then runs Google Lens
-Products, normalizes at most 12 shoppable results, and stores those result rows with the import.
+produce a compliant retrieval crop; Edge does not use `sharp`. The function then runs the default,
+unqualified Google Lens search without a `type` or text query. It retains every visual match that
+has SerpApi commerce metadata (price, explicit stock state, or rating with reviews) or comes from the
+curated popular-shopping-domain list, and stores all qualifying rows without an application-level
+result cap. The response rail is cached in browser `sessionStorage` for one hour and is not written
+to Postgres.
 The SerpApi key remains an Edge Function secret. External images remain hotlinked and attributed to
 their merchant domain.
 
-### 10.7 Commit selections
-
-The commit RPC supports one or two selected candidates. It validates each catalogue product's
-`products.type` and attaches it to the selected candidate with the matching `top` or `bottom`
-category. A selected web result already carries its candidate ID and is validated against the
-confirmed set. At most one web result can be staged per import.
+Selecting, replacing, or clearing a Lens card changes browser state only. The final action sends the
+chosen signed tokens together:
 
 ```json
 {
-  "action": "commit",
+  "action": "stage-selections",
   "importId": "uuid",
-  "catalogueProductIds": ["product-a", "product-b"],
-  "webResultId": "uuid-or-null"
-}
-
-{
-  "catalogue": {
-    "addedProductIds": ["product-a", "product-b"],
-    "alreadyPresentProductIds": []
-  },
-  "web": {
-    "selectionId": "uuid",
-    "status": "selected_for_ingestion"
-  }
+  "selections": [
+    { "candidateId": "uuid", "selectionToken": "signed-token" }
+  ],
+  "catalogueSelections": [
+    { "candidateId": "uuid", "productId": "product-id" }
+  ]
 }
 ```
 
-Server validation must prove:
+The server verifies every token, candidate binding, and catalogue product/category match before one
+service-only transaction replaces the durable final selection set. A browser client cannot invoke
+the persistence RPC directly. One top and one bottom selection may coexist across both sources; no
+other Lens matches are stored.
 
-- the authenticated user owns the import;
-- the selected candidate belongs to the import;
-- every catalogue product exists and its `products.type` matches the candidate category;
-- the web result belongs to that import and selected candidate;
-- at most one web result is selected.
+### 10.7 Deferred ingestion and Studio creation
 
-Catalogue updates and import-selection audit rows are one Postgres transaction implemented by
-`commit_inspiration_import(...)`. The RPC uses `auth.uid()` from the user-scoped Edge client, locks
-the import, validates every referenced row, and upserts catalogue products into `user_favorites`
-with `collection_slug = 'wardrobe'` and `collection_label = 'Wardrobe'`. It does not accept a user
-ID parameter.
+The current Edge Function stops after staging. It has no ingestion-service URL/token dependency and
+does not submit, poll, restart, or publish jobs. The database already contains everything needed to
+start later: the selection ID, candidate/category, web result title/domain/listing URL/image URL,
+and any catalogue product selected for the other category.
 
-The web selection is written with `status = selected_for_ingestion`. It is not inserted into
-`user_favorites`, because no `products.id` exists yet, and no ingestion endpoint is called.
+A future design will define ingestion state transitions and outfit creation after successful web
+product ingestion. None of that behavior is implemented by the current Edge Function or RPCs.
+
+If all choices are inventory products, the web persistence/ingestion actions are skipped and the
+existing private-draft/open path is used directly.
 
 ### 10.8 Delete import
 
@@ -720,11 +782,12 @@ merchant_domain      text not null
 listing_url          text not null
 image_url            text not null
 created_at           timestamptz not null default now()
-expires_at           timestamptz not null
+expires_at           timestamptz null       -- null for durable selected rows
 ```
 
-Persisting server-normalized result IDs prevents a client from substituting an arbitrary listing
-URL into the later ingestion contract.
+`expires_at` is nullable for durable selected rows. Search rails do not use this table. Persisting
+only a server-signed selected result prevents a client from substituting an arbitrary listing URL
+into the later ingestion contract.
 
 ### 11.4 `inspiration_import_selections`
 
@@ -736,28 +799,24 @@ source               text not null check (catalogue | web)
 product_id           text null references products on delete cascade
 web_result_id        uuid null references inspiration_import_web_results on delete cascade
 status               text not null
-ingestion_job_id     uuid null              -- populated only by the later design
+ingestion_job_id     uuid null              -- reserved; unused by this delivery
 ingested_product_id  text null references products on delete set null
-wardrobe_added_at    timestamptz null
+outfit_id             text null references outfits on delete set null
 created_at           timestamptz not null default now()
 updated_at           timestamptz not null default now()
 ```
 
 Constraints require exactly one of `product_id` or `web_result_id` according to `source`. Catalogue
 rows are unique per import/product. A partial unique index permits at most one active web selection
-per import.
+per `(import_id, candidate_id)`, allowing one selected top and one selected bottom.
 
 Current statuses:
 
 ```text
-catalogue: added_to_wardrobe
-web:       selected_for_ingestion
-```
-
-Reserved future web statuses, documented but not implemented:
-
-```text
-queued | ingesting | ingested | failed | added_to_wardrobe
+catalogue: opened_in_studio
+catalogue before ingestion: selected_for_outfit
+web before ingestion:       selected_for_ingestion
+future lifecycle:           queued | ingesting | ingested | opened_in_studio | failed
 ```
 
 ### 11.5 Database functions
@@ -766,7 +825,9 @@ The migration adds narrowly scoped RPCs instead of opening the workflow tables t
 
 - `begin_inspiration_detection(...)` - validates ownership/state and returns the attempt identity;
 - `select_inspiration_candidates(...)` - atomically confirms one candidate per category;
-- `commit_inspiration_import(...)` - validates and commits Wardrobe/web selections atomically;
+- `stage_inspiration_import_selections(...)` - service-only atomic persistence of the complete final
+  catalogue/web selection set;
+- `open_inspiration_import_in_studio(...)` - validates the final products and records the draft;
 - `finalize_inspiration_detection(...)` - service-role-only conditional finalization.
 
 Any `SECURITY DEFINER` RPC must set `search_path = ''`, schema-qualify every object, explicitly
@@ -779,10 +840,8 @@ External HTTP requests and Storage calls never occur inside an RPC transaction.
 Real catalogue membership remains in the existing `user_favorites` table. The new selection table
 is provenance and workflow state, not a second Wardrobe.
 
-For `collection_slug = wardrobe`, the collections domain service may merge
-`selected_for_ingestion` web rows into a pending-only presentation model. Studio Wardrobe pairing
-queries must continue to use real products only; pending web placeholders cannot be rendered or
-selected in Studio.
+Pending web rows remain workflow-only and never appear as fake Wardrobe products. Studio receives
+only real `products.id` values after the ingestion service publishes them.
 
 ### 11.7 Database impact summary
 
@@ -790,23 +849,24 @@ Four application tables are new:
 
 1. `inspiration_imports` - one durable import record owned by a user;
 2. `inspiration_import_candidates` - every detected top/bottom candidate and its retrieval crop;
-3. `inspiration_import_web_results` - normalized, server-issued Google Lens results;
-4. `inspiration_import_selections` - catalogue additions and the optional staged web selection;
+3. `inspiration_import_web_results` - only normalized, server-signed Google Lens results the user
+   selected;
+4. `inspiration_import_selections` - final catalogue provenance and up to one selected web choice
+   per category;
 
 No existing application table needs a schema change:
 
-- `user_favorites` receives new rows for catalogue products added to the existing Wardrobe system
-  collection, but its columns and constraints are unchanged;
+- `user_favorites` is unchanged; Favorite and Wardrobe membership remain independent card actions;
 - `products` is read for result hydration/category validation and referenced by foreign keys, but is
   not altered;
 - `user_collection_stats` continues to update through the existing `user_favorites` triggers and is
   not altered;
 - `auth.users` is referenced for ownership and is not altered;
-- existing ingestion, embedding, segmentation, outfit, and Studio tables are untouched.
+- existing ingestion, embedding, segmentation, outfit, and Studio schemas are untouched.
 
 The migration also creates indexes, constraints, hardened RPCs, RLS protection, and a private
 Storage bucket with an upload policy. It does not create Cron, Vault, `pg_net`, private-schema, or
-queue objects and does not touch either ingestion service.
+queue objects and does not change or call either ingestion service.
 
 ## 12. RLS and Storage security
 
@@ -861,7 +921,8 @@ src/features/inspiration-import/
     useSelectImportCandidates.ts
     useImportCatalogueResults.ts
     useImportWebResults.ts
-    useCommitImportSelections.ts
+    useStageImportSelections.ts
+    useOpenInspirationImportInStudio.ts
   components/
     InspirationSourceInput.tsx
     CandidateOverlay.tsx
@@ -896,26 +957,15 @@ Add an authenticated route for `/inspiration-import` and optionally
 
 ## 14. Notifications and pending state
 
-### Current phase
+### Current behavior
 
-- upload/detection/search failures: inline error plus retry;
-- successful catalogue commit: `N items added to Wardrobe` toast;
-- web selection commit: `Saved for import` toast;
-- receipt and Wardrobe placeholder: `Ready to import`;
-- never show an ingestion spinner or completion notification.
-
-### Deferred ingestion phase
-
-When ingestion is enabled, extend the shared jobs/progress system instead of adding a second polling
-implementation:
-
-- add an import job type to `JobsContext` only when a real status endpoint exists;
-- show `Import started` after the backend returns a job ID;
-- surface active work in `FloatingProgressHub`;
-- surface completion/failure through `NotificationTray`;
-- on success, set `ingested_product_id`, insert that product into Wardrobe, replace the pending
-  placeholder, and invalidate Wardrobe queries;
-- on failure, keep the external selection and offer retry.
+- upload/detection/search/staging failures appear inline and leave the local selection retryable;
+- **Save selections for ingestion** persists the chosen catalogue rows and web-result URLs in one
+  transaction, then shows a saved receipt;
+- the SPA does not start or poll ingestion, publish products, or create an outfit for staged web
+  selections;
+- inventory-only completion creates the private draft and navigates directly to Studio;
+- no Lens result is shown as a fake or pending Wardrobe product.
 
 Do not add PostHog event names or new `surface` values ad hoc. Update
 `docs/posthog/ENGAGEMENT_TRACKING_SPEC.md` before implementing feature analytics.
@@ -938,17 +988,16 @@ Retention behavior:
   than 30 days, but this first rollout does not automatically delete them;
 - committing an import sets the terminal `committed` status; its commit time is the resulting
   `updated_at` value;
-- committed imports are retained. Keep the import record,
-  original source image, all candidate metadata/crops, catalogue product IDs, cached Lens results,
-  and selected web result until the user explicitly deletes the import or deletes their account;
+- committed imports are retained. Keep the import record, original source image, all candidate
+  metadata/crops, catalogue product IDs, and selected web results until the user explicitly deletes
+  the import or deletes their account;
 - Wardrobe membership in `user_favorites` is independent and is never removed by import deletion;
 - an explicit Delete Import action removes Storage assets first, then deletes the
   import metadata; it still does not remove products from Wardrobe;
 - application-driven account deletion must clean the user's import objects before deleting the auth
   user; administrative deletion should use the same backend operation rather than bypassing it;
-- cached web-result rows expire after one hour and can be regenerated;
-- reuse persisted Lens results for the same selected candidate for up to one hour, matching
-  SerpApi's documented cache window; do not issue another paid request on simple page refresh;
+- candidate-scoped browser Lens caches expire after one hour; they are never database rows;
+- reuse the browser cache during that window; a missing/expired cache issues a new paid request;
 - catalogue retrieval uses the existing search infrastructure and does not count as a Lens call.
 
 This minimal schema does not enforce per-user daily detection or Lens quotas. Add cost controls at
@@ -970,8 +1019,8 @@ reviewed migration and deployment.
 | Product lacks placement | Card remains selectable | Mannequin says preview unavailable |
 | Lens unavailable | Keep catalogue results usable | No web rows selected |
 | External image hotlink fails | Honest placeholder + merchant link | Result remains selectable |
-| Wardrobe commit fails | Keep selection set and retry | Transaction adds nothing partially |
-| Web staged in current phase | Show Ready to import | No ingestion job ID |
+| Final web persistence fails | Keep browser selection and retry | Transaction writes no partial set |
+| Final staged set contains web items | Show saved receipt | No outfit or ingestion job is created |
 
 ## 17. Implementation sequence
 
@@ -1002,10 +1051,10 @@ reviewed migration and deployment.
 - store candidate crops and refresh signed URLs;
 - preserve attempt invalidation for duplicate/stale callbacks; a changed or manually cropped source
   starts a new import;
-- implement on-demand web search and persisted web-result IDs;
-- invoke hardened RPCs for selection, finalization, and commit;
+- implement on-demand web search with signed browser-only results;
+- invoke hardened RPCs for final web persistence and Studio finalization;
 - remove the superseded Inspiration Import routes, adapters, pool, configuration, and worker from
-  `services/ingestion`; do not add them to `services/ingestion-automated`.
+  `services/ingestion`.
 
 ### P4 - frontend selection flow
 
@@ -1025,13 +1074,13 @@ reviewed migration and deployment.
 - implement preview state separately from multi-select state;
 - reuse the canonical mannequin renderer and handle preview-unavailable products.
 
-### P6 - Wardrobe and web staging
+### P6 - Studio finalization and web staging
 
-- commit multiple catalogue product IDs atomically to Wardrobe;
-- stage zero or one web result as `selected_for_ingestion`;
-- merge the web pending placeholder only into appropriate Wardrobe presentation queries;
-- keep Studio Wardrobe product-only;
-- add receipt and truthful notifications.
+- keep card selection entirely in frontend state;
+- persist up to one final signed web choice per category on the final action;
+- persist any catalogue choice in the same transaction;
+- do not submit, poll, publish, or create a draft for a web-containing staged set;
+- keep Studio and Wardrobe product-only.
 
 ### P7 - verification and rollout
 
@@ -1040,7 +1089,7 @@ reviewed migration and deployment.
 - run Edge Functions locally with a mocked Modal callback and SerpApi fixture;
 - run the frozen visual diagnostic set through both test and production detectors;
 - verify direct-route flow in a browser at mobile and desktop widths;
-- verify both ingestion service directories have no Inspiration Import runtime dependency;
+- verify that no ingestion endpoint is called by the staged web-selection flow;
 - verify existing production Edge Functions and Modal apps remain unaffected;
 - keep the feature route unlinked until design approval.
 
@@ -1070,7 +1119,9 @@ reviewed migration and deployment.
 - user A cannot read or mutate user B's imports, candidates, selections, or web results;
 - user A cannot read user B's Storage objects;
 - selected-candidate uniqueness holds under concurrent requests;
-- one-web-selection uniqueness holds under concurrent requests;
+- one-web-selection-per-candidate uniqueness holds under concurrent requests;
+- authenticated clients cannot call the service-only final-web persistence RPC directly;
+- final persistence replaces prior web choices atomically and stores no unselected Lens rows;
 - commit rejects products with a category mismatch;
 - repeated commit is idempotent and reports already-present Wardrobe products;
 - failed multi-product commit leaves no partial import audit state;
@@ -1088,12 +1139,14 @@ reviewed migration and deployment.
 - top and bottom retrieval starts in parallel after confirmation;
 - switching the active category uses cached results and does not invoke `search-v2` again;
 - tapping a result swaps mannequin preview without toggling Wardrobe selection;
-- multiple catalogue cards remain selected while preview changes;
-- going to Lens preserves catalogue selections;
-- only one web result can be selected;
-- external cards never attempt mannequin rendering;
-- receipt differentiates `Added to Wardrobe` from `Ready to import`;
-- query invalidation refreshes Wardrobe counts and previews.
+- selecting a web item replaces the inventory choice only in the same category, and vice versa;
+- top and bottom can each be selected or empty across the combined inventory/web catalogue;
+- Lens rails are served from candidate-scoped browser storage until their one-hour expiry;
+- no Lens rows exist in Postgres before the final action; only final choices exist afterward;
+- the full mannequin appears only for two inventory choices; single inventory choices are cropped,
+  while web choices use an aspect-ratio-preserving cover image;
+- the button reads **Save selections for ingestion** whenever either category uses a web result;
+- the complete selection set is durable before any future ingestion begins.
 
 ### End-to-end acceptance
 
@@ -1103,12 +1156,11 @@ reviewed migration and deployment.
 4. Observe top and bottom catalogue retrieval start in parallel, then switch between the cached
    category results.
 5. Swap several results on the mannequin.
-6. Select multiple catalogue results.
-7. Optionally run one Lens search and select one web result.
-8. Commit.
-9. Confirm catalogue products appear in Wardrobe.
-10. Confirm the web item is a non-renderable `Ready to import` placeholder and no ingestion job was
-    created.
+6. Select or deselect one result per category across inventory and Lens.
+7. Confirm Postgres still has no Lens-result row before the final action.
+8. Click **Save selections for ingestion**.
+9. Confirm only the final Lens choice is persisted, including its listing URL.
+10. Confirm any catalogue choice is persisted in the same transaction and no outfit/job is created.
 
 ## 19. Acceptance criteria for the current delivery
 
@@ -1120,11 +1172,15 @@ reviewed migration and deployment.
   sent to Google Lens when the user explicitly requests web search.
 - Catalogue retrieval is category constrained and, when available, profile-gender constrained while
   retaining unisex products.
-- Mannequin preview and Wardrobe selection are independent.
-- Multiple catalogue products are committed to the existing Wardrobe collection atomically.
-- At most one web result is stored as `selected_for_ingestion`.
-- No web ingestion job is created.
-- No Google Lens result is shown on the mannequin.
+- A category has at most one choice across inventory and web, and both categories may be empty.
+- Catalogue choices open as a Studio draft; card-level Favorite and Wardrobe controls remain
+  independent.
+- At most one final web result per selected category is stored; intermediate selections and all
+  unselected SerpApi results remain browser-only.
+- The final action stages all selected catalogue/web choices and does not start ingestion or create
+  a Studio draft.
+- A Google Lens result replaces the mannequin preview with its external image and is never sent to
+  the mannequin renderer.
 - Uploads and crops are private, user-scoped, and signed; explicit deletion is available while
   automatic cleanup is deferred.
 - Two scoped Edge Functions replace the superseded Fastify prototype: one user API and one detector
@@ -1132,8 +1188,7 @@ reviewed migration and deployment.
 - Detection does not hold a browser request open for Modal inference; attempt-scoped callback
   finalization is idempotent and rejects stale/replayed work.
 - The existing `search-v2` Edge Function is reused unchanged.
-- Neither `services/ingestion` nor `services/ingestion-automated` is deployed or modified at runtime
-  for this feature; the superseded prototype code is removed before merge.
+- both ingestion services remain unused by this feature.
 - Existing operator ingestion behavior and the production segmentation, embedding, placement, VTON,
   and automated-ingestion deployments remain unchanged.
 
@@ -1172,7 +1227,8 @@ Configure these values server-side, with the shown initial defaults:
 ```text
 SERPAPI_COUNTRY=in
 INSPIRATION_SIGNED_URL_TTL_S=600
-INSPIRATION_DETECTION_LEASE_S=300
+INSPIRATION_DETECTION_LEASE_S=180
+INSPIRATION_DETECTION_TIMEOUT_S=180
 INSPIRATION_MAX_CANDIDATES=12
 ```
 

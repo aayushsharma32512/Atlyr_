@@ -86,10 +86,10 @@ def _post_callback(callback_url: str, payload: dict) -> None:
 
 @app.function(
     image=detector_image,
-    gpu="L4",
+    gpu=["L4", "A10", "L40S"],
     cpu=4.0,
     secrets=[app_secret],
-    timeout=600,
+    timeout=180,
     scaledown_window=60,
 )
 def process_detection_job(job: dict) -> None:

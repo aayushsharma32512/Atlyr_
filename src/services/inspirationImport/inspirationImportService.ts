@@ -1,9 +1,11 @@
 import { supabase } from "@/integrations/supabase/client"
 import { searchService } from "@/services/search/searchService"
 import type {
-  InspirationCommitInput,
-  InspirationCommitResult,
   InspirationImport,
+  InspirationOpenStudioInput,
+  InspirationOpenStudioResult,
+  InspirationStageSelectionsInput,
+  InspirationStageSelectionsResult,
   InspirationWebResult,
 } from "./types"
 import {
@@ -11,6 +13,7 @@ import {
   type InspirationSearchGender,
 } from "./catalogueFilters"
 import { filterValidWebResults } from "./webResults"
+import { readWebSearchCache, writeWebSearchCache } from "./webSearchCache"
 
 async function invokeImport<T>(body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke<T>("inspiration-import", { body })
@@ -88,15 +91,30 @@ async function searchCatalogue(
   return response.results
 }
 
-async function searchWeb(importId: string, candidateId?: string): Promise<InspirationWebResult[]> {
+async function searchWeb(importId: string, candidateId: string): Promise<InspirationWebResult[]> {
+  const cached = readWebSearchCache(importId, candidateId)
+  if (cached) return cached
   const response = await invokeImport<{ results: InspirationWebResult[] }>({
-    action: "web-search", importId, ...(candidateId ? { candidateId } : {}),
+    action: "web-search", importId, candidateId,
   })
-  return filterValidWebResults(response.results)
+  const results = filterValidWebResults(response.results)
+  writeWebSearchCache(importId, candidateId, results)
+  return results
 }
 
-async function commitSelections(importId: string, input: InspirationCommitInput) {
-  return invokeImport<InspirationCommitResult>({ action: "commit", importId, ...input })
+async function stageSelections(
+  importId: string,
+  input: InspirationStageSelectionsInput,
+): Promise<InspirationStageSelectionsResult> {
+  return invokeImport<InspirationStageSelectionsResult>({
+    action: "stage-selections",
+    importId,
+    ...input,
+  })
+}
+
+async function openInStudio(importId: string, input: InspirationOpenStudioInput) {
+  return invokeImport<InspirationOpenStudioResult>({ action: "open-studio", importId, ...input })
 }
 
 export const inspirationImportService = {
@@ -106,5 +124,6 @@ export const inspirationImportService = {
   selectCandidates,
   searchCatalogue,
   searchWeb,
-  commitSelections,
+  stageSelections,
+  openInStudio,
 }

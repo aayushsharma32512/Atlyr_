@@ -1,21 +1,35 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { ArrowLeft, ChevronLeft, ChevronRight, Loader2, RotateCcw, ScanSearch, Shirt, Sparkles } from "lucide-react"
 import { useNavigate, useParams } from "react-router-dom"
 import { Button } from "@/components/ui/button"
+import { useAuth } from "@/contexts/AuthContext"
+import { useProductSaveActions } from "@/features/collections/hooks/useProductSaveActions"
 import { CandidatePicker } from "@/features/inspiration-import/components/CandidatePicker"
 import { CatalogueMatchRack } from "@/features/inspiration-import/components/CatalogueMatchRack"
-import { ImportMannequinPreview } from "@/features/inspiration-import/components/ImportMannequinPreview"
+import {
+  ImportMannequinPreview,
+} from "@/features/inspiration-import/components/ImportMannequinPreview"
 import { InspirationSourceInput } from "@/features/inspiration-import/components/InspirationSourceInput"
 import { WebMatchRack } from "@/features/inspiration-import/components/WebMatchRack"
+import { getDefaultCandidateIds } from "@/features/inspiration-import/candidateSelection"
 import {
-  useCommitImportSelections,
+  toggleInventoryChoice,
+  toggleWebChoice,
+  type InspirationResultChoice,
+} from "@/features/inspiration-import/selectionTransitions"
+import {
   useDetectImportCandidates,
   useImportCatalogueResults,
   useImportWebResults,
   useInspirationImport,
+  useOpenInspirationImportInStudio,
   useSelectImportCandidates,
+  useStageImportSelections,
   useStartInspirationImport,
 } from "@/features/inspiration-import/hooks/useInspirationImport"
+import { useCreateDraftOutfit } from "@/features/outfits/hooks/useCreateDraftOutfit"
+import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
+import { buildStudioUrl } from "@/features/studio/utils/studioUrlState"
 import type {
   InspirationCatalogueResult,
   InspirationCategory,
@@ -23,6 +37,12 @@ import type {
 } from "@/services/inspirationImport/types"
 
 const ACCEPTED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"])
+const PROCESSING_IMPORT_ID = "processing"
+
+type CategoryChoiceState = Partial<Record<InspirationCategory, {
+  candidateId: string
+  choice: InspirationResultChoice | null
+}>>
 
 function BottomGarmentIcon() {
   return (
@@ -32,26 +52,124 @@ function BottomGarmentIcon() {
   )
 }
 
+type DetectionProgressProps = {
+  sourceUrl: string | null
+  error?: string | null
+  onBack: () => void
+}
+
+function DetectionProgress({ sourceUrl, error, onBack }: DetectionProgressProps) {
+  return (
+    <main className="flex h-[100dvh] flex-col overflow-hidden bg-background text-foreground">
+      <header className="relative flex h-14 shrink-0 items-center justify-center px-4 sm:h-16">
+        <button
+          type="button"
+          aria-label="Back to import"
+          className="absolute left-4 flex size-10 items-center justify-center"
+          onClick={onBack}
+        >
+          <ArrowLeft className="size-4" />
+        </button>
+        <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+          Select pieces
+        </span>
+      </header>
+      <section className="mx-auto min-h-0 w-full max-w-2xl flex-1 px-3 pb-3 pt-1 sm:px-5">
+        <p className="mb-3 shrink-0 text-center text-xs font-semibold text-muted-foreground sm:mb-7">
+          {error ? "We couldn’t identify the outfits" : "Looking for outfits…"}
+        </p>
+        <div
+          className="relative mx-auto w-fit max-w-full overflow-hidden rounded-[8px] border border-hairline bg-card sm:w-full"
+          aria-busy={!error}
+        >
+          {sourceUrl ? (
+            <img
+              src={sourceUrl}
+              alt="Uploaded inspiration"
+              className="block max-h-[calc(100dvh-21rem)] w-auto max-w-full sm:max-h-none sm:w-full"
+            />
+          ) : (
+            <div className="flex h-[min(55dvh,32rem)] w-[min(90vw,40rem)] items-center justify-center px-8 text-center text-xs text-muted-foreground">
+              Preparing your image…
+            </div>
+          )}
+          {!error ? (
+            <div className="pointer-events-none absolute inset-0 bg-foreground/5">
+              <span
+                aria-hidden="true"
+                className="inspiration-scan-line absolute inset-x-0 z-10 h-0.5 bg-gradient-to-r from-transparent via-terracotta to-transparent"
+              />
+              <span className="absolute inset-x-0 bottom-5 flex items-center justify-center gap-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-terracotta">
+                <Loader2 className="size-3.5 animate-spin" /> Identifying pieces
+              </span>
+            </div>
+          ) : null}
+        </div>
+        {error ? (
+          <div className="mx-auto mt-4 max-w-md text-center" role="alert">
+            <p className="text-sm text-destructive">{error}</p>
+            <Button variant="outline" className="mt-4" onClick={onBack}>
+              <RotateCcw className="size-3.5" /> Try again
+            </Button>
+          </div>
+        ) : null}
+      </section>
+    </main>
+  )
+}
+
 export default function InspirationImportScreen() {
   const { importId: routeImportId } = useParams<{ importId?: string }>()
-  const importId = routeImportId ?? null
+  const isPreparingImport = routeImportId === PROCESSING_IMPORT_ID
+  const importId = routeImportId && !isPreparingImport ? routeImportId : null
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const { profile, gender } = useProfileContext()
+  const productSaveActions = useProductSaveActions()
   const startImport = useStartInspirationImport()
   const importQuery = useInspirationImport(importId)
   const detectMutation = useDetectImportCandidates(importId ?? "")
   const selectMutation = useSelectImportCandidates(importId ?? "")
   const webMutation = useImportWebResults(importId ?? "")
-  const commitMutation = useCommitImportSelections(importId ?? "")
+  const stageSelectionsMutation = useStageImportSelections(importId ?? "")
+  const createDraftMutation = useCreateDraftOutfit()
+  const openStudioMutation = useOpenInspirationImportInStudio(importId ?? "")
   const [validationError, setValidationError] = useState<string | null>(null)
   const [sourceFile, setSourceFile] = useState<File | null>(null)
   const [pendingCandidateIds, setPendingCandidateIds] = useState<string[]>([])
-  const [previewIds, setPreviewIds] = useState<Partial<Record<InspirationCategory, string>>>({})
-  const [catalogueIds, setCatalogueIds] = useState<Set<string>>(new Set())
-  const [webResultId, setWebResultId] = useState<string | null>(null)
+  const [categoryChoices, setCategoryChoices] = useState<CategoryChoiceState>({})
+  const [webResultsByCandidate, setWebResultsByCandidate] = useState<Record<string, InspirationWebResult[]>>({})
   const [choosingCandidate, setChoosingCandidate] = useState(false)
   const [activeCandidateId, setActiveCandidateId] = useState<string | null>(null)
   const [resultsSource, setResultsSource] = useState<"inventory" | "web">("inventory")
-  const [loadedSelectionKey, setLoadedSelectionKey] = useState("")
+  const [sourcePreviewUrl, setSourcePreviewUrl] = useState<string | null>(null)
+  const importStartTriggeredRef = useRef(false)
+  const openedDraftRef = useRef<{ signature: string; outfitId: string } | null>(null)
+
+  useEffect(() => {
+    if (!sourceFile) {
+      setSourcePreviewUrl(null)
+      return
+    }
+    const nextUrl = URL.createObjectURL(sourceFile)
+    setSourcePreviewUrl(nextUrl)
+    return () => URL.revokeObjectURL(nextUrl)
+  }, [sourceFile])
+
+  useEffect(() => {
+    if (!isPreparingImport) {
+      importStartTriggeredRef.current = false
+      return
+    }
+    if (!sourceFile || importStartTriggeredRef.current) return
+
+    importStartTriggeredRef.current = true
+    startImport.mutate(sourceFile, {
+      onSuccess: ({ importId: nextId }) => {
+        navigate(`/inspiration-import/${nextId}`, { replace: true })
+      },
+    })
+  }, [isPreparingImport, navigate, sourceFile, startImport])
 
   const record = importQuery.data
   const selectedCandidates = useMemo(() => {
@@ -65,29 +183,32 @@ export default function InspirationImportScreen() {
   const catalogueSearches = useImportCatalogueResults(record)
   const activeCatalogueSearch = catalogueSearches.find(({ candidate }) => candidate.id === selectedCandidate?.id)
   const catalogueResults = activeCatalogueSearch?.results ?? []
-  const availableWebResults = useMemo(() => {
-    const resultsById = new Map<string, InspirationWebResult>()
-    for (const result of record?.webResults ?? []) resultsById.set(result.id, result)
-    for (const result of webMutation.data ?? []) resultsById.set(result.id, result)
-    return [...resultsById.values()]
-  }, [record?.webResults, webMutation.data])
-  const webResults = availableWebResults
-    .filter((result) => result.candidateId === selectedCandidate?.id)
-  const selectedWebResult = availableWebResults.find((result) => result.id === webResultId) ?? null
-  const activePreviewId = selectedCandidate
-    ? previewIds[selectedCandidate.category] ?? catalogueResults[0]?.id ?? null
+  const webResults = useMemo(() => {
+    if (!selectedCandidate) return []
+    const resultsByProviderId = new Map<string, InspirationWebResult>()
+    for (const result of record?.webResults ?? []) {
+      if (result.candidateId === selectedCandidate.id) resultsByProviderId.set(result.providerResultId, result)
+    }
+    for (const result of webResultsByCandidate[selectedCandidate.id] ?? []) {
+      resultsByProviderId.set(result.providerResultId, result)
+    }
+    return [...resultsByProviderId.values()].sort((left, right) => left.rank - right.rank)
+  }, [record?.webResults, selectedCandidate, webResultsByCandidate])
+  const choices = useMemo(() => selectedCandidates.reduce<Partial<Record<InspirationCategory, InspirationResultChoice | null>>>((result, candidate) => {
+    const state = categoryChoices[candidate.category]
+    result[candidate.category] = state?.candidateId === candidate.id ? state.choice : null
+    return result
+  }, {}), [categoryChoices, selectedCandidates])
+  const activeChoice = selectedCandidate ? choices[selectedCandidate.category] ?? null : null
+  const activePreviewId = activeChoice?.source === "inventory" ? activeChoice.result.id : null
+  const activeWebProviderResultId = activeChoice?.source === "web"
+    ? activeChoice.result.providerResultId
     : null
-  const mannequinResults = useMemo(() => selectedCandidates.reduce<Partial<Record<InspirationCategory, InspirationCatalogueResult | null>>>((results, candidate) => {
-    const search = catalogueSearches.find((item) => item.candidate.id === candidate.id)
-    const previewId = previewIds[candidate.category]
-    results[candidate.category] = search?.results.find((item) => item.id === previewId)
-      ?? search?.results[0]
-      ?? null
-    return results
-  }, {}), [catalogueSearches, previewIds, selectedCandidates])
-  const selectionKey = record
-    ? `${record.import.id}:${record.selectedCandidateIds.join(",")}:${record.selections.catalogueProductIds.join(",")}:${record.selections.webResultId ?? ""}`
-    : ""
+  const selectedTopId = choices.top?.source === "inventory" ? choices.top.result.id : null
+  const selectedBottomId = choices.bottom?.source === "inventory" ? choices.bottom.result.id : null
+  const selectedInventoryTotal = Number(Boolean(selectedTopId)) + Number(Boolean(selectedBottomId))
+  const selectedWebTotal = Number(choices.top?.source === "web") + Number(choices.bottom?.source === "web")
+  const selectedTotal = selectedInventoryTotal + selectedWebTotal
 
   useEffect(() => {
     if (!record) return
@@ -102,34 +223,64 @@ export default function InspirationImportScreen() {
       const validCurrent = current.filter((id) => candidateIds.has(id))
       if (validCurrent.length) return validCurrent.length === current.length ? current : validCurrent
 
-      const defaultCandidate = record.candidates.reduce((best, candidate) => (
-        !best || candidate.confidence > best.confidence ? candidate : best
-      ), record.candidates[0])
-      return defaultCandidate ? [defaultCandidate.id] : current
+      const defaultCandidateIds = getDefaultCandidateIds(record.candidates)
+      return defaultCandidateIds.length ? defaultCandidateIds : current
     })
   }, [record])
 
   useEffect(() => {
-    if (!record || selectionKey === loadedSelectionKey) return
-    setLoadedSelectionKey(selectionKey)
+    if (!record) return
     setActiveCandidateId((current) => record.selectedCandidateIds.includes(current ?? "")
       ? current
       : record.selectedCandidateIds[0] ?? null)
-    setPreviewIds({})
-    setCatalogueIds(new Set(record.selections.catalogueProductIds))
-    setWebResultId(record.selections.webResultId)
-    setResultsSource(record.selections.webResultId ? "web" : "inventory")
-  }, [loadedSelectionKey, record, selectionKey])
+  }, [record])
 
-  const selectedTotal = catalogueIds.size + (webResultId ? 1 : 0)
-  const isCommitted = commitMutation.isSuccess || record?.import.status === "committed"
+  useEffect(() => {
+    if (!record) return
+    setCategoryChoices((current) => {
+      const next = { ...current }
+      let changed = false
+      for (const category of ["top", "bottom"] as const) {
+        const candidate = selectedCandidates.find((item) => item.category === category)
+        if (!candidate) {
+          if (next[category]) {
+            delete next[category]
+            changed = true
+          }
+          continue
+        }
+        if (next[category]?.candidateId === candidate.id) continue
+        const search = catalogueSearches.find((item) => item.candidate.id === candidate.id)
+        if (!search || search.isLoading) continue
+        const persistedWeb = record.webResults.find((result) => result.candidateId === candidate.id)
+        const persistedInventory = search.results.find((result) => (
+          record.selections.catalogueProductIds.includes(result.id)
+        ))
+        const choice: InspirationResultChoice | null = persistedWeb
+          ? { source: "web", result: persistedWeb }
+          : persistedInventory
+            ? { source: "inventory", result: persistedInventory }
+            : search.results[0]
+              ? { source: "inventory", result: search.results[0] }
+              : null
+        next[category] = { candidateId: candidate.id, choice }
+        changed = true
+      }
+      return changed ? next : current
+    })
+  }, [catalogueSearches, record, selectedCandidates])
+
+  const isCommitted = record?.import.status === "committed"
+  const isStaged = record?.import.status === "selections_staged"
   const primaryError = validationError
     ?? startImport.error?.message
     ?? importQuery.error?.message
     ?? selectMutation.error?.message
     ?? catalogueSearches.find(({ error }) => error)?.error?.message
     ?? webMutation.error?.message
-    ?? commitMutation.error?.message
+    ?? stageSelectionsMutation.error?.message
+    ?? createDraftMutation.error?.message
+    ?? openStudioMutation.error?.message
     ?? record?.import.errorMessage
     ?? null
 
@@ -158,9 +309,14 @@ export default function InspirationImportScreen() {
 
   const submitSource = () => {
     if (!sourceFile) return
-    startImport.mutate(sourceFile, {
-      onSuccess: ({ importId: nextId }) => navigate(`/inspiration-import/${nextId}`, { replace: true }),
-    })
+    startImport.reset()
+    importStartTriggeredRef.current = false
+    navigate(`/inspiration-import/${PROCESSING_IMPORT_ID}`)
+  }
+
+  const returnToSource = () => {
+    startImport.reset()
+    navigate("/inspiration-import", { replace: true })
   }
 
   const toggleCandidate = (candidateId: string) => {
@@ -176,24 +332,127 @@ export default function InspirationImportScreen() {
     })
   }
 
-  const toggleCatalogue = (productId: string) => {
-    setCatalogueIds((current) => {
-      const next = new Set(current)
-      if (next.has(productId)) next.delete(productId)
-      else next.add(productId)
-      return next
-    })
-  }
-
   const showWebResults = () => {
     if (!selectedCandidate) return
-    if (webResults.length) {
+    if (Object.prototype.hasOwnProperty.call(webResultsByCandidate, selectedCandidate.id)) {
       setResultsSource("web")
       return
     }
     webMutation.mutate(selectedCandidate.id, {
-      onSuccess: () => setResultsSource("web"),
+      onSuccess: (results) => {
+        setWebResultsByCandidate((current) => ({ ...current, [selectedCandidate.id]: results }))
+        setResultsSource("web")
+      },
     })
+  }
+
+  const setCandidateChoice = (
+    candidate: { id: string; category: InspirationCategory },
+    choice: InspirationResultChoice | null,
+  ) => {
+    setCategoryChoices((current) => ({
+      ...current,
+      [candidate.category]: { candidateId: candidate.id, choice },
+    }))
+  }
+
+  const selectInventoryResult = (result: InspirationCatalogueResult) => {
+    if (!selectedCandidate) return
+    const candidate = selectedCandidate
+    if (!catalogueResults.some((item) => item.id === result.id)) return
+    setValidationError(null)
+    setCandidateChoice(candidate, toggleInventoryChoice(activeChoice, result))
+  }
+
+  const selectWebResult = (result: InspirationWebResult) => {
+    if (!selectedCandidate) return
+    const candidate = selectedCandidate
+    setValidationError(null)
+    setCandidateChoice(candidate, toggleWebChoice(activeChoice, result))
+  }
+
+  const showCandidateInventoryResults = (
+    candidate: { id: string; category: InspirationCategory },
+  ) => {
+    setActiveCandidateId(candidate.id)
+    setResultsSource("inventory")
+    const previousChoice = choices[candidate.category] ?? null
+    if (previousChoice?.source !== "web") return
+    // Returning to Inventory clears the online choice. The category stays empty until the user
+    // explicitly selects an inventory card, so that first click cannot be mistaken for a deselect.
+    setCandidateChoice(candidate, null)
+  }
+
+  const showInventoryResults = () => {
+    if (selectedCandidate) showCandidateInventoryResults(selectedCandidate)
+  }
+
+  const submitSelections = async () => {
+    if (!user?.id || !selectedTotal) {
+      setValidationError(user?.id ? "Choose at least one match." : "Sign in to open this look in Studio.")
+      return
+    }
+
+    setValidationError(null)
+    try {
+      if (selectedWebTotal) {
+        const webSelections = selectedCandidates.flatMap((candidate) => {
+          const choice = choices[candidate.category]
+          if (choice?.source !== "web" || !choice.result.selectionToken) return []
+          return [{ candidateId: candidate.id, selectionToken: choice.result.selectionToken }]
+        })
+        const catalogueSelections = selectedCandidates.flatMap((candidate) => {
+          const choice = choices[candidate.category]
+          if (choice?.source !== "inventory") return []
+          return [{ candidateId: candidate.id, productId: choice.result.id }]
+        })
+        if (webSelections.length !== selectedWebTotal) {
+          throw new Error("An online result expired. Search online again and reselect it.")
+        }
+        await stageSelectionsMutation.mutateAsync({
+          selections: webSelections,
+          catalogueSelections,
+        })
+        return
+      }
+
+      const topProductId = selectedTopId
+      const bottomProductId = selectedBottomId
+      const studioSelectionSignature = `${topProductId ?? ""}:${bottomProductId ?? ""}`
+      let draftId = openedDraftRef.current?.signature === studioSelectionSignature
+        ? openedDraftRef.current.outfitId
+        : null
+      if (!draftId) {
+        const draft = await createDraftMutation.mutateAsync({
+          userId: user.id,
+          topId: topProductId,
+          bottomId: bottomProductId,
+          gender,
+          createdByName: profile?.name ?? null,
+        })
+        draftId = draft.id
+        openedDraftRef.current = { signature: studioSelectionSignature, outfitId: draftId }
+      }
+
+      await openStudioMutation.mutateAsync({
+        outfitId: draftId,
+        topProductId,
+        bottomProductId,
+      })
+      navigate(buildStudioUrl("/studio", "studio", { outfitId: draftId }))
+    } catch (error) {
+      setValidationError(error instanceof Error ? error.message : "The selected pieces could not be opened in Studio.")
+    }
+  }
+
+  if (isPreparingImport) {
+    return (
+      <DetectionProgress
+        sourceUrl={sourcePreviewUrl}
+        error={!sourceFile ? "Choose an image before starting the import." : startImport.error?.message}
+        onBack={returnToSource}
+      />
+    )
   }
 
   if (!importId) {
@@ -227,7 +486,9 @@ export default function InspirationImportScreen() {
         </main>
       )
     }
-    return (
+    return sourcePreviewUrl ? (
+      <DetectionProgress sourceUrl={sourcePreviewUrl} onBack={returnToSource} />
+    ) : (
       <main className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">
           <Loader2 className="mx-auto size-6 animate-spin text-terracotta" />
@@ -237,23 +498,36 @@ export default function InspirationImportScreen() {
     )
   }
 
-  if (isCommitted) {
+  if (isCommitted || isStaged) {
     return (
       <main className="min-h-screen bg-background px-5 py-10 text-foreground">
         <section className="mx-auto max-w-lg rounded-frame border border-hairline bg-card p-7 text-center">
           <span className="mx-auto flex size-14 items-center justify-center rounded-full border border-gold text-gold">
             <Sparkles className="size-6" />
           </span>
-          <p className="mt-5 text-[10px] font-semibold uppercase tracking-[0.2em] text-gold">Look captured</p>
-          <h1 className="mt-2 font-display text-4xl font-medium">Your pieces are saved.</h1>
+          <p className="mt-5 text-[10px] font-semibold uppercase tracking-[0.2em] text-gold">
+            {isStaged ? "Selections saved" : "Look captured"}
+          </p>
+          <h1 className="mt-2 font-display text-4xl font-medium">
+            {isStaged ? "Ready for ingestion." : "Your look is ready."}
+          </h1>
           <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-muted-foreground">
-            Catalogue items are in Wardrobe. Any online selection is marked ready for a later import; ingestion has not started.
+            {isStaged
+              ? "Your selected online products and catalogue pieces are stored. The Studio outfit will be created after ingestion is available and completes successfully."
+              : "Continue styling the selected pieces in Studio. Favorites and Wardrobe remain independent."}
           </p>
           <div className="mt-7 space-y-2 border-y border-hairline py-5 text-left text-sm">
-            <div className="flex justify-between"><span>Catalogue items</span><span>{record.selections.catalogueProductIds.length || catalogueIds.size}</span></div>
-            <div className="flex justify-between"><span>Online item</span><span>{record.selections.webResultId || webResultId ? "Ready to import" : "None"}</span></div>
+            <div className="flex justify-between"><span>Catalogue items</span><span>{record.selections.catalogueProductIds.length}</span></div>
+            <div className="flex justify-between"><span>Online items</span><span>{record.selections.webResultIds.length || "None"}</span></div>
           </div>
-          <Button className="mt-7 w-full bg-terracotta text-white hover:bg-terracotta/90" onClick={() => navigate("/inspiration-import")}>Import another look</Button>
+          <Button
+            className="mt-7 w-full bg-terracotta text-white hover:bg-terracotta/90"
+            onClick={() => !isStaged && record.import.studioOutfitId
+              ? navigate(buildStudioUrl("/studio", "studio", { outfitId: record.import.studioOutfitId }))
+              : navigate("/inspiration-import")}
+          >
+            {!isStaged && record.import.studioOutfitId ? "Open in Studio" : "Import another look"}
+          </Button>
         </section>
       </main>
     )
@@ -261,47 +535,10 @@ export default function InspirationImportScreen() {
 
   if (record.import.status === "detecting" || record.import.status === "source_ready") {
     return (
-      <main className="flex h-[100dvh] flex-col overflow-hidden bg-background text-foreground">
-        <header className="relative flex h-14 shrink-0 items-center justify-center px-4 sm:h-16">
-          <button
-            type="button"
-            aria-label="Back to import"
-            className="absolute left-4 flex size-10 items-center justify-center"
-            onClick={() => navigate("/inspiration-import")}
-          >
-            <ArrowLeft className="size-4" />
-          </button>
-          <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-            Select pieces
-          </span>
-        </header>
-        <section className="mx-auto min-h-0 w-full max-w-2xl flex-1 px-3 pb-3 pt-1 sm:px-5">
-          <p className="mb-3 shrink-0 text-center text-xs font-semibold text-muted-foreground sm:mb-7">
-            Looking for outfits…
-          </p>
-          <div
-            className="relative mx-auto w-fit max-w-full overflow-hidden rounded-[8px] border border-hairline bg-card sm:w-full"
-            aria-busy="true"
-          >
-            {record.sourceUrl ? (
-              <img
-                src={record.sourceUrl}
-                alt="Uploaded inspiration"
-                className="block max-h-[calc(100dvh-21rem)] w-auto max-w-full sm:max-h-none sm:w-full"
-              />
-            ) : null}
-            <div className="pointer-events-none absolute inset-0 bg-foreground/5">
-              <span
-                aria-hidden="true"
-                className="inspiration-scan-line absolute inset-x-0 z-10 h-0.5 bg-gradient-to-r from-transparent via-terracotta to-transparent"
-              />
-              <span className="absolute inset-x-0 bottom-5 flex items-center justify-center gap-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-terracotta">
-                <Loader2 className="size-3.5 animate-spin" /> Identifying pieces
-              </span>
-            </div>
-          </div>
-        </section>
-      </main>
+      <DetectionProgress
+        sourceUrl={record.sourceUrl ?? sourcePreviewUrl}
+        onBack={returnToSource}
+      />
     )
   }
 
@@ -324,9 +561,7 @@ export default function InspirationImportScreen() {
         <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
           {isChoosingCandidate ? "Select pieces" : "Your import"}
         </span>
-        <span className="w-10 text-right text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-          {isChoosingCandidate ? "" : null}
-        </span>
+        <span className="w-10" aria-hidden="true" />
       </header>
 
       <div className={`mx-auto min-h-0 w-full flex-1 overflow-y-auto px-4 sm:px-5 ${isChoosingCandidate ? "max-w-2xl py-0 sm:py-1" : "max-w-5xl py-2 sm:py-7"}`}>
@@ -346,7 +581,7 @@ export default function InspirationImportScreen() {
           </section>
         ) : (
           <section>
-            <div className="grid h-[clamp(14rem,40dvh,22rem)] grid-cols-2 gap-3 sm:h-auto sm:aspect-[3/2]">
+            <div className="grid h-[clamp(18rem,50dvh,28rem)] grid-cols-2 gap-3 sm:h-auto sm:aspect-[3/2]">
               <div className="relative overflow-hidden rounded-[7px] border border-hairline bg-card">
                 {record.sourceUrl ? <img src={record.sourceUrl} alt="Uploaded inspiration reference" className="h-full w-full object-cover" /> : null}
                 <span className="absolute left-3 top-3 rounded-[3px] bg-foreground px-2 py-1 text-[8px] font-bold uppercase tracking-[0.12em] text-background">
@@ -354,8 +589,9 @@ export default function InspirationImportScreen() {
                 </span>
               </div>
               <ImportMannequinPreview
-                results={mannequinResults}
-                webResult={resultsSource === "web" ? selectedWebResult : null}
+                choices={choices}
+                activeCategory={selectedCandidate.category}
+                resultsSource={resultsSource}
               />
             </div>
 
@@ -373,8 +609,7 @@ export default function InspirationImportScreen() {
                       disabled={!candidate}
                       onClick={() => {
                         if (!candidate) return
-                        setActiveCandidateId(candidate.id)
-                        setResultsSource("inventory")
+                        showCandidateInventoryResults(candidate)
                       }}
                       className={`flex size-11 items-center justify-center rounded-[6px] border transition-colors ${active ? "border-foreground bg-foreground text-background" : "border-hairline bg-card text-muted-foreground disabled:bg-muted disabled:text-muted-foreground/30"}`}
                     >
@@ -387,7 +622,7 @@ export default function InspirationImportScreen() {
                 <button
                   type="button"
                   className="flex h-9 items-center gap-1 rounded-[5px] border border-hairline bg-card px-3 text-[9px] font-semibold uppercase tracking-[0.13em] text-foreground"
-                  onClick={() => setResultsSource("inventory")}
+                  onClick={showInventoryResults}
                 >
                   <ChevronLeft className="size-3" /> Inventory
                 </button>
@@ -408,7 +643,11 @@ export default function InspirationImportScreen() {
             <div className="mt-2 min-w-0 sm:mt-4">
               {resultsSource === "web" ? (
                 webResults.length ? (
-                  <WebMatchRack results={webResults} selectedId={webResultId} onSelect={setWebResultId} />
+                  <WebMatchRack
+                    results={webResults}
+                    selectedId={activeWebProviderResultId}
+                    onSelect={selectWebResult}
+                  />
                 ) : (
                   <div className="flex min-h-52 items-center justify-center rounded-[7px] border border-hairline bg-card px-6 text-center text-xs text-muted-foreground">
                     No online matches found for this piece.
@@ -421,10 +660,21 @@ export default function InspirationImportScreen() {
               ) : (
                 <CatalogueMatchRack
                   results={catalogueResults}
-                  previewId={activePreviewId}
-                  selectedIds={catalogueIds}
-                  onPreview={(id) => setPreviewIds((current) => ({ ...current, [selectedCandidate.category]: id }))}
-                  onToggle={toggleCatalogue}
+                  selectedId={activePreviewId}
+                  isFavorite={productSaveActions.isSaved}
+                  isInWardrobe={productSaveActions.isInWardrobe}
+                  isSaving={productSaveActions.isSaving}
+                  onSelect={selectInventoryResult}
+                  onToggleFavorite={(id, nextSaved, position) => void productSaveActions.onToggleSave(
+                    id,
+                    nextSaved,
+                    { layout: "horizontal_rail", position },
+                  )}
+                  onToggleWardrobe={(id, nextSaved, position) => void productSaveActions.onToggleWardrobe(
+                    id,
+                    nextSaved,
+                    { layout: "horizontal_rail", position },
+                  )}
                 />
               )}
             </div>
@@ -463,11 +713,17 @@ export default function InspirationImportScreen() {
           ) : (
             <Button
               className="h-12 w-full rounded-[4px] bg-terracotta text-sm font-semibold text-white hover:bg-terracotta/90 sm:h-14 sm:text-base"
-              disabled={!selectedTotal || commitMutation.isPending}
-              onClick={() => commitMutation.mutate({ catalogueProductIds: [...catalogueIds], webResultId })}
+              disabled={!selectedTotal || stageSelectionsMutation.isPending || createDraftMutation.isPending || openStudioMutation.isPending}
+              onClick={() => void submitSelections()}
             >
-              {commitMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-              {selectedTotal ? "Proceed" : "Select pieces to continue"}
+              {stageSelectionsMutation.isPending || createDraftMutation.isPending || openStudioMutation.isPending
+                ? <Loader2 className="size-4 animate-spin" />
+                : <Sparkles className="size-4" />}
+              {selectedWebTotal
+                ? "Save selections for ingestion"
+                : selectedInventoryTotal
+                ? `Open ${selectedInventoryTotal === 1 ? "piece" : "look"} in Studio`
+                : "Select pieces to continue"}
             </Button>
           )}
         </div>

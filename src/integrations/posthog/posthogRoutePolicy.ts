@@ -10,7 +10,7 @@ const EXACT_ALLOWED_PATHS = new Set([
   "/auth/callback",
 ])
 
-const PREFIX_ALLOWED_PATHS = ["/home", "/search", "/collection", "/studio", "/profile"]
+const PREFIX_ALLOWED_PATHS = ["/home", "/search", "/collection", "/studio", "/profile", "/inspiration-import"]
 
 export function isPostHogAllowedPath(pathname: string): boolean {
   if (EXACT_ALLOWED_PATHS.has(pathname)) return true
