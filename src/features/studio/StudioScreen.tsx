@@ -255,33 +255,38 @@ export function StudioScreenView() {
     }
   }, [resolvedOutfitId, topIdParam, bottomIdParam, shoesIdParam, slotProductIds, parsedParams.hiddenSlots])
 
-  // Prefetch search alternatives for all 3 slots when outfit loads
-  // (The alternatives screen auto-searches with the current item's image)
+  // Background prefetch of search-v2 after initial render (Option B: deferred)
+  // Starts after page loads so it doesn't block initial paint, but data ready
+  // if user opens alternatives panel and searches.
   useEffect(() => {
     if (!resolvedOutfitId || !studioAvatar || tour.isActive) return
 
     const slots: StudioProductTraySlot[] = ["top", "bottom", "shoes"]
-    
-    slots.forEach((slot) => {
-      // Find the product item for this slot to get its image URL
-      const item = studioAvatar.items.find((i) => i.type === slot)
-      const imageUrl = item?.thumbnailUrl ?? item?.imageUrl ?? null
-      const productId = item?.id ?? null
 
-      if (productId || isHttpUrl(imageUrl)) {
-        // Use hook-layer prefetch function (side effects live in hooks layer)
-        prefetchStudioSearchResults(queryClient, {
-          slot,
-          query: "",
-          imageUrl,
-          productId,
-          filters: {},
-          gender: adminGender ?? gender,
-        }).catch(() => {
-          // Prefetch failures should not block the UI
-        })
-      }
-    })
+    // Defer prefetch to after initial render via setTimeout
+    const timeoutId = setTimeout(() => {
+      slots.forEach((slot) => {
+        const item = studioAvatar.items.find((i) => i.type === slot)
+        const imageUrl = item?.thumbnailUrl ?? item?.imageUrl ?? null
+        const productId = item?.id ?? null
+
+        if (productId || isHttpUrl(imageUrl)) {
+          // Fire-and-forget prefetch - don't await, just let it run in background
+          prefetchStudioSearchResults(queryClient, {
+            slot,
+            query: "",
+            imageUrl,
+            productId,
+            filters: {},
+            gender: adminGender ?? gender,
+          }).catch(() => {
+            // Silently fail - non-critical background operation
+          })
+        }
+      })
+    }, 0) // Schedule after initial render
+
+    return () => clearTimeout(timeoutId)
   }, [resolvedOutfitId, studioAvatar, queryClient, tour.isActive, adminGender, gender])
 
   useEffect(() => {

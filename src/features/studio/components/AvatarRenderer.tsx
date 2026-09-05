@@ -818,18 +818,21 @@ function LegacyAvatarRenderer({
             const shouldAnimate = animatingZone && layer.item.zone === animatingZone
             return (
               <img
-                key={shouldAnimate ? `${layer.key}-anim` : layer.key}
+                key={layer.key}
                 src={layer.url}
                 alt={layer.item.description ?? layer.item.productName ?? layer.item.brand ?? "Outfit item"}
                 className={cn("absolute select-none", onItemSelect && "cursor-pointer")}
                 style={{
                   ...layer.style,
-                  visibility: imagesRevealed ? 'visible' : 'hidden',
+                  opacity: imagesRevealed ? 1 : 0,
                   animation: shouldAnimate && imagesRevealed ? 'itemFadeIn 250ms ease-out' : undefined,
+                  pointerEvents: imagesRevealed ? 'auto' : 'none',
                 }}
                 onLoad={(e) => handleItemImgLoad(layer.item.id, layer.url, e.currentTarget)}
                 onError={() => handleItemImgError(layer.item.id)}
                 onClick={() => onItemSelect?.(layer.item)}
+                loading="eager"
+                decoding="async"
                 {...({ fetchpriority: fetchPriority } as any)}
               />
             )
