@@ -31,6 +31,12 @@ export interface StudioProductTrayItem {
   rating?: number | null
   reviewCount?: number | null
   imageUrl?: string | null
+  /**
+   * The 400px WebP sibling of `imageUrl`. Carried alongside rather than folded into `imageUrl`
+   * because the mannequin renderer wants BOTH: it paints the thumbnail the instant it lands and
+   * swaps in the full-res texture behind it (PlacementAvatarRenderer).
+   */
+  thumbnailUrl?: string | null
   placementX: number
   placementY: number
   imageLength: number
@@ -297,6 +303,7 @@ const OUTFIT_TRAY_SELECT = `
     currency,
     product_url,
     image_url,
+    thumbnail_url,
     placement_x,
     placement_y,
     image_length,
@@ -318,6 +325,7 @@ const OUTFIT_TRAY_SELECT = `
     currency,
     product_url,
     image_url,
+    thumbnail_url,
     placement_x,
     placement_y,
     image_length,
@@ -339,6 +347,7 @@ const OUTFIT_TRAY_SELECT = `
     currency,
     product_url,
     image_url,
+    thumbnail_url,
     placement_x,
     placement_y,
     image_length,
@@ -392,6 +401,7 @@ function toTrayItem(slot: StudioProductTraySlot, product: Database["public"]["Ta
     rating: null,
     reviewCount: null,
     imageUrl: product.image_url ?? null,
+    thumbnailUrl: product.thumbnail_url ?? null,
     placementX: placement.placementX,
     placementY: placement.placementY,
     imageLength: placement.imageLength,
@@ -802,7 +812,10 @@ export function mapTrayItemToAlternative(item: StudioProductTrayItem): StudioAlt
     brand: item.brand ?? null,
     price: item.price,
     currency: item.currency,
-    imageSrc: item.imageUrl ?? "",
+    // Grid tile gets the thumbnail; the mannequin gets the full-res image the transform was
+    // measured against. Round-tripping a swapped-out item through here used to put the full-res
+    // PNG back into the alternatives rail.
+    imageSrc: item.thumbnailUrl || item.imageUrl || "",
     imageUrl: item.imageUrl ?? "",
     productUrl: item.productUrl ?? null,
     placementX: item.placementX,
@@ -953,7 +966,7 @@ async function getProductById(productId: string): Promise<StudioProductTrayItem 
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, product_name, brand, price, image_url, product_url, gender, type, placement_x, placement_y, image_length, placement, size, currency, color, fit, feel, vibes, body_parts_visible, care, material_type",
+      "id, product_name, brand, price, image_url, thumbnail_url, product_url, gender, type, placement_x, placement_y, image_length, placement, size, currency, color, fit, feel, vibes, body_parts_visible, care, material_type",
     )
     .eq("id", productId)
     .maybeSingle()
@@ -980,6 +993,7 @@ async function getProductById(productId: string): Promise<StudioProductTrayItem 
     rating: null,
     reviewCount: null,
     imageUrl: data.image_url ?? null,
+    thumbnailUrl: data.thumbnail_url ?? null,
     placementX: placement.placementX,
     placementY: placement.placementY,
     imageLength: placement.imageLength,

@@ -227,6 +227,21 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   return pending
 }
 
+/**
+ * The first of two loads to succeed; rejects only once both have failed.
+ *
+ * `Promise.race` is the wrong primitive here — it settles on the first REJECTION too, so a missing
+ * thumbnail would take the full-res load down with it.
+ */
+function firstOf<T>(a: Promise<T>, b: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let failed = 0
+    const arm = (p: Promise<T>) => p.then(resolve, (err) => { if (++failed === 2) reject(err) })
+    arm(a)
+    arm(b)
+  })
+}
+
 function draw(img: HTMLImageElement, cw: number, ch: number): CanvasRenderingContext2D | null {
   const canvas = document.createElement("canvas")
   canvas.width = cw; canvas.height = ch
@@ -445,19 +460,47 @@ export function PlacementAvatarRenderer({
           }
         }
 
-        // Load all garment textures in parallel (not sequential)
-        // Load all textures in parallel (needed for rendering)
-        const textures = await Promise.all(
-          placed.map(item => Assets.load(item.imageUrl) as Promise<Texture>)
-        )
-        if (disposed) return
+        // ── Progressive garment textures ────────────────────────────────────────────────────────
+        //
+        // `imageUrl` is the full-res garment cut-out (a 2K PNG, 1-2.5MB); `thumbnailUrl` is the SAME
+        // cut-out at 400px WebP with a lossless alpha channel — about 1% of the bytes
+        // (services/ingestion-automated/src/utils/thumbnail.ts). Both are fetched at once: the scene
+        // is laid out from whichever arrives first, and any mesh still showing a thumbnail is
+        // swapped up to full-res the moment that lands. The thumbnail nearly always wins, but not
+        // always — a full-res texture already warm in the cache must not wait behind a cold
+        // thumbnail, which is what `firstOf` is for.
+        //
+        // The swap does NOT re-run the layout. `fit: 'inside'` preserves the aspect ratio, so the
+        // mesh footprint computed from the thumbnail differs from the full-res one by integer
+        // rounding only — order 0.1% of the world frame, well under a pixel once scaled into the
+        // container. Recomputing would mean rebuilding every garment AND the world transform, and
+        // the visible result would be the frame shifting under the user as the images land.
+        const fullTex = placed.map((it) => Assets.load(it.imageUrl) as Promise<Texture>)
+        // A full-res failure must not surface as an unhandled rejection while the thumbnail renders.
+        fullTex.forEach((p) => { p.catch(() => {}) })
 
-        // ponytail: load all probes in parallel (not sequential). Texture load + probe load
-        // both parallel, then render. Don't await in loop.
-        const garmentProbes = await Promise.all(
-          textures.map((tex, idx) => probeGarment(placed[idx].imageUrl, tex.width, tex.height))
+        const loaded = await Promise.all(
+          placed.map(async (it, i) => {
+            const thumbUrl = it.thumbnailUrl?.trim()
+            if (!thumbUrl || thumbUrl === it.imageUrl) {
+              return { url: it.imageUrl, tex: await fullTex[i], isFull: true }
+            }
+            return firstOf(
+              (Assets.load(thumbUrl) as Promise<Texture>).then((tex) => ({ url: thumbUrl, tex, isFull: false })),
+              fullTex[i].then((tex) => ({ url: it.imageUrl, tex, isFull: true })),
+            )
+          }),
         )
         if (disposed) return
+        const textures = loaded.map((l) => l.tex)
+
+        // Probed against the texture actually laid out — so against the thumbnail when that is what
+        // won, which also spares the main thread a full-res decode plus alpha scan per garment.
+        const garmentProbes = await Promise.all(
+          loaded.map((l) => probeGarment(l.url, l.tex.width, l.tex.height))
+        )
+        if (disposed) return
+        const meshes: MeshPlane[] = []
 
         // Each garment: replicate the editor's fit/home/pivot, then apply transform + warp.
         for (let idx = 0; idx < placed.length; idx++) {
@@ -472,7 +515,12 @@ export function PlacementAvatarRenderer({
           const { bounds: gb, isOpaque } = garmentProbes[idx]
 
           const mesh = new MeshPlane({ texture: tex, verticesX: MESH_X, verticesY: MESH_Y })
+          // Not optional: MeshPlane's default is to rebuild its plane geometry whenever the texture
+          // changes size, which the full-res swap below does — and a rebuild both resizes the mesh
+          // out of the layout computed here and wipes the warp lattice applied just below it.
+          mesh.autoResize = false
           mesh.position.set(-texW / 2, -texH / 2)
+          meshes.push(mesh)
 
           // Apply the saved warp lattice (base vertices + per-vertex offsets).
           //
@@ -600,8 +648,6 @@ export function PlacementAvatarRenderer({
           })),
         })
 
-        app.render()
-
         // ── Snapshot and release the WebGL context ──────────────────────────────────────────────
         //
         // A browser allows only ~16 live WebGL contexts; past that it force-loses the oldest, which
@@ -610,10 +656,16 @@ export function PlacementAvatarRenderer({
         // feed moved onto this renderer, scrolling meant contexts being created and destroyed
         // constantly — the stutter, and the cards that came back empty.
         //
-        // A non-interactive avatar has no reason to hold a context after its one render: flatten it
+        // A non-interactive avatar has no reason to hold a context after its LAST render: flatten it
         // to a bitmap, hand that to the DOM, and give the context straight back. Live contexts then
         // track how many avatars are BUILDING, not how many are mounted.
-        if (!interactive) {
+        //
+        // `final: false` publishes the thumbnail composite while keeping the context, because the
+        // full-res swap still needs to draw into it. That holds a context exactly as long as the
+        // pre-progressive code did, which also waited on the full-res load with the app already
+        // initialised — the difference is only that something is on screen for that stretch.
+        const present = (final: boolean) => {
+          if (interactive) return
           const snapshot = app.renderer.extract.canvas({
             target: app.stage,
             frame: new Rectangle(0, 0, containerWidth, containerHeight),
@@ -624,12 +676,31 @@ export function PlacementAvatarRenderer({
           snapshot.style.height = "100%"
           snapshot.style.display = "block"
           host.replaceChildren(snapshot)
+          if (!final) return
           released = true
           appRef.current = null
           app.destroy(true, { children: true })
         }
 
+        app.render()
+        const upgradable = loaded.some((l) => !l.isFull)
+        present(!upgradable)
+        // Ready on the FIRST visible composite, not on the upgrade: the full-res texture lands on an
+        // avatar the user is already looking at, so gating the studio on it just re-adds the wait.
         onReady?.(true)
+        if (!upgradable) return
+
+        const fulls = await Promise.allSettled(fullTex)
+        if (disposed) return
+        let swapped = false
+        fulls.forEach((result, i) => {
+          // A rejected full-res load simply leaves the thumbnail in place.
+          if (loaded[i].isFull || result.status !== "fulfilled" || result.value === loaded[i].tex) return
+          meshes[i].texture = result.value
+          swapped = true
+        })
+        if (swapped) app.render()
+        present(true)
       } catch {
         if (!disposed) {
           onItemBoundsChangeRef.current?.({
