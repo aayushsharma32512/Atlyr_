@@ -215,6 +215,9 @@ export function mapTrayItemToStudioRenderedItem(item: StudioProductTrayItem | nu
     id: item.productId,
     zone: item.slot,
     imageUrl,
+    // Both are carried: the mannequin renderer paints the thumbnail first and swaps the full-res
+    // texture in behind it. Null when the product has no thumbnail yet — a single full-res load.
+    thumbnailUrl: typeof item.thumbnailUrl === "string" ? item.thumbnailUrl.trim() || null : null,
     placementX: ensurePlacementValue(item.placementX),
     placementY: ensurePlacementValue(item.placementY),
     imageLengthCm: ensurePlacementValue(item.imageLength),

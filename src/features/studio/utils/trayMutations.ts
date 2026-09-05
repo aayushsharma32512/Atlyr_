@@ -29,6 +29,11 @@ export function toTrayItem(slot: StudioProductTraySlot, product: StudioAlternati
     // Use the raw garment image for rendering (the placement transform is measured against it),
     // not the cropped grid thumbnail (imageSrc).
     imageUrl: product.imageUrl || product.imageSrc || null,
+    // …but carry the thumbnail too, so the mannequin can paint it while the full-res texture is
+    // still downloading. `imageSrc` falls back to image_url when a product has no thumbnail row,
+    // so it only counts as one when it differs.
+    thumbnailUrl:
+      product.imageSrc && product.imageSrc !== product.imageUrl ? product.imageSrc : null,
     placementX: product.placementX,
     placementY: product.placementY,
     imageLength: product.imageLength,
