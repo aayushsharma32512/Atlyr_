@@ -31,6 +31,7 @@ import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { studioKeys } from "@/features/studio/queryKeys"
 import { prefetchStudioAlternatives } from "@/features/studio/hooks/useStudioAlternatives"
 import { useStudioSwapActions } from "@/features/studio/hooks/useStudioSwapActions"
+import { prefetchStudioSearchResults } from "@/features/studio/hooks/useStudioSearchResults"
 import { useStudioResolvedSlots } from "@/features/studio/hooks/useStudioResolvedSlots"
 import type { StudioAlternativeProduct, StudioProductTraySlot } from "@/services/studio/studioService"
 import { buildStudioSearchParams, buildStudioUrl, parseStudioSearchParams, type SlotIdMap } from "@/features/studio/utils/studioUrlState"
@@ -254,9 +255,39 @@ export function StudioScreenView() {
     }
   }, [resolvedOutfitId, topIdParam, bottomIdParam, shoesIdParam, slotProductIds, parsedParams.hiddenSlots])
 
-  // ponytail: deferred prefetch: only fetch alternatives when user opens alternatives panel,
-  // not on page load. Eliminates 3.5s search-v2 blocking on initial render.
-  // Lazy load when TraySheet actually opens (onOpenAlternatives).
+  // Background prefetch of search-v2 after initial render (Option B: deferred)
+  // Starts after page loads so it doesn't block initial paint, but data ready
+  // if user opens alternatives panel and searches.
+  useEffect(() => {
+    if (!resolvedOutfitId || !studioAvatar || tour.isActive) return
+
+    const slots: StudioProductTraySlot[] = ["top", "bottom", "shoes"]
+
+    // Defer prefetch to after initial render via setTimeout
+    const timeoutId = setTimeout(() => {
+      slots.forEach((slot) => {
+        const item = studioAvatar.items.find((i) => i.type === slot)
+        const imageUrl = item?.thumbnailUrl ?? item?.imageUrl ?? null
+        const productId = item?.id ?? null
+
+        if (productId || isHttpUrl(imageUrl)) {
+          // Fire-and-forget prefetch - don't await, just let it run in background
+          prefetchStudioSearchResults(queryClient, {
+            slot,
+            query: "",
+            imageUrl,
+            productId,
+            filters: {},
+            gender: adminGender ?? gender,
+          }).catch(() => {
+            // Silently fail - non-critical background operation
+          })
+        }
+      })
+    }, 0) // Schedule after initial render
+
+    return () => clearTimeout(timeoutId)
+  }, [resolvedOutfitId, studioAvatar, queryClient, tour.isActive, adminGender, gender])
 
   useEffect(() => {
     if (!hasHydratedFromUrl || !syncOutfitId) {
