@@ -2,6 +2,7 @@ import type { CSSProperties } from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
 import type {
+  AvatarItemBoundsFrame,
   MannequinConfig,
   MannequinSegmentName,
   SegmentDimensions,
@@ -16,7 +17,10 @@ import {
   getSegmentLengthPx,
 } from "@/features/studio/utils/avatarMath"
 import { DEFAULT_VISIBLE_SEGMENTS, MANNEQUIN_SKIN_HEXES } from "@/features/studio/constants"
-import { PlacementAvatarRenderer } from "@/features/studio/components/PlacementAvatarRenderer"
+import {
+  PlacementAvatarRenderer,
+  probeGarment,
+} from "@/features/studio/components/PlacementAvatarRenderer"
 import {
   applyHairColorToSvg,
   extractSvgDimensions,
@@ -137,12 +141,10 @@ interface AvatarRendererProps {
    * Which mannequin to render on. 'auto' (default) decides from the data — see the note on
    * `AvatarRenderer` below. '2d' forces the legacy SVG avatar, which the admin 2D placement editor
    * needs because it edits the legacy placement_x / placement_y / image_length values and must see
-   * the renderer they drive.
-   *
-   * There is no '3d' option and no user-facing toggle: garments with a placement always render on
-   * the placement mannequin.
+   * the renderer they drive. '3d' forces the placement mannequin for surfaces that intentionally
+   * show the current default avatar even before a placed garment is present.
    */
-  placementMode?: "auto" | "2d"
+  placementMode?: "auto" | "2d" | "3d"
   /**
    * Reports the legacy renderer's resolved layout scale so a caller can invert its placement math
    * (pixel drag → placement_x / placement_y / image_length). Only fires on the 2D SVG path, and
@@ -150,6 +152,7 @@ interface AvatarRendererProps {
    * 2D placement editor; the studio ignores it.
    */
   onMetrics?: (metrics: AvatarRenderMetrics) => void
+  onItemBoundsChange?: (frame: AvatarItemBoundsFrame) => void
 }
 
 interface LoadedItemData {
@@ -177,10 +180,8 @@ interface LoadedItemData {
 export function AvatarRenderer(props: AvatarRendererProps) {
   const renderable = props.items.filter((it) => it.imageUrl)
   const hasPlacement = renderable.some((it) => it.placement)
-  const usePlacement = props.placementMode === "2d" ? false : hasPlacement
-
-  // ponytail: if using PlacementAvatarRenderer, don't render LegacyAvatarRenderer at all
-  // to prevent duplicate image loads
+  const usePlacement = props.placementMode === "3d"
+    || (props.placementMode !== "2d" && hasPlacement)
   if (usePlacement) {
     return (
       <PlacementAvatarRenderer
@@ -199,6 +200,7 @@ export function AvatarRenderer(props: AvatarRendererProps) {
         // them — tapping a garment did nothing at all, while the legacy SVG path
         // worked fine. That asymmetry is what made this look unreproducible.
         onItemSelect={props.onItemSelect}
+        onItemBoundsChange={props.onItemBoundsChange}
         hairStyle={
           props.hairStyle?.styleKey && props.hairStyle.gender
             ? { styleKey: props.hairStyle.styleKey, gender: props.hairStyle.gender }
@@ -241,6 +243,7 @@ function LegacyAvatarRenderer({
   avatarRef,
   fetchPriority = "auto",
   onMetrics,
+  onItemBoundsChange,
 }: AvatarRendererProps) {
   const [segmentMarkup, setSegmentMarkup] = useState<SegmentSvgMap>({} as SegmentSvgMap)
   const [segmentDimensions, setSegmentDimensions] = useState<SegmentDimMap>({} as SegmentDimMap)
@@ -606,6 +609,7 @@ function LegacyAvatarRenderer({
           pointerEvents: "auto" as const,
           opacity: Math.max(0, Math.min(1, itemOpacity)),
         },
+        layout: { left: containerWidth / 2 + xOffset - width / 2, top, width, height },
       }
     }
 
@@ -623,10 +627,48 @@ function LegacyAvatarRenderer({
         const baseZ = zMap.get(zone) ?? 4
         return zoneItems.map((item, index) => buildLayer(item, baseZ, index))
       })
-      .filter(Boolean) as Array<{ key: string; item: StudioRenderedItem; url: string; style: CSSProperties }>
+      .filter(Boolean) as Array<{
+        key: string
+        item: StudioRenderedItem
+        url: string
+        style: CSSProperties
+        layout: { left: number; top: number; width: number; height: number }
+      }>
 
     return layers
-  }, [items, itemData, pxPerCm, headScale, chinOffsetPx, globalTopOffsetPx, itemOpacity, userHeightPx, slotOrder])
+  }, [items, itemData, pxPerCm, headScale, chinOffsetPx, globalTopOffsetPx, itemOpacity, userHeightPx, slotOrder, containerWidth])
+
+  useEffect(() => {
+    if (!onItemBoundsChange || !allImagesLoaded) return
+    let cancelled = false
+    if (!clothingLayers.length) {
+      onItemBoundsChange({ items: [], canvasWidth: containerWidth, canvasHeight: containerHeight })
+      return
+    }
+    void Promise.all(clothingLayers.map(async (layer) => {
+      const dimensions = itemData[layer.item.id]?.dimensions
+      if (!dimensions) return null
+      const probe = await probeGarment(layer.url, dimensions.width, dimensions.height)
+      const scaleX = layer.layout.width / dimensions.width
+      const scaleY = layer.layout.height / dimensions.height
+      return {
+        id: layer.item.id,
+        zone: layer.item.zone,
+        left: layer.layout.left + probe.bounds.x * scaleX,
+        top: layer.layout.top + probe.bounds.y * scaleY,
+        width: probe.bounds.w * scaleX,
+        height: probe.bounds.h * scaleY,
+      }
+    })).then((bounds) => {
+      if (cancelled) return
+      onItemBoundsChange({
+        items: bounds.filter((item) => item !== null),
+        canvasWidth: containerWidth,
+        canvasHeight: containerHeight,
+      })
+    })
+    return () => { cancelled = true }
+  }, [allImagesLoaded, clothingLayers, containerHeight, containerWidth, itemData, onItemBoundsChange])
 
   const renderSegment = useCallback(
     (name: MannequinSegmentName) => {

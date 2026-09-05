@@ -335,3 +335,11 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 # so skip the gateway JWT check — dashboard-deployed versions ran without it.
 [functions.admin-issue-invites]
 verify_jwt = false
+
+# The public action router uses the default gateway JWT verification. Internal
+# webhook/automation functions authenticate their own signed credentials.
+[functions.inspiration-import]
+verify_jwt = true
+
+[functions.inspiration-import-detector-callback]
+verify_jwt = false

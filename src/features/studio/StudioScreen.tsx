@@ -1197,8 +1197,12 @@ export function StudioScreenView() {
           <div className="bg-warp-grid pointer-events-none absolute inset-0" aria-hidden="true" />
 
           {/* Absolute rather than h-full so the model fills the card no matter
-              how the flex chain above resolves. */}
-          <div className="absolute inset-0 flex items-end justify-center">
+              how the flex chain above resolves.
+              pb-4: the hero tile scales the figure to exactly fill the wrapper's
+              height, so without padding the feet sit flush on the canvas edge.
+              The padding shrinks the height the scale is computed from, lifting
+              the figure off the bottom (same treatment as the alternates screen). */}
+          <div className="absolute inset-0 flex items-end justify-center pb-4">
             {studioAvatar || (isAdminMode && !outfitId) ? (
               <OutfitInspirationTile
                 preset="heroCanonical"

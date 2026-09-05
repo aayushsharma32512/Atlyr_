@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react"
 import { Application, Assets, Container, MeshPlane, Rectangle, Sprite, Texture } from "pixi.js"
-import type { StudioRenderedItem, StudioRenderedZone } from "@/features/studio/types"
+import type {
+  AvatarItemBounds,
+  AvatarItemBoundsFrame,
+  StudioRenderedItem,
+  StudioRenderedZone,
+} from "@/features/studio/types"
 import { mannequinAssetUrl } from "@/components/ingestion-automated/PlacementMeshEditor"
 import { PLACEMENT_HEAD_ANCHOR, headCropRect } from "@/features/studio/constants/mannequinAnchors"
 import { recolorHair, recolorSkin } from "@/features/studio/utils/recolor"
@@ -52,7 +57,7 @@ function withHairHeadroom(bounds: Bounds, mannequin: "male" | "female", hairDraw
  * cloth under the finger. Same single alpha pass; the mask was already being
  * computed and thrown away.
  */
-type GarmentProbe = {
+export type GarmentProbe = {
   bounds: Bounds
   /** Texture-space coords, in the ORIGINAL (unpadded-scale) pixel grid. */
   isOpaque: (texX: number, texY: number) => boolean
@@ -70,7 +75,9 @@ type GarmentProbe = {
 const garmentProbeCache = new Map<string, Promise<GarmentProbe>>()
 const mannequinBoundsCache = new Map<string, Promise<Bounds>>()
 
-function probeGarment(url: string, texW: number, texH: number): Promise<GarmentProbe> {
+// Shared with the legacy renderer so both paths use the same cached alpha-bounds probe.
+// eslint-disable-next-line react-refresh/only-export-components
+export function probeGarment(url: string, texW: number, texH: number): Promise<GarmentProbe> {
   const key = `${url}|${texW}x${texH}`
   const hit = garmentProbeCache.get(key)
   if (hit) return hit
@@ -272,6 +279,7 @@ type Props = {
    * the garment shape rather than its bounding box.
    */
   onItemSelect?: (item: StudioRenderedItem) => void
+  onItemBoundsChange?: (frame: AvatarItemBoundsFrame) => void
 }
 
 /**
@@ -297,6 +305,7 @@ export function PlacementAvatarRenderer({
   skinTone = null,
   crop = "figure",
   onItemSelect,
+  onItemBoundsChange,
 }: Props) {
   const [host, setHost] = useState<HTMLDivElement | null>(null)
   const appRef = useRef<Application | null>(null)
@@ -306,6 +315,8 @@ export function PlacementAvatarRenderer({
   // tap current without rebuilding every garment on each render.
   const onItemSelectRef = useRef(onItemSelect)
   onItemSelectRef.current = onItemSelect
+  const onItemBoundsChangeRef = useRef(onItemBoundsChange)
+  onItemBoundsChangeRef.current = onItemBoundsChange
 
   /**
    * The mannequin to draw: the VIEWER'S, whenever any garment can be rendered on it.
@@ -422,6 +433,7 @@ export function PlacementAvatarRenderer({
         // Each garment's alpha bounds go through its canvas transform and union into
         // the frame; a head crop stays as authored — it deliberately excludes the body.
         let frame = { ...mb }
+        const garmentWorldBounds: AvatarItemBounds[] = []
         const growFrame = (x0: number, y0: number, x1: number, y1: number) => {
           const fx = Math.min(frame.x, x0)
           const fy = Math.min(frame.y, y0)
@@ -522,6 +534,14 @@ export function PlacementAvatarRenderer({
               if (wy > maxY) maxY = wy
             }
             growFrame(minX, minY, maxX, maxY)
+            garmentWorldBounds.push({
+              id: item.id,
+              zone: item.zone,
+              left: minX,
+              top: minY,
+              width: maxX - minX,
+              height: maxY - minY,
+            })
           }
 
           // Opt-in hit testing. This renderer is read-only for the studio, so interactivity stays
@@ -568,6 +588,18 @@ export function PlacementAvatarRenderer({
           containerHeight / 2 - (frame.y + frame.h / 2) * displayScale,
         )
 
+        onItemBoundsChangeRef.current?.({
+          canvasWidth: containerWidth,
+          canvasHeight: containerHeight,
+          items: garmentWorldBounds.map((bounds) => ({
+            ...bounds,
+            left: bounds.left * displayScale + world.position.x,
+            top: bounds.top * displayScale + world.position.y,
+            width: bounds.width * displayScale,
+            height: bounds.height * displayScale,
+          })),
+        })
+
         app.render()
 
         // ── Snapshot and release the WebGL context ──────────────────────────────────────────────
@@ -599,7 +631,14 @@ export function PlacementAvatarRenderer({
 
         onReady?.(true)
       } catch {
-        if (!disposed) onReady?.(true) // don't wedge the studio on a placement render error
+        if (!disposed) {
+          onItemBoundsChangeRef.current?.({
+            items: [],
+            canvasWidth: containerWidth,
+            canvasHeight: containerHeight,
+          })
+          onReady?.(true) // don't wedge the studio on a placement render error
+        }
       }
     })()
 

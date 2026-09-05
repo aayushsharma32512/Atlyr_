@@ -92,6 +92,7 @@ check-duplicates.js
 
 # Local development helpers
 scripts/dev/
+.ngrok/
 
 # Debug scripts (temporary)
 scripts/debug-*.js
@@ -186,4 +187,3 @@ shoe_segmentation/
 lib_match.py
 shoes placement/
 *.excalidraw
-

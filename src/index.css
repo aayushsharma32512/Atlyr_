@@ -826,6 +826,33 @@ img {
   50% { transform: translateY(-5px); }
 }
 
+@keyframes inspiration-scan {
+  0% {
+    top: 0;
+    opacity: 0.35;
+  }
+  12%, 88% {
+    opacity: 1;
+  }
+  100% {
+    top: calc(100% - 2px);
+    opacity: 0.35;
+  }
+}
+
+.inspiration-scan-line {
+  top: 0;
+  animation: inspiration-scan 2.2s ease-in-out infinite alternate;
+  box-shadow: 0 0 10px hsl(var(--terracotta) / 0.65);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inspiration-scan-line {
+    top: 50%;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+}
+
 /* ─────────────────────────────────────────────────────────────────────────
    KALAGRIHA — the defining textures & motion
    warp/weft grid (avatar canvases, editorial tiles, product frames),

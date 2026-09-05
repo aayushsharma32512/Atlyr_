@@ -100,6 +100,8 @@ export interface ProductSearchResult {
   currency: string | null
   priceLabel: string
   imageSrc: string
+  thumbnailSrc: string
+  renderImageSrc: string
   similarity?: number
   gender?: string | null
   category_id?: string | null
@@ -115,6 +117,7 @@ export interface ProductSearchResult {
   imageLength?: number | null
   color: string | null  // Added color property
   bodyPartsVisible?: string[] | null
+  placement?: Database["public"]["Tables"]["products"]["Row"]["placement"]
 }
 
 interface SearchFunctionResponse<T> {
@@ -270,7 +273,9 @@ export async function getBrowseCollections({
 
       const mapped = outfits.map((row) => {
         const outfit = mapDbOutfitToOutfit(row)
-        const studioOutfit = mapDbOutfitToStudioOutfit(row as any)
+        const studioOutfit = mapDbOutfitToStudioOutfit(
+          row as unknown as Parameters<typeof mapDbOutfitToStudioOutfit>[0],
+        )
 
         return {
           id: outfit.id,
@@ -379,7 +384,9 @@ async function fetchOutfitsByIds(
     const typedRow = row as unknown as DbOutfitWithJoins
     map[typedRow.id] = {
       outfit: mapDbOutfitToOutfit(typedRow),
-      studioOutfit: mapDbOutfitToStudioOutfit(typedRow as any),
+      studioOutfit: mapDbOutfitToStudioOutfit(
+        typedRow as unknown as Parameters<typeof mapDbOutfitToStudioOutfit>[0],
+      ),
     }
   }
   return map
@@ -395,7 +402,7 @@ async function fetchProductsByIds(
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, product_name, brand, price, currency, image_url, thumbnail_url, color, type, type_category, gender, fit, feel, vibes, category_id, color_group, size, product_url, placement_x, placement_y, image_length, body_parts_visible",
+      "id, product_name, brand, price, currency, image_url, thumbnail_url, color, type, type_category, gender, fit, feel, vibes, category_id, color_group, size, product_url, placement, placement_x, placement_y, image_length, body_parts_visible",
     )
     .in("id", ids)
 
@@ -502,6 +509,8 @@ function mapProductRowToResult(row: Record<string, unknown>): ProductSearchResul
     currency,
     priceLabel: formatPrice(price, currency),
     imageSrc: imageUrl,
+    thumbnailSrc: imageUrl,
+    renderImageSrc: typeof row.image_url === "string" ? row.image_url : imageUrl,
     similarity: typeof row.similarity === "number" ? (row.similarity as number) : undefined,
     gender: typeof row.gender === "string" ? row.gender : null,
     category_id: typeof row.category_id === "string" ? row.category_id : null,
@@ -519,6 +528,7 @@ function mapProductRowToResult(row: Record<string, unknown>): ProductSearchResul
     bodyPartsVisible: Array.isArray(row.body_parts_visible)
       ? (row.body_parts_visible as string[])
       : null,
+    placement: (row.placement as Database["public"]["Tables"]["products"]["Row"]["placement"]) ?? null,
   }
 }
 
@@ -588,6 +598,7 @@ async function searchProducts({
         vibes: productRow.vibes,
         size: productRow.size,
         product_url: productRow.product_url,
+        placement: productRow.placement,
         placement_x: productRow.placement_x,
         placement_y: productRow.placement_y,
         image_length: productRow.image_length,

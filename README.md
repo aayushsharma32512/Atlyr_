@@ -89,6 +89,43 @@ bun run dev
 http://localhost:8080
 ```
 
+### Visual-search pipeline test
+
+A stateless diagnostic surface is available at `http://localhost:8080/visual-search-test`. It sends
+an image plus an explicit `upper`, `lower`, or `shoes` selection to the isolated
+`atlyr-visual-search-test` Modal app and runs only FASHN + GroundingDINO. The page displays raw FASHN
+segments, category and foreground masks, all detector boxes, the chosen padded box, the untouched
+crop, and two coarse background-removal comparisons. After localization, an optional **Search
+online** action sends only `08_fashn_foreground_crop.png` to SerpApi Google Lens Products and renders
+ephemeral merchant links, images, prices, and stock signals.
+
+This milestone validates garment localization and raw web-result relevance before adding SAM2,
+embeddings, catalog fusion, or persistence. It does not use Supabase credentials, create
+tables/job rows/Storage objects, generate embeddings, or modify a wardrobe. The SerpApi key stays in
+the isolated Modal secret and is never sent to the SPA. Deploying it does not require redeploying `atlyr-segmentation`,
+`fashion-siglip-embed`, `siglip-embed`, or any other production Modal app. Architecture, deployment,
+artifact, CLI, and validation details are in
+[`docs/visual-search-implementation.md`](docs/visual-search-implementation.md).
+
+The approved production successor is a separate, initially unlinked inspiration-import screen. It
+detects every top/bottom candidate, lets the user choose one garment, retrieves catalogue products,
+supports mannequin swapping and multi-select Wardrobe adds, and stages at most one Google Lens
+result without triggering ingestion. Its backend is two scoped Supabase Edge Functions plus
+hardened Postgres RPCs; neither `services/ingestion` nor `services/ingestion-automated` needs to be
+deployed. The frontend, backend, database, Storage, security, and rollout plan is in
+[`docs/inspiration-import-implementation.md`](docs/inspiration-import-implementation.md).
+
+```bash
+# Browser UI
+bun run dev
+# open http://localhost:8080/visual-search-test
+
+# Repeatable CLI run; writes every mask/box/crop artifact and results.json
+VISUAL_SEARCH_TEST_URL=https://<modal-endpoint> \
+VISUAL_SEARCH_TEST_TOKEN=<token> \
+npm run test:visual-search -- --image ./photo.jpg --category upper
+```
+
 ### 7) Optional: Product upload scripts
 These scripts upload images to Supabase Storage and insert products.
 
@@ -118,6 +155,7 @@ bun run lint
 - `src/integrations/supabase/` — Supabase client and types
 - `supabase/` — Migrations and config
 - `scripts/` — Data ingestion and embedding generation scripts
+- `services/segmentation/visual_search/` — stateless visual-search test endpoint
 - `VECTOR_SEARCH_SETUP.md` — Detailed guide for AI-powered semantic search
 - `public/` — Static assets
 - `scripts/` — Data ingestion utilities (run with Bun)
