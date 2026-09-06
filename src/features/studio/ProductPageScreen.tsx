@@ -22,6 +22,11 @@ import { useCreateDraftOutfit } from "@/features/outfits/hooks/useCreateDraftOut
 import { useAuth } from "@/contexts/AuthContext"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { buildStudioSearchParams, isStudioSlot } from "@/features/studio/utils/studioUrlState"
+import {
+  seededState,
+  studioHistoryStorageKey,
+  type StudioHistorySnapshot,
+} from "@/features/studio/utils/studioHistoryState"
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
 import { trackProductBuyClicked } from "@/integrations/posthog/engagementTracking/entityEvents"
 import { trackStudioProductViewed } from "@/integrations/posthog/engagementTracking/studio/studioTracking"
@@ -243,12 +248,13 @@ export function ProductPageView() {
       })
 
       // ── Pre-seed undo history so Undo returns to the previous Studio outfit ─
-      // useStudioHistory persists to localStorage under key `studio-history-v1:<userId>:session`.
-      // We write the new draft as `present` and the previous session as the last `past` entry
-      // BEFORE navigating, so the hook hydrates with undo already available.
+      // We write the new draft as `present` and the previous session as the last
+      // `past` entry BEFORE navigating, so useStudioHistory hydrates with undo
+      // already available. The draft is also the restore anchor: it is the look
+      // the studio is about to open with.
       if (previousSnapshot?.outfitId) {
-        const historyKey = `studio-history-v1:${user.id}:session`
-        const newDraftSnapshot = {
+        const historyKey = studioHistoryStorageKey(user.id)
+        const newDraftSnapshot: StudioHistorySnapshot = {
           outfitId: draft.id,
           slotIds: {
             top:    draftTopId,
@@ -260,18 +266,11 @@ export function ProductPageView() {
         try {
           const existingRaw = window.localStorage.getItem(historyKey)
           const existingHistory = existingRaw ? JSON.parse(existingRaw) : null
-          const existingPast: typeof previousSnapshot[] = existingHistory?.past ?? []
-          const cappedPast = [...existingPast, previousSnapshot].slice(-7)
-          window.localStorage.setItem(historyKey, JSON.stringify({
-            past: cappedPast,
-            present: newDraftSnapshot,
-            future: [],
-            checkpointSnapshot: newDraftSnapshot,
-            checkpointActive: false,
-            checkpointDirty: false,
-            preCheckpointSnapshot: null,
-            preCheckpointHistory: null,
-          }))
+          const existingPast: StudioHistorySnapshot[] = existingHistory?.past ?? []
+          window.localStorage.setItem(
+            historyKey,
+            JSON.stringify(seededState(newDraftSnapshot, [...existingPast, previousSnapshot])),
+          )
         } catch { /* quota / private-mode — undo just won't have the previous outfit */ }
       }
 
