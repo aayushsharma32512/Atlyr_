@@ -3,7 +3,8 @@ import { Link, Outlet, useLocation } from "react-router-dom"
 
 import { AppShellLayout } from "@/layouts/AppShellLayout"
 import { StudioContextProvider } from "./context/StudioContext"
-import { STUDIO_LAST_PATH_STORAGE_KEY } from "@/features/studio/constants"
+import { rememberStudioLastPath } from "@/features/studio/constants"
+import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { useStudioShareMode } from "@/features/studio/hooks/useStudioShareMode"
 import { StudioTourProvider } from "./context/StudioTourContext"
 import { StudioTour } from "./components/StudioTour"
@@ -15,14 +16,11 @@ interface StudioLayoutProps {
 export function StudioLayout({ children }: StudioLayoutProps) {
   const location = useLocation()
   const { isViewOnly } = useStudioShareMode()
+  const { gender } = useProfileContext()
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return
-    }
-    const fullPath = `${location.pathname}${location.search}`
-    window.sessionStorage.setItem(STUDIO_LAST_PATH_STORAGE_KEY, fullPath)
-  }, [location.pathname, location.search])
+    rememberStudioLastPath(gender, `${location.pathname}${location.search}`)
+  }, [gender, location.pathname, location.search])
 
   return (
     <StudioTourProvider>

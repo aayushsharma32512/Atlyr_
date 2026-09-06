@@ -5,7 +5,8 @@ import { Form } from "@/components/ui/form"
 import { Check, Loader2, Maximize2, Plus, Sparkles } from "lucide-react"
 import { useEffect, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
-import { STUDIO_LAST_PATH_STORAGE_KEY } from "@/features/studio/constants"
+import { readStudioLastPath } from "@/features/studio/constants"
+import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import type { LikenessFormData } from "../types"
 import type { LikenessPose } from "@/services/likeness/likenessService"
 
@@ -122,22 +123,9 @@ export function StepThreeForm({
   }
 
   const navigate = useNavigate()
+  const { gender } = useProfileContext()
   const handleGoToStudio = () => {
-    const storedPath =
-      typeof window !== "undefined" ? window.sessionStorage.getItem(STUDIO_LAST_PATH_STORAGE_KEY) : null
-    const normalizedPath = (() => {
-      if (!storedPath) {
-        return "/studio"
-      }
-      if (storedPath.startsWith("/studio")) {
-        return storedPath
-      }
-      if (storedPath.startsWith("/design-system/studio")) {
-        return storedPath.replace("/design-system", "")
-      }
-      return "/studio"
-    })()
-    navigate(normalizedPath || "/studio")
+    navigate(readStudioLastPath(gender))
   }
 
   return (
