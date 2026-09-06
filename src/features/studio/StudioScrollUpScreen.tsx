@@ -19,7 +19,16 @@ import { mapTrayItemToProductDetail } from "@/services/studio/studioService"
 import type { StudioProductTrayItem, StudioProductTraySlot } from "@/services/studio/studioService"
 import type { Outfit, OutfitItem } from "@/types"
 import { useElementHeight } from "@/shared/hooks/useElementHeight"
-import { useCollectionsOverview, useCreateMoodboard, useFavorites, useRemoveOutfitFromLibrary, useSaveToCollection } from "@/features/collections/hooks/useMoodboards"
+import {
+  useCollectionsOverview,
+  useCreateMoodboard,
+  useFavorites,
+  useOutfitCollectionMembership,
+  useRemoveFromCollection,
+  useRemoveOutfitFromLibrary,
+  useSaveToCollection,
+} from "@/features/collections/hooks/useMoodboards"
+import { useUpdateOutfit } from "@/features/outfits/hooks/useUpdateOutfit"
 import { useProductSaveActions } from "@/features/collections/hooks/useProductSaveActions"
 
 import { ProductSummaryCard } from "./components/ProductSummaryCard"
@@ -87,9 +96,12 @@ export function StudioScrollUpView() {
   )
   const startLikenessFlow = useStartLikenessFlow()
   const { mutateAsync: saveOutfitMutation } = useSaveOutfit()
+  const { mutateAsync: updateOutfitMutation } = useUpdateOutfit()
   const { mutateAsync: createDraftOutfitMutation } = useCreateDraftOutfit()
   const { mutateAsync: findOutfitByItemsMutation } = useFindOutfitByItems()
   const { mutateAsync: saveToCollectionMutation, isPending: isSavingToCollection } = useSaveToCollection()
+  const { mutateAsync: removeFromCollectionMutation } = useRemoveFromCollection()
+  const outfitMembershipQuery = useOutfitCollectionMembership()
   const favoritesQuery = useFavorites()
   const favoriteIds = favoritesQuery.data ?? []
   const favoriteSet = useMemo(() => new Set(favoriteIds), [favoriteIds])
@@ -251,6 +263,11 @@ export function StudioScrollUpView() {
       outfitItems.footwearId !== baseSlotIds.shoesId,
     [baseSlotIds.bottomId, baseSlotIds.shoesId, baseSlotIds.topId, outfitItems.bottomId, outfitItems.footwearId, outfitItems.topId],
   )
+
+  // Re-saving an already-persisted outfit with no item changes updates it in
+  // place instead of spinning off a new copy — swapping an item still makes
+  // a fresh derived look, which is the existing/correct behavior.
+  const isEditingExistingOutfit = Boolean(selectedOutfitId && outfitData?.outfit && !hasSlotOverrides)
 
   const resolveTryOnSnapshot = useCallback(async () => {
     if (!outfitData?.outfit || !user?.id) {
@@ -468,6 +485,14 @@ export function StudioScrollUpView() {
     () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites" || m.slug === "wardrobe"),
     [moodboards],
   )
+  // The boards this exact outfit id is really on right now, so the save
+  // picker's default reflects truth instead of always assuming Favorites.
+  const currentOutfitMoodboardSlugs = useMemo(() => {
+    if (!selectedOutfitId) return []
+    return Object.entries(outfitMembershipQuery.data ?? {})
+      .filter(([slug, ids]) => ids.has(selectedOutfitId) && selectableMoodboards.some((m) => m.slug === slug))
+      .map(([slug]) => slug)
+  }, [selectedOutfitId, outfitMembershipQuery.data, selectableMoodboards])
   const moodboardsLoading = collectionsOverviewQuery.isLoading
   const createMoodboardMutation = useCreateMoodboard()
 
@@ -492,31 +517,75 @@ export function StudioScrollUpView() {
       }
 
       try {
-        const saved = await saveOutfitMutation({
-          name: data.outfitName,
-          categoryId: data.categoryId,
-          occasionId: data.occasionId,
-          topId: outfitItems.topId,
-          bottomId: outfitItems.bottomId,
-          shoesId: outfitItems.footwearId,
-          gender: outfitData?.avatarGender ?? "female",
-          vibe: data.vibe,
-          keywords: data.keywords,
-          isPrivate: data.isPrivate,
-          createdByName: profile?.name ?? null,
-          userId: user.id,
-          backgroundId: outfitData?.outfit?.backgroundId ?? null,
-          sourceOutfitId: (selectedOutfitId && !hasSlotOverrides) ? selectedOutfitId : null,
-        })
+        let outfitId: string
+        if (isEditingExistingOutfit && selectedOutfitId) {
+          await updateOutfitMutation({
+            outfitId: selectedOutfitId,
+            userId: user.id,
+            name: data.outfitName,
+            categoryId: data.categoryId,
+            occasionId: data.occasionId,
+            backgroundId: outfitData?.outfit?.backgroundId ?? null,
+            isPrivate: data.isPrivate,
+            vibe: data.vibe,
+            keywords: data.keywords,
+            createdByName: profile?.name ?? null,
+          })
+          outfitId = selectedOutfitId
+        } else {
+          const saved = await saveOutfitMutation({
+            name: data.outfitName,
+            categoryId: data.categoryId,
+            occasionId: data.occasionId,
+            topId: outfitItems.topId,
+            bottomId: outfitItems.bottomId,
+            shoesId: outfitItems.footwearId,
+            gender: outfitData?.avatarGender ?? "female",
+            vibe: data.vibe,
+            keywords: data.keywords,
+            isPrivate: data.isPrivate,
+            createdByName: profile?.name ?? null,
+            userId: user.id,
+            backgroundId: outfitData?.outfit?.backgroundId ?? null,
+            sourceOutfitId: (selectedOutfitId && !hasSlotOverrides) ? selectedOutfitId : null,
+          })
+          outfitId = saved.id
+        }
+
         const selectedMoodboardSlugs = data.moodboardIds ?? []
         const moodboardLabelBySlug = new Map(selectableMoodboards.map((m) => [m.slug, m.label] as const))
 
         let hadCollectionError = false
-        for (const slug of selectedMoodboardSlugs) {
-          try {
-            await saveToCollectionMutation({ outfitId: saved.id, slug, label: moodboardLabelBySlug.get(slug) })
-          } catch {
-            hadCollectionError = true
+        if (isEditingExistingOutfit) {
+          // Diff against real membership so an unchecked board actually gets
+          // removed — this is an edit in place, not a fresh insert-only save.
+          const currentSlugs = currentOutfitMoodboardSlugs
+          const current = new Set(currentSlugs)
+          const next = new Set(selectedMoodboardSlugs)
+          const toAdd = selectedMoodboardSlugs.filter((slug) => !current.has(slug))
+          const toRemove = currentSlugs.filter((slug) => !next.has(slug))
+
+          for (const slug of toAdd) {
+            try {
+              await saveToCollectionMutation({ outfitId, slug, label: moodboardLabelBySlug.get(slug) })
+            } catch {
+              hadCollectionError = true
+            }
+          }
+          for (const slug of toRemove) {
+            try {
+              await removeFromCollectionMutation({ outfitId, slug })
+            } catch {
+              hadCollectionError = true
+            }
+          }
+        } else {
+          for (const slug of selectedMoodboardSlugs) {
+            try {
+              await saveToCollectionMutation({ outfitId, slug, label: moodboardLabelBySlug.get(slug) })
+            } catch {
+              hadCollectionError = true
+            }
           }
         }
 
@@ -526,8 +595,8 @@ export function StudioScrollUpView() {
           variant: hadCollectionError ? undefined : "success",
         })
 
-        console.log("[StudioScrollUpScreen] Starting snapshot capture for outfit:", saved.id)
-        captureSnapshot(saved.id).catch(() => {})
+        console.log("[StudioScrollUpScreen] Starting snapshot capture for outfit:", outfitId)
+        captureSnapshot(outfitId).catch(() => {})
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to save outfit"
         toast({
@@ -539,6 +608,11 @@ export function StudioScrollUpView() {
       }
     },
     [
+      currentOutfitMoodboardSlugs,
+      isEditingExistingOutfit,
+      removeFromCollectionMutation,
+      selectedOutfitId,
+      hasSlotOverrides,
       outfitData?.avatarGender,
       outfitData?.outfit?.backgroundId,
       outfitItems.bottomId,
@@ -550,6 +624,7 @@ export function StudioScrollUpView() {
       saveToCollectionMutation,
       selectableMoodboards,
       toast,
+      updateOutfitMutation,
       user?.id,
     ],
   )
@@ -749,7 +824,7 @@ export function StudioScrollUpView() {
         defaultOutfitName={outfitData?.outfit?.name ?? ""}
         defaultCategoryId={outfitData?.outfit?.category ?? undefined}
         defaultOccasionId={outfitData?.outfit?.occasion?.id ?? undefined}
-        defaultMoodboardIds={["favorites"]}
+        defaultMoodboardIds={selectedOutfitId ? currentOutfitMoodboardSlugs : ["favorites"]}
         isLoadingMoodboards={moodboardsLoading}
         moodboards={selectableMoodboards}
         onCreateMoodboard={(name) => createMoodboardMutation.mutateAsync(name).then((res) => res.slug)}
