@@ -116,7 +116,7 @@ export function TraySheet({
   )
 
   // Same rule as the 7c rack: never offer a piece the photoreal mannequin will
-  // silently refuse to draw.
+  // silently refuse to draw. Every slot, not just footwear.
   const offerable = shouldFilterSlotByPlacement(slot)
     ? (alternatives ?? []).filter((product) => isPlaceableOnMannequin(product, mannequin))
     : (alternatives ?? [])

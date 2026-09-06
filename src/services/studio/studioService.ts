@@ -4,6 +4,7 @@ import type { PostgrestError } from "@supabase/supabase-js"
 import type { Outfit } from "@/types"
 import type { StudioOutfitDTO, StudioPlacementByMannequin } from "@/features/studio/types"
 import { mapDbOutfitToStudioOutfit, toPlacementTransform } from "@/features/studio/mappers/renderedItemMapper"
+import { isOutfitFullyPlaceable } from "@/features/studio/utils/placementSupport"
 
 import { mapDbOutfitToOutfit } from "@/services/shared/transformers/outfitTransformers"
 import { reportStudioDataIssue } from "@/features/studio/utils/reportDataIssue"
@@ -508,15 +509,28 @@ type GetRandomOutfitByGenderInput = {
   excludeOutfitId?: string | null
 }
 
+/**
+ * The pool the shuffle draws from. Wider than the 48 it used to be, because the
+ * placement filter below removes roughly a quarter of the male candidates and
+ * the button is worth little if it cycles the same handful of looks.
+ */
+const REMIX_POOL_SIZE = 200
+
 async function getRandomOutfitByGender({
   gender: _gender,
   excludeOutfitId,
 }: GetRandomOutfitByGenderInput): Promise<StudioOutfitPayload> {
-  const query = supabase.from("outfits").select(OUTFIT_SELECT).limit(48)
+  const query = supabase.from("outfits").select(OUTFIT_SELECT).limit(REMIX_POOL_SIZE)
 
   if (excludeOutfitId) {
     query.neq("id", excludeOutfitId)
   }
+
+  // Same visibility gate as the home feed and every other outfit query. Without
+  // it the shuffle also served drafts, which are created with
+  // visible_in_feed: false precisely so that nothing offers them. `is_private`
+  // is deliberately not checked: it only anonymises created_by.
+  query.eq("visible_in_feed", true)
 
   // Filter by gender using the user's gender (and unisex)
   // Logic: (gender = user_gender) OR (gender = unisex)
@@ -533,7 +547,25 @@ async function getRandomOutfitByGender({
     return { outfit: null, studioOutfit: null, trayItems: [] }
   }
 
-  const picked = rows[Math.floor(Math.random() * rows.length)] ?? null
+  // Never hand over a look the mannequin will only partly draw. The racks
+  // already refuse to offer an unplaceable garment one at a time; the shuffle
+  // hands over three at once, so the same rule has to apply to the whole outfit
+  // or it becomes the one way back to the pieces we removed.
+  //
+  // The check runs on the derived tray items rather than the raw row, so it
+  // sees exactly the normalized transform the renderer will see. Gender is
+  // always concrete in practice; when it is not there is no mannequin to test
+  // against, so the pool is left as-is rather than filtered on a guess.
+  const mannequin = _gender === "male" || _gender === "female" ? _gender : null
+  const candidates = mannequin
+    ? rows.filter((row) => isOutfitFullyPlaceable(deriveTrayItemsFromRow(row), mannequin))
+    : rows
+
+  if (candidates.length === 0) {
+    return { outfit: null, studioOutfit: null, trayItems: [] }
+  }
+
+  const picked = candidates[Math.floor(Math.random() * candidates.length)] ?? null
   if (!picked) {
     return { outfit: null, studioOutfit: null, trayItems: [] }
   }
@@ -782,6 +814,8 @@ function mapSearchResultToAlternative(
       gender: (result.gender as Gender) ?? null,
       metadataSource: "default",
       bodyPartsVisible: result.bodyPartsVisible ?? null,
+      imageUrl: result.renderImageSrc || result.imageSrc,
+      placement: toPlacementTransform(result),
     }
   }
 
@@ -802,6 +836,8 @@ function mapSearchResultToAlternative(
     gender: (result.gender as Gender) ?? null,
     metadataSource: "product",
     bodyPartsVisible: result.bodyPartsVisible ?? null,
+    imageUrl: result.renderImageSrc || result.imageSrc,
+    placement: toPlacementTransform(result),
   }
 }
 

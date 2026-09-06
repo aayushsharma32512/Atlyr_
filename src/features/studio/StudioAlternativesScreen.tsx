@@ -316,7 +316,7 @@ export function StudioAlternativesView() {
     }
 
     // Drop anything the photoreal mannequin cannot actually wear — see
-    // isPlaceableOnMannequin. Applied to footwear only for now.
+    // isPlaceableOnMannequin. Applied to every slot.
     const mannequin = (outfitData?.avatarGender ?? adminGender ?? gender ?? "female") as "male" | "female"
     const placeable = shouldFilterSlotByPlacement(slot)
       ? filteredAlternativeProducts.filter((product) => isPlaceableOnMannequin(product, mannequin))
