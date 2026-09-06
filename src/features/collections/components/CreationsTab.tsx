@@ -506,6 +506,18 @@ export function CreationsTab() {
 
   // usePrefetchCreationAssets({ creations, currentSlide, vtoImageErrorUrls })
 
+  // Pieces ride below the card as the "IN THIS OUTFIT" strip (6e3).
+  const orderedTrayItems = useMemo(() => {
+    const order: StudioProductTraySlot[] = ["top", "bottom", "shoes"]
+    return [...trayItems].sort((a, b) => order.indexOf(a.slot) - order.indexOf(b.slot))
+  }, [trayItems])
+  const creationSubtitle = useMemo(() => {
+    const parts = [activeOutfit?.category, activeOutfit?.vibes].filter(
+      (v): v is string => Boolean(v && v.trim() && v !== "others" && v.toLowerCase() !== "null"),
+    )
+    return parts.join(" · ")
+  }, [activeOutfit?.category, activeOutfit?.vibes])
+
   if (creationsQuery.isLoading) {
     return (
       <div className="grid grid-cols-2 gap-3">
@@ -537,19 +549,8 @@ export function CreationsTab() {
 
   const currentCreation = creations[currentSlide]
   const isCurrentFlipped = Boolean(currentCreation && flippedIds[currentCreation.id])
-  // Pieces ride below the card as the "IN THIS OUTFIT" strip (6e3).
-  const orderedTrayItems = useMemo(() => {
-    const order: StudioProductTraySlot[] = ["top", "bottom", "shoes"]
-    return [...trayItems].sort((a, b) => order.indexOf(a.slot) - order.indexOf(b.slot))
-  }, [trayItems])
   const selectedTrayItem =
     orderedTrayItems.find((item) => item.slot === selectedTraySlot) ?? orderedTrayItems[0] ?? null
-  const creationSubtitle = useMemo(() => {
-    const parts = [activeOutfit?.category, activeOutfit?.vibes].filter(
-      (v): v is string => Boolean(v && v.trim() && v !== "others" && v.toLowerCase() !== "null"),
-    )
-    return parts.join(" · ")
-  }, [activeOutfit?.category, activeOutfit?.vibes])
 
   return (
     // Natural vertical flow — the whole tab scrolls inside the page's scroll
