@@ -89,7 +89,12 @@ export function SaveOutfitDrawer({
   const outfitNameRef = useRef<HTMLInputElement | null>(null)
   const { lock: lockViewportZoom, unlock: unlockViewportZoom } = useViewportZoomLockController()
 
-  const selectableMoodboards = useMemo(() => moodboards.filter((m) => !m.isSystem), [moodboards])
+  // Favorites/Wardrobe join custom boards as checkable chips; Try-ons stays
+  // hidden here since it's only ever written by the try-on generation flow.
+  const selectableMoodboards = useMemo(
+    () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites" || m.slug === "wardrobe"),
+    [moodboards],
+  )
 
   const { data: categories = [], isLoading: categoriesLoading } = useCategories(50)
   const { data: occasions = [], isLoading: occasionsLoading } = useOccasions(50)

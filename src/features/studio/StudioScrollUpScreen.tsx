@@ -464,7 +464,10 @@ export function StudioScrollUpView() {
 
   const collectionsOverviewQuery = useCollectionsOverview()
   const moodboards = collectionsOverviewQuery.data?.moodboards ?? []
-  const selectableMoodboards = useMemo(() => moodboards.filter((m) => !m.isSystem), [moodboards])
+  const selectableMoodboards = useMemo(
+    () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites" || m.slug === "wardrobe"),
+    [moodboards],
+  )
   const moodboardsLoading = collectionsOverviewQuery.isLoading
   const createMoodboardMutation = useCreateMoodboard()
 
@@ -509,12 +512,6 @@ export function StudioScrollUpView() {
         const moodboardLabelBySlug = new Map(selectableMoodboards.map((m) => [m.slug, m.label] as const))
 
         let hadCollectionError = false
-        try {
-          await saveToCollectionMutation({ outfitId: saved.id, slug: "favorites" })
-        } catch {
-          hadCollectionError = true
-        }
-
         for (const slug of selectedMoodboardSlugs) {
           try {
             await saveToCollectionMutation({ outfitId: saved.id, slug, label: moodboardLabelBySlug.get(slug) })
@@ -752,6 +749,7 @@ export function StudioScrollUpView() {
         defaultOutfitName={outfitData?.outfit?.name ?? ""}
         defaultCategoryId={outfitData?.outfit?.category ?? undefined}
         defaultOccasionId={outfitData?.outfit?.occasion?.id ?? undefined}
+        defaultMoodboardIds={["favorites"]}
         isLoadingMoodboards={moodboardsLoading}
         moodboards={selectableMoodboards}
         onCreateMoodboard={(name) => createMoodboardMutation.mutateAsync(name).then((res) => res.slug)}

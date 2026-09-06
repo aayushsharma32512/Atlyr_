@@ -348,7 +348,7 @@ export function HomeScreenView() {
     [moodboards],
   )
   const outfitPickerMoodboards = useMemo(
-    () => moodboards.filter((m) => !m.isSystem),
+    () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites" || m.slug === "wardrobe"),
     [moodboards],
   )
   const prefetchMoodboardSlugs = useMemo(() => {

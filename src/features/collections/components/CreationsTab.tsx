@@ -76,7 +76,10 @@ export function CreationsTab() {
   const removeFromCollectionMutation = useRemoveFromCollection()
   const updateOutfitMutation = useUpdateOutfit()
   const { data: moodboards = [], isLoading: moodboardsLoading } = useMoodboards()
-  const selectableMoodboards = useMemo(() => moodboards.filter((m) => !m.isSystem), [moodboards])
+  const selectableMoodboards = useMemo(
+    () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites" || m.slug === "wardrobe"),
+    [moodboards],
+  )
   const createMoodboardMutation = useCreateMoodboard()
   const { user } = useAuth()
   const { profile } = useProfileContext()
@@ -230,12 +233,6 @@ export function CreationsTab() {
         const moodboardLabelBySlug = new Map(selectableMoodboards.map((m) => [m.slug, m.label] as const))
 
         let hadCollectionError = false
-        try {
-          await saveToCollectionMutation.mutateAsync({ outfitId: activeOutfit.id, slug: "favorites", label: "Favorites" })
-        } catch {
-          hadCollectionError = true
-        }
-
         for (const slug of selectedMoodboardSlugs) {
           try {
             await saveToCollectionMutation.mutateAsync({ outfitId: activeOutfit.id, slug, label: moodboardLabelBySlug.get(slug) })
@@ -831,6 +828,7 @@ export function CreationsTab() {
         defaultVibe={activeOutfit?.vibes ?? null}
         defaultKeywords={activeOutfit?.word_association ?? null}
         defaultIsPrivate={activeCreation?.isPrivate ?? true}
+        defaultMoodboardIds={["favorites"]}
         isLoadingMoodboards={moodboardsLoading}
           moodboards={selectableMoodboards}
         onCreateMoodboard={(name) => createMoodboardMutation.mutateAsync(name).then((res) => res.slug)}
