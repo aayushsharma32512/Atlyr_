@@ -578,10 +578,17 @@ export function StudioAlternativesView() {
     [baseSlotIds.bottomId, baseSlotIds.shoesId, baseSlotIds.topId, outfitItems.bottomId, outfitItems.footwearId, outfitItems.topId],
   )
 
+  // Only the owner's own outfit can be updated in place — updateOutfit's
+  // WHERE clause matches on user_id, so trying this on someone else's (an
+  // admin-curated look, another user's saved outfit) matches zero rows and
+  // PostgREST throws "no rows returned". Viewing someone else's look and
+  // hitting Save always makes a personal copy instead, same as before.
+  const isOwnOutfit = Boolean(outfitData?.outfit && user?.id && outfitData.outfit.user_id === user.id)
+
   // Re-saving an already-persisted outfit with no item changes updates it in
   // place instead of spinning off a new copy — swapping an item still makes
   // a fresh derived look, which is the existing/correct behavior.
-  const isEditingExistingOutfit = Boolean(resolvedOutfitId && outfitData?.outfit && !hasSlotOverrides)
+  const isEditingExistingOutfit = Boolean(resolvedOutfitId && isOwnOutfit && !hasSlotOverrides)
 
   // The boards this exact outfit id is really on right now, so the save
   // picker's default reflects truth instead of always assuming Favorites.
@@ -1433,7 +1440,7 @@ export function StudioAlternativesView() {
         defaultOutfitName={outfitData?.outfit?.name ?? ""}
         defaultCategoryId={outfitData?.outfit?.category ?? undefined}
         defaultOccasionId={outfitData?.outfit?.occasion?.id ?? undefined}
-        defaultMoodboardIds={resolvedOutfitId ? currentOutfitMoodboardSlugs : ["favorites"]}
+        defaultMoodboardIds={currentOutfitMoodboardSlugs.length ? currentOutfitMoodboardSlugs : ["favorites"]}
         isLoadingMoodboards={moodboardsLoading}
         moodboards={selectableMoodboards}
         onCreateMoodboard={(name) => createMoodboardMutation.mutateAsync(name).then((res) => res.slug)}
