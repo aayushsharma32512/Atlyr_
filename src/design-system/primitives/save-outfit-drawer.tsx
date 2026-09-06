@@ -91,9 +91,7 @@ export function SaveOutfitDrawer({
   const outfitNameRef = useRef<HTMLInputElement | null>(null)
   const { lock: lockViewportZoom, unlock: unlockViewportZoom } = useViewportZoomLockController()
 
-  // Favorites/Wardrobe join custom boards as checkable chips; Try-ons stays
-  // hidden here since it's only ever written by the try-on generation flow.
-  // Favorites leads, then Wardrobe, then custom boards in their existing order.
+  // Try-ons is excluded: it's written only by the try-on generation flow, never by hand.
   const selectableMoodboards = useMemo(
     () =>
       moodboards
@@ -130,12 +128,8 @@ export function SaveOutfitDrawer({
     setIsPrivate(defaultIsPrivate)
   }, [defaultIsPrivate])
 
-  // Re-sync only when the drawer opens, not on every render while it's open.
-  // `defaultMoodboardIds` is often a freshly-computed array (a new reference
-  // each render), and a save writes several collections in a row — each one
-  // invalidates the moodboards query, re-rendering the caller and handing us
-  // a "new" defaultMoodboardIds mid-save. Depending on it directly reset the
-  // user's in-progress selection back to the default while Save was pending.
+  // Resync only on open, not defaultMoodboardIds — that's a fresh array each
+  // render, and mid-save collection writes were resetting the user's picks.
   useEffect(() => {
     if (open) {
       setSelectedMoodboardIds(defaultMoodboardIds ?? [])
