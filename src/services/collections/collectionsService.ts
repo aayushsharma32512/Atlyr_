@@ -453,9 +453,6 @@ export async function saveToCollection(params: {
   }
 
   const normalizedSlug = slug.toLowerCase()
-  if (normalizedSlug === "wardrobe") {
-    throw new Error("Wardrobe only supports products")
-  }
   const collectionLabel = label ?? (SYSTEM_MOODBOARDS.find((s) => s.slug === normalizedSlug)?.label ?? slug)
 
   const { error } = await supabase.from("user_favorites").upsert(

@@ -27,6 +27,8 @@ import { useCategories, useOccasions } from "@/features/outfits/hooks/useOutfitO
 import type { Moodboard } from "@/services/collections/collectionsService"
 import { useViewportZoomLockController } from "@/hooks/useViewportZoomLock"
 
+const BOARD_ORDER: Record<string, number> = { favorites: 0, wardrobe: 1 }
+
 export interface SaveOutfitDrawerProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -89,7 +91,16 @@ export function SaveOutfitDrawer({
   const outfitNameRef = useRef<HTMLInputElement | null>(null)
   const { lock: lockViewportZoom, unlock: unlockViewportZoom } = useViewportZoomLockController()
 
-  const selectableMoodboards = useMemo(() => moodboards.filter((m) => !m.isSystem), [moodboards])
+  // Favorites/Wardrobe join custom boards as checkable chips; Try-ons stays
+  // hidden here since it's only ever written by the try-on generation flow.
+  // Favorites leads, then Wardrobe, then custom boards in their existing order.
+  const selectableMoodboards = useMemo(
+    () =>
+      moodboards
+        .filter((m) => !m.isSystem || m.slug === "favorites" || m.slug === "wardrobe")
+        .sort((a, b) => (BOARD_ORDER[a.slug] ?? 2) - (BOARD_ORDER[b.slug] ?? 2)),
+    [moodboards],
+  )
 
   const { data: categories = [], isLoading: categoriesLoading } = useCategories(50)
   const { data: occasions = [], isLoading: occasionsLoading } = useOccasions(50)
@@ -119,9 +130,18 @@ export function SaveOutfitDrawer({
     setIsPrivate(defaultIsPrivate)
   }, [defaultIsPrivate])
 
+  // Re-sync only when the drawer opens, not on every render while it's open.
+  // `defaultMoodboardIds` is often a freshly-computed array (a new reference
+  // each render), and a save writes several collections in a row — each one
+  // invalidates the moodboards query, re-rendering the caller and handing us
+  // a "new" defaultMoodboardIds mid-save. Depending on it directly reset the
+  // user's in-progress selection back to the default while Save was pending.
   useEffect(() => {
-    setSelectedMoodboardIds(defaultMoodboardIds ?? [])
-  }, [defaultMoodboardIds])
+    if (open) {
+      setSelectedMoodboardIds(defaultMoodboardIds ?? [])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   useEffect(() => {
     if (open) {
@@ -369,7 +389,6 @@ export function SaveOutfitDrawer({
                             )}
                           >
                             {moodboard.label}
-                            {isSelected && <Check className="size-2.5" strokeWidth={3} aria-hidden="true" />}
                           </button>
                         )
                       })}
