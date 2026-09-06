@@ -264,16 +264,9 @@ export function StudioScrollUpView() {
     [baseSlotIds.bottomId, baseSlotIds.shoesId, baseSlotIds.topId, outfitItems.bottomId, outfitItems.footwearId, outfitItems.topId],
   )
 
-  // Only the owner's own outfit can be updated in place — updateOutfit's
-  // WHERE clause matches on user_id, so trying this on someone else's (an
-  // admin-curated look, another user's saved outfit) matches zero rows and
-  // PostgREST throws "no rows returned". Viewing someone else's look and
-  // hitting Save always makes a personal copy instead, same as before.
+  // updateOutfit filters by user_id, so a non-owned outfit would match zero rows and error.
   const isOwnOutfit = Boolean(outfitData?.outfit && user?.id && outfitData.outfit.user_id === user.id)
 
-  // Re-saving an already-persisted outfit with no item changes updates it in
-  // place instead of spinning off a new copy — swapping an item still makes
-  // a fresh derived look, which is the existing/correct behavior.
   const isEditingExistingOutfit = Boolean(selectedOutfitId && isOwnOutfit && !hasSlotOverrides)
 
   const resolveTryOnSnapshot = useCallback(async () => {
@@ -492,8 +485,7 @@ export function StudioScrollUpView() {
     () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites" || m.slug === "wardrobe"),
     [moodboards],
   )
-  // The boards this exact outfit id is really on right now, so the save
-  // picker's default reflects truth instead of always assuming Favorites.
+  // Real current boards, so the picker doesn't always default to Favorites.
   const currentOutfitMoodboardSlugs = useMemo(() => {
     if (!selectedOutfitId) return []
     return Object.entries(outfitMembershipQuery.data ?? {})
@@ -564,8 +556,6 @@ export function StudioScrollUpView() {
 
         let hadCollectionError = false
         if (isEditingExistingOutfit) {
-          // Diff against real membership so an unchecked board actually gets
-          // removed — this is an edit in place, not a fresh insert-only save.
           const currentSlugs = currentOutfitMoodboardSlugs
           const current = new Set(currentSlugs)
           const next = new Set(selectedMoodboardSlugs)
