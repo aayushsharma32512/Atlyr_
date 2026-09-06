@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
+import { useLocation, useNavigate, useNavigationType, useSearchParams } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import {
   ChevronLeft,
@@ -47,6 +47,7 @@ import { useToast } from "@/hooks/use-toast"
 import { resolveOutfitAttribution } from "@/utils/outfitAttribution"
 import { useStudioHistory } from "@/features/studio/hooks/useStudioHistory"
 import { useLastStudioOutfit } from "@/features/studio/hooks/useLastStudioOutfit"
+import { useStarterOutfit } from "@/features/outfits/hooks/useStarterOutfit"
 import { useStudioRemix } from "@/features/studio/hooks/useStudioRemix"
 import { useStudioShareMode } from "@/features/studio/hooks/useStudioShareMode"
 import { mergeOutfitItemsWithTray } from "@/features/studio/utils/mergeOutfitItemsWithTray"
@@ -71,6 +72,7 @@ export function StudioScreenView() {
   const tour = useStudioTourContext()
   const [searchParams, setSearchParams] = useSearchParams()
   const location = useLocation()
+  const navigationType = useNavigationType()
   const parsedParams = useMemo(() => parseStudioSearchParams(searchParams), [searchParams])
   const outfitId = parsedParams.outfitId
   const topIdParam = parsedParams.slotIds.top
@@ -113,14 +115,30 @@ export function StudioScreenView() {
   const { mutateAsync: findOutfitByItemsMutation } = useFindOutfitByItems()
   const { mutateAsync: saveToCollectionMutation } = useSaveToCollection()
   const { user } = useAuth()
-  const lastOutfitQuery = useLastStudioOutfit({ userId: user?.id ?? null, outfitId })
   const { toast } = useToast()
   const { applySnapshot, canRedo, canUndo, checkpointActive, recordChange, redo, toggleCheckpoint, undo } =
     useStudioHistory()
-  const { isViewOnly } = useStudioShareMode()
+  const { isShareLink, isViewOnly } = useStudioShareMode()
   const { swapSlot } = useStudioSwapActions(outfitId ?? selectedOutfitId ?? null)
   const adminGender = useOptionalAdminGender()
   const isAdminMode = adminGender !== null
+  // The figure the studio should be dressing. Admin's toggle wins over the profile.
+  const effectiveGender = adminGender ?? gender
+  const lastOutfitQuery = useLastStudioOutfit({
+    userId: user?.id ?? null,
+    outfitId,
+    gender: effectiveGender,
+  })
+  // Nothing of this gender saved yet (new profile, or a fresh switch) — open on a
+  // starter look rather than an empty canvas.
+  const starterOutfitQuery = useStarterOutfit({
+    gender: effectiveGender === "male" ? "male" : "female",
+    enabled:
+      !outfitId &&
+      Boolean(effectiveGender) &&
+      !isShareLink &&
+      (lastOutfitQuery.isSuccess ? lastOutfitQuery.data === null : !user?.id),
+  })
   const analytics = useEngagementAnalytics()
 
   // Outfit snapshot capture
@@ -176,15 +194,63 @@ export function StudioScreenView() {
     setHasHydratedFromUrl(true)
   }, [])
 
-  // Restore last outfit on cold start: when no outfitId in URL and we have a last outfit from DB,
-  // inject it into the URL so the rest of the screen picks it up normally.
+  // Restore an outfit on cold start: when no outfitId is in the URL, take the
+  // user's last look for this gender, else a starter one, and inject it so the
+  // rest of the screen picks it up normally.
   useEffect(() => {
-    const restoredId = lastOutfitQuery.data
+    const restoredId = lastOutfitQuery.data ?? starterOutfitQuery.data
     if (!restoredId || outfitId) return
     const params = new URLSearchParams(searchParams)
     params.set("outfitId", restoredId)
     setSearchParams(params, { replace: true })
-  }, [lastOutfitQuery.data, outfitId])
+  }, [lastOutfitQuery.data, starterOutfitQuery.data, outfitId])
+
+  // Last line of defence for a gender switch. Gender-scoping the nav's path
+  // memory and the cold-start resolver covers the routes we control, but the
+  // browser's own back stack and a bookmarked URL can still hand back a look
+  // built for the other figure. Drop it and let the resolver above pick again.
+  //
+  // Only on POP — a back/forward step or a cold load, i.e. the studio resuming
+  // a position rather than being sent to one. Opening a saved cross-gender look
+  // on purpose (from Collections, say) is a PUSH and stays exactly where it is;
+  // the outfit's own gender picking the mannequin is the rule everywhere else
+  // in the app. Share links are exempt too: a shared look is the sender's.
+  const staleGenderOutfitRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!outfitId || isShareLink || isAdminMode || navigationType !== "POP") return
+    const outfitGender = outfitData?.studioOutfit?.gender
+    if (outfitGender !== "male" && outfitGender !== "female") return
+    if (effectiveGender !== "male" && effectiveGender !== "female") return
+    if (outfitGender === effectiveGender) return
+    if (staleGenderOutfitRef.current === outfitId) return
+    staleGenderOutfitRef.current = outfitId
+
+    // Context has to let go too, or the URL-sync effect below writes the stale
+    // outfit straight back into the params we just cleared.
+    setSelectedOutfitId(null)
+    setSlotProductId("top", null)
+    setSlotProductId("bottom", null)
+    setSlotProductId("shoes", null)
+
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev)
+        ;["outfitId", "topId", "bottomId", "shoesId", "productId", "slot"].forEach((key) => params.delete(key))
+        return params
+      },
+      { replace: true },
+    )
+  }, [
+    effectiveGender,
+    isAdminMode,
+    isShareLink,
+    navigationType,
+    outfitData?.studioOutfit?.gender,
+    outfitId,
+    setSearchParams,
+    setSelectedOutfitId,
+    setSlotProductId,
+  ])
 
   // Persist the current Studio state to sessionStorage so that the product page can read it
   // as the "previous snapshot" when pre-seeding the undo history.

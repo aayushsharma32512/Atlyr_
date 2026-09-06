@@ -60,5 +60,47 @@ export const MANNEQUIN_SKIN_HEXES = new Set(
 export function ensurePlacementValue(value: number | null | undefined): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0
 }
-export const STUDIO_LAST_PATH_STORAGE_KEY = "studio:last-path"
+/**
+ * The studio remembers the exact path you left it on so the bottom-nav tab drops
+ * you back where you were. That memory is scoped by gender: switching the profile
+ * from male to female must not replay a male outfit, the same way the home feed
+ * carries gender in its query keys and refetches on its own.
+ */
+export function studioLastPathStorageKey(gender: "male" | "female" | null | undefined): string {
+  return `studio:last-path:${gender ?? "neutral"}`
+}
+
+export function rememberStudioLastPath(gender: "male" | "female" | null | undefined, fullPath: string) {
+  if (typeof window === "undefined") {
+    return
+  }
+  try {
+    window.sessionStorage.setItem(studioLastPathStorageKey(gender), fullPath)
+  } catch {
+    // Quota / private mode — the tab just falls back to a fresh studio.
+  }
+}
+
+/** The path the studio tab should open, for this gender. `/studio` when there is nothing to resume. */
+export function readStudioLastPath(gender: "male" | "female" | null | undefined): string {
+  if (typeof window === "undefined") {
+    return "/studio"
+  }
+  let storedPath: string | null = null
+  try {
+    storedPath = window.sessionStorage.getItem(studioLastPathStorageKey(gender))
+  } catch {
+    storedPath = null
+  }
+  if (!storedPath) {
+    return "/studio"
+  }
+  if (storedPath.startsWith("/studio")) {
+    return storedPath
+  }
+  if (storedPath.startsWith("/design-system/studio")) {
+    return storedPath.replace("/design-system", "") || "/studio"
+  }
+  return "/studio"
+}
 

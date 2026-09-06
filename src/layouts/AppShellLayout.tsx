@@ -2,7 +2,7 @@ import { useEffect, type ReactNode } from "react"
 import { Outlet, useLocation, useNavigate } from "react-router-dom"
 
 import { BottomNavBar } from "@/design-system/primitives"
-import { STUDIO_LAST_PATH_STORAGE_KEY } from "@/features/studio/constants"
+import { readStudioLastPath } from "@/features/studio/constants"
 import {
   FIRST_RUN_ENTRY_PATH,
   isFirstRunPath,
@@ -20,7 +20,7 @@ interface AppShellLayoutProps {
 export function AppShellLayout({ children }: AppShellLayoutProps) {
   const location = useLocation()
   const navigate = useNavigate()
-  const { profile, isLoading } = useProfileContext()
+  const { gender, profile, isLoading } = useProfileContext()
   const { user } = useAuth()
   const { guestState } = useGuest()
   const { isViewOnly } = useStudioShareMode()
@@ -56,24 +56,8 @@ export function AppShellLayout({ children }: AppShellLayoutProps) {
         navigate("/collection")
         break
       case "studio": {
-        const storedPath =
-          typeof window !== "undefined"
-            ? window.sessionStorage.getItem(STUDIO_LAST_PATH_STORAGE_KEY)
-            : null
-        const normalizedPath = (() => {
-          if (!storedPath) {
-            return "/studio"
-          }
-          if (storedPath.startsWith("/studio")) {
-            return storedPath
-          }
-          if (storedPath.startsWith("/design-system/studio")) {
-            return storedPath.replace("/design-system", "")
-          }
-          return "/studio"
-        })()
-        const nextPath = normalizedPath || "/studio"
-        navigate(nextPath)
+        // Scoped by gender, so a profile switch does not resume the old figure's studio.
+        navigate(readStudioLastPath(gender))
         break
       }
       case "search":
