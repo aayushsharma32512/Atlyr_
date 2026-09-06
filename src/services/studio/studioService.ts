@@ -814,6 +814,8 @@ function mapSearchResultToAlternative(
       gender: (result.gender as Gender) ?? null,
       metadataSource: "default",
       bodyPartsVisible: result.bodyPartsVisible ?? null,
+      imageUrl: result.renderImageSrc || result.imageSrc,
+      placement: toPlacementTransform(result),
     }
   }
 
@@ -834,6 +836,8 @@ function mapSearchResultToAlternative(
     gender: (result.gender as Gender) ?? null,
     metadataSource: "product",
     bodyPartsVisible: result.bodyPartsVisible ?? null,
+    imageUrl: result.renderImageSrc || result.imageSrc,
+    placement: toPlacementTransform(result),
   }
 }
 
