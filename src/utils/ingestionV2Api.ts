@@ -1,9 +1,18 @@
+import { supabase } from '@/integrations/supabase/client'
+
 const BASE = (import.meta.env as Record<string, string>).VITE_INGESTION_V2_API_URL ?? 'http://localhost:3001'
-const TOKEN = (import.meta.env as Record<string, string>).VITE_INGESTION_V2_API_TOKEN ?? 'dev-token-change-me'
+
+// Real session token, not a shared secret baked into the public bundle.
+async function authHeaders(): Promise<Record<string, string>> {
+  const { data: { session } } = await supabase.auth.getSession()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`
+  return headers
+}
 
 async function call<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
-    headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+    headers: await authHeaders(),
     ...options,
   })
   if (!res.ok) {
@@ -238,7 +247,7 @@ export const v2Api = {
   submit: async (body: SubmitJobBody): Promise<{ job_id: string }> => {
     const res = await fetch(`${BASE}/jobs`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify(body),
     })
     if (res.status === 409) {
