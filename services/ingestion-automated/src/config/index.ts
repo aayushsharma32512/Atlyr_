@@ -174,8 +174,6 @@ const EnvSchema = z.object({
   BOSS_RESTART_BASE_MS: z.string().default('1000'),
   BOSS_RESTART_MAX_MS: z.string().default('15000'),
   BOSS_RESTART_MAX_ATTEMPTS: z.string().default('5'),
-
-  API_TOKEN: z.string().min(1),
 });
 
 const parsed = EnvSchema.safeParse(process.env);
