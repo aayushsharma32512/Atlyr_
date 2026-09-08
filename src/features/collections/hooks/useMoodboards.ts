@@ -100,7 +100,8 @@ export function useCreateMoodboard() {
       queryClient.invalidateQueries({ queryKey: collectionsKeys.overview() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.moodboards() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.collectionsMeta() })
-      queryClient.invalidateQueries({ queryKey: collectionsKeys.creations() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.creationsAll() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.creationsCounts() })
     },
   })
 }
@@ -120,7 +121,8 @@ export function useDeleteMoodboard() {
       queryClient.invalidateQueries({ queryKey: collectionsKeys.overview() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.moodboards() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.collectionsMeta() })
-      queryClient.invalidateQueries({ queryKey: collectionsKeys.creations() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.creationsAll() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.creationsCounts() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.moodboardItemsAll() })
     },
   })
@@ -141,8 +143,9 @@ export function useSaveToCollection() {
       queryClient.invalidateQueries({ queryKey: collectionsKeys.overview() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.moodboards() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.favorites() })
-      queryClient.invalidateQueries({ queryKey: collectionsKeys.creations() })
-      queryClient.invalidateQueries({ queryKey: collectionsKeys.tryOns() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.creationsAll() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.creationsCounts() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.tryOnsAll() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.moodboardItemsAll() })
     },
   })
@@ -229,8 +232,9 @@ export function useRemoveFromCollection() {
       queryClient.invalidateQueries({ queryKey: collectionsKeys.overview() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.moodboards() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.favorites() })
-      queryClient.invalidateQueries({ queryKey: collectionsKeys.creations() })
-      queryClient.invalidateQueries({ queryKey: collectionsKeys.tryOns() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.creationsAll() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.creationsCounts() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.tryOnsAll() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.moodboardItemsAll() })
     },
   })
@@ -316,8 +320,9 @@ export function useRemoveOutfitFromLibrary() {
       queryClient.invalidateQueries({ queryKey: collectionsKeys.overview() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.moodboards() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.favorites() })
-      queryClient.invalidateQueries({ queryKey: collectionsKeys.creations() })
-      queryClient.invalidateQueries({ queryKey: collectionsKeys.tryOns() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.creationsAll() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.creationsCounts() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.tryOnsAll() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.moodboardItemsAll() })
     },
   })
@@ -492,7 +497,8 @@ export function useAnonymiseOutfit() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: collectionsKeys.overview() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.favorites() })
-      queryClient.invalidateQueries({ queryKey: collectionsKeys.creations() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.creationsAll() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.creationsCounts() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.moodboardItemsAll() })
     },
   })

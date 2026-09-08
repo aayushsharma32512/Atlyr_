@@ -11,7 +11,7 @@ export function useCreateDraftOutfit() {
     mutationKey: outfitsKeys.createDraft,
     mutationFn: (input: DraftOutfitInput) => createDraftOutfit(input),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: collectionsKeys.creations() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.creationsAll() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.creationsCounts() })
       queryClient.invalidateQueries({ queryKey: outfitsKeys.all })
     },
