@@ -1,70 +1,65 @@
 import { cn } from "@/lib/utils"
-import { IconButton } from "./icon-button"
+import { Icons } from "@/design-system/icons"
 
-import {
-  Folders,
-  House,
-  Search,
-  Sparkles,
-  UserRound,
-} from "lucide-react"
+export type BottomNavId =
+  | "collections"
+  | "search"
+  | "studio"
+  | "notifications"
+  | "profile"
 
 type BottomNavItem = {
-  id: string
+  id: BottomNavId
   label: string
   icon: React.ComponentType<{ className?: string }>
 }
 
 const NAV_ITEMS: BottomNavItem[] = [
-  { id: "home", label: "Home", icon: House },
-  { id: "collections", label: "Collections", icon: Folders },
-  { id: "studio", label: "Studio", icon: Sparkles },
-  { id: "search", label: "Search", icon: Search },
-  { id: "profile", label: "Profile", icon: UserRound },
+  { id: "collections", label: "Collections", icon: Icons.navCollections },
+  { id: "search", label: "Search", icon: Icons.navSearch },
+  { id: "studio", label: "Studio", icon: Icons.navStudio },
+  { id: "notifications", label: "Notifications", icon: Icons.navNotifications },
+  { id: "profile", label: "Profile", icon: Icons.navProfile },
 ]
 
 export interface BottomNavBarProps {
   activeId?: string
-  onNavigate?: (id: string) => void
+  onNavigate?: (id: BottomNavId) => void
   className?: string
 }
 
-export function BottomNavBar({
-  activeId = "studio",
-  onNavigate,
-  className,
-}: BottomNavBarProps) {
+/** 55h bar. Active tab is just the ink icon — no pill, no fill. */
+export function BottomNavBar({ activeId, onNavigate, className }: BottomNavBarProps) {
   return (
     <nav
       className={cn(
-        "border-t border-sidebar-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/90",
-        "h-[55px] px-[35px] py-1",
+        "flex h-control-nav items-center justify-around gap-2 px-8",
+        "border-t border-hairline bg-card/95 backdrop-blur",
+        "pb-[calc(env(safe-area-inset-bottom,0px)/2)]",
         className,
       )}
       aria-label="Primary navigation"
     >
-      <ul className="flex h-full w-full items-center justify-between gap-4">
-        {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
-          const isActive = id === activeId
+      {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
+        const isActive = id === activeId
 
-          return (
-            <li key={id}>
-              <IconButton
-                tone="ghost"
-                size="md"
-                aria-label={label}
-                onClick={onNavigate ? () => onNavigate(id) : undefined}
-                className={cn(
-                  "text-muted-foreground",
-                  isActive && "bg-muted/60 text-primary hover:bg-muted/60",
-                )}
-              >
-                <Icon className="h-5 w-5" aria-hidden="true" />
-              </IconButton>
-            </li>
-          )
-        })}
-      </ul>
+        return (
+          <button
+            key={id}
+            type="button"
+            aria-label={label}
+            aria-current={isActive ? "page" : undefined}
+            onClick={onNavigate ? () => onNavigate(id) : undefined}
+            className={cn(
+              "flex h-control-secondary w-control-secondary items-center justify-center",
+              "rounded-control bg-transparent transition-colors",
+              isActive ? "text-ink" : "text-taupe",
+            )}
+          >
+            <Icon className="h-5 w-5" aria-hidden="true" />
+          </button>
+        )
+      })}
     </nav>
   )
 }

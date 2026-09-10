@@ -264,11 +264,11 @@ export function UserDetailsPage({ forceFirstRunChrome = false }: UserDetailsPage
 
   // First run never blocks: every row is optional, and so is the whole step.
   const handleContinue = () =>
-    commit({ ...persistableFigure(), onboarding_complete: true }, "/home")
+    commit({ ...persistableFigure(), onboarding_complete: true }, "/collection")
 
   // "Use a neutral figure" — take nothing, but still clear the gate so the
   // AppShellLayout redirect doesn't bounce them straight back here.
-  const handleSkip = () => commit({ onboarding_complete: true }, "/home")
+  const handleSkip = () => commit({ onboarding_complete: true }, "/collection")
 
   const handleSave = () => {
     if (!isFormValid) return

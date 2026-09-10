@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import type { PointerEvent as ReactPointerEvent } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { useQueryClient } from "@tanstack/react-query"
-import { useNavigate } from "react-router-dom"
 import { Bell, X } from "lucide-react"
 import { NotificationTray } from "./NotificationTray"
 import { toast as sonnerToast } from "sonner"
@@ -10,6 +9,7 @@ import { useJobs } from "../providers/JobsContext"
 import type { Job } from "../providers/JobsContext"
 import { formatDistanceToNow } from "date-fns"
 import { openLikenessDrawer } from "@/features/likeness/openLikenessDrawer"
+import { getOutfitContext, useOpenJobResult } from "../openJobResult"
 import { generateTryOn, type TryOnGeneratePayload } from "@/services/tryon/tryonService"
 import { tryOnKeys } from "@/features/tryon/queryKeys"
 import { likenessKeys } from "@/features/likeness/queryKeys"
@@ -27,7 +27,6 @@ export function FloatingProgressHub() {
     typeof window !== "undefined" ? window.innerHeight / 2 - 36 : 0
   ) // Y position in pixels
   const [isDragging, setIsDragging] = useState(false)
-  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const analytics = useEngagementAnalytics()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -41,33 +40,7 @@ export function FloatingProgressHub() {
     up?: (event: PointerEvent) => void
   }>({})
 
-  const getOutfitContext = useCallback((job: Job) => {
-    const outfitParams = job.metadata?.outfitParams as Record<string, string | null> | undefined
-    const outfitItems = outfitParams
-      ? {
-          topId: outfitParams.topId ?? null,
-          bottomId: outfitParams.bottomId ?? null,
-          footwearId: outfitParams.footwearId ?? null,
-        }
-      : undefined
-    const resolvedGender =
-      outfitParams?.outfitGender === "male" ||
-      outfitParams?.outfitGender === "female" ||
-      outfitParams?.outfitGender === "unisex"
-        ? (outfitParams.outfitGender as "male" | "female" | "unisex")
-        : null
-    const outfitSnapshot = outfitParams
-      ? {
-          id: outfitParams.outfitId ?? undefined,
-          name: outfitParams.outfitName ?? null,
-          category: outfitParams.outfitCategory ?? null,
-          occasionId: outfitParams.outfitOccasion ?? null,
-          backgroundId: outfitParams.outfitBackgroundId ?? null,
-          gender: resolvedGender,
-        }
-      : undefined
-    return { outfitItems, outfitSnapshot }
-  }, [])
+  const openJobResult = useOpenJobResult("fromProgressHub")
 
   // Split and sort jobs: active first (newest), then completed (newest)
   const activeJobs = jobs
@@ -126,33 +99,8 @@ export function FloatingProgressHub() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  const handleViewResult = (job: (typeof jobs)[0]) => {
-    if (job.type === "likeness" && job.metadata?.batchId) {
-      const { outfitItems, outfitSnapshot } = getOutfitContext(job)
-
-      if (job.metadata?.saved) {
-        const savedPoseId = typeof job.metadata?.savedPoseId === "string" ? job.metadata.savedPoseId : null
-        openLikenessDrawer({
-          initialStep: 3,
-          batchId: job.metadata.batchId,
-          outfitItems,
-          outfitSnapshot,
-          entrySource: "fromProgressHub",
-          savedMode: true,
-          savedPoseId,
-        })
-      } else {
-        openLikenessDrawer({
-          initialStep: 2,
-          batchId: job.metadata.batchId,
-          outfitItems,
-          outfitSnapshot,
-          entrySource: "fromProgressHub",
-        })
-      }
-    } else if (job.type === "tryon") {
-      navigate("/home?moodboard=try-ons")
-    }
+  const handleViewResult = (job: Job) => {
+    openJobResult(job)
     setIsExpanded(false)
   }
 
@@ -243,7 +191,7 @@ export function FloatingProgressHub() {
         })
       }
     },
-    [addJob, analytics, getOutfitContext, queryClient, removeJob, updateJob],
+    [addJob, analytics, queryClient, removeJob, updateJob],
   )
 
   // Constants

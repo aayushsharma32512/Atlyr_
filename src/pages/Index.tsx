@@ -277,7 +277,7 @@ export default function Index() {
     );
   }
 
-  return <Navigate to="/home" replace />;
+  return <Navigate to="/collection" replace />;
 }
 
 function GuestAvatarPrompt() {

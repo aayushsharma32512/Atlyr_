@@ -12,6 +12,7 @@ import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { useAuth } from "@/contexts/AuthContext"
 import { useGuest } from "@/contexts/GuestContext"
 import { useStudioShareMode } from "@/features/studio/hooks/useStudioShareMode"
+import { readReturnTo } from "@/utils/returnTo"
 
 interface AppShellLayoutProps {
   children?: ReactNode
@@ -25,7 +26,7 @@ export function AppShellLayout({ children }: AppShellLayoutProps) {
   const { guestState } = useGuest()
   const { isViewOnly } = useStudioShareMode()
 
-  const activeId = getActiveNavId(location.pathname)
+  const activeId = getActiveNavId(location.pathname, location.search)
 
   useEffect(() => {
     if (!user || guestState.isGuest || isLoading) {
@@ -43,15 +44,6 @@ export function AppShellLayout({ children }: AppShellLayoutProps) {
 
   const handleNavigate = (id: string) => {
     switch (id) {
-      case "home":
-        if (location.pathname.startsWith("/home")) {
-          if (typeof window !== "undefined") {
-            window.dispatchEvent(new CustomEvent("home:reset"))
-          }
-          return
-        }
-        navigate("/home?moodboard=for-you")
-        break
       case "collections":
         navigate("/collection")
         break
@@ -61,8 +53,11 @@ export function AppShellLayout({ children }: AppShellLayoutProps) {
         break
       }
       case "search":
-        // Navigate to fresh search screen without any query params (clears previous search)
-        navigate("/search", { replace: false })
+        // A tab tap lands on the reset state; the screen skips its session restore.
+        navigate("/search", { replace: false, state: { fresh: true } })
+        break
+      case "notifications":
+        navigate("/notifications")
         break
       case "profile":
         navigate("/profile")
@@ -88,23 +83,42 @@ export function AppShellLayout({ children }: AppShellLayoutProps) {
   )
 }
 
-function getActiveNavId(pathname: string) {
-  if (pathname.startsWith("/home") || pathname.startsWith("/design-system/home")) {
-    return "home"
+/**
+ * The product page is a detail view, not a tab: Collections, Search and Studio
+ * all open it at /studio/product/:id. Its `?returnTo=` names the opener, so the
+ * bar stays lit on the tab you actually came from instead of jumping to Studio.
+ */
+function getActiveNavId(pathname: string, search: string) {
+  if (pathname.startsWith("/studio/product/")) {
+    const openedFrom = readReturnTo(search)
+    const owner = openedFrom ? matchNavId(openedFrom) : undefined
+    if (owner) {
+      return owner
+    }
   }
+
+  return matchNavId(pathname)
+}
+
+// /home has no tab any more, so it reports no active id. The route still works.
+function matchNavId(pathname: string) {
   if (pathname.startsWith("/collection") || pathname.startsWith("/design-system/collection")) {
     return "collections"
   }
 
-    if (pathname.startsWith("/studio") || pathname.startsWith("/design-system/studio")) {
-      return "studio"
-    }
+  if (pathname.startsWith("/studio") || pathname.startsWith("/design-system/studio")) {
+    return "studio"
+  }
 
   if (pathname.startsWith("/search") || pathname.startsWith("/design-system/search")) {
     return "search"
   }
 
-  if (pathname.startsWith("/profile") || pathname.startsWith("/profile") || pathname.startsWith("/design-system/profile")) {
+  if (pathname.startsWith("/notifications")) {
+    return "notifications"
+  }
+
+  if (pathname.startsWith("/profile") || pathname.startsWith("/design-system/profile")) {
     return "profile"
   }
 
