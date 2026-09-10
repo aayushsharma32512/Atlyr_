@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { ArrowLeft, ChevronLeft, ChevronRight, Loader2, RotateCcw, ScanSearch, Shirt, Sparkles } from "lucide-react"
-import { useNavigate, useParams } from "react-router-dom"
+import { useLocation, useNavigate, useParams } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/AuthContext"
 import { useProductSaveActions } from "@/features/collections/hooks/useProductSaveActions"
@@ -128,6 +128,7 @@ export default function InspirationImportScreen() {
   const isPreparingImport = routeImportId === PROCESSING_IMPORT_ID
   const importId = routeImportId && !isPreparingImport ? routeImportId : null
   const navigate = useNavigate()
+  const location = useLocation()
   const { user } = useAuth()
   const { profile, gender } = useProfileContext()
   const productSaveActions = useProductSaveActions()
@@ -467,7 +468,15 @@ export default function InspirationImportScreen() {
   if (!importId) {
     return (
       <main className="flex min-h-screen flex-col bg-background text-foreground">
-        <header className="flex h-16 items-center justify-center px-5">
+        <header className="relative flex h-16 items-center justify-center px-5">
+          <button
+            type="button"
+            aria-label="Back"
+            className="absolute left-4 flex size-10 items-center justify-center"
+            onClick={() => (location.key === "default" ? navigate("/collection") : navigate(-1))}
+          >
+            <ArrowLeft className="size-4" />
+          </button>
           <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
             Import inspiration
           </span>
