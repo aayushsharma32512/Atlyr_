@@ -7,6 +7,11 @@ type DbProductRow = Database["public"]["Tables"]["products"]["Row"] & {
   body_parts_visible?: string[] | null
 }
 
+// thumbnail_url is not optional here: renderedItemMapper turns it into the item's
+// imageUrl when present, and PlacementAvatarRenderer only skips the 2K PNG if it
+// arrives. Leaving it out of this select is what made board covers pull
+// megabytes of full-res PNG while Studio — whose own selects include it —
+// rendered the same outfits from ~400px webp.
 const OUTFIT_PRODUCTS_SELECT = `
   id,
   top:products!outfits_top_id_fkey(
@@ -14,6 +19,7 @@ const OUTFIT_PRODUCTS_SELECT = `
     brand,
     product_name,
     image_url,
+    thumbnail_url,
     placement_x,
     placement_y,
     image_length,
@@ -25,6 +31,7 @@ const OUTFIT_PRODUCTS_SELECT = `
     brand,
     product_name,
     image_url,
+    thumbnail_url,
     placement_x,
     placement_y,
     image_length,
@@ -36,6 +43,7 @@ const OUTFIT_PRODUCTS_SELECT = `
     brand,
     product_name,
     image_url,
+    thumbnail_url,
     placement_x,
     placement_y,
     image_length,
