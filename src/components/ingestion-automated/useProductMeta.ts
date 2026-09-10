@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/integrations/supabase/client'
+import { fetchArtifacts, type ArtifactClient, type ArtifactRow } from './fetchArtifacts'
 import type { PipelineJob } from '@/utils/ingestionV2Api'
 
 export type Accordion = { title: string; content: string }
@@ -47,14 +48,16 @@ export function useProductMeta(jobs: PipelineJob[]): { products: Record<string, 
 
   const load = useCallback(async () => {
     if (ids.length === 0) { setMap({}); return }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase as any)
-      .from('pipeline_step_artifacts')
-      .select('job_id, data')
-      .in('job_id', ids)
-      .eq('artifact_type', 'crawl_meta')
-      .order('created_at', { ascending: true })
-    if (error || !data) return
+    let data: ArtifactRow[]
+    try {
+      data = await fetchArtifacts(supabase as unknown as ArtifactClient, {
+        jobIds: ids,
+        artifactTypes: 'crawl_meta',
+      })
+    } catch (err) {
+      console.error('useProductMeta: artifact fetch failed', err)
+      return
+    }
 
     const next: Record<string, ProductMeta> = {}
     for (const row of data as { job_id: string; data: Record<string, unknown> | null }[]) {

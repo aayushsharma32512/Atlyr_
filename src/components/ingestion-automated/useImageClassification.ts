@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/integrations/supabase/client'
+import { fetchArtifacts, type ArtifactClient, type ArtifactRow } from './fetchArtifacts'
 import type { PipelineJob } from '@/utils/ingestionV2Api'
 
 export type View = 'Front' | 'Back' | 'Side'
@@ -32,14 +33,16 @@ export function useImageClassification(jobs: PipelineJob[]): { tags: Record<stri
 
   const load = useCallback(async () => {
     if (ids.length === 0) { setMap({}); return }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase as any)
-      .from('pipeline_step_artifacts')
-      .select('job_id, data')
-      .in('job_id', ids)
-      .eq('artifact_type', 'image_classification')
-      .order('created_at', { ascending: true })
-    if (error || !data) return
+    let data: ArtifactRow[]
+    try {
+      data = await fetchArtifacts(supabase as unknown as ArtifactClient, {
+        jobIds: ids,
+        artifactTypes: 'image_classification',
+      })
+    } catch (err) {
+      console.error('useImageClassification: artifact fetch failed', err)
+      return
+    }
 
     const next: Record<string, ImageTag[]> = {}
     for (const row of data as { job_id: string; data: Record<string, unknown> | null }[]) {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/integrations/supabase/client'
+import { fetchArtifacts, type ArtifactClient, type ArtifactRow } from './fetchArtifacts'
 import type { PipelineJob } from '@/utils/ingestionV2Api'
 import { parseTechPack } from './useGarmentSummary'
 
@@ -50,14 +51,18 @@ export function useEnrichment(jobs: PipelineJob[]): Record<string, EnrichmentDat
     let cancelled = false
 
     ;(async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase as any)
-        .from('pipeline_step_artifacts')
-        .select('job_id, artifact_type, data')
-        .in('job_id', ids)
-        .in('artifact_type', ['enrichment', 'garment_summary'])
-        .order('created_at', { ascending: true })
-      if (cancelled || error || !data) return
+      let data: ArtifactRow[]
+      try {
+        data = await fetchArtifacts(supabase as unknown as ArtifactClient, {
+          jobIds: ids,
+          artifactTypes: ['enrichment', 'garment_summary'],
+          columns: 'job_id, artifact_type, data',
+        })
+      } catch (err) {
+        console.error('useEnrichment: artifact fetch failed', err)
+        return
+      }
+      if (cancelled) return
 
       // Ascending order + last-write-wins so a re-run (↻ Summary appends a fresh artifact) wins.
       const next: Record<string, EnrichmentData> = {}

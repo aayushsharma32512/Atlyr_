@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/integrations/supabase/client'
+import { fetchInChunks, type ArtifactClient, type ArtifactRow } from './fetchArtifacts'
 import type { PipelineJob } from '@/utils/ingestionV2Api'
 
 // 'live'   = promoted into the live products table (ingested_products.verdict = 'approved')
@@ -18,15 +19,21 @@ export function useCatalogStatus(jobs: PipelineJob[]): { statuses: Record<string
     const ids = key ? key.split(',').map(s => s.split(':')[0]) : []
     if (ids.length === 0) { setMap({}); return }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase as any)
-      .from('ingested_products')
-      .select('pipeline_job_id, verdict')
-      .in('pipeline_job_id', ids)
-    if (error || !data) return
+    let data: ArtifactRow[]
+    try {
+      data = await fetchInChunks(supabase as unknown as ArtifactClient, {
+        table: 'ingested_products',
+        idColumn: 'pipeline_job_id',
+        ids,
+        columns: 'pipeline_job_id, verdict',
+      })
+    } catch (err) {
+      console.error('useCatalogStatus: catalog lookup failed', err)
+      return
+    }
 
     const next: Record<string, CatalogStatus> = {}
-    for (const row of data as { pipeline_job_id: string; verdict: string | null }[]) {
+    for (const row of data as unknown as { pipeline_job_id: string; verdict: string | null }[]) {
       if (!row.pipeline_job_id) continue
       next[row.pipeline_job_id] = row.verdict === 'approved' ? 'live' : 'staged'
     }
