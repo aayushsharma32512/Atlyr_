@@ -17,6 +17,7 @@ import {
   type FilterCategory,
 } from "@/design-system/primitives"
 import { AppShellLayout } from "@/layouts/AppShellLayout"
+import { BoardDetailHeader } from "./components/BoardDetailHeader"
 import { MoodboardPins, type MoodboardTab } from "./components/MoodboardPins"
 import { FeedHeroBand } from "./components/FeedHeroBand"
 import { useResponsiveColumns } from "@/shared/hooks/useResponsiveColumns"
@@ -1785,7 +1786,9 @@ export function HomeScreenView() {
           >
             <div
               className={cn(
-                "fixed top-[88px] inset-x-0 z-10 mx-auto w-full max-w-[24.5rem] px-4 md:max-w-[47rem] lg:max-w-[62rem] xl:max-w-[78rem] transition-transform transition-opacity duration-200",
+                // No px-4 here: the tab bar carries the gutter itself, so it lines up with
+                // the Collections header's tabs rather than sitting 32px in.
+                "fixed top-[88px] inset-x-0 z-10 mx-auto w-full max-w-[24.5rem] md:max-w-[47rem] lg:max-w-[62rem] xl:max-w-[78rem] transition-transform transition-opacity duration-200",
                 // Hide the tab row while the search is focused so the expanded
                 // search sheet (with its filter pill) doesn't overlap it.
                 isTopBarVisible && !isSearchFocused ? "translate-y-0 opacity-100" : "-translate-y-6 opacity-0 pointer-events-none",
@@ -1799,18 +1802,39 @@ export function HomeScreenView() {
             </div>
             {activeMoodboardId === "try-ons" ? (
               <>
-                <SectionHeader title="Try-ons" />
+                <BoardDetailHeader
+                  slug="try-ons"
+                  label="Try-ons"
+                  itemCount={tryOnItems.length}
+                  canManage={false}
+                  onBack={() => navigate("/collection")}
+                  onDeleted={() => navigate("/collection")}
+                />
                 {renderTryOnsContent()}
               </>
             ) : activeMoodboardId === "favorites" ? (
               <>
-                <SectionHeader title="Favorites" />
+                <BoardDetailHeader
+                  slug="favorites"
+                  label="Favorites"
+                  itemCount={favoritesItems.length}
+                  canManage={false}
+                  onBack={() => navigate("/collection")}
+                  onDeleted={() => navigate("/collection")}
+                />
                 {renderFavoritesItemsContent()}
               </>
             ) : activeMoodboardId === "all-outfits" ? (
               <>
+                <BoardDetailHeader
+                  slug="all-outfits"
+                  label="All Outfits"
+                  canManage={false}
+                  onBack={() => navigate("/collection")}
+                  onDeleted={() => navigate("/collection")}
+                />
                 <div className="flex items-center justify-between">
-                  <SectionHeader title="All Outfits" />
+                  <SectionHeader title="Sort" />
                   <div className="flex gap-1 pb-1">
                     <button
                       type="button"
@@ -1850,26 +1874,14 @@ export function HomeScreenView() {
               </>
             ) : isItemMoodboardActive ? (
               <>
-                {/* 6f board-detail header — back · serif name + saves · ⋯ */}
-                <div className="flex items-center justify-between px-1">
-                  <button
-                    type="button"
-                    onClick={() => navigate("/collection")}
-                    aria-label="Back to boards"
-                    className="px-1 text-xl leading-none text-foreground"
-                  >
-                    ‹
-                  </button>
-                  <div className="text-center">
-                    <h2 className="font-display text-[20px] font-medium leading-none text-foreground">
-                      {activeMoodboardLabel}
-                    </h2>
-                    <p className="mt-1 text-[8px] font-medium uppercase tracking-[0.16em] text-faint">
-                      Moodboard · {moodboardItems.length} {moodboardItems.length === 1 ? "save" : "saves"}
-                    </p>
-                  </div>
-                  <span className="px-1 text-base leading-none text-foreground">⋯</span>
-                </div>
+                <BoardDetailHeader
+                  slug={activeMoodboardId}
+                  label={activeMoodboardLabel}
+                  itemCount={moodboardItems.length}
+                  canManage={isUserMoodboardActive}
+                  onBack={() => navigate("/collection")}
+                  onDeleted={() => navigate("/collection")}
+                />
                 {renderMoodboardItemsContent()}
                 {/* Discovery tail — pins keyed to this board's taste (canvas 6f).
                     Seeded from the For-you feed for now. */}
