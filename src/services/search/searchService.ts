@@ -392,7 +392,7 @@ async function fetchOutfitsByIds(
   return map
 }
 
-async function fetchProductsByIds(
+export async function fetchProductsByIds(
   ids: string[],
 ): Promise<Record<string, Database["public"]["Tables"]["products"]["Row"]>> {
   if (ids.length === 0) {

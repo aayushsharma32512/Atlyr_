@@ -6,12 +6,14 @@ export const collectionsKeys = {
   collectionsMeta: () => [...collectionsKeys.all, "meta"] as const,
   createMoodboard: () => [...collectionsKeys.all, "create-moodboard"] as const,
   deleteMoodboard: () => [...collectionsKeys.all, "delete-moodboard"] as const,
+  renameMoodboard: () => [...collectionsKeys.all, "rename-moodboard"] as const,
   saveToCollection: () => [...collectionsKeys.all, "save-to-collection"] as const,
   saveProductToCollection: () => [...collectionsKeys.all, "save-product-to-collection"] as const,
   removeFromCollection: () => [...collectionsKeys.all, "remove-from-collection"] as const,
   removeProductFromCollection: () => [...collectionsKeys.all, "remove-product-from-collection"] as const,
   removeOutfitFromLibrary: () => [...collectionsKeys.all, "remove-outfit-from-library"] as const,
   removeProductFromLibrary: () => [...collectionsKeys.all, "remove-product-from-library"] as const,
+  productsByIds: (ids: string[]) => [...collectionsKeys.all, "products-by-ids", [...ids].sort().join(",")] as const,
   creations: (size = 20) => [...collectionsKeys.all, "creations", size] as const,
   /**
    * Every creations page, whatever its size — the key to INVALIDATE on.
@@ -35,4 +37,5 @@ export const collectionsKeys = {
   products: () => [...collectionsKeys.all, "products"] as const,
   productCollectionMembership: () => [...collectionsKeys.products(), "membership"] as const,
   productFavorites: () => [...collectionsKeys.all, "product-favorites"] as const,
+  trendingProducts: (gender: string | null) => [...collectionsKeys.products(), "trending", gender ?? "all"] as const,
 }
