@@ -295,6 +295,22 @@ function parseStudioRenderedItems(items: any): StudioRenderedItem[] | undefined 
   return parsed.length ? parsed : undefined
 }
 
+/**
+ * The image a product tile should load: the webp thumbnail when there is one,
+ * else the full-size original. Mirrors Studio (studioService.ts) and the
+ * `product_display_image` SQL helper — an empty string counts as "no thumbnail",
+ * which `??` would not catch.
+ */
+export function productDisplayImage(
+  thumbnailUrl: string | null | undefined,
+  imageUrl: string | null | undefined,
+): string | null {
+  const thumbnail = typeof thumbnailUrl === "string" ? thumbnailUrl.trim() : ""
+  if (thumbnail) return thumbnail
+  const original = typeof imageUrl === "string" ? imageUrl.trim() : ""
+  return original || null
+}
+
 function parsePreviewItem(entry: any): MoodboardPreviewItem | null {
   const rawType = entry?.itemType ?? entry?.item_type
   if (rawType === "outfit") {
@@ -419,6 +435,51 @@ export async function createMoodboard(userId: string, name: string): Promise<Moo
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   }
+}
+
+/**
+ * Renames a board's label. The slug is its identity and stays put, so links,
+ * saved items and the `moodboard=` URL param all survive the rename.
+ *
+ * `manage_collection` swallows its own exceptions into `{ success: false }`,
+ * so a bad rename comes back as a 200 — the payload has to be checked too.
+ */
+export async function renameMoodboard(userId: string, slug: string, label: string): Promise<void> {
+  if (!userId) {
+    throw new Error("User must be authenticated to rename a moodboard")
+  }
+  const trimmed = label.trim()
+  if (!trimmed) {
+    throw new Error("Board name cannot be empty")
+  }
+  const normalizedSlug = slug.toLowerCase()
+  if (SYSTEM_MOODBOARDS.some((sys) => sys.slug === normalizedSlug)) {
+    throw new Error("Cannot rename a system moodboard")
+  }
+
+  const { data, error } = await supabase.rpc("manage_collection", {
+    p_operation: "rename",
+    p_collection_slug: normalizedSlug,
+    p_collection_label: trimmed,
+    p_user_id: userId,
+  })
+
+  if (error) {
+    throw new Error(error.message)
+  }
+  const result = data as { success?: boolean; error?: string } | null
+  if (result && result.success === false) {
+    throw new Error(result.error ?? "Could not rename this board")
+  }
+
+  // user_favorites carries a denormalised collection_label. get_user_collections
+  // reads user_collections, so the boards list is already correct — this keeps
+  // the two from drifting for anything that reads the favourite row directly.
+  await supabase
+    .from("user_favorites")
+    .update({ collection_label: trimmed })
+    .eq("user_id", userId)
+    .eq("collection_slug", normalizedSlug)
 }
 
 export async function deleteMoodboard(userId: string, slug: string): Promise<void> {
@@ -631,10 +692,13 @@ export async function fetchFavoriteProducts(userId: string | null): Promise<stri
   return (data ?? []).map((row) => row.product_id).filter((id): id is string => typeof id === "string")
 }
 
+export type ProductSlot = "top" | "bottom" | "shoes"
+
 export type SavedProduct = {
   id: string
   createdAt: string
   imageUrl: string | null
+  type: ProductSlot | null
   brand: string | null
   price: number | null
   currency: string | null
@@ -685,9 +749,11 @@ export async function fetchSavedProducts(userId: string | null): Promise<SavedPr
     if (existing && existing.createdAt >= createdAt) {
       continue
     }
-    const imageUrl = product?.thumbnail_url ?? product?.image_url ?? null
+    const imageUrl = productDisplayImage(product?.thumbnail_url, product?.image_url)
+    const type = product?.type === "top" || product?.type === "bottom" || product?.type === "shoes" ? product.type : null
     deduped.set(id, {
       id,
+      type,
       createdAt,
       imageUrl,
       brand: product?.brand ?? null,
@@ -741,7 +807,7 @@ export async function fetchCollectionProducts(
     const itemType = rawType === "top" || rawType === "bottom" || rawType === "shoes" ? rawType : null
     const rawGender = product?.gender
     const gender = rawGender === "male" || rawGender === "female" ? rawGender : null
-    const imageUrl = product?.thumbnail_url ?? product?.image_url ?? null
+    const imageUrl = productDisplayImage(product?.thumbnail_url, product?.image_url)
     deduped.set(id, {
       id,
       createdAt,
@@ -1328,7 +1394,7 @@ export async function fetchMoodboardItems(params: {
         }
 
         if (row?.product?.id) {
-          const imageUrl = row.product.thumbnail_url ?? row.product.image_url ?? null
+          const imageUrl = productDisplayImage(row.product.thumbnail_url, row.product.image_url)
           return {
             itemType: "product",
             id: row.product.id,
@@ -1398,7 +1464,7 @@ export async function fetchMoodboardItemsBatch(params: {
     }
 
     if (row.item_type === "product" && row.product?.id) {
-      const imageUrl = row.product.thumbnail_url ?? row.product.image_url ?? null
+      const imageUrl = productDisplayImage(row.product.thumbnail_url, row.product.image_url)
       grouped.get(slug)?.push({
         itemType: "product",
         id: row.product.id,
@@ -1536,4 +1602,97 @@ export async function fetchCreations(params: {
       } satisfies Creation
     }) ?? []
   )
+}
+
+export type TrendingProduct = {
+  id: string
+  type: ProductSlot
+  productName: string | null
+  imageUrl: string | null
+  /** Public feed outfits this piece is styled in — the rank signal. */
+  looks: number
+}
+
+const TRENDING_SLOT_COLUMNS: Record<ProductSlot, "top_id" | "bottom_id" | "shoes_id"> = {
+  top: "top_id",
+  bottom: "bottom_id",
+  shoes: "shoes_id",
+}
+
+/**
+ * Trending pieces, ranked by how many public feed outfits style them.
+ *
+ * `products` carries no curated or popularity column and `outfits.popularity` is
+ * 0 on every row, so appearance count across the feed is the only real signal we
+ * have. Swap this for a curated flag once products carry one.
+ */
+export async function fetchTrendingProducts(params: {
+  gender: "male" | "female" | null
+  perSlot?: number
+}): Promise<Record<ProductSlot, TrendingProduct[]>> {
+  const { gender, perSlot = 20 } = params
+
+  const query = supabase
+    .from("outfits")
+    .select("top_id, bottom_id, shoes_id")
+    .eq("visible_in_feed", true)
+    .limit(1000)
+
+  if (gender === "male" || gender === "female") {
+    query.eq("gender", gender)
+  }
+
+  const { data, error } = await query
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  // id → looks, per slot. Ties keep first-seen order, which is stable enough.
+  const counts: Record<ProductSlot, Map<string, number>> = { top: new Map(), bottom: new Map(), shoes: new Map() }
+  for (const row of data ?? []) {
+    for (const slot of ["top", "bottom", "shoes"] as ProductSlot[]) {
+      const id = row[TRENDING_SLOT_COLUMNS[slot]]
+      if (typeof id !== "string" || !id) continue
+      counts[slot].set(id, (counts[slot].get(id) ?? 0) + 1)
+    }
+  }
+
+  const ranked: Record<ProductSlot, [string, number][]> = {
+    top: [...counts.top].sort((a, b) => b[1] - a[1]).slice(0, perSlot),
+    bottom: [...counts.bottom].sort((a, b) => b[1] - a[1]).slice(0, perSlot),
+    shoes: [...counts.shoes].sort((a, b) => b[1] - a[1]).slice(0, perSlot),
+  }
+
+  const ids = [...ranked.top, ...ranked.bottom, ...ranked.shoes].map(([id]) => id)
+  if (!ids.length) {
+    return { top: [], bottom: [], shoes: [] }
+  }
+
+  const { data: products, error: productsError } = await supabase
+    .from("products")
+    .select("id, product_name, image_url, thumbnail_url, type")
+    .in("id", ids)
+
+  if (productsError) {
+    throw new Error(productsError.message)
+  }
+
+  const byId = new Map((products ?? []).map((row) => [row.id, row]))
+
+  const build = (slot: ProductSlot): TrendingProduct[] =>
+    ranked[slot]
+      .map(([id, looks]) => {
+        const row = byId.get(id)
+        if (!row || row.type !== slot) return null
+        return {
+          id,
+          type: slot,
+          productName: row.product_name ?? null,
+          imageUrl: productDisplayImage(row.thumbnail_url, row.image_url),
+          looks,
+        } satisfies TrendingProduct
+      })
+      .filter((entry): entry is TrendingProduct => entry !== null)
+
+  return { top: build("top"), bottom: build("bottom"), shoes: build("shoes") }
 }

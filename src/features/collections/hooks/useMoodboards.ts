@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tansta
 
 import { useAuth } from "@/contexts/AuthContext"
 import { collectionsKeys } from "@/features/collections/queryKeys"
+import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import {
   createMoodboard,
   fetchCollectionsWithPreviews,
@@ -9,6 +10,7 @@ import {
   fetchCollectionProducts,
   fetchFavoriteProducts,
   fetchSavedProducts,
+  fetchTrendingProducts,
   fetchCollectionsMeta,
   fetchMoodboards,
   fetchCreations,
@@ -22,6 +24,7 @@ import {
   fetchOutfitCollectionMembership,
   anonymiseOutfit,
   deleteMoodboard,
+  renameMoodboard,
   removeFromCollection,
   removeProductFromCollection,
   removeOutfitFromLibrary,
@@ -29,6 +32,7 @@ import {
   saveToCollection,
   saveProductToCollection,
 } from "@/services/collections/collectionsService"
+import { fetchProductsByIds } from "@/services/search/searchService"
 
 export function useCollectionsOverview() {
   const { user } = useAuth()
@@ -75,6 +79,17 @@ export function useSavedProducts() {
   })
 }
 
+/** Trending pieces for the profile's gender, ranked by feed appearances. */
+export function useTrendingProducts() {
+  const { gender } = useProfileContext()
+  return useQuery({
+    queryKey: collectionsKeys.trendingProducts(gender),
+    queryFn: () => fetchTrendingProducts({ gender }),
+    staleTime: 30 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
+  })
+}
+
 export function useCollectionProducts(slug: string | null) {
   const { user } = useAuth()
   return useQuery({
@@ -102,6 +117,25 @@ export function useCreateMoodboard() {
       queryClient.invalidateQueries({ queryKey: collectionsKeys.collectionsMeta() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.creationsAll() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.creationsCounts() })
+    },
+  })
+}
+
+export function useRenameMoodboard() {
+  const { user } = useAuth()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationKey: collectionsKeys.renameMoodboard(),
+    mutationFn: ({ slug, label }: { slug: string; label: string }) => {
+      if (!user?.id) {
+        throw new Error("Please sign in to rename a moodboard")
+      }
+      return renameMoodboard(user.id, slug, label)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.overview() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.moodboards() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.collectionsMeta() })
     },
   })
 }
@@ -407,6 +441,16 @@ export function useMoodboardOutfits(slug: string | null, size = 20, enabled = tr
     enabled: Boolean(user?.id && slug && enabled),
     staleTime: 60 * 1000,
     getNextPageParam: (lastPage, allPages) => (lastPage.length === size ? allPages.length : undefined),
+  })
+}
+
+/** Product rows for a fixed id list — used for the Trending stub and to enrich board items with their slot. */
+export function useProductsByIds(ids: string[]) {
+  return useQuery({
+    queryKey: collectionsKeys.productsByIds(ids),
+    queryFn: () => fetchProductsByIds(ids),
+    enabled: ids.length > 0,
+    staleTime: 5 * 60 * 1000,
   })
 }
 
