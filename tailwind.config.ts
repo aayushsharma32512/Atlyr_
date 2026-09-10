@@ -55,6 +55,17 @@ export default {
 				'fluid-h1': 'var(--fluid-h1)',
 				'fluid-mark-firstrun': 'var(--fluid-mark-firstrun)',
 				'fluid-mark-landing': 'var(--fluid-mark-landing)',
+				// Type roles (docs/redesign/design.md); values in src/index.css.
+				// Unlike the fluid ramp these pin line-height, because the design
+				// specifies it per role. Override with leading-* if a surface differs.
+				'title-lg': ['var(--type-title-lg)', { lineHeight: '1.05' }],
+				title: ['var(--type-title)', { lineHeight: '1.05' }],
+				moment: ['var(--type-moment)', { lineHeight: '1.2' }],
+				label: ['var(--type-label)', { lineHeight: '1.3' }],
+				body: ['var(--type-body)', { lineHeight: '1.4' }],
+				card: ['var(--type-card)', { lineHeight: '1.2' }],
+				chip: ['var(--type-chip)', { lineHeight: '1' }],
+				section: ['var(--type-section)', { lineHeight: '1' }],
 			},
 			colors: {
 				border: 'hsl(var(--border))',
@@ -154,7 +165,21 @@ export default {
 				// Kalagriha shape scale: buttons/chips/search = 3px, frames = 6px,
 				// seals/badges = 2px. Cards stay on --radius (5px).
 				frame: 'var(--radius-frame)',
-				badge: 'var(--radius-badge)'
+				badge: 'var(--radius-badge)',
+				// The 3px step — buttons, chips and fields.
+				control: 'var(--radius-control)'
+			},
+			height: {
+				// Control heights from design.md. Mirrors CONTROL in src/design-system/tokens.
+				'control-primary': '44px',
+				'control-secondary': '40px',
+				'control-field': '40px',
+				'control-chip': '26px',
+				'control-row': '34px',
+				'control-detail': '64px',
+				'control-header': '32px',
+				'control-header-title': '52px',
+				'control-nav': '55px'
 			},
 			keyframes: {
 				'accordion-down': {
