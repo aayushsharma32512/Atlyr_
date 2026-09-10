@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/integrations/supabase/client'
+import { fetchArtifacts, type ArtifactClient, type ArtifactRow } from './fetchArtifacts'
 import type { PipelineJob } from '@/utils/ingestionV2Api'
 
 export type PlacementTransform = { scale: number; rotationDeg: number; tx: number; ty: number }
@@ -29,15 +30,16 @@ export function usePlacementImage(jobs: PipelineJob[]): { placements: Record<str
     const ids = key ? key.split(',').map(s => s.split(':')[0]) : []
     if (ids.length === 0) { setMap({}); return }
 
-    // pipeline_step_artifacts is not in generated types — cast to any
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase as any)
-      .from('pipeline_step_artifacts')
-      .select('job_id, data')
-      .in('job_id', ids)
-      .eq('artifact_type', 'placement')
-      .order('created_at', { ascending: true })
-    if (error || !data) return
+    let data: ArtifactRow[]
+    try {
+      data = await fetchArtifacts(supabase as unknown as ArtifactClient, {
+        jobIds: ids,
+        artifactTypes: 'placement',
+      })
+    } catch (err) {
+      console.error('usePlacementImage: artifact fetch failed', err)
+      return
+    }
 
     const next: Record<string, PlacementInfo> = {}
     for (const row of data as { job_id: string; data: Record<string, unknown> | null }[]) {

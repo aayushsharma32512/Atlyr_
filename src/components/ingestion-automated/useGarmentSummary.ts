@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/integrations/supabase/client'
+import { fetchArtifacts, type ArtifactClient, type ArtifactRow } from './fetchArtifacts'
 import type { PipelineJob } from '@/utils/ingestionV2Api'
 
 export type TechPackEntry = { key: string; label: string; value: string }
@@ -46,14 +47,17 @@ export function useGarmentSummary(jobs: PipelineJob[]): Record<string, GarmentSu
     let cancelled = false
 
     ;(async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase as any)
-        .from('pipeline_step_artifacts')
-        .select('job_id, data')
-        .in('job_id', ids)
-        .eq('artifact_type', 'garment_summary')
-        .order('created_at', { ascending: true })
-      if (cancelled || error || !data) return
+      let data: ArtifactRow[]
+      try {
+        data = await fetchArtifacts(supabase as unknown as ArtifactClient, {
+          jobIds: ids,
+          artifactTypes: 'garment_summary',
+        })
+      } catch (err) {
+        console.error('useGarmentSummary: artifact fetch failed', err)
+        return
+      }
+      if (cancelled) return
 
       const next: Record<string, GarmentSummaryData> = {}
       for (const row of data as { job_id: string; data: Record<string, unknown> | null }[]) {

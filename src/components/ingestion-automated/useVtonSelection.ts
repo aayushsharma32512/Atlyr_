@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/integrations/supabase/client'
+import { fetchArtifacts, type ArtifactClient, type ArtifactRow } from './fetchArtifacts'
 import type { PipelineJob, SlotKey, SlotMapResult } from '@/utils/ingestionV2Api'
 
 export type ImageSlot = { url: string; uncertain: boolean; manual: boolean } | null
@@ -43,15 +44,16 @@ export function useVtonSelection(jobs: PipelineJob[]) {
 
   const load = useCallback(async () => {
     if (ids.length === 0) { setMap({}); return }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase as any)
-      .from('pipeline_step_artifacts')
-      .select('job_id, data')
-      .in('job_id', ids)
-      .eq('artifact_type', 'vton_image_selection')
-      .order('created_at', { ascending: true })
-    if (error) { console.error('useVtonSelection', error); return }
-    if (!data) return
+    let data: ArtifactRow[]
+    try {
+      data = await fetchArtifacts(supabase as unknown as ArtifactClient, {
+        jobIds: ids,
+        artifactTypes: 'vton_image_selection',
+      })
+    } catch (err) {
+      console.error('useVtonSelection: artifact fetch failed', err)
+      return
+    }
 
     const next: Record<string, VtonSelection> = {}
     for (const row of data as { job_id: string; data: Record<string, unknown> | null }[]) {
