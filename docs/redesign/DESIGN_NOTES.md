@@ -1,0 +1,29 @@
+# Atlyr — project notes
+
+- Component naming: the brief calls them **ProductTile** and **ProductRow**; the files remain `ProductCard.dc.html` and `SlotRow.dc.html` so every `<dc-import name="ProductCard">` / `<dc-import name="SlotRow">` in the flow files keeps rendering. The gallery (01 Components) shows the brief's names.
+- ProductSheet's title prop is `title` (not `name` — that attribute belongs to dc-import).
+- design.md overrides the brief where they conflict (e.g. Save is ink outline, never gold).
+- WaitDeck (Studio · Wait): planned as interactive cards while the try-on runs — Q&A / trivia where each right answer earns points. Design pending; current card is the term teaser.
+- Cold start (Studio · Cold): before any look has ever been opened in Studio, the Studio tab shows the Moodboards page (same as Collections · Moodboards, Nav on Studio). Once a look has been opened, Studio reopens with the last look.
+- Save / favourite icon is the pin everywhere (never bookmark or heart). Explore icon is the globe.
+- Bottom cards on Studio-family screens have no white card: content sits directly on the #F3ECDF ground, 12px 16px inset, from the container rule to the nav rule. WaitDeck keeps its white card (it is a deck).
+- Segmented toolbars (Alternates sources/slots) mark the active item with a 2px ink underline, no fill.
+- Studio rows: tapping anywhere on a filled ProductRow opens Alternates; tapping the item name opens details (focus); × removes.
+- Layering removed (Bipin, Sep 2026): no layer row in Studio, no layer slot in Alternates. Figure still accepts a `layer` prop but nothing sets it.
+- Alternates rack: photo-only tiles with a pin (save to favourites) top-right, no names. Ink button in the alt search bar submits: rack refreshes, query/photo shown as a clearable line above the rack.
+- Every screen names itself in the 52px header row only (Studio, Alternates, Find items, Boards, Profile, Wardrobe).
+- Find items · Pieces: two slots (Top, Bottom) under the photo fill as detections are tapped. One per category — tapping a second top flashes an inline error (`imp.err`) and rejects the pick. No shoes detection. Screen title lives in the header row only.
+- Kalagriha float sits top-left under the header (left 12 / top 60), translucent gold. Chips that sat top-left in canvases start at left 64. Rack ends with a "Web Search" row → import rack in web mode for that slot. Item image boxes in detail/alternates are swipeable 3-pane carousels.
+- Find items · Detecting: Minimise button hands the job to the Kalagriha float (running → gold "Pieces found" with Open) and goes to Moodboards.
+- Collections title is "Boards". Cold Moodboards shows a dashed plus button → Outfits tab (no copy).
+- Kalagriha float mirrors the deployed FloatingProgressHub: left-edge pill (44×40, white, right radii 16), glyph "क" only; spinner-with-count while jobs run; expands into a 292px side card with headline ("Nothing cooking" / "Dressing your likeness…") — all notifs live there, toasts fly into it. The pill is draggable vertically along the left edge (position persists in `kgY`); default top 96 on Boards, 60 elsewhere.
+- Import rack: top view (source crop + figure/pick) is 240px (~30% of screen) with 12px padding; no "Your pick" callout, no "On figure" badge — the ink border alone marks the chosen tile.
+- Find items: product-level (detail globe, Alternates globe) → import rack for that slot with inventory search running; outfit-level (Studio "Find items", receipt "Find items") → Detecting → Pieces, never the upload landing.
+- Product-level Find items (from Studio focus / Alternates, incl. the rack's Web Search row): Save skips the receipt — the pick (or closest match while a web import runs) is worn and the user lands back in Studio; the import job lives in the Kalagriha float and swaps in on arrival.
+- Import rack: Inventory ⇄ Web search toggle flips label with chevron; picks in each source are retained across switches.
+- Receipt: import/closest-match notif bars sit at the top, then one Studio-style detail card per added piece (120px carousel + 2-line name + tag chips, 140px tall, stacked). Tray is Save · Studio (Save reopens the name/tags/board card; reads "Saved" once done). Outfit-level Save (import rack) lands on the receipt cards (save card closed); the tray's Save opens the name/tags/board card, Save creates the look and the button reads "Saved". Receipt figure zooms to the slot when only one piece was picked, full avatar for two.
+- Search bars (Products / Outfits): pre-results show camera + ink search button; post-results the search button becomes an ink × (clears query, refs, filters) with a globe (web search → import rack) to its left, after the camera.
+- Alternates: Save Outfit opens the same save card inside the Alternates bottom band (rack stays visible); Save returns to the detail card. Title-row icon is "similar to this item" (re-ranks rack by shared tags, shown as a clearable "Similar to…" line); the globe (Find items) sits in the bottom tray, right of Try on.
+- Search bars in Products / Outfits tabs scroll with content (not sticky).
+- Creations rows carry the 4-square Alternates button on the right (opens Studio for that look → Alternates for that slot).
+- Likeness sheet always opens on "Select likeness"; the grid ends with a "+ Generate likeness" card.
