@@ -8,6 +8,11 @@ import {
 } from "@/design-system/primitives"
 
 import { AlternativesGrid } from "@/features/studio/components/AlternativesGrid"
+import MoodboardCard from "@/features/collections/components/MoodboardCard"
+import CollectionsHeader from "@/features/collections/components/CollectionsHeader"
+import { ProductsTab } from "@/features/collections/components/ProductsTab"
+import { Chip, CuratedCollectionRows, OutfitCard, ProductTile, SearchBar } from "@/design-system/primitives"
+import { useProductSaveActions } from "@/features/collections/hooks/useProductSaveActions"
 
 const mockProduct = {
   title: "Zara Striped Cotton Top with xyz xyz",
@@ -68,10 +73,120 @@ const INR_FORMATTER = new Intl.NumberFormat("en-IN", {
   maximumFractionDigits: 0,
 })
 
+const productPreviewItem = (seed: string) => ({
+  itemType: "product" as const,
+  id: `product-${seed}`,
+  imageUrl: `https://picsum.photos/seed/${seed}/300/400`,
+})
+
+// Real outfit ids, shaped exactly like the board-preview RPC emits them (id only,
+// no rendered items) so the cover proves it fetches what Studio fetches.
+const REAL_OUTFIT_IDS = [
+  "8841bc7d-7081-4558-a019-2de81fd392fc",
+  "7bcba165-0659-42fa-91d9-5ea6d15a704e",
+  "0cb02d16-675f-42c8-ba6f-f1b2fde04a38",
+  "8cb2bde9-eb9d-4295-9a76-2a210a83d8ec",
+]
+const realOutfit = (i: number) => ({ itemType: "outfit" as const, id: REAL_OUTFIT_IDS[i] })
+
+function RealBoardCards() {
+  return (
+    <div className="w-[390px] px-4">
+      <div className="grid grid-cols-2 items-start gap-2">
+        <MoodboardCard name="Two outfits" slug="r1" itemCount={2} index={0} preview={{ slug: "r1", items: [realOutfit(0), realOutfit(1)] }} />
+        <MoodboardCard
+          name="Outfit + product"
+          slug="r2"
+          itemCount={2}
+          index={1}
+          preview={{ slug: "r2", items: [realOutfit(2), productPreviewItem("real-d")] }}
+        />
+      </div>
+    </div>
+  )
+}
+
+function ProductsTabPreview() {
+  const saveActions = useProductSaveActions()
+  return <ProductsTab saveActions={saveActions} />
+}
+
+const noop = () => {}
+
+function PrimitivePreviewSections() {
+  const look = (i: number, extra: Partial<React.ComponentProps<typeof OutfitCard>> = {}) => (
+    <div className="h-[250px]">
+      <OutfitCard title={`Look ${i + 1}`} outfitId={REAL_OUTFIT_IDS[i]} tiltIndex={i} onSelect={noop} onToggleSave={noop} {...extra} />
+    </div>
+  )
+  return (
+    <>
+      <section className="grid gap-6 rounded-3xl border border-sidebar-border/60 bg-card/80 p-6 shadow-sm">
+        <h2 className="text-lg font-semibold">SearchBar (390px)</h2>
+        <div className="flex w-[390px] flex-col gap-4 px-4">
+          <SearchBar mode="idle" value="" onValueChange={noop} onSubmit={noop} onFilter={noop} onPickImage={noop} />
+          <SearchBar mode="results" value="ikat overshirt for a gallery night" onValueChange={noop} onSubmit={noop} onClear={noop} chip="products" onChipChange={noop} onFilter={noop} onPickImage={noop} onFindItems={noop} />
+          <SearchBar mode="results" value="" onValueChange={noop} onSubmit={noop} onClear={noop} chip="outfits" onChipChange={noop} onFilter={noop} onPickImage={noop} onFindItems={noop} thumbSrc="https://picsum.photos/seed/thumb/40/40" onClearThumb={noop} />
+        </div>
+      </section>
+      <section className="grid gap-6 rounded-3xl border border-sidebar-border/60 bg-card/80 p-6 shadow-sm">
+        <h2 className="text-lg font-semibold">Chips (390px)</h2>
+        <div className="flex w-[390px] flex-col gap-4 px-4">
+          <div className="flex gap-1.5">
+            <Chip label="Sangeet" onClick={noop} />
+            <Chip label="Handloom" mark onClick={noop} />
+            <Chip label="Products" active onClick={noop} />
+            <Chip label="Relaxed" active onRemove={noop} />
+          </div>
+        </div>
+      </section>
+      <section className="grid gap-6 rounded-3xl border border-sidebar-border/60 bg-card/80 p-6 shadow-sm">
+        <h2 className="text-lg font-semibold">OutfitCard grid + curated row (390px)</h2>
+        <div className="flex w-[390px] flex-col gap-4 px-4">
+          <div className="grid grid-cols-2 gap-2">
+            {look(0, { by: "Meera" })}
+            {look(1, { by: "Arjun", saved: true })}
+            {look(2, { dark: true })}
+            {look(3)}
+          </div>
+          <CuratedCollectionRows
+            rows={[{ id: "r", label: "Indie fusion", looks: REAL_OUTFIT_IDS.map((id, i) => ({ id, title: `Look ${i + 1}`, outfitId: id })) }]}
+            onLookSelect={noop}
+            onToggleSave={noop}
+          />
+        </div>
+      </section>
+    </>
+  )
+}
+
 export default function DesignSystemPreview() {
   return (
     <div className="min-h-screen bg-background px-6 py-12 text-foreground">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-12">
+        <PrimitivePreviewSections />
+        <section className="grid gap-6 rounded-3xl border border-sidebar-border/60 bg-card/80 p-6 shadow-sm">
+          <h2 className="text-lg font-semibold">Products tab (390px)</h2>
+          <div className="w-[390px] px-4"><ProductsTabPreview /></div>
+        </section>
+        <section className="grid gap-6 rounded-3xl border border-sidebar-border/60 bg-card/80 p-6 shadow-sm">
+          <h2 className="text-lg font-semibold">ProductTile states</h2>
+          <div className="grid w-[390px] grid-cols-3 gap-2 px-4">
+            <ProductTile title="Ajrakh block overshirt" imageSrc="https://picsum.photos/seed/pt-a/300/300" />
+            <ProductTile title="Ivory kota wide leg" imageSrc="https://picsum.photos/seed/pt-b/300/300" saved />
+            <ProductTile title="Cream cotton tee" imageSrc="https://picsum.photos/seed/pt-c/300/300" worn />
+          </div>
+        </section>
+        <section className="grid gap-6 rounded-3xl border border-sidebar-border/60 bg-card/80 p-6 shadow-sm">
+          <h2 className="text-lg font-semibold">Collections header (390px)</h2>
+          <div className="w-[390px] overflow-hidden border border-hairline">
+            <CollectionsHeader activeTab="moodboards" onTabChange={() => {}} />
+          </div>
+        </section>
+        <section className="grid gap-6 rounded-3xl border border-sidebar-border/60 bg-card/80 p-6 shadow-sm">
+          <h2 className="text-lg font-semibold">Moodboard cards — real outfits</h2>
+          <RealBoardCards />
+        </section>
         <header className="space-y-3 text-center">
           <h1 className="text-2xl font-semibold">Design System Preview</h1>
           <p className="text-sm text-muted-foreground">

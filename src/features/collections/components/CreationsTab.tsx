@@ -1,142 +1,68 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { ArrowUpRight, ChevronLeft, ChevronRight, MoreVertical, RotateCcw } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useNavigate } from "react-router-dom"
 
-import { Button } from "@/components/ui/button"
-import { OutfitInspirationTile, SaveOutfitDrawer, TrayActionButton } from "@/design-system/primitives"
-import { ProductTray } from "@/features/studio/components/ProductTray"
-import { useStudioProductTray } from "@/features/studio/hooks/useStudioProductTray"
+import { Icons } from "@/design-system/icons"
+import { OutfitInspirationTile, SlotRow } from "@/design-system/primitives"
 import { usePrefetchCreationAssets } from "@/features/collections/hooks/usePrefetchCreationAssets"
-import {
-  useCreations,
-  useCreateMoodboard,
-  useFavorites,
-  useMoodboards,
-  useSaveToCollection,
-  useRemoveFromCollection,
-  useOutfitCollectionMembership,
-  useAnonymiseOutfit,
-} from "../hooks/useMoodboards"
-import { cn } from "@/lib/utils"
-import type { Creation } from "@/services/collections/collectionsService"
-import { useUpdateOutfit } from "@/features/outfits/hooks/useUpdateOutfit"
-import { useToast } from "@/hooks/use-toast"
-import { useLocation, useNavigate } from "react-router-dom"
-import { buildStudioSearchParams, buildStudioUrl } from "@/features/studio/utils/studioUrlState"
-import { useStartLikenessFlow } from "@/features/likeness/hooks/useStartLikenessFlow"
+import { useStudioProductTray } from "@/features/studio/hooks/useStudioProductTray"
 import { useStudioOutfit } from "@/features/studio/hooks/useStudioOutfit"
-import { useAuth } from "@/contexts/AuthContext"
-import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
-import type { StudioProductTrayItem, StudioProductTraySlot } from "@/services/studio/studioService"
+import { useStartLikenessFlow } from "@/features/likeness/hooks/useStartLikenessFlow"
+import { buildStudioUrl } from "@/features/studio/utils/studioUrlState"
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
 import { trackTryonFlowStarted } from "@/integrations/posthog/engagementTracking/tryon/tryonTracking"
+import { useToast } from "@/hooks/use-toast"
+import { cn } from "@/lib/utils"
+import type { Creation } from "@/services/collections/collectionsService"
+import type { StudioProductTraySlot } from "@/services/studio/studioService"
+
+import { useCreations } from "../hooks/useMoodboards"
 
 const PAGE_SIZE = 6
+const SLOT_ORDER: StudioProductTraySlot[] = ["top", "bottom", "shoes"]
 
-const SLOT_LABEL: Record<StudioProductTraySlot, string> = { top: "Top", bottom: "Bottom", shoes: "Shoes" }
+const resolveGender = (value?: string | null): "male" | "female" => (value === "male" ? "male" : "female")
 
-function formatTrayPrice(price?: number | null, currency?: string | null): string {
-  if (typeof price !== "number" || !Number.isFinite(price)) return "—"
-  try {
-    return new Intl.NumberFormat("en-IN", { style: "currency", currency: currency ?? "INR", maximumFractionDigits: 0 }).format(price)
-  } catch {
-    return `₹${Math.round(price).toLocaleString("en-IN")}`
-  }
-}
-
-// "airy kota weave · high rise" style spec line from the piece's own tags.
-function buildTraySpec(item: StudioProductTrayItem): string {
-  const parts = [item.materialType, item.fitTags?.[0], item.feelTags?.[0]].filter(
-    (v): v is string => Boolean(v && v.trim() && v.toLowerCase() !== "null"),
-  )
-  return parts.slice(0, 2).join(" · ")
-}
-
+/**
+ * Collections · Creations — one look at a time.
+ *
+ * Ported from the bundle's `Collections · Creations` artboard: an edge-to-edge
+ * figure container that takes every pixel between the tabs and the bottom card,
+ * then a 170h card holding the three piece rows and the two actions. The card is
+ * the same height as Studio's, so moving between the two screens does not shift
+ * the ground under the figure.
+ *
+ * The expand disc is the artboard's control moved from the container's bottom
+ * right to its top right, per the Collections spec.
+ */
 export function CreationsTab() {
+  const navigate = useNavigate()
+  const { toast } = useToast()
+  const analytics = useEngagementAnalytics()
+  const startLikenessFlow = useStartLikenessFlow()
+
   const [currentSlide, setCurrentSlide] = useState(0)
-  const [flippedIds, setFlippedIds] = useState<Record<string, boolean>>({})
-  const [vtoImageErrorUrls, setVtoImageErrorUrls] = useState<Record<string, string>>({})
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const [isExpanded, setIsExpanded] = useState(false)
+  const trackRef = useRef<HTMLDivElement>(null)
+
   const creationsQuery = useCreations(PAGE_SIZE)
   const creations = useMemo<Creation[]>(
     () => ((creationsQuery.data?.pages as Creation[][] | undefined) ?? []).flat(),
     [creationsQuery.data?.pages],
   )
+  const totalSlides = creations.length
+  const activeCreation = creations[currentSlide]
+
   const fetchNextCreationsPage = creationsQuery.fetchNextPage
   const hasMoreCreations = Boolean(creationsQuery.hasNextPage)
   const isFetchingMoreCreations = creationsQuery.isFetchingNextPage
-  const shouldLoadMoreCreations =
-    creations.length > 0 && hasMoreCreations && !isFetchingMoreCreations && currentSlide >= creations.length - 3
-  const totalSlides = creations.length
-  const activeCreation = creations[currentSlide]
-  const navigate = useNavigate()
-  const location = useLocation()
-  const favoritesQuery = useFavorites()
-  const favoriteIds = useMemo(() => favoritesQuery.data ?? [], [favoritesQuery.data])
-  const saveToCollectionMutation = useSaveToCollection()
-  const removeFromCollectionMutation = useRemoveFromCollection()
-  const updateOutfitMutation = useUpdateOutfit()
-  const { data: moodboards = [], isLoading: moodboardsLoading } = useMoodboards()
-  const selectableMoodboards = useMemo(
-    () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites" || m.slug === "wardrobe"),
-    [moodboards],
-  )
-  const createMoodboardMutation = useCreateMoodboard()
-  const { user } = useAuth()
-  const { profile } = useProfileContext()
-  const { toast } = useToast()
-  const startLikenessFlow = useStartLikenessFlow()
-  const analytics = useEngagementAnalytics()
-  const [isSaveDrawerOpen, setIsSaveDrawerOpen] = useState(false)
-  const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false)
-  // Which piece the "IN THIS OUTFIT" detail card is showing (6e3). Null = first.
-  const [selectedTraySlot, setSelectedTraySlot] = useState<StudioProductTraySlot | null>(null)
+  const shouldLoadMore =
+    totalSlides > 0 && hasMoreCreations && !isFetchingMoreCreations && currentSlide >= totalSlides - 3
 
-  const outfitMembershipQuery = useOutfitCollectionMembership()
-  const anonymiseOutfitMutation = useAnonymiseOutfit()
   const productTrayQuery = useStudioProductTray(activeCreation?.outfitId ?? null)
   const trayItems = useMemo(() => productTrayQuery.data ?? [], [productTrayQuery.data])
   const activeOutfitQuery = useStudioOutfit(activeCreation?.outfitId ?? null)
   const activeOutfit = activeOutfitQuery.data?.outfit ?? null
-  const defaultCategoryId = useMemo(
-    () => (activeOutfit?.category && activeOutfit.category !== "others" ? activeOutfit.category : undefined),
-    [activeOutfit?.category],
-  )
-  const defaultOccasionId = useMemo(
-    () => (activeOutfit?.occasion?.id && activeOutfit.occasion.id !== "others" ? activeOutfit.occasion.id : undefined),
-    [activeOutfit?.occasion?.id],
-  )
-  
-  // Slot management state
-  const defaultSlotOrder = useMemo<StudioProductTraySlot[]>(() => ["top", "bottom", "shoes"], [])
-  const [slotOrder, setSlotOrder] = useState<StudioProductTraySlot[]>(defaultSlotOrder)
-  const [hiddenSlots, setHiddenSlots] = useState<Partial<Record<StudioProductTraySlot, boolean>>>({})
-  
-  // Reset slot order when active creation changes
-  useEffect(() => {
-    setSlotOrder(defaultSlotOrder)
-    setHiddenSlots({})
-    setSelectedTraySlot(null)
-  }, [activeCreation?.outfitId, defaultSlotOrder])
 
-  useEffect(() => {
-    if (!shouldLoadMoreCreations) return
-    void fetchNextCreationsPage()
-  }, [fetchNextCreationsPage, shouldLoadMoreCreations])
-  
-  // Prefetch must be called unconditionally (before any early returns)
-  usePrefetchCreationAssets({ creations, currentSlide, vtoImageErrorUrls })
-  const isSaved = useMemo(
-    () => (activeCreation?.outfitId ? favoriteIds.includes(activeCreation.outfitId) : false),
-    [activeCreation?.outfitId, favoriteIds],
-  )
-  const isDraftCreation = useMemo(() => {
-    if (!activeCreation) return false
-    return (
-      activeCreation.name?.startsWith("draft-look-") &&
-      activeCreation.isPrivate === true &&
-      activeCreation.visibleInFeed === false
-    )
-  }, [activeCreation])
   const outfitItems = useMemo(
     () => ({
       topId: trayItems.find((item) => item.slot === "top")?.productId ?? null,
@@ -146,248 +72,83 @@ export function CreationsTab() {
     [trayItems],
   )
   const slotIds = useMemo(
-    () => ({
-      top: outfitItems.topId ?? null,
-      bottom: outfitItems.bottomId ?? null,
-      shoes: outfitItems.footwearId ?? null,
-    }),
+    () => ({ top: outfitItems.topId, bottom: outfitItems.bottomId, shoes: outfitItems.footwearId }),
     [outfitItems.bottomId, outfitItems.footwearId, outfitItems.topId],
   )
-  const collectionReturnTo = useMemo(() => {
-    const params = new URLSearchParams(location.search)
-    params.set("tab", "creations")
-    const search = params.toString()
-    return `/collection${search ? `?${search}` : ""}`
-  }, [location.search])
 
-  const handleToggleSave = useCallback(async () => {
-    const outfitId = activeCreation?.outfitId ?? null
-    if (!outfitId) return
-    try {
-      if (isDraftCreation) {
-        if (!activeOutfit) {
-          toast({
-            title: "Outfit loading",
-            description: "Please try again in a moment.",
-          })
-          return
-        }
-        setIsSaveDrawerOpen(true)
-        return
-      }
-      if (isSaved) {
-        await removeFromCollectionMutation.mutateAsync({ outfitId, slug: "favorites" })
-      } else {
-        await saveToCollectionMutation.mutateAsync({ outfitId, slug: "favorites", label: "Favorites" })
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unable to update favorite"
-      toast({ title: "Save failed", description: message, variant: "destructive" })
-      favoritesQuery.refetch()
+  useEffect(() => {
+    if (!shouldLoadMore) return
+    void fetchNextCreationsPage()
+  }, [fetchNextCreationsPage, shouldLoadMore])
+
+  // Escape closes the enlarged view, as a fullscreen layer should.
+  useEffect(() => {
+    if (!isExpanded) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsExpanded(false)
     }
-  }, [
-    activeCreation?.outfitId,
-    favoritesQuery,
-    isDraftCreation,
-    isSaved,
-    removeFromCollectionMutation,
-    saveToCollectionMutation,
-    toast,
-  ])
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [isExpanded])
 
-  const handleSaveDraftOutfit = useCallback(
-    async (data: {
-      outfitName: string
-      categoryId: string
-      occasionId: string
-      vibe: string
-      keywords: string
-      isPrivate: boolean
-      moodboardIds?: string[]
-    }) => {
-      if (!activeOutfit || !user?.id) {
-        const error = new Error("Please sign in to save outfits")
-        toast({
-          title: "Sign in required",
-          description: "Create an account or sign in to save outfits.",
-          variant: "destructive",
-        })
-        throw error
-      }
-
-      try {
-        await updateOutfitMutation.mutateAsync({
-          outfitId: activeOutfit.id,
-          userId: user.id,
-          name: data.outfitName,
-          categoryId: data.categoryId,
-          occasionId: data.occasionId,
-          backgroundId: activeOutfit.backgroundId ?? null,
-          isPrivate: data.isPrivate,
-          vibe: data.vibe,
-          keywords: data.keywords,
-          createdByName: profile?.name ?? null,
-        })
-
-        const selectedMoodboardSlugs = data.moodboardIds ?? []
-        const moodboardLabelBySlug = new Map(selectableMoodboards.map((m) => [m.slug, m.label] as const))
-
-        let hadCollectionError = false
-        for (const slug of selectedMoodboardSlugs) {
-          try {
-            await saveToCollectionMutation.mutateAsync({ outfitId: activeOutfit.id, slug, label: moodboardLabelBySlug.get(slug) })
-          } catch {
-            hadCollectionError = true
-          }
-        }
-
-        toast({
-          title: "Outfit saved",
-          description: hadCollectionError ? "Saved outfit, but could not add it to all collections." : undefined,
-        })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to save outfit"
-        toast({
-          title: "Save failed",
-          description: message,
-          variant: "destructive",
-        })
-        throw error
-      }
-    },
-    [
-      activeOutfit,
-      selectableMoodboards,
-      profile?.name,
-      saveToCollectionMutation,
-      toast,
-      updateOutfitMutation,
-      user?.id,
-    ],
-  )
-
-  const handleEditOutfitSave = useCallback(
-    async (data: {
-      outfitName: string
-      categoryId: string
-      occasionId: string
-      vibe: string
-      keywords: string
-      isPrivate: boolean
-      moodboardIds?: string[]
-    }) => {
-      if (!activeOutfit || !user?.id) return
-
-      await updateOutfitMutation.mutateAsync({
-        outfitId: activeOutfit.id,
-        userId: user.id,
-        name: data.outfitName,
-        categoryId: data.categoryId,
-        occasionId: data.occasionId,
-        backgroundId: activeOutfit.backgroundId ?? null,
-        isPrivate: data.isPrivate,
-        vibe: data.vibe || null,
-        keywords: data.keywords || null,
-        createdByName: profile?.name ?? null,
-      })
-
-      // Diff-sync moodboards
-      const selectedSlugs = data.moodboardIds ?? []
-      const membership = outfitMembershipQuery.data ?? {}
-      const currentSlugs = Object.entries(membership)
-        .filter(([slug, ids]) => ids.has(activeOutfit.id) && selectableMoodboards.some((m) => m.slug === slug))
-        .map(([slug]) => slug)
-      const current = new Set(currentSlugs)
-      const next = new Set(selectedSlugs)
-      const toAdd = selectedSlugs.filter((s) => !current.has(s))
-      const toRemove = currentSlugs.filter((s) => !next.has(s))
-      const labelBySlug = new Map(selectableMoodboards.map((m) => [m.slug, m.label]))
-
-      for (const slug of toAdd) {
-        try {
-          await saveToCollectionMutation.mutateAsync({ outfitId: activeOutfit.id, slug, label: labelBySlug.get(slug) })
-        } catch { /* ignore individual failures */ }
-      }
-      for (const slug of toRemove) {
-        try {
-          await removeFromCollectionMutation.mutateAsync({ outfitId: activeOutfit.id, slug })
-        } catch { /* ignore individual failures */ }
-      }
-    },
-    [
-      activeOutfit,
-      outfitMembershipQuery.data,
-      profile?.name,
-      removeFromCollectionMutation,
-      saveToCollectionMutation,
-      selectableMoodboards,
-      updateOutfitMutation,
-      user?.id,
-    ],
-  )
+  // Every hook runs before the guards below. Returning early from between them
+  // is what produced "rendered more hooks than during the previous render" on
+  // this screen once already.
+  usePrefetchCreationAssets({ creations, currentSlide, vtoImageErrorUrls: {} })
 
   const scrollToSlide = useCallback((index: number) => {
-    const container = scrollContainerRef.current
-    if (!container) return
-    
-    // Get actual card width from first card element, or use 356px as fallback
-    const firstCard = container.querySelector('[data-card-index="0"]') as HTMLElement
-    const cardWidth = firstCard?.offsetWidth ?? 356
-    const gap = 16 // gap-4 = 16px
-    
-    // Calculate target scroll position
-    let targetScroll = 0
-    if (index > 0) {
-      targetScroll = index * (cardWidth + gap)
-    }
-    
-    // Use requestAnimationFrame for smoother scroll
-    requestAnimationFrame(() => {
-      container.scrollTo({
-        left: targetScroll,
-        behavior: "smooth",
-      })
-    })
+    const track = trackRef.current
+    if (!track) return
+    // Slides are exactly one container wide, so the offset is just the index.
+    track.scrollTo({ left: index * track.clientWidth, behavior: "smooth" })
   }, [])
 
-  const handleProductPress = useCallback(
-    (product: StudioProductTrayItem) => {
-      const params = buildStudioSearchParams({
-        outfitId: activeCreation?.outfitId ?? null,
-        slotIds,
-      })
-      params.set("productId", product.productId)
-      params.set("returnTo", encodeURIComponent(collectionReturnTo))
-      const search = params.toString()
-      navigate(`/studio/product/${encodeURIComponent(product.productId)}${search ? `?${search}` : ""}`)
+  const goTo = useCallback(
+    (index: number) => {
+      if (!totalSlides) return
+      const next = ((index % totalSlides) + totalSlides) % totalSlides
+      setCurrentSlide(next)
+      scrollToSlide(next)
     },
-    [activeCreation?.outfitId, collectionReturnTo, navigate, slotIds],
+    [scrollToSlide, totalSlides],
   )
 
-  const handleDetailsPress = useCallback(() => {
+  // The track is the source of truth while a swipe is in flight, so the dots and
+  // the piece rows follow the finger.
+  const handleTrackScroll = useCallback(() => {
+    const track = trackRef.current
+    if (!track || !track.clientWidth) return
+    const index = Math.round(track.scrollLeft / track.clientWidth)
+    const clamped = Math.max(0, Math.min(index, totalSlides - 1))
+    setCurrentSlide((prev) => (prev === clamped ? prev : clamped))
+  }, [totalSlides])
+
+  const handleOpenStudio = useCallback(() => {
     if (!activeCreation?.outfitId) return
-    const params = buildStudioSearchParams({
-      outfitId: activeCreation.outfitId,
-      slotIds,
-    })
-    const search = params.toString()
-    navigate(`/studio/scroll-up${search ? `?${search}` : ""}`)
-  }, [activeCreation?.outfitId, navigate, slotIds])
+    navigate(buildStudioUrl("/studio", "studio", { outfitId: activeCreation.outfitId }))
+  }, [activeCreation?.outfitId, navigate])
+
+  const handleOpenAlternates = useCallback(
+    (slot: StudioProductTraySlot) => {
+      if (!activeCreation?.outfitId) return
+      navigate(
+        buildStudioUrl("/studio", "alternatives", {
+          outfitId: activeCreation.outfitId,
+          slotIds,
+          slot,
+        }),
+      )
+    },
+    [activeCreation?.outfitId, navigate, slotIds],
+  )
 
   const handleTryOn = useCallback(() => {
     if (!activeOutfit) {
-      toast({
-        title: "Outfit loading",
-        description: "Try-on is almost ready. Please try again in a moment.",
-      })
+      toast({ title: "Outfit loading", description: "Try-on is almost ready. Please try again in a moment." })
       return
     }
     trackTryonFlowStarted(analytics, {
-      slotIds: {
-        topId: outfitItems.topId,
-        bottomId: outfitItems.bottomId,
-        shoesId: outfitItems.footwearId,
-      },
+      slotIds: { topId: outfitItems.topId, bottomId: outfitItems.bottomId, shoesId: outfitItems.footwearId },
     })
     void startLikenessFlow({
       outfitItems,
@@ -402,466 +163,205 @@ export function CreationsTab() {
     })
   }, [activeOutfit, analytics, outfitItems, startLikenessFlow, toast])
 
-  const handleAddSlot = useCallback(
-    (slot: StudioProductTraySlot) => {
-      if (!activeCreation?.outfitId) return
-      const url = buildStudioUrl("/studio", "alternatives", {
-        outfitId: activeCreation.outfitId,
-        slotIds,
-        slot,
-      })
-      navigate(url)
-    },
-    [activeCreation?.outfitId, navigate, slotIds],
+  // A three-band stack — container, card, nav — so the screen never scrolls
+  // vertically.
+  //
+  // It is pinned rather than flexed. AppShellLayout's root is `min-h-screen`,
+  // which is a minimum and not a definite height, so `flex-1` here had nothing
+  // to resolve against: the container grew unbounded, pushed the card below the
+  // fold, and the figure's own `h-full` collapsed to zero. Pinning to the gap
+  // between the header (52h title + 36h tabs) and the nav gives the definite
+  // height both of them need.
+  const frameClass = cn(
+    "fixed inset-x-0 mx-auto flex w-full max-w-[24.5rem] flex-col bg-background",
+    "top-[calc(theme(height.control-header-title)+2.25rem)]",
+    "bottom-[calc(theme(height.control-nav)+env(safe-area-inset-bottom,0px)/2)]",
   )
-
-  const handleRemoveSlot = useCallback(
-    (slot: StudioProductTraySlot) => {
-      setHiddenSlots((prev) => ({ ...prev, [slot]: true }))
-    },
-    [],
-  )
-
-  const handleRestoreSlot = useCallback(
-    (slot: StudioProductTraySlot) => {
-      setHiddenSlots((prev) => ({ ...prev, [slot]: false }))
-    },
-    [],
-  )
-
-  const handleReorderSlots = useCallback((nextOrder: StudioProductTraySlot[]) => {
-    setSlotOrder(nextOrder)
-  }, [])
-
-  const handlePrevious = useCallback(() => {
-    if (!totalSlides) return
-    const newIndex = currentSlide > 0 ? currentSlide - 1 : totalSlides - 1
-    setCurrentSlide(newIndex)
-    scrollToSlide(newIndex)
-  }, [currentSlide, scrollToSlide, totalSlides])
-
-  const handleNext = useCallback(() => {
-    if (!totalSlides) return
-    const newIndex = currentSlide < totalSlides - 1 ? currentSlide + 1 : 0
-    setCurrentSlide(newIndex)
-    scrollToSlide(newIndex)
-  }, [currentSlide, totalSlides, scrollToSlide])
-
-  const handleDotClick = useCallback((index: number) => {
-    setCurrentSlide(index)
-    scrollToSlide(index)
-  }, [scrollToSlide])
-
-  // Debounced scroll handler to update current slide based on scroll position
-  const handleScroll = useCallback(() => {
-    const container = scrollContainerRef.current
-    if (!container) return
-    
-    const scrollLeft = container.scrollLeft
-    // Get actual card width from first card element, or use 356px as fallback
-    const firstCard = container.querySelector('[data-card-index="0"]') as HTMLElement
-    const cardWidth = firstCard?.offsetWidth ?? 356
-    const gap = 16
-    
-    // Calculate which slide is currently centered
-    const newIndex = Math.round(scrollLeft / (cardWidth + gap))
-    const clampedIndex = Math.max(0, Math.min(newIndex, totalSlides - 1))
-    
-    if (clampedIndex !== currentSlide) {
-      setCurrentSlide(clampedIndex)
-    }
-  }, [currentSlide, totalSlides])
-
-  React.useEffect(() => {
-    const container = scrollContainerRef.current
-    if (!container) return
-    
-    let timeoutId: NodeJS.Timeout
-    const debouncedScroll = () => {
-      clearTimeout(timeoutId)
-      timeoutId = setTimeout(handleScroll, 100)
-    }
-    
-    container.addEventListener("scroll", debouncedScroll, { passive: true })
-    return () => {
-      clearTimeout(timeoutId)
-      container.removeEventListener("scroll", debouncedScroll)
-    }
-  }, [handleScroll])
-
-  const toggleFlip = (id: string) => {
-    setFlippedIds((prev) => ({ ...prev, [id]: !prev[id] }))
-  }
-
-  const handleOpenStudio = (creation: Creation) => {
-    if (!creation.outfitId) return
-    const url = buildStudioUrl("/studio", "studio", { outfitId: creation.outfitId })
-    navigate(url)
-  }
-
-  const resolveGender = (value?: string | null): "male" | "female" => (value === "male" ? "male" : "female")
-
-  // usePrefetchCreationAssets({ creations, currentSlide, vtoImageErrorUrls })
-
-  // Pieces ride below the card as the "IN THIS OUTFIT" strip (6e3).
-  const orderedTrayItems = useMemo(() => {
-    const order: StudioProductTraySlot[] = ["top", "bottom", "shoes"]
-    return [...trayItems].sort((a, b) => order.indexOf(a.slot) - order.indexOf(b.slot))
-  }, [trayItems])
-  const creationSubtitle = useMemo(() => {
-    const parts = [activeOutfit?.category, activeOutfit?.vibes].filter(
-      (v): v is string => Boolean(v && v.trim() && v !== "others" && v.toLowerCase() !== "null"),
-    )
-    return parts.join(" · ")
-  }, [activeOutfit?.category, activeOutfit?.vibes])
 
   if (creationsQuery.isLoading) {
     return (
-      <div className="grid grid-cols-2 gap-3">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <div key={index} className="aspect-[3/4] animate-pulse rounded-xl bg-muted/70" />
-        ))}
+      <div className={cn(frameClass, "items-center justify-center")}>
+        <p className="text-body text-taupe">Loading creations…</p>
       </div>
     )
   }
 
   if (creationsQuery.isError) {
     return (
-      <div className="flex min-h-[240px] flex-col items-center justify-center gap-3 rounded-frame border border-destructive/40 bg-destructive/5 px-4 py-6 text-sm text-destructive">
-        Unable to load creations right now.
-        <Button size="sm" variant="secondary" onClick={() => creationsQuery.refetch()}>
-          Retry
-        </Button>
+      <div className={cn(frameClass, "items-center justify-center px-4 text-center")}>
+        <p className="text-body text-destructive">Could not load your creations.</p>
       </div>
     )
   }
 
-  if (creations.length === 0) {
+  if (!totalSlides) {
     return (
-      <div className="flex min-h-[240px] items-center justify-center rounded-frame border border-dashed border-hairline-dashed bg-card/40 text-sm text-muted-foreground">
-        No creations yet.
+      <div className={cn(frameClass, "items-center justify-center px-4 text-center")}>
+        <p className="text-body text-taupe">Nothing made yet. Build a look in Studio.</p>
       </div>
     )
   }
-
-  const currentCreation = creations[currentSlide]
-  const isCurrentFlipped = Boolean(currentCreation && flippedIds[currentCreation.id])
-  const selectedTrayItem =
-    orderedTrayItems.find((item) => item.slot === selectedTraySlot) ?? orderedTrayItems[0] ?? null
 
   return (
-    // Natural vertical flow — the whole tab scrolls inside the page's scroll
-    // container (no locked height / fixed bottom bar that clipped the content).
-    // Desktop widens into two columns (card left · pieces right) so the card
-    // isn't a lonely strip in the middle of a wide screen.
-    <div className="mx-auto flex w-full max-w-[384px] flex-col gap-4 pb-6 md:max-w-[880px] md:flex-row md:items-start md:gap-8">
-      <div className="flex w-full flex-col gap-2 px-1 md:w-[480px] md:flex-none">
-        {/* Framed creation card (canvas 6e3) */}
-        {currentCreation ? (
-          <div className="rounded-frame border border-hairline bg-card p-3 shadow-[0_10px_26px_rgba(30,27,22,0.10)]">
-            {/* Header — title + favourite / edit */}
-            <div className="flex items-center justify-between gap-2">
-              <p className="truncate text-sm font-semibold text-foreground md:text-base">{currentCreation.name}</p>
-              <div className="flex items-center gap-3 leading-none text-taupe">
-                <button
-                  type="button"
-                  onClick={handleToggleSave}
-                  aria-label={isSaved ? "Remove from favourites" : "Add to favourites"}
-                  className={cn("text-[13px] leading-none transition-colors", isSaved ? "text-primary" : "hover:text-primary")}
-                >
-                  ♥
-                </button>
-                {!isDraftCreation && activeOutfit ? (
-                  <button
-                    type="button"
-                    onClick={() => setIsEditDrawerOpen(true)}
-                    aria-label="Edit creation"
-                    className="text-[13px] leading-none transition-colors hover:text-foreground"
-                  >
-                    ✎
-                  </button>
-                ) : null}
-              </div>
+    <>
+    <div className={frameClass}>
+      {/* Container — edge to edge, takes whatever the card leaves. */}
+      <div className="relative min-h-0 flex-1 overflow-hidden border-y border-hairline bg-skeleton">
+        <div
+          ref={trackRef}
+          onScroll={handleTrackScroll}
+          className="flex h-full w-full snap-x snap-mandatory overflow-x-auto overflow-y-hidden scrollbar-hide"
+        >
+          {creations.map((creation, index) => (
+            <div
+              key={creation.id}
+              className="relative h-full w-full flex-none snap-center snap-always"
+              aria-hidden={index !== currentSlide}
+            >
+              {Math.abs(index - currentSlide) <= 1 ? (
+                <OutfitInspirationTile
+                  preset="heroCanonical"
+                  outfitId={creation.outfitId}
+                  title={creation.name}
+                  chips={[]}
+                  cardClassName="h-full w-full"
+                  wrapperClassName="h-full w-full rounded-none bg-transparent p-0"
+                  avatarHeadSrc="/avatars/Default.png"
+                  avatarGender={resolveGender(creation.gender)}
+                  avatarHeightCm={170}
+                  disableAvatarSwipe
+                />
+              ) : (
+                <div className="h-full w-full bg-skeleton" />
+              )}
             </div>
-            {creationSubtitle ? (
-              <p className="mt-0.5 truncate text-[10px] text-faint md:text-xs">{creationSubtitle}</p>
-            ) : null}
+          ))}
+        </div>
 
-            {/* Preview — warp/weft ground, the carousel of avatar/try-on views */}
-            <div className="relative mt-2 h-[340px] overflow-hidden rounded-lg border border-warp bg-secondary md:h-[420px]">
-              <div className="warp-weft absolute inset-0" />
-              <div
-                className="absolute inset-0 z-20 pointer-events-none"
-                style={{
-                  background: `
-                    linear-gradient(to right, var(--muted, #f5f5f5) 0%, rgba(245,245,245,0.85) 8%, rgba(245,245,245,0.0) 20%, rgba(245,245,245,0.0) 80%, rgba(245,245,245,0.85) 92%, var(--muted, #f5f5f5) 100%)
-                  `,
-                }}
-              />
-              <div
-                ref={scrollContainerRef}
-                className="relative z-10 h-full w-full overflow-x-auto overflow-y-hidden scrollbar-hide"
-                style={{
-                  scrollSnapType: "x mandatory",
-                  WebkitOverflowScrolling: "touch",
-                  scrollBehavior: "smooth",
-                }}
-              >
-                <div
-                  className="flex h-full items-center gap-4 px-16"
-                  style={{ width: `${(totalSlides + (isFetchingMoreCreations ? 1 : 0)) * 342}px` }}
-                >
-                  {creations.map((creation, index) => {
-                    const isCardFlipped = Boolean(flippedIds[creation.id])
-                    const isVisible = Math.abs(index - currentSlide) <= 2
-                    const gender = resolveGender(creation.gender)
-                    const vtoUrl = creation.vtoImageUrl
-                    const vtoErrored = Boolean(vtoUrl && vtoImageErrorUrls[creation.outfitId] === vtoUrl)
-                    const showVtoImage = Boolean(vtoUrl) && !vtoErrored
+        {/* Expand — the artboard's disc, moved to the top right. */}
+        <button
+          type="button"
+          onClick={() => setIsExpanded(true)}
+          aria-label="Expand look"
+          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full border border-hairline bg-card text-ink"
+        >
+          <Icons.expand className="h-4 w-4" aria-hidden="true" />
+        </button>
 
-                    return (
-                      <div
-                        key={creation.id ?? `creation-${index}`}
-                        data-card-index={index}
-                        className="relative flex h-full flex-shrink-0 items-center justify-center"
-                        style={{
-                          width: 'min(360px, 80vw)',
-                          scrollSnapAlign: "center",
-                        }}
-                      >
-                        <div className="relative h-full w-full overflow-hidden rounded-md">
-                          {!isCardFlipped ? (
-                            showVtoImage ? (
-                              <>
-                                <img
-                                  src={vtoUrl ?? undefined}
-                                  alt={creation.name ?? "Try-on"}
-                                  className="h-full w-full object-cover select-none"
-                                  loading={isVisible ? "eager" : "lazy"}
-                                  draggable={false}
-                                  style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none", userSelect: "none" }}
-                                  onError={() => {
-                                    if (!creation.outfitId || !vtoUrl) return
-                                    setVtoImageErrorUrls((prev) =>
-                                      prev[creation.outfitId] === vtoUrl ? prev : { ...prev, [creation.outfitId]: vtoUrl },
-                                    )
-                                  }}
-                                />
-                                <div
-                                  className="absolute bottom-1 right-1.5 z-10 font-deva text-[11px] leading-none text-background/85 drop-shadow-[0_1px_2px_rgba(23,20,16,0.55)]"
-                                  style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none", userSelect: "none" }}
-                                >
-                                  कलागृह
-                                </div>
-                              </>
-                            ) : isVisible ? (
-                              <OutfitInspirationTile
-                                preset="heroCanonical"
-                                outfitId={creation.outfitId}
-                                title={creation.name}
-                                chips={[]}
-                                cardClassName="h-full w-full"
-                                avatarHeadSrc="/avatars/Default.png"
-                                avatarGender={gender}
-                                avatarHeightCm={170}
-                                disableAvatarSwipe
-                              />
-                            ) : (
-                              <div className="h-full w-full rounded-md bg-muted/40" />
-                            )
-                          ) : (
-                            <div className="absolute inset-0">
-                              {isVisible ? (
-                                <OutfitInspirationTile
-                                  preset="heroCanonical"
-                                  outfitId={creation.outfitId}
-                                  title={creation.name}
-                                  chips={[]}
-                                  cardClassName="h-full w-full"
-                                  avatarHeadSrc="/avatars/Default.png"
-                                  avatarGender={gender}
-                                  avatarHeightCm={170}
-                                  disableAvatarSwipe
-                                />
-                              ) : (
-                                <div className="h-full w-full rounded-md bg-muted/40" />
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
-                  {isFetchingMoreCreations ? (
-                    <div
-                      key="creations-loading"
-                      className="relative flex h-full flex-shrink-0 items-center justify-center"
-                      style={{ width: "min(360px, 80vw)" }}
-                    >
-                      <div className="h-full w-full animate-pulse rounded-md bg-muted/50" />
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-
-              {/* Front/try-on label + flip badge (over the preview) */}
-              <span className="absolute left-2.5 top-2 z-30 text-[7px] font-medium uppercase tracking-[0.12em] text-taupe">
-                {isCurrentFlipped ? "Try-on" : "Front · Outfit"}
-              </span>
-              <button
-                type="button"
-                onClick={() => toggleFlip(currentCreation.id)}
-                className="absolute right-2 top-2 z-30 flex items-center gap-1 rounded-[3px] bg-ink-deep px-2 py-1 text-[8px] font-semibold leading-none text-gold"
-                aria-label="Flip to try-on"
-              >
-                <RotateCcw className="h-2.5 w-2.5" /> flip · ✦ try-on
-              </button>
-            </div>
-
-            {/* Actions */}
-            <div className="mt-2.5 flex gap-2">
-              <button
-                type="button"
-                onClick={() => handleOpenStudio(currentCreation)}
-                className="flex-1 rounded-[3px] border border-hairline bg-card py-2.5 text-center text-[11px] font-semibold text-foreground transition-colors hover:bg-editorial/40"
-              >
-                Open in Studio
-              </button>
-              <button
-                type="button"
-                onClick={() => handleOpenStudio(currentCreation)}
-                className="flex-1 rounded-[3px] bg-primary py-2.5 text-center text-[11px] font-bold text-primary-foreground transition-opacity hover:bg-primary/90"
-              >
-                Try it on →
-              </button>
-            </div>
-          </div>
+        {/* Pager — two discs on the side rails. The artboard's dot pill sat over
+            the figure's feet, so the dots are gone and only the arrows remain;
+            swiping the track still works and drives the same state. */}
+        {totalSlides > 1 ? (
+          <>
+            <button
+              type="button"
+              onClick={() => goTo(currentSlide - 1)}
+              aria-label="Previous look"
+              className="absolute left-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-hairline bg-card/85 text-ink backdrop-blur"
+            >
+              <Icons.carouselPrev className="h-4 w-4" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={() => goTo(currentSlide + 1)}
+              aria-label="Next look"
+              className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-hairline bg-card/85 text-ink backdrop-blur"
+            >
+              <Icons.carouselNext className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </>
         ) : null}
+      </div>
 
-        {/* Pagination */}
-        <div className="flex items-center justify-center gap-1 w-full py-0.5">
-          <button
-            onClick={handlePrevious}
-            className="flex items-center justify-center p-1 shrink-0 hover:bg-muted/30 rounded-md transition-colors"
-            aria-label="Previous slide"
-          >
-            <ChevronLeft className="h-3.5 w-3.5 text-muted-foreground" />
-          </button>
-          <div className="flex items-center gap-1.5 px-1 shrink-0">
-            {Array.from({ length: Math.min(9, totalSlides) }).map((_, index) => {
-              const isActive = index === currentSlide
+      {/* Card — 170h: three 32h rows over the action pair, as in the artboard. */}
+      <div className="flex h-[170px] flex-none flex-col px-4 py-2.5">
+        <div className="flex flex-1 flex-col gap-1.5">
+          <div className="flex h-[100px] flex-none flex-col gap-0.5">
+            {SLOT_ORDER.map((slot) => {
+              const item = trayItems.find((entry) => entry.slot === slot)
               return (
-                <button
-                  key={index}
-                  onClick={() => handleDotClick(index)}
-                  className={cn(
-                    "shrink-0 transition-all duration-200 rounded-full",
-                    isActive
-                      ? "h-2 w-2 bg-foreground"
-                      : "h-1.5 w-1.5 bg-muted-foreground/40 hover:bg-muted-foreground/60"
-                  )}
-                  aria-label={`Go to slide ${index + 1}`}
+                <SlotRow
+                  key={slot}
+                  slot={slot}
+                  label={item?.title}
+                  empty={!item}
+                  removable={false}
+                  alternatives={false}
+                  onSelect={() => handleOpenAlternates(slot)}
                 />
               )
             })}
           </div>
-          <button
-            onClick={handleNext}
-            className="flex items-center justify-center p-1 shrink-0 hover:bg-muted/30 rounded-md transition-colors"
-            aria-label="Next slide"
-          >
-            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-          </button>
+
+          <div className="flex flex-none items-center gap-2">
+            <button
+              type="button"
+              onClick={handleOpenStudio}
+              className="flex h-control-secondary flex-1 items-center justify-center gap-2 rounded-control border border-hairline bg-card text-label font-semibold text-ink"
+            >
+              <Icons.navStudio className="h-5 w-5" aria-hidden="true" />
+              Studio
+            </button>
+            <button
+              type="button"
+              onClick={handleTryOn}
+              className="flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control bg-primary text-label font-semibold text-primary-foreground"
+            >
+              <Icons.tryOn className="h-5 w-5" aria-hidden="true" />
+              Try on
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* IN THIS OUTFIT — one row per piece (top · bottom · shoes). No selected/
-          detail duplicate — each row is the piece itself, tap → its PDP (6e3). */}
-      {orderedTrayItems.length > 0 ? (
-        <div className="w-full min-w-0 px-1 md:flex-1 md:pt-1">
-          <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-taupe md:text-[11px]">In this outfit</p>
-          <div className="mt-2 flex flex-col gap-2">
-            {orderedTrayItems.map((item) => (
-              <button
-                key={item.slot}
-                type="button"
-                onClick={() => handleProductPress(item)}
-                className="flex w-full min-w-0 items-center gap-3 rounded-[5px] border border-hairline bg-card px-3 py-2.5 text-left transition-colors hover:border-hairline-3 hover:bg-editorial/30 md:py-3"
-              >
-                {item.imageUrl ? (
-                  <img src={item.imageUrl} alt="" loading="lazy" className="h-12 w-12 flex-none object-contain md:h-16 md:w-16" />
-                ) : (
-                  <span className="h-12 w-12 flex-none rounded-[3px] bg-editorial md:h-16 md:w-16" />
-                )}
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[9px] font-semibold uppercase tracking-[0.14em] text-taupe md:text-[10px]">
-                    {item.brand?.trim() || SLOT_LABEL[item.slot]}
-                  </span>
-                  <span className="mt-0.5 block line-clamp-2 text-[13px] font-semibold leading-snug text-foreground md:text-[15px]">{item.title}</span>
-                  {buildTraySpec(item) ? (
-                    <span className="mt-0.5 block truncate text-[10px] text-taupe md:text-[11px]">{buildTraySpec(item)}</span>
-                  ) : null}
-                </span>
-                <span className="flex-none self-start text-[13px] font-bold text-foreground md:text-[15px]">
-                  {formatTrayPrice(item.price, item.currency)}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : productTrayQuery.isLoading ? (
-        <div className="w-full px-1 md:flex-1">
-          <div className="h-[72px] w-full animate-pulse rounded-[5px] bg-muted/40" />
-        </div>
-      ) : null}
-      <SaveOutfitDrawer
-        key={activeCreation?.id ?? "save-draft"}
-        open={isSaveDrawerOpen}
-        onOpenChange={setIsSaveDrawerOpen}
-        defaultOutfitName={
-          isDraftCreation
-            ? `${profile?.name ?? "Your"}'s Look #${String(Date.now()).slice(-4)}`
-            : (activeOutfit?.name ?? activeCreation?.name ?? "")
-        }
-        defaultCategoryId={defaultCategoryId}
-        defaultOccasionId={defaultOccasionId}
-        defaultVibe={activeOutfit?.vibes ?? null}
-        defaultKeywords={activeOutfit?.word_association ?? null}
-        defaultIsPrivate={activeCreation?.isPrivate ?? true}
-        defaultMoodboardIds={["favorites"]}
-        isLoadingMoodboards={moodboardsLoading}
-          moodboards={selectableMoodboards}
-        onCreateMoodboard={(name) => createMoodboardMutation.mutateAsync(name).then((res) => res.slug)}
-        onSave={handleSaveDraftOutfit}
-      />
-
-      {/* Edit drawer for saved (non-draft) creations */}
-      {!isDraftCreation && activeOutfit && (
-        <SaveOutfitDrawer
-          key={`edit-${activeCreation?.id ?? "edit"}`}
-          open={isEditDrawerOpen}
-          onOpenChange={setIsEditDrawerOpen}
-          mode="edit"
-          defaultOutfitName={activeOutfit.name ?? activeCreation?.name ?? ""}
-          defaultCategoryId={defaultCategoryId}
-          defaultOccasionId={defaultOccasionId}
-          defaultVibe={activeOutfit.vibes ?? null}
-          defaultKeywords={activeOutfit.word_association ?? null}
-          defaultIsPrivate={activeCreation?.isPrivate ?? false}
-          defaultMoodboardIds={
-            Object.entries(outfitMembershipQuery.data ?? {})
-              .filter(([slug, ids]) => ids.has(activeOutfit.id) && selectableMoodboards.some((m) => m.slug === slug))
-              .map(([slug]) => slug)
-          }
-          moodboards={selectableMoodboards}
-          isLoadingMoodboards={moodboardsLoading}
-          onCreateMoodboard={(name) => createMoodboardMutation.mutateAsync(name).then((res) => res.slug)}
-          onSave={handleEditOutfitSave}
-          onDelete={async () => {
-            await anonymiseOutfitMutation.mutateAsync(activeOutfit.id)
-          }}
-        />
-      )}
     </div>
+
+    {/* Enlarge — a true fullscreen layer, so it must clear the header (z-50) and
+        the nav (z-20). It sits outside the frame on purpose: the frame is fixed,
+        and giving it a z-index would open a stacking context this could not
+        escape. */}
+    {isExpanded && activeCreation ? (
+      <div className="fixed inset-0 z-[60] flex flex-col bg-background">
+        <div
+          className="flex h-control-header-title flex-none items-center justify-between px-2"
+          style={{ paddingTop: "env(safe-area-inset-top,0px)" }}
+        >
+          <button
+            type="button"
+            onClick={() => setIsExpanded(false)}
+            aria-label="Back"
+            className="flex h-10 w-10 items-center justify-center text-ink"
+          >
+            <Icons.carouselPrev className="h-5 w-5" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsExpanded(false)}
+            aria-label="Close"
+            className="flex h-10 w-10 items-center justify-center text-ink"
+          >
+            <Icons.close className="h-5 w-5" aria-hidden="true" />
+          </button>
+        </div>
+        <div
+          className="min-h-0 flex-1"
+          style={{ paddingBottom: "env(safe-area-inset-bottom,0px)" }}
+        >
+          <OutfitInspirationTile
+            preset="heroCanonical"
+            outfitId={activeCreation.outfitId}
+            title={activeCreation.name}
+            chips={[]}
+            cardClassName="h-full w-full"
+            wrapperClassName="h-full w-full rounded-none bg-transparent p-0"
+            avatarHeadSrc="/avatars/Default.png"
+            avatarGender={resolveGender(activeCreation.gender)}
+            avatarHeightCm={170}
+            disableAvatarSwipe
+          />
+        </div>
+      </div>
+    ) : null}
+    </>
   )
 }
