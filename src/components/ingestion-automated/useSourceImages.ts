@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/integrations/supabase/client'
+import { fetchArtifacts, type ArtifactClient, type ArtifactRow } from './fetchArtifacts'
 import type { PipelineJob } from '@/utils/ingestionV2Api'
 import { storageUrl } from './imageUrl'
 
@@ -18,32 +19,34 @@ export function useSourceImages(jobs: PipelineJob[]): Record<string, string[]> {
     let cancelled = false
 
     ;(async () => {
-      // pipeline_step_artifacts is not in generated types — cast to any
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const sb = supabase as any
-      const [raw, cls] = await Promise.all([
-        sb.from('pipeline_step_artifacts')
-          .select('job_id, storage_path, data')
-          .in('job_id', ids)
-          .eq('artifact_type', 'raw_image')
-          .order('created_at', { ascending: true }),
-        // Excluded photos (soft-deleted via POST .../photos/delete) — hide them from the
-        // scraped list too, keyed by job + public_url.
-        sb.from('pipeline_step_artifacts')
-          .select('job_id, data')
-          .in('job_id', ids)
-          .eq('artifact_type', 'image_classification'),
-      ])
-      if (cancelled || raw.error || !raw.data) return
+      const client = supabase as unknown as ArtifactClient
+      let rawRows: ArtifactRow[]
+      let clsRows: ArtifactRow[]
+      try {
+        ;[rawRows, clsRows] = await Promise.all([
+          fetchArtifacts(client, {
+            jobIds: ids,
+            artifactTypes: 'raw_image',
+            columns: 'job_id, storage_path, data',
+          }),
+          // Excluded photos (soft-deleted via POST .../photos/delete) — hide them from the
+          // scraped list too, keyed by job + public_url.
+          fetchArtifacts(client, { jobIds: ids, artifactTypes: 'image_classification' }),
+        ])
+      } catch (err) {
+        console.error('useSourceImages: artifact fetch failed', err)
+        return
+      }
+      if (cancelled) return
 
       const excluded = new Set<string>()
-      for (const row of (cls.data ?? []) as { job_id: string; data: Record<string, unknown> | null }[]) {
+      for (const row of clsRows as { job_id: string; data: Record<string, unknown> | null }[]) {
         const url = row.data?.public_url as string | undefined
         if (row.data?.excluded && url) excluded.add(`${row.job_id}::${url}`)
       }
 
       const next: Record<string, string[]> = {}
-      for (const row of raw.data as { job_id: string; storage_path: string | null; data: Record<string, unknown> | null }[]) {
+      for (const row of rawRows as { job_id: string; storage_path: string | null; data: Record<string, unknown> | null }[]) {
         const url = (row.data?.public_url as string | undefined) ?? storageUrl(row.storage_path)
         if (!url) continue
         if (excluded.has(`${row.job_id}::${url}`)) continue

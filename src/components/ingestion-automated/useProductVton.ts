@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/integrations/supabase/client'
+import { fetchInChunks, type ArtifactClient, type ArtifactRow } from './fetchArtifacts'
 
 export type VtonReference = { url: string; label: string }
 
@@ -41,17 +42,23 @@ export function useProductVton(productIds: string[]): Record<string, VtonReferen
       // 1) product_images is the richest source and needs no id gymnastics: the catalog publish
       //    path writes the try-on here as kind 'model' (domain/catalog.ts), and legacy catalog rows
       //    carry their on-model shots here too. This is what covers products with no pipeline job.
-      const { data: imgData, error: imgError } = await supabase
-        .from('product_images')
-        .select('product_id, url, vto_eligible, sort_order')
-        .in('product_id', ids)
-        .eq('kind', 'model')
-        .order('sort_order', { ascending: true })
+      let imgData: ArtifactRow[] = []
+      try {
+        imgData = await fetchInChunks(supabase as unknown as ArtifactClient, {
+          table: 'product_images',
+          idColumn: 'product_id',
+          ids,
+          columns: 'product_id, url, vto_eligible, sort_order',
+          filter: { column: 'kind', value: 'model' },
+          orderBy: 'sort_order',
+        })
+      } catch (err) {
+        console.warn('[useProductVton] product_images lookup failed:', err)
+      }
       if (cancelled) return
-      if (imgError) console.warn('[useProductVton] product_images lookup failed:', imgError.message)
 
       const fromImages: Record<string, VtonReference> = {}
-      for (const row of (imgData ?? []) as { product_id: string; url: string | null; vto_eligible: boolean | null }[]) {
+      for (const row of imgData as unknown as { product_id: string; url: string | null; vto_eligible: boolean | null }[]) {
         if (!row.url) continue
         const existing = fromImages[row.product_id]
         // A vto-eligible row is the actual try-on; otherwise take the first model shot as a
