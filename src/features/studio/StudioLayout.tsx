@@ -3,7 +3,7 @@ import { Link, Outlet, useLocation } from "react-router-dom"
 
 import { AppShellLayout } from "@/layouts/AppShellLayout"
 import { StudioContextProvider } from "./context/StudioContext"
-import { rememberStudioLastPath } from "@/features/studio/constants"
+import { isStudioProductPath, rememberStudioLastPath } from "@/features/studio/constants"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { useStudioShareMode } from "@/features/studio/hooks/useStudioShareMode"
 import { StudioTourProvider } from "./context/StudioTourContext"
@@ -19,6 +19,11 @@ export function StudioLayout({ children }: StudioLayoutProps) {
   const { gender } = useProfileContext()
 
   useEffect(() => {
+    // A detail view reached from any tab — remembering it would make the Studio
+    // tab resume onto a product rather than the workbench.
+    if (isStudioProductPath(location.pathname)) {
+      return
+    }
     rememberStudioLastPath(gender, `${location.pathname}${location.search}`)
   }, [gender, location.pathname, location.search])
 

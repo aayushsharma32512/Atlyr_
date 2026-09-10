@@ -81,6 +81,11 @@ export function rememberStudioLastPath(gender: "male" | "female" | null | undefi
   }
 }
 
+/** `/studio/product/:id` and its design-system twin — a detail view, not a Studio state. */
+export function isStudioProductPath(path: string): boolean {
+  return path.startsWith("/studio/product/") || path.startsWith("/design-system/studio/product/")
+}
+
 /** The path the studio tab should open, for this gender. `/studio` when there is nothing to resume. */
 export function readStudioLastPath(gender: "male" | "female" | null | undefined): string {
   if (typeof window === "undefined") {
@@ -93,6 +98,13 @@ export function readStudioLastPath(gender: "male" | "female" | null | undefined)
     storedPath = null
   }
   if (!storedPath) {
+    return "/studio"
+  }
+  // The product page sits under /studio but is a detail view opened from any
+  // tab, so it is never what the Studio tab should resume. Checked on read as
+  // well as on write: a path stored before that rule existed outlives the fix,
+  // because sessionStorage survives until the tab closes.
+  if (isStudioProductPath(storedPath)) {
     return "/studio"
   }
   if (storedPath.startsWith("/studio")) {
