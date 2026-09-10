@@ -888,16 +888,14 @@ img {
    gated to browse surfaces only; never on Studio, Alternatives, or any screen
    with a form.
 
-   These are the angles that actually render (a second, layered copy used to
-   shadow them and has been removed). NOTE: docs/redesign/design.md specifies
-   ±0.6° and these run to 1.4°. Retuning is a visual change, so it belongs in
-   the Collections PR where tilt is specified — not here. */
-.pin-tilt-1 { transform: rotate(-1.1deg); }
-.pin-tilt-2 { transform: rotate(0.7deg); }
-.pin-tilt-3 { transform: rotate(1.2deg); }
+   Angles are design.md's ±0.6° band. They used to run to 1.4°, which read as
+   a scatter rather than a settle once the board covers were on a grid. */
+.pin-tilt-1 { transform: rotate(-0.6deg); }
+.pin-tilt-2 { transform: rotate(0.6deg); }
+.pin-tilt-3 { transform: rotate(0.5deg); }
 .pin-tilt-4 { transform: rotate(-0.6deg); }
-.pin-tilt-5 { transform: rotate(0.5deg); }
-.pin-tilt-6 { transform: rotate(-1.4deg); }
+.pin-tilt-5 { transform: rotate(0.4deg); }
+.pin-tilt-6 { transform: rotate(-0.5deg); }
 
 @keyframes kg-pop-in {
   0%   { transform: scale(0.6); opacity: 0; }
