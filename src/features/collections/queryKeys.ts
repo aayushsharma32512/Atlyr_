@@ -13,8 +13,20 @@ export const collectionsKeys = {
   removeOutfitFromLibrary: () => [...collectionsKeys.all, "remove-outfit-from-library"] as const,
   removeProductFromLibrary: () => [...collectionsKeys.all, "remove-product-from-library"] as const,
   creations: (size = 20) => [...collectionsKeys.all, "creations", size] as const,
+  /**
+   * Every creations page, whatever its size — the key to INVALIDATE on.
+   *
+   * `creations()` looks size-agnostic but is not: the default fills the slot, so it
+   * builds the fully-specified key for size 20. invalidateQueries matches by prefix,
+   * and no live query uses 20 (the tab and the prefetcher both ask for 6), so
+   * invalidating it matched nothing and the list silently kept serving cache for its
+   * 30-minute staleTime. Deleting a creation left it on screen.
+   */
+  creationsAll: () => [...collectionsKeys.all, "creations"] as const,
   creationsCounts: () => [...collectionsKeys.all, "creations-counts"] as const,
   tryOns: (size = 20) => [...collectionsKeys.all, "try-ons", size] as const,
+  /** Every try-ons page, whatever its size. Same trap as creationsAll. */
+  tryOnsAll: () => [...collectionsKeys.all, "try-ons"] as const,
   favorites: () => [...collectionsKeys.all, "favorites"] as const,
   moodboardOutfits: (slug: string, size = 20) => [...collectionsKeys.all, "moodboard-outfits", slug, size] as const,
   moodboardItemsAll: () => [...collectionsKeys.all, "moodboard-items"] as const,

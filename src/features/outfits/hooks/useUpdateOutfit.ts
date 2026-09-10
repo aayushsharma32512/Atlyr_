@@ -11,7 +11,7 @@ export function useUpdateOutfit() {
     mutationKey: outfitsKeys.update,
     mutationFn: (input: UpdateOutfitInput) => updateOutfit(input),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: collectionsKeys.creations() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.creationsAll() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.creationsCounts() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.moodboardItemsAll() })
       queryClient.invalidateQueries({ queryKey: outfitsKeys.all })

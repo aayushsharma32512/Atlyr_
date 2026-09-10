@@ -825,12 +825,20 @@ export async function anonymiseOutfit(params: {
   const { userId, outfitId } = params
   if (!userId) throw new Error("User must be authenticated")
 
-  // Remove own collection entries first
-  await supabase
-    .from("user_favorites")
-    .delete()
-    .eq("user_id", userId)
-    .eq("outfit_id", outfitId)
+  // Attribution first, collection entries second. These are two round trips with
+  // no transaction around them, so whichever runs first is committed even when the
+  // other fails — the order decides what a half-failure leaves behind.
+  //
+  // It used to run the other way, and the update could not succeed at all: the
+  // UPDATE policy's WITH CHECK is evaluated against the NEW row, and
+  // `auth.uid() = NULL` is never true, so disowning the row was exactly what failed
+  // the ownership check permitting it. Every attempt therefore deleted the user's
+  // collection entries, threw, and showed "Delete failed" over a creation that was
+  // still in Creations but had silently vanished from their wardrobe and moodboards.
+  //
+  // This way a failure here is a no-op the user can retry, and the surviving
+  // half-failure is the harmless one: a board entry pointing at an outfit nobody
+  // owns, which still renders, since outfits are readable by all.
 
   // Strip attribution — keep the row for others who may have saved it
   const { error } = await supabase
@@ -840,6 +848,30 @@ export async function anonymiseOutfit(params: {
     .eq("user_id", userId)
 
   if (error) throw new Error(error.message)
+
+  // Remove own collection entries. Unrelated to the outfit's ownership:
+  // user_favorites is keyed on the viewer, so this still applies to the row we
+  // just disowned.
+  //
+  // Best-effort on purpose. The outfit is already disowned by the time this runs,
+  // so throwing here would report "Delete failed" over a delete that succeeded —
+  // and, because it rejects the mutation, skip the onSuccess invalidations and
+  // leave the deleted creation on screen. That is the same pairing of a false
+  // failure and a stale list this change set exists to remove. What survives a
+  // failure is a board entry pointing at an outfit nobody owns, which still
+  // renders, since outfits are readable by all.
+  const { error: favoritesError } = await supabase
+    .from("user_favorites")
+    .delete()
+    .eq("user_id", userId)
+    .eq("outfit_id", outfitId)
+
+  if (favoritesError) {
+    console.error("[collectionsService] disowned the outfit but could not clear its collection entries", {
+      outfitId,
+      message: favoritesError.message,
+    })
+  }
 }
 
 export type TryOn = {
@@ -1415,19 +1447,15 @@ export async function fetchCreations(params: {
     throw new Error(error.message)
   }
 
-  const allRows = Array.isArray(data) ? data : []
-
-  // Exclude auto-generated draft outfits (created by Studio navigation) unless
-  // a VTO has been completed for them (latestGenerationStatus === "ready").
-  // Drafts are identified by the "draft-look-" name prefix that the Studio
-  // assigns to temporary outfits.
-  const rows = allRows.filter((row: any) => {
-    const name = typeof row?.outfit_name === "string" ? row.outfit_name : ""
-    if (!name.startsWith("draft-look-")) return true
-    // Allow draft-look- outfits that have a completed VTO image
-    const latestStatus = typeof row?.latest_generation_status === "string" ? row.latest_generation_status : null
-    return latestStatus === "ready"
-  })
+  // Every row is a creation. The draft rule — hide "draft-look-*" scaffolding
+  // unless the user's latest try-on of it is ready — lives in
+  // get_user_creations_page and get_user_creations_counts, applied BEFORE
+  // pagination. It used to be re-applied here, after the RPC had already cut
+  // the list into pages: useInfiniteQuery treats a short page as the last one,
+  // so a page holding even one draft ended the list early, and a page of only
+  // drafts showed "No creations yet" under a header still counting all 26.
+  // Filtering here again would put that back.
+  const rows: any[] = Array.isArray(data) ? data : []
 
   const latestByOutfit = new Map<string, string>()
   rows.forEach((row: any) => {
