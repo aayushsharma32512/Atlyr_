@@ -237,8 +237,13 @@ const OUTFIT_SELECT = `
   )
 `
 
+// Wardrobe is gone from the app but still comes back from the RPCs as a system
+// row (the SQL keeps it reserved). Dropped by slug here, at the boundary, so no
+// picker, tab or grid has to know it ever existed. Removing it from
+// SYSTEM_MOODBOARDS alone would let that row through as a user board.
+const HIDDEN_COLLECTION_SLUGS = new Set(["wardrobe"])
+
 const SYSTEM_MOODBOARDS: Moodboard[] = [
-  { slug: "wardrobe", label: "Wardrobe", itemCount: 0, isSystem: true, createdAt: null, updatedAt: null },
   { slug: "try-ons", label: "Try-ons", itemCount: 0, isSystem: true, createdAt: null, updatedAt: null },
   { slug: "favorites", label: "Favorites", itemCount: 0, isSystem: true, createdAt: null, updatedAt: null },
 ]
@@ -382,7 +387,7 @@ export async function fetchMoodboards(userId: string | null): Promise<Moodboard[
   }
 
   const mapped =
-    data?.map((row) => {
+    data?.filter((row) => !HIDDEN_COLLECTION_SLUGS.has(coalesceSystemSlug(row.collection_slug))).map((row) => {
       const slug = coalesceSystemSlug(row.collection_slug)
       const isSystem = SYSTEM_MOODBOARDS.some((sys) => sys.slug === slug)
       const label =
@@ -1060,8 +1065,7 @@ export type CollectionMeta = {
 export async function fetchCollectionsMeta(userId: string | null): Promise<CollectionMeta> {
   if (!userId) {
     return {
-      order: ["wardrobe", "try-ons", "favorites", "for-you"],
-      wardrobe: { label: "Wardrobe", isSystem: true },
+      order: ["try-ons", "favorites", "for-you"],
       "try-ons": { label: "Try-ons", isSystem: true },
       favorites: { label: "Favorites", isSystem: true },
       "for-you": { label: "For You", isSystem: true },
@@ -1086,8 +1090,7 @@ export async function fetchCollectionsMeta(userId: string | null): Promise<Colle
 
   // Upsert default if missing
   const defaultMeta: CollectionMeta = {
-    order: ["wardrobe", "try-ons", "favorites", "for-you"],
-    wardrobe: { label: "Wardrobe", isSystem: true },
+    order: ["try-ons", "favorites", "for-you"],
     "try-ons": { label: "Try-ons", isSystem: true },
     favorites: { label: "Favorites", isSystem: true },
     "for-you": { label: "For You", isSystem: true },
@@ -1232,10 +1235,13 @@ export async function fetchCollectionsWithPreviews(userId: string | null): Promi
       } satisfies Moodboard
     }) ?? []
 
-  // Defensive dedupe: some legacy users/rows can produce duplicate slugs (e.g. wardrobe).
+  // Defensive dedupe: some legacy users/rows can produce duplicate slugs.
   // Prefer system moodboards; otherwise prefer the most recently updated.
   const dedupedBySlug = new Map<string, Moodboard>()
   for (const board of rawMoodboards) {
+    // Same boundary rule as fetchMoodboards — previews are built from this
+    // list, so the hidden board loses its cover along with its row.
+    if (HIDDEN_COLLECTION_SLUGS.has(board.slug)) continue
     const existing = dedupedBySlug.get(board.slug)
     if (!existing) {
       dedupedBySlug.set(board.slug, board)
@@ -1630,7 +1636,7 @@ export async function fetchTrendingProducts(params: {
   gender: "male" | "female" | null
   perSlot?: number
 }): Promise<Record<ProductSlot, TrendingProduct[]>> {
-  const { gender, perSlot = 20 } = params
+  const { gender, perSlot = 40 } = params
 
   const query = supabase
     .from("outfits")

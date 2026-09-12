@@ -89,7 +89,7 @@ export function CollectionsPage() {
 
   // The grid's first four cells are fixed: + New, Try-Ons, Favorites, then the
   // board created most recently. Everything after that scrolls, sorted by
-  // recency. Wardrobe now lives on the Products tab, so it is not a board here.
+  // recency.
   const orderedMoodboards = useMemo(() => {
     const time = (value?: string | null) => (value ? new Date(value).getTime() : 0)
     const byRecency = (a: Moodboard, b: Moodboard) => {
@@ -98,6 +98,9 @@ export function CollectionsPage() {
     }
 
     const pinnedSlugs = ["try-ons", "favorites"]
+    // wardrobe is dropped at the service boundary too, but a cached overview
+    // payload from before that change still carries the row — this keeps it
+    // off the grid regardless of where the list came from.
     const hidden = ["wardrobe", "for-you", "all-outfits"]
 
     const pinned = pinnedSlugs

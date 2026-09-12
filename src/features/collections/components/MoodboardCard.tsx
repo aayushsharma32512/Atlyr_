@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import { cn } from "@/lib/utils"
 import { Icons } from "@/design-system/icons"
-import { OutfitInspirationTile } from "@/design-system/primitives"
+import { GarmentImage, OutfitInspirationTile } from "@/design-system/primitives"
 import type { MoodboardPreview } from "@/services/collections/collectionsService"
 import { CANONICAL_HERO_RENDER_BOX } from "@/features/studio/constants/renderBox"
 
@@ -93,7 +93,7 @@ const MoodboardCard = ({
             <div
               key={i}
               className={cn(
-                "flex min-h-0 min-w-0 items-center justify-center overflow-hidden bg-skeleton",
+                "relative flex min-h-0 min-w-0 items-center justify-center overflow-hidden bg-skeleton",
                 cellData.kind === "outfit" && "row-span-2",
               )}
             >
@@ -110,12 +110,11 @@ const MoodboardCard = ({
                   />
                 </div>
               ) : (
-                <img
-                  src={cellData.url}
-                  alt=""
-                  loading="lazy"
-                  className="max-h-full max-w-full object-contain p-1"
-                />
+                // Same framing as ProductTile: a segmented cutout is authored on
+                // the full placement canvas, so shoes are a sliver at the foot
+                // of a tall transparent image and a plain <img> shows an empty
+                // cell. Crop is display-only and skips real photographs.
+                <GarmentImage src={cellData.url} alt="" cropToContent />
               )}
             </div>
           ))}
