@@ -8,13 +8,11 @@ import { GuestProvider, useGuest } from "@/contexts/GuestContext";
 import { ProfileProvider, useProfileContext } from "@/features/profile/providers/ProfileProvider";
 import { CollectionsPrefetcher } from "@/features/collections/providers/CollectionsPrefetcher";
 import { JobsProvider } from "@/features/progress/providers/JobsContext";
-import { FloatingProgressHub } from "@/features/progress/components/FloatingProgressHub";
 import { LikenessDrawerHost } from "@/features/likeness/LikenessDrawerHost";
 import { PostHogIdentitySync } from "@/integrations/posthog/PostHogIdentitySync";
 import { PostHogRouteSync } from "@/integrations/posthog/PostHogRouteSync";
 import { EngagementAnalyticsProvider } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsProvider";
-import { isDesignPreviewPath, useSurfaceTheme } from "@/hooks/useSurfaceTheme";
-import { needsFirstRun } from "@/features/profile/constants/firstRun";
+import { useSurfaceTheme } from "@/hooks/useSurfaceTheme";
 import { Suspense, lazy, type ReactNode } from "react";
 // Simple loading component
 const LoadingSpinner = () => (
@@ -36,6 +34,7 @@ const SimilarItemsPreview = lazy(() => import("./pages/SimilarItemsPreview.tsx")
 const HomePreview = lazy(() => import("./pages/HomePreview.tsx"));
 const SearchPreview = lazy(() => import("./pages/SearchPreview.tsx"));
 const CollectionsPreview = lazy(() => import("./pages/CollectionsPreview.tsx"));
+const NotificationsScreen = lazy(() => import("./features/notifications/NotificationsScreen.tsx").then(m => ({ default: m.NotificationsScreen })));
 const MannequinPreview = lazy(() => import("./pages/MannequinPreview.tsx"));
 const Profile = lazy(() => import("./pages/Profile.tsx"));
 const AdminInvites = lazy(() => import("./pages/AdminInvites.tsx"));
@@ -110,7 +109,7 @@ function AdminAccessGuard({ children }: { children: ReactNode }) {
 
   // Must be admin
   if (role !== 'admin') {
-    return <Navigate to="/home" replace />;
+    return <Navigate to="/collection" replace />;
   }
 
   return <>{children}</>;
@@ -124,37 +123,6 @@ function AdminAccessGuard({ children }: { children: ReactNode }) {
 function SurfaceTheme() {
   useSurfaceTheme();
   return null;
-}
-
-// Component to conditionally show FloatingProgressHub only for authenticated users
-function AuthenticatedProgressHub() {
-  const { user, loading } = useAuth();
-  const { guestState } = useGuest();
-  const location = useLocation();
-
-  const { profile } = useProfileContext();
-
-  // Don't show on public pages
-  const publicPaths = ['/', '/waitlist', '/landing', '/marketing', '/auth/login', '/auth/signup', '/auth/callback'];
-  const isPublicPath = publicPaths.includes(location.pathname);
-
-  // Only show for authenticated (non-guest) users on non-public paths
-  const isAuthenticated = Boolean(user) && !guestState.isGuest;
-
-  // Not during first run, and not over a design-system preview. The hub is a
-  // floating panel anchored bottom-left; on the onboarding screens it lands on
-  // top of the primary CTA, and there is nothing to report anyway — you can't
-  // have a generation in flight before you've finished signing up.
-  const isSuppressedSurface =
-    needsFirstRun(profile) ||
-    location.pathname.startsWith('/design-system') ||
-    isDesignPreviewPath(location.pathname);
-
-  if (loading || isPublicPath || !isAuthenticated || isSuppressedSurface) {
-    return null;
-  }
-
-  return <FloatingProgressHub />;
 }
 
 // Loading component for suspense fallback
@@ -178,7 +146,6 @@ const App = () => (
                   <SurfaceTheme />
                   <CollectionsPrefetcher />
                   <PostHogIdentitySync />
-                  <AuthenticatedProgressHub />
                   <LikenessDrawerHost />
                   <PostHogRouteSync enableSessionReplay />
                   <ErrorBoundary>
@@ -242,6 +209,14 @@ const App = () => (
                       element={
                         <ShareAccessGuard>
                           <SearchPreview />
+                        </ShareAccessGuard>
+                      }
+                    />
+                    <Route
+                      path="/notifications"
+                      element={
+                        <ShareAccessGuard>
+                          <NotificationsScreen />
                         </ShareAccessGuard>
                       }
                     />

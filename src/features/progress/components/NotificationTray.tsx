@@ -1,7 +1,8 @@
-import { Bell, CheckCircle2, Sparkles } from "lucide-react"
+import { Bell, Sparkles } from "lucide-react"
 import { formatDistanceToNowStrict } from "date-fns"
 
 import { useJobs, type Job } from "../providers/JobsContext"
+import { READY_TITLE, TYPE_ICON, TYPE_LABEL, selectFinishedJobs } from "../notificationCopy"
 import { cn } from "@/lib/utils"
 
 /**
@@ -18,27 +19,6 @@ import { cn } from "@/lib/utils"
  * which needs no server round-trip and no schema — and a per-device read marker
  * is honest about what it knows.
  */
-
-/**
- * Two job types, not three. The canvas also draws wardrobe cut-out rows, but
- * `JobType` is `"likeness" | "tryon"` — wardrobe work is not tracked as a job
- * anywhere, so those rows would describe a pipeline that does not report in.
- * When it does, it is one more entry here.
- */
-const TYPE_LABEL: Record<Job["type"], string> = {
-  tryon: "Try-on",
-  likeness: "Likeness",
-}
-
-const TYPE_ICON: Record<Job["type"], React.ComponentType<{ className?: string }>> = {
-  tryon: Sparkles,
-  likeness: CheckCircle2,
-}
-
-const READY_TITLE: Record<Job["type"], string> = {
-  tryon: "Your look is ready",
-  likeness: "Your likeness is saved",
-}
 
 export interface NotificationTrayProps {
   open: boolean
@@ -60,13 +40,7 @@ export function NotificationTray({
 
   if (!open) return null
 
-  // Only finished work is news. A job still running is already represented by
-  // the progress hub — duplicating it here would make the tray a second,
-  // worse progress list.
-  const entries = jobs
-    .filter((job) => job.status === "ready" || job.status === "failed")
-    .sort((a, b) => b.startedAt - a.startedAt)
-    .slice(0, 12)
+  const entries = selectFinishedJobs(jobs, 12)
 
   return (
     <div

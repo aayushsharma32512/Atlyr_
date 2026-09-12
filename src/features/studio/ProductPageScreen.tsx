@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { ArrowDownRight, ArrowUpRight, Heart, Ruler, ShoppingBag, Shuffle } from "lucide-react"
+import { ArrowDownRight, ArrowUpRight } from "lucide-react"
 import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
-import { ProductAlternateCard, TrayActionButton, MoodboardPickerDrawer, ScreenHeader } from "@/design-system/primitives"
-import { PriceDisplay } from "@/design-system/primitives/price-display"
+import { ProductAlternateCard, ProductSheet, TrayActionButton, MoodboardPickerDrawer } from "@/design-system/primitives"
 import { cn } from "@/lib/utils"
 import { parseProductDescription } from "@/utils/productDescription"
 
@@ -16,7 +15,6 @@ import { useStudioProduct } from "@/features/studio/hooks/useStudioProduct"
 import { useStudioSimilarProducts } from "@/features/studio/hooks/useStudioSimilarProducts"
 import { useStudioProductImages } from "@/features/studio/hooks/useStudioProductImages"
 import { useOutfitWithProduct } from "@/features/studio/hooks/useOutfitWithProduct"
-import { ProductImageCarousel } from "@/components/product/ProductImageCarousel"
 import { useProductSaveActions } from "@/features/collections/hooks/useProductSaveActions"
 import { useCreateDraftOutfit } from "@/features/outfits/hooks/useCreateDraftOutfit"
 import { useAuth } from "@/contexts/AuthContext"
@@ -28,6 +26,7 @@ import {
   type StudioHistorySnapshot,
 } from "@/features/studio/utils/studioHistoryState"
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
+import { readReturnTo } from "@/utils/returnTo"
 import { trackProductBuyClicked } from "@/integrations/posthog/engagementTracking/entityEvents"
 import { trackStudioProductViewed } from "@/integrations/posthog/engagementTracking/studio/studioTracking"
 import { useToast } from "@/hooks/use-toast"
@@ -49,9 +48,8 @@ const INR_PRICE_FORMATTER = new Intl.NumberFormat("en-IN", {
 const CARD_MAX_WIDTH = "24.5rem"
 
 export function ProductPageView() {
-  const heartLongPressTimeout = useRef<NodeJS.Timeout | null>(null)
-  const heartLongPressTriggered = useRef(false)
   const { productId } = useParams<{ productId?: string }>()
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const tour = useStudioTourContext()
   const { openProduct, openStudio, openSimilarItems, selectedProductId, setSelectedProductId } = useStudioContext()
@@ -71,7 +69,8 @@ export function ProductPageView() {
     if (!product) {
       return []
     }
-    return [...product.fitTags, ...product.feelTags, ...product.vibeTags]
+    // Six fits the two rows a full-width details block gives us.
+    return [...product.fitTags, ...product.feelTags, ...product.vibeTags].slice(0, 6)
   }, [product])
 
   const similarItemsQuery = useStudioSimilarProducts(activeProductId)
@@ -136,8 +135,16 @@ export function ProductPageView() {
     [openProduct],
   )
 
-  // × button: always returns to the last active Studio state from sessionStorage
+  // Where the × goes. Whoever opened this page owns the answer: Collections and
+  // search pass ?returnTo=, and sending them to Studio instead was the bug.
+  const decodedReturnTo = useMemo(() => readReturnTo(searchParams.toString()), [searchParams])
+
+  // × button: back to the opener, else the last active Studio state from sessionStorage.
   const handleClose = useCallback(() => {
+    if (decodedReturnTo) {
+      navigate(decodedReturnTo)
+      return
+    }
     try {
       const raw = window.sessionStorage.getItem("atlyr:studio:lastSession")
       if (raw) {
@@ -159,7 +166,7 @@ export function ProductPageView() {
       }
     } catch {}
     navigate("/studio")
-  }, [navigate])
+  }, [decodedReturnTo, navigate])
 
   const handleBuy = useCallback(() => {
     if (product?.productUrl) {
@@ -338,7 +345,12 @@ export function ProductPageView() {
   }, [product?.materialType, product?.care])
 
   const title = product?.title ?? "Product"
-  const brand = product?.brand ?? "Atlyr"
+  // The sheet takes plain URLs; the carousel DTO carries alt text it does not use.
+  const sheetImages = useMemo(
+    () => carouselImages.map((image) => image.url).filter((url): url is string => Boolean(url)),
+    [carouselImages],
+  )
+  const sheetSlot = product?.slot === "top" || product?.slot === "bottom" || product?.slot === "shoes" ? product.slot : null
   // Scraped descriptions arrive as a whole mini-page of markup — see
   // parseProductDescription for why this is split rather than flattened.
   const descriptionSections = useMemo(
@@ -352,8 +364,6 @@ export function ProductPageView() {
     ? descriptionSections
     : descriptionSections.slice(0, 1)
   const hasMoreSections = descriptionSections.length > 1
-  const price = product?.price ?? 0
-  const imageSrc = product?.imageUrl ?? "/placeholder.svg"
 
   if (!activeProductId) {
     return (
@@ -374,143 +384,38 @@ export function ProductPageView() {
     <div className="flex flex-1 flex-col items-center justify-start overflow-hidden px-2 pb-3 pt-4">
       <div className={`flex w-full max-w-[${CARD_MAX_WIDTH}] flex-1 flex-col overflow-hidden rounded-t-[2rem] border border-border bg-card shadow-sm`}>
         <div className="flex flex-1 min-h-0 flex-col gap-1.5 overflow-y-auto">
-          <section className="flex flex-col items-center gap-0.5 pb-1 pt-4">
-            <ScreenHeader
-              action="close"
-              onAction={handleClose}
-              highlightAction={tour.isHighlighted("return-from-product")}
-              rightSlot={
-                <Button
-                  onClick={handleBuy}
-                  className="flex h-9 items-center gap-2 rounded-l-md rounded-r-none bg-foreground px-2 text-sm font-medium text-card hover:bg-foreground/90"
-                >
-                  <ShoppingBag className="h-4 w-4" aria-hidden="true" />
-                  Buy
-                </Button>
-              }
-              className="flex w-full items-center justify-between px-1"
-            />
-            <div className="relative w-full px-2">
-              {carouselImages.length > 1 ? (
-                <ProductImageCarousel 
-                  images={carouselImages} 
-                  className="h-64 w-full"
-                />
-              ) : (
-                <figure className="flex h-64 w-full items-center justify-center overflow-hidden rounded-md">
-                  {productQuery.isLoading ? (
-                    <div className="h-full w-full animate-pulse rounded-md" />
-                  ) : (
-                    <img src={imageSrc} alt={title} className="h-full w-full object-contain" />
-                  )}
-                </figure>
-              )}
-              <div className="pointer-events-none absolute right-4 bottom-1 z-10">
-                <button
-                  type="button"
-                  className="pointer-events-auto flex h-9 items-center gap-1.5 rounded-xl bg-transparent px-2 text-foreground hover:bg-card disabled:opacity-40 transition-colors"
-                  onClick={handleAddToStudio}
-                  disabled={outfitWithProductQuery.isLoading}
-                  aria-label="Remix in Studio"
-                >
-                  <span className="flex flex-col text-left text-xs font-medium leading-tight">
-                    <span>Remix</span>
-                    <span>in Studio</span>
-                  </span>
-                  <Shuffle className="h-7 w-auto flex-none" aria-hidden="true" />
-                </button>
-              </div>
-            </div>
-            <div className="flex w-full gap-2 overflow-x-auto px-4 pb-1 scrollbar-hide">
-              {tags.length > 0 ? (
-                tags.map((tag) => <ProductTagChip key={tag} label={tag} />)
-              ) : (
-                <span className="text-xs text-muted-foreground">No tags available</span>
-              )}
+          <section className="flex flex-col gap-2 px-4 pb-1 pt-3">
+            {/* The piece sheet, stacked: the horizontal 205px variant is sized for
+                the Studio dock and leaves a full screen half empty. The × rides
+                the sheet's own corner rather than owning a header row. No brand,
+                no price, no reviews — the sheet carries the piece only. */}
+            <div className="w-full">
+              <ProductSheet
+                layout="panel"
+                corner="close"
+                onCorner={handleClose}
+                highlightCorner={tour.isHighlighted("return-from-product")}
+                title={title}
+                images={sheetImages}
+                slot={sheetSlot}
+                showSlot={Boolean(sheetSlot)}
+                attributes={tags}
+                saved={isProductSaved}
+                onSave={() => {
+                  if (activeProductId) productSaveActions.onToggleSave(activeProductId, !isProductSaved)
+                }}
+                onLongPressSave={() => {
+                  if (activeProductId) productSaveActions.onLongPressSave(activeProductId)
+                }}
+                onTryOn={handleAddToStudio}
+                tryOnLabel="Open in Studio"
+                onFindItems={handleBuy}
+                isLoading={productQuery.isLoading}
+              />
             </div>
           </section>
 
           <section className="flex flex-col gap-2 px-2.5 pb-1">
-            <div className="flex w-full gap-1 px-1">
-              <div className="flex flex-1 flex-col gap-1">
-                <p className="text-sm font-semibold text-foreground">{brand}</p>
-                <p className="text-xs font-normal text-foreground">{title}</p>
-                <div className="flex items-center gap-3 text-sm">
-                  <PriceDisplay price={price} className="text-sm font-semibold text-foreground" />
-                </div>
-              </div>
-              <div className="flex w-12 flex-col items-stretch rounded-2xl bg-card/80 px-1 py-0">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="rounded-lg px-1 text-xs font-medium text-foreground"
-                  onClick={handleBuy}
-                >
-                  <Ruler aria-hidden="true" />
-                </Button>
-
-                <button 
-                  type="button"
-                  className={`inline-flex items-center justify-center rounded-lg px-1 py-1 text-xs font-medium transition-colors hover:bg-muted/50 select-none ${isProductSaved ? 'text-red-500' : 'text-foreground'}`}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    // Skip click if long press was triggered
-                    if (heartLongPressTriggered.current) {
-                      heartLongPressTriggered.current = false
-                      return
-                    }
-                    if (activeProductId) {
-                      productSaveActions.onToggleSave(activeProductId, !isProductSaved)
-                    }
-                  }}
-                  onContextMenu={(event) => event.preventDefault()}
-                  onMouseDown={() => {
-                    if (activeProductId) {
-                      heartLongPressTimeout.current = setTimeout(() => {
-                        heartLongPressTriggered.current = true
-                        productSaveActions.onLongPressSave(activeProductId)
-                      }, 500)
-                    }
-                  }}
-                  onMouseUp={() => {
-                    if (heartLongPressTimeout.current) {
-                      clearTimeout(heartLongPressTimeout.current)
-                      heartLongPressTimeout.current = null
-                    }
-                  }}
-                  onMouseLeave={() => {
-                    if (heartLongPressTimeout.current) {
-                      clearTimeout(heartLongPressTimeout.current)
-                      heartLongPressTimeout.current = null
-                    }
-                  }}
-                  onTouchStart={() => {
-                    if (activeProductId) {
-                      heartLongPressTimeout.current = setTimeout(() => {
-                        heartLongPressTriggered.current = true
-                        productSaveActions.onLongPressSave(activeProductId)
-                      }, 500)
-                    }
-                  }}
-                  onTouchEnd={() => {
-                    if (heartLongPressTimeout.current) {
-                      clearTimeout(heartLongPressTimeout.current)
-                      heartLongPressTimeout.current = null
-                    }
-                  }}
-                  onTouchCancel={() => {
-                    if (heartLongPressTimeout.current) {
-                      clearTimeout(heartLongPressTimeout.current)
-                      heartLongPressTimeout.current = null
-                    }
-                  }}
-                  style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none", userSelect: "none" }}
-                >
-                  <Heart className="h-4 w-4" aria-hidden="true" fill={isProductSaved ? "currentColor" : "none"} />
-                </button>
-              </div>
-            </div>
-
             <div className="flex w-full flex-col items-start gap-2.5 px-1">
               {visibleSections.length === 0 && (
                 <p className="text-xs2 text-muted-foreground">

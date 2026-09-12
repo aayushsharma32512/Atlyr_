@@ -124,7 +124,15 @@ export function MoodboardPickerDrawer({
             {hasCreate ? (
               <button
                 type="button"
-                className="rounded-full border  border-border px-3 py-1 text-sm text-muted-foreground flex-shrink-0"
+                aria-expanded={isCreating}
+                // Same weight as the board chips beside it. It used to be
+                // text-muted-foreground, which read as disabled next to them.
+                className={cn(
+                  "flex-shrink-0 rounded-full border px-3 py-1 text-sm",
+                  isCreating
+                    ? "border-foreground bg-muted/60 text-foreground"
+                    : "border-border bg-background text-foreground",
+                )}
                 onClick={() => {
                   setError(null)
                   setIsCreating((prev) => !prev)
