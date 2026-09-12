@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Compass,
   Folders,
   Globe,
@@ -18,9 +19,12 @@ import {
   Pin,
   Plus,
   Redo2,
+  RefreshCw,
   RotateCcw,
   Search,
   Share,
+  ArrowUpDown,
+  ArrowUpRight,
   Shirt,
   Sparkles,
   SquareUserRound,
@@ -30,7 +34,7 @@ import {
   X,
 } from "lucide-react";
 
-import { BottomsGlyph, ShoeGlyph } from "./glyphs";
+import { BottomsGlyph, HangerGlyph, ShoeGlyph } from "./glyphs";
 
 export const Icons = {
   // design.md's table says Bookmark, but DESIGN_NOTES #8 says pin and the
@@ -44,6 +48,8 @@ export const Icons = {
   undo: Undo2,
   redo: Redo2,
   restore: RotateCcw,
+  similar: RefreshCw, // "more like this piece" — image-similarity search
+  swap: ArrowUpDown, // layer row: which of the two tops is on top
   alternatives: LayoutGrid,
 
   slotTop: Shirt,
@@ -52,12 +58,13 @@ export const Icons = {
   slotLayer: Layers, // [P2], nothing sets it
 
   // Alternatives sources.
-  sourceWardrobe: Shirt, // TODO(phase 5): design.md wants a hanger glyph; bundle has no path for it
+  // A hanger, not Shirt: Shirt is the `top` slot, and the two segments sit one
+  // above the other on Alternates — the same glyph twice read as a doubled rail.
+  sourceWardrobe: HangerGlyph,
   sourceSaves: Pin,
   sourceExplore: Compass, // Globe is taken by Find items — one icon per meaning
 
   addInspiration: Link,
-  addWardrobe: Shirt,
   add: Plus,
 
   // Nav: Collections · Search · Studio · Notifications · Profile
@@ -71,6 +78,7 @@ export const Icons = {
   filter: ListFilter,
   remove: Trash2,
   expand: Maximize2,
+  openList: ArrowUpRight, // rail → its full page
   close: X,
   profile: UserRound,
   search: Search,

@@ -2,14 +2,15 @@ import { useRef } from "react"
 
 import { cn } from "@/lib/utils"
 import { Icons } from "@/design-system/icons"
+import { GarmentImage } from "./garment-image"
 
 export interface ProductTileProps {
   title: string
   imageSrc: string | null
-  /** `small` drops the footer and the pin. */
+  /** `small` drops the footer. The pin follows `mark` either way. */
   size?: "default" | "small"
   saved?: boolean
-  /** Already worn — 2px ink border and a check; does not respond to taps. */
+  /** Already worn — 2px ink outline, nothing else; does not respond to taps. */
   worn?: boolean
   /** Show the pin. Default true. */
   mark?: boolean
@@ -17,13 +18,19 @@ export interface ProductTileProps {
   onToggleSave?: () => void
   onLongPressSave?: () => void
   onImageError?: () => void
+  /** Frame the garment, not the transparent placement canvas around it. */
+  cropToContent?: boolean
   /** Optional — the design carries none; kept for surfaces that still show them. */
   price?: string
   brand?: string
   className?: string
 }
 
-/** The piece tile: square image to the hairline, pin top-right, 40h footer with the name. */
+/** Cropped garments stop short of the corner overlays. */
+const CROP_FILL = 0.7
+
+/** The piece tile: square image to the hairline, pin top-right, 40h footer with the name.
+ *  The Alternates rack uses `small` — photo-only tiles that keep the pin. */
 export function ProductTile({
   title,
   imageSrc,
@@ -35,6 +42,7 @@ export function ProductTile({
   onToggleSave,
   onLongPressSave,
   onImageError,
+  cropToContent = false,
   price,
   brand,
   className,
@@ -89,15 +97,17 @@ export function ProductTile({
     >
       <div className="relative aspect-square w-full overflow-hidden bg-muted">
         {imageSrc ? (
-          <img
+          <GarmentImage
             src={imageSrc}
             alt={title}
-            loading="lazy"
+            cropToContent={cropToContent}
+            // The pin sits over the top-right corner, so a cropped garment needs
+            // margin to clear it.
+            fill={CROP_FILL}
             onError={onImageError}
-            className="h-full w-full object-contain p-2"
           />
         ) : null}
-        {!small && mark && !worn ? (
+        {mark && !worn ? (
           <button
             type="button"
             aria-label={saved ? "Unsave" : "Save"}
@@ -114,11 +124,6 @@ export function ProductTile({
           >
             <Icons.save className="h-4 w-4" fill={saved ? "currentColor" : "none"} aria-hidden="true" />
           </button>
-        ) : null}
-        {worn ? (
-          <span className="absolute bottom-1.5 right-1.5 flex h-5 w-5 items-center justify-center rounded-control bg-ink text-background">
-            <Icons.check className="h-3 w-3" strokeWidth={2.2} aria-hidden="true" />
-          </span>
         ) : null}
       </div>
       {!small ? (

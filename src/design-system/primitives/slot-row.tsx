@@ -1,18 +1,22 @@
+import type { CSSProperties, HTMLAttributes } from "react"
+
 import { Icons } from "@/design-system/icons"
 import { cn } from "@/lib/utils"
 
-export type SlotRowSlot = "top" | "bottom" | "shoes"
+export type SlotRowSlot = "top" | "bottom" | "shoes" | "layer"
 
 const SLOT_NAME: Record<SlotRowSlot, string> = {
   top: "Top",
   bottom: "Bottom",
   shoes: "Shoes",
+  layer: "Layer over top",
 }
 
 const SLOT_GLYPH: Record<SlotRowSlot, React.ComponentType<{ className?: string }>> = {
   top: Icons.slotTop,
   bottom: Icons.slotBottom,
   shoes: Icons.slotShoes,
+  layer: Icons.slotLayer,
 }
 
 export interface SlotRowProps {
@@ -25,9 +29,14 @@ export interface SlotRowProps {
   removable?: boolean
   /** Trailing 4-square button that opens alternates for this slot. */
   alternatives?: boolean
+  /** Spread onto the slot glyph — Studio makes it the drag handle for restacking. */
+  glyphProps?: HTMLAttributes<HTMLSpanElement>
+  style?: CSSProperties
   onSelect?: () => void
   onRemove?: () => void
   onOpenAlternatives?: () => void
+  /** Layer rows only — flips which of the two tops sits on top. */
+  onSwap?: () => void
   className?: string
 }
 
@@ -44,9 +53,12 @@ export function SlotRow({
   empty = false,
   removable = true,
   alternatives = true,
+  glyphProps,
+  style,
   onSelect,
   onRemove,
   onOpenAlternatives,
+  onSwap,
   className,
 }: SlotRowProps) {
   const Glyph = SLOT_GLYPH[slot]
@@ -54,8 +66,11 @@ export function SlotRow({
 
   if (empty) {
     return (
-      <div className={cn("flex h-8 items-center gap-2", className)}>
-        <span className="flex h-6 w-6 flex-none items-center justify-center text-taupe">
+      <div className={cn("flex h-8 items-center gap-2", className)} style={style}>
+        <span
+          {...glyphProps}
+          className={cn("flex h-6 w-6 flex-none items-center justify-center text-taupe", glyphProps?.className)}
+        >
           <Glyph className="h-4 w-4" aria-hidden="true" />
         </span>
         <button
@@ -76,8 +91,11 @@ export function SlotRow({
   }
 
   return (
-    <div className={cn("flex h-8 items-center gap-2", className)}>
-      <span className="flex h-6 w-6 flex-none items-center justify-center text-ink">
+    <div className={cn("flex h-8 items-center gap-2", className)} style={style}>
+      <span
+        {...glyphProps}
+        className={cn("flex h-6 w-6 flex-none items-center justify-center text-ink", glyphProps?.className)}
+      >
         <Glyph className="h-4 w-4" aria-hidden="true" />
       </span>
 
@@ -103,6 +121,17 @@ export function SlotRow({
         >
           {label?.trim() || slotName}
         </button>
+
+        {onSwap ? (
+          <button
+            type="button"
+            onClick={onSwap}
+            aria-label="Swap which piece is on top"
+            className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-control text-taupe"
+          >
+            <Icons.swap className="h-4 w-4" aria-hidden="true" />
+          </button>
+        ) : null}
 
         {alternatives ? (
           <button

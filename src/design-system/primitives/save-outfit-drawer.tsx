@@ -27,7 +27,7 @@ import { useCategories, useOccasions } from "@/features/outfits/hooks/useOutfitO
 import type { Moodboard } from "@/services/collections/collectionsService"
 import { useViewportZoomLockController } from "@/hooks/useViewportZoomLock"
 
-const BOARD_ORDER: Record<string, number> = { favorites: 0, wardrobe: 1 }
+const BOARD_ORDER: Record<string, number> = { favorites: 0 }
 
 export interface SaveOutfitDrawerProps {
   open: boolean
@@ -91,14 +91,14 @@ export function SaveOutfitDrawer({
   const outfitNameRef = useRef<HTMLInputElement | null>(null)
   const { lock: lockViewportZoom, unlock: unlockViewportZoom } = useViewportZoomLockController()
 
-  // Favorites/Wardrobe join custom boards as checkable chips; Try-ons stays
-  // hidden here since it's only ever written by the try-on generation flow.
-  // Favorites leads, then Wardrobe, then custom boards in their existing order.
+  // Favorites joins custom boards as a checkable chip; Try-ons stays hidden
+  // here since it's only ever written by the try-on generation flow.
+  // Favorites leads, then custom boards in their existing order.
   const selectableMoodboards = useMemo(
     () =>
       moodboards
-        .filter((m) => !m.isSystem || m.slug === "favorites" || m.slug === "wardrobe")
-        .sort((a, b) => (BOARD_ORDER[a.slug] ?? 2) - (BOARD_ORDER[b.slug] ?? 2)),
+        .filter((m) => !m.isSystem || m.slug === "favorites")
+        .sort((a, b) => (BOARD_ORDER[a.slug] ?? 1) - (BOARD_ORDER[b.slug] ?? 1)),
     [moodboards],
   )
 
