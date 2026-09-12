@@ -1,24 +1,16 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 
-/**
- * Two ids were dropped when the studio moved to the 7a layout:
- *  · 'product-interaction' was consumed by StudioScreen but never existed in
- *    STUDIO_TOUR_STEPS, so that branch could never be true.
- *  · 'full-screen' existed as a step but nothing consumed it, so it rendered a
- *    tooltip pointing at nothing.
- */
+/** 'remix' and the receipt steps went with Shuffle and the scroll-up screen. */
 export type StudioTourStepId =
     | 'welcome'
     | 'mannequin'
     | 'slot-rows'
     | 'alternatives'
-    | 'remix'
     | 'return-from-product'
     | 'undo-redo'
     | 'checkpoint'
-    | 'click-details'
-    | 'back-from-details'
+    | 'find-items'
     | 'save-button'
     | 'share-button'
     | 'tryon-button'
@@ -80,12 +72,6 @@ const STUDIO_TOUR_STEPS: StudioTourStep[] = [
         tooltipPosition: { top: '27%', left: BESIDE_LEFT },
     },
     {
-        id: 'remix',
-        title: 'Shuffle the look',
-        message: 'Feeling adventurous? Shuffle rebuilds the outfit from scratch.',
-        tooltipPosition: { top: '18%', right: BESIDE_RIGHT },
-    },
-    {
         id: 'share-button',
         title: 'Share your style',
         message: 'Want a second opinion? Share sends the look to a friend, view-only.',
@@ -110,9 +96,9 @@ const STUDIO_TOUR_STEPS: StudioTourStep[] = [
         tooltipPosition: { bottom: '14%', left: CENTRED },
     },
     {
-        id: 'click-details',
-        title: 'Shop the look',
-        message: 'The priced stub opens the receipt — every piece, with somewhere to buy it.',
+        id: 'find-items',
+        title: 'Find items',
+        message: 'Seen a look you like? Find items matches it against the catalogue and the web.',
         tooltipPosition: { bottom: '14%', left: CENTRED },
     },
     {
@@ -125,12 +111,6 @@ const STUDIO_TOUR_STEPS: StudioTourStep[] = [
         id: 'return-from-product',
         title: 'Easy navigation',
         message: 'Finished exploring? Tap the back button at the top to return to your studio.',
-        tooltipPosition: { top: '80px', left: '20px' },
-    },
-    {
-        id: 'back-from-details',
-        title: 'Return to Studio',
-        message: 'Tap the back button to return to your studio anytime.',
         tooltipPosition: { top: '80px', left: '20px' },
     },
 ]
@@ -183,24 +163,11 @@ export function useStudioTour() {
 
         const currentStepId = STUDIO_TOUR_STEPS[currentStepIndex].id
         const isProductRoute = location.pathname.includes('/product/')
-        const isScrollUpRoute = location.pathname.includes('/scroll-up')
-        const isStudioOrAlternatives = (location.pathname.includes('/studio') || location.pathname.includes('/alternatives')) && !isProductRoute && !isScrollUpRoute
+        const isStudioOrAlternatives = (location.pathname.includes('/studio') || location.pathname.includes('/alternatives')) && !isProductRoute
 
         if (currentStepId === 'return-from-product' && isStudioOrAlternatives) {
             const undoRedoIndex = STUDIO_TOUR_STEPS.findIndex(s => s.id === 'undo-redo')
             if (undoRedoIndex !== -1) setCurrentStepIndex(undoRedoIndex)
-        } else if (currentStepId === 'click-details' && isScrollUpRoute) {
-            // When on click-details and user navigates to scroll-up, advance to back-from-details
-            const backFromDetailsIndex = STUDIO_TOUR_STEPS.findIndex(s => s.id === 'back-from-details')
-            if (backFromDetailsIndex !== -1) setCurrentStepIndex(backFromDetailsIndex)
-        } else if (currentStepId === 'back-from-details' && isStudioOrAlternatives) {
-            // When on back-from-details and user navigates back to studio, advance to save-button
-            const saveButtonIndex = STUDIO_TOUR_STEPS.findIndex(s => s.id === 'save-button')
-            if (saveButtonIndex !== -1) setCurrentStepIndex(saveButtonIndex)
-        } else if (currentStepId === 'save-button' && isScrollUpRoute) {
-            // When on save-button and user navigates back to scroll-up (back button), go to back-from-details
-            const backFromDetailsIndex = STUDIO_TOUR_STEPS.findIndex(s => s.id === 'back-from-details')
-            if (backFromDetailsIndex !== -1) setCurrentStepIndex(backFromDetailsIndex)
         }
     }, [isActive, location.pathname, currentStepIndex, endTour])
 

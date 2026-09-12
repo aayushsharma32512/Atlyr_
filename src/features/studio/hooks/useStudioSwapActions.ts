@@ -10,7 +10,7 @@ import type {
   StudioProductTraySlot,
 } from "@/services/studio/studioService"
 import type { Outfit } from "@/types"
-import { injectDisplacedAlternative, toTrayItem, upsertTrayItem } from "@/features/studio/utils/trayMutations"
+import { toTrayItem, upsertTrayItem } from "@/features/studio/utils/trayMutations"
 
 type StudioOutfitCacheEntry = {
   outfit: Outfit | null
@@ -63,7 +63,6 @@ export function useStudioSwapActions(outfitId: string | null) {
       }
 
       const trayItem = toTrayItem(slot, product)
-      let displacedItem: StudioProductTrayItem | null = null
 
       queryClient.setQueryData<StudioOutfitCacheEntry | undefined>(studioKeys.outfit(outfitId), (prev) => {
         if (!prev) {
@@ -71,7 +70,6 @@ export function useStudioSwapActions(outfitId: string | null) {
         }
 
         const currentItems = prev.trayItems ?? []
-        displacedItem = currentItems.find((item) => item.slot === slot) ?? null
         const updatedTrayItems = upsertTrayItem(currentItems, trayItem)
         const swappedTrayItems = {
           ...(prev.swappedTrayItems ?? {}),
@@ -95,10 +93,9 @@ export function useStudioSwapActions(outfitId: string | null) {
         () => trayItem,
       )
 
-      queryClient.setQueryData<StudioAlternativeProduct[]>(alternativesKey, (prevList = []) => {
-        const filtered = prevList.filter((alt) => alt.id !== product.id)
-        return injectDisplacedAlternative(filtered, displacedItem)
-      })
+      // The rack is deliberately left alone: the worn tile is outlined in place.
+      // Removing it and injecting the displaced piece at the front made the
+      // list jump under the finger on every wear.
 
       setSlotProductId(slot, product.id)
 

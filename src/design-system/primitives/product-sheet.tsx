@@ -1,11 +1,12 @@
 import { useRef, useState } from "react"
 
 import { Icons } from "@/design-system/icons"
+import { GarmentImage } from "./garment-image"
 import { cn } from "@/lib/utils"
 
 export type ProductSheetSlot = "top" | "bottom" | "shoes"
 /** Single icon parked at the top-right of the sheet. */
-export type ProductSheetCorner = "none" | "close" | "alternatives" | "search"
+export type ProductSheetCorner = "none" | "close" | "alternatives" | "search" | "similar"
 export type ProductSheetActions = "icons" | "primary" | "save-search" | "save-try" | "none"
 
 export interface ProductSheetProps {
@@ -36,6 +37,8 @@ export interface ProductSheetProps {
   onFindItems?: () => void
   /** Focus only — tapping the details opens the slot's alternatives. */
   onOpenAlternatives?: () => void
+  /** Frame the garment, not the transparent placement canvas around it. */
+  cropToContent?: boolean
   isLoading?: boolean
   className?: string
 }
@@ -47,12 +50,22 @@ const CORNER_ICONS = {
   close: Icons.close,
   alternatives: Icons.alternatives,
   search: Icons.findItems,
+  similar: Icons.similar,
 } as const
 
-const CORNER_LABELS = { close: "Close", alternatives: "Alternatives", search: "Find items" } as const
+const CORNER_LABELS = {
+  close: "Close",
+  alternatives: "Alternatives",
+  search: "Find items",
+  similar: "More like this piece",
+} as const
 
 const ACTION =
   "box-border flex h-control-secondary min-w-0 flex-1 items-center justify-center gap-2 rounded-control text-label font-semibold"
+
+const CAROUSEL_TOGGLE =
+  "absolute top-1/2 z-[1] flex h-7 w-7 -translate-y-1/2 items-center justify-center " +
+  "rounded-full bg-ink/40 text-background backdrop-blur-[2px]"
 
 /**
  * The piece sheet — brief §3.2. `sheet` is horizontal: a square carousel on one
@@ -84,6 +97,7 @@ export function ProductSheet({
   tryOnLabel = "Try on",
   onFindItems,
   onOpenAlternatives,
+  cropToContent = false,
   isLoading = false,
   className,
 }: ProductSheetProps) {
@@ -115,7 +129,8 @@ export function ProductSheet({
     onSave?.()
   }
 
-  const CornerIcon = corner === "none" ? null : CORNER_ICONS[corner]
+  const cornerControl =
+    corner === "none" ? null : { Icon: CORNER_ICONS[corner], label: CORNER_LABELS[corner] }
   const SlotIcon = slot ? SLOT_ICONS[slot] : null
 
   const saveButton = (withLabel: boolean, outlined: boolean) => (
@@ -180,10 +195,10 @@ export function ProductSheet({
         className,
       )}
     >
-      {CornerIcon ? (
+      {cornerControl ? (
         <button
           type="button"
-          aria-label={CORNER_LABELS[corner as "close" | "alternatives" | "search"]}
+          aria-label={cornerControl.label}
           onClick={onCorner}
           className={cn(
             "absolute z-[2] flex h-8 w-8 items-center justify-center rounded-control text-ink",
@@ -193,7 +208,7 @@ export function ProductSheet({
             highlightCorner && "z-[60] ring-2 ring-primary ring-offset-2 ring-offset-card",
           )}
         >
-          <CornerIcon className="h-5 w-5" strokeWidth={corner === "close" ? 2 : 1.8} aria-hidden="true" />
+          <cornerControl.Icon className="h-5 w-5" strokeWidth={corner === "close" ? 2 : 1.8} aria-hidden="true" />
         </button>
       ) : null}
 
@@ -210,30 +225,35 @@ export function ProductSheet({
           {isLoading ? (
             <div className="h-full w-full animate-pulse bg-skeleton" />
           ) : frames[active] ? (
-            <img src={frames[active] as string} alt={title} className="h-full w-full object-contain p-2" />
+            <GarmentImage
+              src={frames[active] as string}
+              alt={title}
+              cropToContent={cropToContent}
+              loading="eager"
+            />
           ) : null}
 
-          {/* Dots ride inside the bottom edge, chevrons either side. No thumbnails. */}
+          {/* Toggles on the edges, no dots. Bigger targets than a chevron inside
+              a pill, and they leave the garment unobstructed. */}
           {frames.length > 1 ? (
-            <div className="absolute inset-x-0 bottom-2 flex justify-center">
-              <span className="box-border inline-flex h-[18px] items-center gap-[5px] rounded-full bg-ink/40 px-1.5 text-background">
-                <button type="button" aria-label="Previous image" onClick={() => step(-1)} className="flex items-center">
-                  <Icons.carouselPrev className="h-2.5 w-2.5" strokeWidth={2.4} aria-hidden="true" />
-                </button>
-                {frames.map((_, i) => (
-                  <span
-                    key={i}
-                    className={cn(
-                      "block h-[5px] w-[5px] rounded-full",
-                      i === active ? "bg-background" : "bg-background/50",
-                    )}
-                  />
-                ))}
-                <button type="button" aria-label="Next image" onClick={() => step(1)} className="flex items-center">
-                  <Icons.carouselNext className="h-2.5 w-2.5" strokeWidth={2.4} aria-hidden="true" />
-                </button>
-              </span>
-            </div>
+            <>
+              <button
+                type="button"
+                aria-label="Previous image"
+                onClick={() => step(-1)}
+                className={CAROUSEL_TOGGLE + " left-1"}
+              >
+                <Icons.carouselPrev className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                aria-label="Next image"
+                onClick={() => step(1)}
+                className={CAROUSEL_TOGGLE + " right-1"}
+              >
+                <Icons.carouselNext className="h-4 w-4" strokeWidth={2.2} aria-hidden="true" />
+              </button>
+            </>
           ) : null}
         </div>
       </div>

@@ -13,6 +13,9 @@ import CollectionsHeader from "@/features/collections/components/CollectionsHead
 import { ProductsTab } from "@/features/collections/components/ProductsTab"
 import { Chip, CuratedCollectionRows, OutfitCard, ProductTile, SearchBar } from "@/design-system/primitives"
 import { useProductSaveActions } from "@/features/collections/hooks/useProductSaveActions"
+import { SearchFilterSheet } from "@/features/search/components/SearchFilterSheet"
+import { ErrorCard, NoResultsCard, ResultsSkeleton } from "@/features/search/components/SearchResultStates"
+import { useState } from "react"
 
 const mockProduct = {
   title: "Zara Striped Cotton Top with xyz xyz",
@@ -113,7 +116,16 @@ function ProductsTabPreview() {
 
 const noop = () => {}
 
-function PrimitivePreviewSections() {
+const SHEET_CATEGORIES = [
+  { id: "type", label: "Category", options: ["top", "bottom", "shoes"].map((v) => ({ id: `type:${v}`, label: v })) },
+  { id: "fit", label: "Fit", options: ["relaxed", "slim", "boxy", "regular", "oversized", "cropped"].map((v) => ({ id: `fit:${v}`, label: v })) },
+  { id: "feel", label: "Feel", options: ["soft", "crisp", "handloom"].map((v) => ({ id: `feel:${v}`, label: v })) },
+  { id: "vibe", label: "Vibe", options: ["indie", "office", "festive"].map((v) => ({ id: `vibe:${v}`, label: v })) },
+  { id: "collection", label: "Boards", options: [{ id: "collection:gallery", label: "Gallery night" }] },
+]
+
+function SearchPreviewSections() {
+  const [sheetOpen, setSheetOpen] = useState(() => new URLSearchParams(window.location.search).has("sheet"))
   const look = (i: number, extra: Partial<React.ComponentProps<typeof OutfitCard>> = {}) => (
     <div className="h-[250px]">
       <OutfitCard title={`Look ${i + 1}`} outfitId={REAL_OUTFIT_IDS[i]} tiltIndex={i} onSelect={noop} onToggleSave={noop} {...extra} />
@@ -130,7 +142,7 @@ function PrimitivePreviewSections() {
         </div>
       </section>
       <section className="grid gap-6 rounded-3xl border border-sidebar-border/60 bg-card/80 p-6 shadow-sm">
-        <h2 className="text-lg font-semibold">Chips (390px)</h2>
+        <h2 className="text-lg font-semibold">Chips + result states (390px)</h2>
         <div className="flex w-[390px] flex-col gap-4 px-4">
           <div className="flex gap-1.5">
             <Chip label="Sangeet" onClick={noop} />
@@ -138,6 +150,13 @@ function PrimitivePreviewSections() {
             <Chip label="Products" active onClick={noop} />
             <Chip label="Relaxed" active onRemove={noop} />
           </div>
+          <ResultsSkeleton kind="products" count={2} />
+          <NoResultsCard query="bandhgala kolhapuri y2k" onFindItems={noop} />
+          <ErrorCard onRetry={noop} />
+          <button type="button" onClick={() => setSheetOpen(true)} className="h-control-secondary rounded-control border border-ink text-label text-ink">
+            Open filters
+          </button>
+          <SearchFilterSheet open={sheetOpen} onOpenChange={setSheetOpen} categories={SHEET_CATEGORIES} activeFilters={["feel:handloom", "fit:relaxed"]} onApply={noop} onClear={noop} />
         </div>
       </section>
       <section className="grid gap-6 rounded-3xl border border-sidebar-border/60 bg-card/80 p-6 shadow-sm">
@@ -164,7 +183,7 @@ export default function DesignSystemPreview() {
   return (
     <div className="min-h-screen bg-background px-6 py-12 text-foreground">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-12">
-        <PrimitivePreviewSections />
+        <SearchPreviewSections />
         <section className="grid gap-6 rounded-3xl border border-sidebar-border/60 bg-card/80 p-6 shadow-sm">
           <h2 className="text-lg font-semibold">Products tab (390px)</h2>
           <div className="w-[390px] px-4"><ProductsTabPreview /></div>

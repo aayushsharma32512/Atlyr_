@@ -77,6 +77,18 @@ export function useStudioHistory() {
     [searchParams],
   )
 
+  /**
+   * Where the user is looking, as opposed to what they are wearing. A history
+   * snapshot only carries the outfit, so rebuilding the URL from it alone
+   * dropped these — undo on Alternates threw you back to the Top slot and the
+   * Explore source. `productId` is deliberately not kept: the hero derives from
+   * the slot ids the snapshot just restored.
+   */
+  const currentView = useMemo(() => {
+    const parsed = parseStudioSearchParams(searchParams)
+    return { slot: parsed.slot, source: parsed.source, focus: parsed.focus }
+  }, [searchParams])
+
   const storageKey = useMemo(
     () => studioHistoryStorageKey(user?.id),
     [user?.id],
@@ -163,54 +175,71 @@ export function useStudioHistory() {
         slotIds: snapshot.slotIds,
         hiddenSlots: snapshot.hiddenSlots,
         share: currentShare,
+        slot: currentView.slot,
+        source: currentView.source,
+        focus: currentView.focus,
       })
       setSearchParams(params, { replace: true })
     },
-    [currentShare, currentSnapshot.outfitId, setSearchParams, setSelectedOutfitId, setSlotProductId],
+    [
+      currentShare,
+      currentSnapshot.outfitId,
+      currentView,
+      setSearchParams,
+      setSelectedOutfitId,
+      setSlotProductId,
+    ],
+  )
+
+  /**
+   * Mirrors `history` so a handler can read the live stack.
+   *
+   * Undo, redo and reset used to assign their snapshot inside the `setHistory`
+   * updater and read it on the very next line. React only runs an updater there
+   * as an optimisation, and only while the component has no other update
+   * pending (react-dom 18.3.1, `fiber.lanes === NoLanes`). A second click
+   * before the first had rendered therefore skipped `applySnapshot`: the stack
+   * still advanced, the URL did not, and the buttons drifted out of step with
+   * the figure.
+   */
+  const historyRef = useRef(history)
+  useEffect(() => {
+    historyRef.current = history
+  }, [history])
+
+  /** One transition: move the stack and apply its snapshot, in that order. */
+  const commit = useCallback(
+    (result: { state: StudioHistoryState; snapshotToApply: StudioHistorySnapshot | null }) => {
+      historyRef.current = result.state
+      setHistory(result.state)
+      if (result.snapshotToApply) {
+        applySnapshot(result.snapshotToApply)
+      }
+    },
+    [applySnapshot],
   )
 
   const recordChange = useCallback(
     (nextSnapshot: StudioHistorySnapshot) => {
-      setHistory((prev) => recordChangeState(prev, nextSnapshot, currentSnapshot))
+      commit({
+        state: recordChangeState(historyRef.current, nextSnapshot, currentSnapshot),
+        snapshotToApply: null,
+      })
     },
-    [currentSnapshot],
+    [commit, currentSnapshot],
   )
 
   const undo = useCallback(() => {
-    let snapshotToApply: StudioHistorySnapshot | null = null
-    setHistory((prev) => {
-      const result = undoState(prev)
-      snapshotToApply = result.snapshotToApply
-      return result.state
-    })
-    if (snapshotToApply) {
-      applySnapshot(snapshotToApply)
-    }
-  }, [applySnapshot])
+    commit(undoState(historyRef.current))
+  }, [commit])
 
   const redo = useCallback(() => {
-    let snapshotToApply: StudioHistorySnapshot | null = null
-    setHistory((prev) => {
-      const result = redoState(prev)
-      snapshotToApply = result.snapshotToApply
-      return result.state
-    })
-    if (snapshotToApply) {
-      applySnapshot(snapshotToApply)
-    }
-  }, [applySnapshot])
+    commit(redoState(historyRef.current))
+  }, [commit])
 
   const toggleCheckpoint = useCallback(() => {
-    let snapshotToApply: StudioHistorySnapshot | null = null
-    setHistory((prev) => {
-      const result = toggleCheckpointState(prev, currentSnapshot)
-      snapshotToApply = result.snapshotToApply
-      return result.state
-    })
-    if (snapshotToApply) {
-      applySnapshot(snapshotToApply)
-    }
-  }, [applySnapshot, currentSnapshot])
+    commit(toggleCheckpointState(historyRef.current, currentSnapshot))
+  }, [commit, currentSnapshot])
 
   const canUndo = history.past.length > 0
   const canRedo = history.future.length > 0

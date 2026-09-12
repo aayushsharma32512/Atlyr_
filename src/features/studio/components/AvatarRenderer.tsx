@@ -146,6 +146,12 @@ interface AvatarRendererProps {
    */
   placementMode?: "auto" | "2d" | "3d"
   /**
+   * 'progressive' (default) paints the webp thumbnail and swaps the full-res
+   * texture in behind it. 'thumbnail' stops at the webp — for tiles too small
+   * to show the difference, where the 2K upgrade is pure bandwidth.
+   */
+  textureQuality?: "progressive" | "thumbnail"
+  /**
    * Reports the legacy renderer's resolved layout scale so a caller can invert its placement math
    * (pixel drag → placement_x / placement_y / image_length). Only fires on the 2D SVG path, and
    * only once the head asset has loaded — the metrics depend on its dimensions. Used by the admin
@@ -189,10 +195,12 @@ export function AvatarRenderer(props: AvatarRendererProps) {
         gender={props.gender}
         containerHeight={props.containerHeight}
         containerWidth={props.containerWidth}
+        zoneOrder={props.slotOrder}
         itemOpacity={props.itemOpacity}
         avatarRef={props.avatarRef}
         onReady={props.onReady}
         fetchPriority={props.fetchPriority}
+        textureQuality={props.textureQuality}
         // Must be forwarded: PlacementAvatarRenderer's hit testing is opt-in
         // (`if (onItemSelect)` — it only sets eventMode/cursor on garments when
         // a caller asks). Dropping it here meant that on the photoreal path —
@@ -385,17 +393,21 @@ function LegacyAvatarRenderer({
     const currentItemIds = new Set<string>()
     items.forEach((item) => {
       currentItemIds.add(item.id)
+      // The legacy path draws one plain image, so the webp is the right asset
+      // outright. imageUrl is now the full-res original (see renderedItemMapper);
+      // reading it here would pull a 2K PNG into an SVG that never upgrades.
+      const legacyUrl = item.thumbnailUrl?.trim() || item.imageUrl
       // Check if URL changed for this item.id
       const prevUrl = prevUrlMap.current[item.id]
-      if (prevUrl && prevUrl !== item.imageUrl) {
+      if (prevUrl && prevUrl !== legacyUrl) {
         urlChanged.add(item.id)
       }
-      prevUrlMap.current[item.id] = item.imageUrl
+      prevUrlMap.current[item.id] = legacyUrl
 
-      const cachedDims = dimensionCache.current[item.imageUrl]
+      const cachedDims = dimensionCache.current[legacyUrl]
       newData[item.id] = {
         id: item.id,
-        url: item.imageUrl,
+        url: legacyUrl,
         dimensions: cachedDims ?? { width: 120, height: 120 },
       }
     })

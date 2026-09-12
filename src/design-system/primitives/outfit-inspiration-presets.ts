@@ -19,6 +19,13 @@ export type OutfitInspirationCardDefaults = {
   fluidLayout?: "card" | "avatar"
   renderBox?: { width: number; height: number }
   framed?: boolean
+  /**
+   * Only the full-figure presets (hero, heroCanonical) pay for the 2K texture
+   * upgrade; grid and cover tiles stop at the webp, which is all they can show.
+   */
+  textureQuality?: "progressive" | "thumbnail"
+  /** Vertical nudge of the figure in card px; negative lifts it. */
+  avatarOffsetY?: number
 }
 
 export type OutfitInspirationPresetConfig = {
@@ -60,6 +67,7 @@ export const outfitInspirationPresets: Record<
   gridMeta: {
     wrapperClassName: "",
     cardDefaults: {
+      textureQuality: "thumbnail",
       variant: "narrow",
       showTitle: true,
       showChips: true,
@@ -74,6 +82,10 @@ export const outfitInspirationPresets: Record<
   homeCurated: {
     wrapperClassName: "",
     cardDefaults: {
+      textureQuality: "thumbnail",
+      // Lifts the figure off the footer. Every surface on this preset is the
+      // same outfit card, so the nudge lives here rather than per call site.
+      avatarOffsetY: -12,
       variant: "narrow",
       showTitle: true,
       showChips: true,
@@ -88,6 +100,7 @@ export const outfitInspirationPresets: Record<
   rail: {
     wrapperClassName: "rounded-sm bg-white py-2",
     cardDefaults: {
+      textureQuality: "thumbnail",
       variant: "narrow",
       showTitle: false,
       showChips: false,
@@ -101,6 +114,7 @@ export const outfitInspirationPresets: Record<
   compact: {
     wrapperClassName: "rounded-sm p-1",
     cardDefaults: {
+      textureQuality: "thumbnail",
       variant: "narrow",
       showTitle: false,
       showChips: false,
@@ -114,6 +128,7 @@ export const outfitInspirationPresets: Record<
   moodboardPreview: {
     wrapperClassName: "rounded-sm bg-white p-1",
     cardDefaults: {
+      textureQuality: "thumbnail",
       variant: "narrow",
       showTitle: false,
       showChips: false,

@@ -6,7 +6,7 @@ import { useStudioContext } from '../context/StudioContext'
 
 export function StudioTour() {
   const tour = useStudioTourContext()
-  const { openScrollUp, closeScrollUp, openStudio } = useStudioContext()
+  const { openStudio } = useStudioContext()
   const step = tour.getCurrentStep()
   const isLastStep = tour.currentStepIndex === tour.steps.length - 1
 
@@ -59,14 +59,7 @@ export function StudioTour() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => {
-                      tour.prevStep()
-                      if (step.id === 'back-from-details') {
-                        closeScrollUp()
-                      } else if (step.id === 'save-button') {
-                        openScrollUp()
-                      }
-                    }}
+                    onClick={() => tour.prevStep()}
                     className="h-8 px-2 text-xs font-medium text-gray-500 hover:text-gray-900"
                   >
                     <ChevronLeft size={14} className="mr-1" />
@@ -77,11 +70,7 @@ export function StudioTour() {
                 <Button 
                   size="sm" 
                   onClick={() => {
-                    if (step.id === 'click-details') {
-                      openScrollUp()
-                    } else if (step.id === 'back-from-details') {
-                      closeScrollUp()
-                    } else if (step.id === 'return-from-product') {
+                    if (step.id === 'return-from-product') {
                       openStudio()
                     } else {
                       tour.nextStep()

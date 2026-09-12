@@ -344,12 +344,9 @@ export function HomeScreenView() {
 
   const collectionsOverviewQuery = useCollectionsOverview()
   const moodboards = collectionsOverviewQuery.data?.moodboards ?? []
-  const itemMoodboards = useMemo(
-    () => moodboards.filter((m) => !m.isSystem || m.slug === "wardrobe"),
-    [moodboards],
-  )
+  const itemMoodboards = useMemo(() => moodboards.filter((m) => !m.isSystem), [moodboards])
   const outfitPickerMoodboards = useMemo(
-    () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites" || m.slug === "wardrobe"),
+    () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites"),
     [moodboards],
   )
   const prefetchMoodboardSlugs = useMemo(() => {
@@ -363,8 +360,7 @@ export function HomeScreenView() {
     () => moodboards.some((board) => board.slug === activeMoodboardId && !board.isSystem),
     [activeMoodboardId, moodboards],
   )
-  const isWardrobeActive = activeMoodboardId === "wardrobe"
-  const isItemMoodboardActive = isUserMoodboardActive || isWardrobeActive
+  const isItemMoodboardActive = isUserMoodboardActive
 
   const moodboardItemsQuery = useMoodboardItems(
     isItemMoodboardActive ? activeMoodboardId : null,
@@ -409,9 +405,8 @@ export function HomeScreenView() {
   }, [favoritesItems])
 
   const moodboardTabs = useMemo<MoodboardTab[]>(() => {
-    const systemOrder = ["for-you", "wardrobe", "try-ons", "favorites", "all-outfits"]
+    const systemOrder = ["for-you", "try-ons", "favorites", "all-outfits"]
     const labels: Record<string, string> = {
-      wardrobe: "Wardrobe",
       "try-ons": "Try-ons",
       favorites: "Favorites",
       "for-you": "For You",
@@ -1953,7 +1948,12 @@ export function HomeScreenView() {
         )}
       </div>
 
-      {!isResultsMode && !isItemMoodboardActive && (
+      {/* The wordmark and search stay put on every board. They used to be hidden
+          whenever isItemMoodboardActive was true — user boards — so
+          the chrome vanished on those two but stayed on Try-ons, Favorites and
+          All Outfits. The scroll container reserves pt-[130px] for this row
+          either way, so hiding it only left a gap. */}
+      {!isResultsMode && (
         <div className="pointer-events-none fixed inset-x-0 top-3 z-20">
           {/* House wordmark — pinned to the far-left edge of the screen (canvas 6d),
               its own row above the centred search. Non-interactive, so it never

@@ -401,9 +401,7 @@ export async function fetchProductsByIds(
 
   const { data, error } = await supabase
     .from("products")
-    .select(
-      "id, product_name, brand, price, currency, image_url, thumbnail_url, color, type, type_category, gender, fit, feel, vibes, category_id, color_group, size, product_url, placement, placement_x, placement_y, image_length, body_parts_visible",
-    )
+    .select(PRODUCT_COLUMNS)
     .in("id", ids)
 
   if (error) {
@@ -681,9 +679,45 @@ async function getProductFilterOptions(typeFilters?: Database["public"]["Enums"]
   }
 }
 
+export const BROWSE_PRODUCTS_PAGE = 24
+
+const PRODUCT_COLUMNS =
+  "id, product_name, brand, price, currency, image_url, thumbnail_url, color, type, type_category, gender, fit, feel, vibes, category_id, color_group, size, product_url, placement, placement_x, placement_y, image_length, body_parts_visible"
+
+interface BrowseProductsInput {
+  slot: Database["public"]["Enums"]["item_type"]
+  gender: Gender
+  cursor?: number | null
+}
+
+/** No-query browse for a slot: newest pieces the profile gender can wear. */
+export async function browseProducts({ slot, gender, cursor }: BrowseProductsInput): Promise<SearchFunctionResponse<ProductSearchResult>> {
+  const from = Math.max(cursor ?? 0, 0)
+  let query = supabase
+    .from("products")
+    .select(PRODUCT_COLUMNS)
+    .eq("type", slot)
+    .not("image_url", "is", null)
+  if (gender === "male" || gender === "female") {
+    query = query.or(`${buildGenderFilter(gender)},gender.is.null`)
+  }
+  const { data, error } = await query.order("created_at", { ascending: false }).range(from, from + BROWSE_PRODUCTS_PAGE - 1)
+  if (error) {
+    throw new Error(error.message)
+  }
+  const rows = data ?? []
+  const results = rows
+    .map((row) => mapProductRowToResult(row as unknown as Record<string, unknown>))
+    .filter((row): row is ProductSearchResult => Boolean(row))
+  // Base pagination on the raw row count, not results.length — a row that fails mapping
+  // shouldn't be mistaken for the end of the list.
+  return { results, nextCursor: rows.length === BROWSE_PRODUCTS_PAGE ? from + BROWSE_PRODUCTS_PAGE : null }
+}
+
 export const searchService = {
   getBrowseCollections,
   searchOutfits,
   searchProducts,
   getProductFilterOptions,
+  browseProducts,
 }

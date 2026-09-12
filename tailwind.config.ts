@@ -152,6 +152,7 @@ export default {
 					2: 'hsl(var(--hairline-2))',
 					3: 'hsl(var(--hairline-3))',
 					4: 'hsl(var(--hairline-4))',
+					dashed: 'hsl(var(--hairline-dashed))',
 					dashed: 'hsl(var(--border-dashed))'
 				},
 				warp: 'hsl(var(--warp))'
@@ -180,6 +181,15 @@ export default {
 				'control-header': '32px',
 				'control-header-title': '52px',
 				'control-nav': '55px'
+			},
+			width: {
+				// The same scale, so `h-control-x w-control-x` makes a square icon
+				// button. Without these the `w-` classes generated nothing and the
+				// button collapsed to its icon's width — a rectangle, not a square.
+				'control-primary': '44px',
+				'control-secondary': '40px',
+				'control-field': '40px',
+				'control-chip': '26px'
 			},
 			keyframes: {
 				'accordion-down': {

@@ -55,6 +55,13 @@ interface OutfitInspirationCardProps {
   allowEmptyMannequin?: boolean
   /** Override the data-driven mannequin choice for a dedicated preview surface. */
   avatarPlacementMode?: "auto" | "2d" | "3d"
+  /** See AvatarRenderer. Presets set this; full-figure surfaces leave it progressive. */
+  textureQuality?: "progressive" | "thumbnail"
+  /**
+   * Vertical nudge of the centred figure, in card pixels; negative lifts it. For
+   * surfaces where a footer or overlay makes dead-centre read as sitting low.
+   */
+  avatarOffsetY?: number
   onSlotSelect?: (slot: "top" | "bottom" | "shoes") => void
   /** Ref to the avatar container for snapshot capture */
   avatarRef?: React.Ref<HTMLDivElement>
@@ -126,6 +133,8 @@ export function OutfitInspirationCard({
   onItemBoundsChange,
   allowEmptyMannequin = false,
   avatarPlacementMode = "auto",
+  textureQuality = "progressive",
+  avatarOffsetY = 0,
   onSlotSelect,
   avatarRef,
   framed = false,
@@ -479,7 +488,7 @@ export function OutfitInspirationCard({
               style={{
                 height: renderBoxHeight,
                 width: renderBoxWidth,
-                transform: `translate(-50%, -50%) scale(${normalizedScale})`,
+                transform: `translate(-50%, calc(-50% + ${avatarOffsetY}px)) scale(${normalizedScale})`,
                 transformOrigin: "center",
               }}
             >
@@ -512,6 +521,7 @@ export function OutfitInspirationCard({
                 avatarRef={avatarRef}
                 fetchPriority={isHighPriority ? "high" : "low"}
                 placementMode={avatarPlacementMode}
+                textureQuality={textureQuality}
               />
             </div>
           ) : (
@@ -543,6 +553,7 @@ export function OutfitInspirationCard({
               avatarRef={avatarRef}
               fetchPriority={isHighPriority ? "high" : "low"}
               placementMode={avatarPlacementMode}
+                textureQuality={textureQuality}
             />
           )
         ) : shouldRenderFallbackImage ? (

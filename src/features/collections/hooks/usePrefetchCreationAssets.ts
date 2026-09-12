@@ -10,36 +10,31 @@ const resolveGender = (value?: string | null): "male" | "female" => (value === "
 type PrefetchCreationAssetsOptions = {
   creations: Creation[]
   currentSlide: number
-  vtoImageErrorUrls: Record<string, string>
 }
 
-export function usePrefetchCreationAssets({
-  creations,
-  currentSlide,
-  vtoImageErrorUrls,
-}: PrefetchCreationAssetsOptions) {
+/**
+ * Warms the outfit and mannequin queries for the look on screen and its two
+ * neighbours, so a swipe lands on a tile that can draw at once.
+ *
+ * This used to skip any creation that had a try-on photo, because the old tab
+ * showed the photo for those instead of the mannequin. The tab always renders
+ * the mannequin now, so that skip left exactly the try-on creations mounting
+ * cold and flashing a blank tile mid-swipe.
+ */
+export function usePrefetchCreationAssets({ creations, currentSlide }: PrefetchCreationAssetsOptions) {
   const queryClient = useQueryClient()
 
   useEffect(() => {
     if (!creations.length) return
-    const wrap = (index: number) => (index + creations.length) % creations.length
-    const indices = Array.from(new Set([currentSlide, wrap(currentSlide + 1)]))
+    const indices = [currentSlide - 1, currentSlide, currentSlide + 1].filter(
+      (i) => i >= 0 && i < creations.length,
+    )
 
-    indices.forEach((idx) => {
+    for (const idx of indices) {
       const creation = creations[idx]
-      const outfitId = creation?.outfitId
-      if (!outfitId) return
-      const gender = resolveGender(creation.gender)
-      const vtoUrl = creation.vtoImageUrl
-      const vtoErrored = Boolean(vtoUrl && vtoImageErrorUrls[outfitId] === vtoUrl)
-      const needsAvatarPreview = !vtoUrl || vtoErrored
-
-      if (!needsAvatarPreview) {
-        return
-      }
-
-      queryClient.prefetchQuery(getMannequinConfigQueryOptions({ gender }))
-      queryClient.prefetchQuery(getOutfitProductsQueryOptions(outfitId))
-    })
-  }, [creations, currentSlide, queryClient, vtoImageErrorUrls])
+      if (!creation?.outfitId) continue
+      queryClient.prefetchQuery(getMannequinConfigQueryOptions({ gender: resolveGender(creation.gender) }))
+      queryClient.prefetchQuery(getOutfitProductsQueryOptions(creation.outfitId))
+    }
+  }, [creations, currentSlide, queryClient])
 }

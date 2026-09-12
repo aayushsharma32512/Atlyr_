@@ -489,7 +489,7 @@ export function StudioScrollUpView() {
   const collectionsOverviewQuery = useCollectionsOverview()
   const moodboards = collectionsOverviewQuery.data?.moodboards ?? []
   const selectableMoodboards = useMemo(
-    () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites" || m.slug === "wardrobe"),
+    () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites"),
     [moodboards],
   )
   // The boards this exact outfit id is really on right now, so the save
@@ -707,15 +707,13 @@ export function StudioScrollUpView() {
       >
         <section className={cn(
           "flex h-[36vh] fixed top-0 left-0 right-0 flex-none items-end justify-center gap-3 px-4 bg-card py-3",
-          tour.isHighlighted("back-from-details") ? "z-[75]" : "z-10"
+          "z-10"
         )}>
           <div className={cn(
             "flex h-full w-12 flex-col items-center justify-between",
-            tour.isHighlighted("back-from-details") && "z-[75] relative"
           )}>
             <ScreenHeader
               onAction={handleBack}
-              highlightAction={tour.isHighlighted("back-from-details")}
               className="w-full justify-center px-0 pt-0 pb-0"
             />
             <LeftActionRail

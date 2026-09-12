@@ -25,6 +25,8 @@ export interface OutfitCardProps {
   onToggleSave?: () => void
   onLongPressSave?: () => void
   className?: string
+  /** Off for 96w rail tiles: figure only, no 40h name row. */
+  footer?: boolean
 }
 
 // Studio's frame, fitted by height, keeps the figure head to toe.
@@ -45,6 +47,7 @@ export function OutfitCard({
   onToggleSave,
   onLongPressSave,
   className,
+  footer = true,
 }: OutfitCardProps) {
   const interactive = Boolean(onSelect)
   const pinPress = useLongPress(onToggleSave, onLongPressSave)
@@ -99,15 +102,17 @@ export function OutfitCard({
           </button>
         ) : null}
       </div>
-      <div
-        className={cn(
-          "flex min-h-10 shrink-0 flex-col justify-center border-t px-2 py-1",
-          dark ? "border-ink-line" : "border-hairline",
-        )}
-      >
-        <p className={cn("truncate text-card font-semibold", dark ? "text-background" : "text-ink")}>{title}</p>
-        {by ? <p className={cn("truncate text-chip", dark ? "text-on-ink-1" : "text-taupe")}>{by}</p> : null}
-      </div>
+      {footer ? (
+        <div
+          className={cn(
+            "flex min-h-10 shrink-0 flex-col justify-center border-t px-2 py-1",
+            dark ? "border-ink-line" : "border-hairline",
+          )}
+        >
+          <p className={cn("truncate text-card font-semibold", dark ? "text-background" : "text-ink")}>{title}</p>
+          {by ? <p className={cn("truncate text-chip", dark ? "text-on-ink-1" : "text-taupe")}>{by}</p> : null}
+        </div>
+      ) : null}
     </div>
   )
 }

@@ -12,7 +12,8 @@ import { useEngagementAnalytics } from "@/integrations/posthog/engagementTrackin
 import { trackTryonFlowStarted } from "@/integrations/posthog/engagementTracking/tryon/tryonTracking"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
-import type { Creation } from "@/services/collections/collectionsService"
+import { TryOnPreviewOverlay } from "@/features/home/components/TryOnPreviewOverlay"
+import type { Creation, TryOn } from "@/services/collections/collectionsService"
 import type { StudioProductTraySlot } from "@/services/studio/studioService"
 
 import { useCreations } from "../hooks/useMoodboards"
@@ -42,6 +43,7 @@ export function CreationsTab() {
 
   const [currentSlide, setCurrentSlide] = useState(0)
   const [isExpanded, setIsExpanded] = useState(false)
+  const [isTryOnOpen, setIsTryOnOpen] = useState(false)
   const trackRef = useRef<HTMLDivElement>(null)
 
   const creationsQuery = useCreations(PAGE_SIZE)
@@ -63,6 +65,25 @@ export function CreationsTab() {
   const activeOutfitQuery = useStudioOutfit(activeCreation?.outfitId ?? null)
   const activeOutfit = activeOutfitQuery.data?.outfit ?? null
 
+  // A look that already has a try-on should OPEN it, not generate another.
+  // vtoImageUrl is the finished render; the status only matters while there is
+  // no image yet, to say a run is in flight rather than offer a second one.
+  const existingTryOn = useMemo<TryOn | null>(() => {
+    if (!activeCreation?.vtoImageUrl) return null
+    return {
+      id: activeCreation.id,
+      storagePath: null,
+      status: "ready",
+      createdAt: activeCreation.createdAt,
+      outfitId: activeCreation.outfitId,
+      imageUrl: activeCreation.vtoImageUrl,
+    }
+  }, [activeCreation])
+  const isTryOnRunning =
+    !existingTryOn &&
+    (activeCreation?.latestGenerationStatus === "queued" ||
+      activeCreation?.latestGenerationStatus === "generating")
+
   const outfitItems = useMemo(
     () => ({
       topId: trayItems.find((item) => item.slot === "top")?.productId ?? null,
@@ -81,6 +102,10 @@ export function CreationsTab() {
     void fetchNextCreationsPage()
   }, [fetchNextCreationsPage, shouldLoadMore])
 
+  useEffect(() => {
+    setIsTryOnOpen(false)
+  }, [activeCreation?.id])
+
   // Escape closes the enlarged view, as a fullscreen layer should.
   useEffect(() => {
     if (!isExpanded) return
@@ -94,7 +119,7 @@ export function CreationsTab() {
   // Every hook runs before the guards below. Returning early from between them
   // is what produced "rendered more hooks than during the previous render" on
   // this screen once already.
-  usePrefetchCreationAssets({ creations, currentSlide, vtoImageErrorUrls: {} })
+  usePrefetchCreationAssets({ creations, currentSlide })
 
   const scrollToSlide = useCallback((index: number) => {
     const track = trackRef.current
@@ -106,22 +131,63 @@ export function CreationsTab() {
   const goTo = useCallback(
     (index: number) => {
       if (!totalSlides) return
-      const next = ((index % totalSlides) + totalSlides) % totalSlides
+      // Clamp, never wrap: a wrap from the last look to the first is a smooth
+      // scroll across every slide in between, churning the render window once
+      // per slide on the way.
+      const next = Math.max(0, Math.min(index, totalSlides - 1))
+      if (next === currentSlide) return
       setCurrentSlide(next)
       scrollToSlide(next)
     },
-    [scrollToSlide, totalSlides],
+    [currentSlide, scrollToSlide, totalSlides],
   )
 
-  // The track is the source of truth while a swipe is in flight, so the dots and
-  // the piece rows follow the finger.
-  const handleTrackScroll = useCallback(() => {
+  // currentSlide is committed from the track only once it has SETTLED, never
+  // per scroll event. Per-event, the first half of an arrow-driven smooth scroll
+  // still rounds to the slide being left, so one tap flipped the index
+  // 1 → 0 → 1: each flip re-targeted the piece rows to the other outfit and
+  // shifted the ±1 render window, unmounting and remounting a mannequin canvas.
+  // That flicker is the "skipping" users reported.
+  const settleTimerRef = useRef<number | null>(null)
+  const commitSlideFromTrack = useCallback(() => {
     const track = trackRef.current
     if (!track || !track.clientWidth) return
     const index = Math.round(track.scrollLeft / track.clientWidth)
     const clamped = Math.max(0, Math.min(index, totalSlides - 1))
     setCurrentSlide((prev) => (prev === clamped ? prev : clamped))
   }, [totalSlides])
+
+  // scrollend where the browser has it; a short debounce where it does not
+  // (Safari before 17). Both routes land on the same commit.
+  useEffect(() => {
+    const track = trackRef.current
+    if (!track) return
+    const clearTimer = () => {
+      if (settleTimerRef.current !== null) window.clearTimeout(settleTimerRef.current)
+      settleTimerRef.current = null
+    }
+    const onScroll = () => {
+      clearTimer()
+      settleTimerRef.current = window.setTimeout(commitSlideFromTrack, 120)
+    }
+    const onScrollEnd = () => {
+      clearTimer()
+      commitSlideFromTrack()
+    }
+    track.addEventListener("scroll", onScroll, { passive: true })
+    track.addEventListener("scrollend", onScrollEnd)
+    return () => {
+      clearTimer()
+      track.removeEventListener("scroll", onScroll)
+      track.removeEventListener("scrollend", onScrollEnd)
+    }
+  }, [commitSlideFromTrack])
+
+  // If the list shrinks under us (a creation deleted elsewhere), keep the index
+  // on a real slide rather than pointing past the end.
+  useEffect(() => {
+    if (totalSlides && currentSlide > totalSlides - 1) setCurrentSlide(totalSlides - 1)
+  }, [currentSlide, totalSlides])
 
   const handleOpenStudio = useCallback(() => {
     if (!activeCreation?.outfitId) return
@@ -209,7 +275,6 @@ export function CreationsTab() {
       <div className="relative min-h-0 flex-1 overflow-hidden border-y border-hairline bg-skeleton">
         <div
           ref={trackRef}
-          onScroll={handleTrackScroll}
           className="flex h-full w-full snap-x snap-mandatory overflow-x-auto overflow-y-hidden scrollbar-hide"
         >
           {creations.map((creation, index) => (
@@ -256,16 +321,18 @@ export function CreationsTab() {
             <button
               type="button"
               onClick={() => goTo(currentSlide - 1)}
+              disabled={currentSlide === 0}
               aria-label="Previous look"
-              className="absolute left-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-hairline bg-card/85 text-ink backdrop-blur"
+              className="absolute left-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-hairline bg-card/85 text-ink backdrop-blur disabled:opacity-40"
             >
               <Icons.carouselPrev className="h-4 w-4" aria-hidden="true" />
             </button>
             <button
               type="button"
               onClick={() => goTo(currentSlide + 1)}
+              disabled={currentSlide === totalSlides - 1}
               aria-label="Next look"
-              className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-hairline bg-card/85 text-ink backdrop-blur"
+              className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-hairline bg-card/85 text-ink backdrop-blur disabled:opacity-40"
             >
               <Icons.carouselNext className="h-4 w-4" aria-hidden="true" />
             </button>
@@ -302,14 +369,26 @@ export function CreationsTab() {
               <Icons.navStudio className="h-5 w-5" aria-hidden="true" />
               Studio
             </button>
-            <button
-              type="button"
-              onClick={handleTryOn}
-              className="flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control bg-primary text-label font-semibold text-primary-foreground"
-            >
-              <Icons.tryOn className="h-5 w-5" aria-hidden="true" />
-              Try on
-            </button>
+            {existingTryOn ? (
+              <button
+                type="button"
+                onClick={() => setIsTryOnOpen(true)}
+                className="flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control bg-primary text-label font-semibold text-primary-foreground"
+              >
+                <Icons.tryOn className="h-5 w-5" aria-hidden="true" />
+                View try-on
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleTryOn}
+                disabled={isTryOnRunning}
+                className="flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control bg-primary text-label font-semibold text-primary-foreground disabled:opacity-60"
+              >
+                <Icons.tryOn className="h-5 w-5" aria-hidden="true" />
+                {isTryOnRunning ? "Try-on running…" : "Try on"}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -360,6 +439,21 @@ export function CreationsTab() {
             disableAvatarSwipe
           />
         </div>
+      </div>
+    ) : null}
+
+    {/* Outside the pinned frame for the same reason as the enlarge layer: it has
+        to clear the Collections header (z-50) and the nav (z-20). The overlay
+        owns its own z-index, so the wrapper only lifts the stacking context. */}
+    {isTryOnOpen && existingTryOn ? (
+      <div className="fixed inset-0 z-[60]">
+        <TryOnPreviewOverlay
+          items={[existingTryOn]}
+          activeIndex={0}
+          onClose={() => setIsTryOnOpen(false)}
+          onIndexChange={() => {}}
+          onOpenStudio={handleOpenStudio}
+        />
       </div>
     ) : null}
     </>

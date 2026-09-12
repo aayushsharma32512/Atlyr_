@@ -532,7 +532,7 @@ export default function InspirationImportScreen() {
           <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-muted-foreground">
             {isStaged
               ? "Your selected online products and catalogue pieces are stored. The Studio outfit will be created after ingestion is available and completes successfully."
-              : "Continue styling the selected pieces in Studio. Favorites and Wardrobe remain independent."}
+              : "Continue styling the selected pieces in Studio. Favorites stays independent."}
           </p>
           <div className="mt-7 space-y-2 border-y border-hairline py-5 text-left text-sm">
             <div className="flex justify-between"><span>Catalogue items</span><span>{record.selections.catalogueProductIds.length}</span></div>
@@ -680,15 +680,9 @@ export default function InspirationImportScreen() {
                   results={catalogueResults}
                   selectedId={activePreviewId}
                   isFavorite={productSaveActions.isSaved}
-                  isInWardrobe={productSaveActions.isInWardrobe}
                   isSaving={productSaveActions.isSaving}
                   onSelect={selectInventoryResult}
                   onToggleFavorite={(id, nextSaved, position) => void productSaveActions.onToggleSave(
-                    id,
-                    nextSaved,
-                    { layout: "horizontal_rail", position },
-                  )}
-                  onToggleWardrobe={(id, nextSaved, position) => void productSaveActions.onToggleWardrobe(
                     id,
                     nextSaved,
                     { layout: "horizontal_rail", position },
