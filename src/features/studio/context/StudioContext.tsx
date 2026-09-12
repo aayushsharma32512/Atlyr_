@@ -11,6 +11,7 @@ import {
   parseStudioSearchParams,
   type SlotIdMap,
 } from "@/features/studio/utils/studioUrlState"
+import { readStoredSearch, writeStoredSearch } from "@/features/studio/utils/searchSession"
 import { studioKeys } from "@/features/studio/queryKeys"
 import { studioService } from "@/services/studio/studioService"
 
@@ -69,36 +70,12 @@ interface StudioContextValue {
 const StudioContext = createContext<StudioContextValue | undefined>(undefined)
 
 // ---------- Studio search session persistence ----------
-const STUDIO_SEARCH_SESSION_PREFIX = "atlyr:studio:search:"
 
-/**
- * Called as a lazy useState initializer (runs synchronously during the first render).
- * Reads the outfitId from the current URL and loads any saved per-slot search states for it.
- * Sets draftText = committedText so the search bar shows the last committed query on restore.
- */
+/** Lazy useState initializer — the saved searches for the outfit in the URL. */
 function loadSlotSearchStates(): SlotSearchStates {
   if (typeof window === "undefined") return {}
-  try {
-    const params = new URLSearchParams(window.location.search)
-    const parsed = parseStudioSearchParams(params)
-    const outfitId = parsed.outfitId ?? null
-    if (!outfitId) return {}
-
-    const raw = window.sessionStorage.getItem(`${STUDIO_SEARCH_SESSION_PREFIX}${outfitId}`)
-    if (!raw) return {}
-
-    const stored: SlotSearchStates = JSON.parse(raw)
-    const result: SlotSearchStates = {}
-    for (const [slot, state] of Object.entries(stored)) {
-      if (state.committedText) {
-        // Mirror committedText → draftText so the search bar shows the restored query
-        result[slot] = { ...state, draftText: state.committedText }
-      }
-    }
-    return result
-  } catch {
-    return {}
-  }
+  const outfitId = parseStudioSearchParams(new URLSearchParams(window.location.search)).outfitId
+  return outfitId ? readStoredSearch(outfitId) : {}
 }
 
 // ---------- End persistence helpers ----------
@@ -204,38 +181,9 @@ export function StudioContextProvider({ children }: { children: ReactNode }) {
     const currentOutfitId = selectedOutfitId
     const prevOutfitId = savedOutfitIdRef.current
 
-    const saveStates = (outfitId: string, states: SlotSearchStates) => {
-      const toSave: SlotSearchStates = {}
-      for (const [slot, state] of Object.entries(states)) {
-        if (state.committedText) toSave[slot] = state
-      }
-      if (Object.keys(toSave).length === 0) return
-      try {
-        window.sessionStorage.setItem(
-          `${STUDIO_SEARCH_SESSION_PREFIX}${outfitId}`,
-          JSON.stringify(toSave),
-        )
-      } catch {
-        // Quota / private-mode — ignore
-      }
-    }
+    const saveStates = writeStoredSearch
 
-    const loadStates = (outfitId: string): SlotSearchStates | null => {
-      try {
-        const raw = window.sessionStorage.getItem(`${STUDIO_SEARCH_SESSION_PREFIX}${outfitId}`)
-        if (!raw) return null
-        const stored: SlotSearchStates = JSON.parse(raw)
-        const result: SlotSearchStates = {}
-        for (const [slot, state] of Object.entries(stored)) {
-          if (state.committedText) {
-            result[slot] = { ...state, draftText: state.committedText }
-          }
-        }
-        return Object.keys(result).length > 0 ? result : null
-      } catch {
-        return null
-      }
-    }
+    const loadStates = readStoredSearch
 
     if (prevOutfitId !== currentOutfitId) {
       // Outfit changed — flush current states under the OLD outfit's key first.
@@ -246,16 +194,7 @@ export function StudioContextProvider({ children }: { children: ReactNode }) {
       savedOutfitIdRef.current = currentOutfitId
 
       // Load saved states for the new outfit (or reset to empty).
-      if (currentOutfitId) {
-        const loaded = loadStates(currentOutfitId)
-        if (loaded) {
-          setSlotSearchStates(loaded)
-        } else {
-          setSlotSearchStates({})
-        }
-      } else {
-        setSlotSearchStates({})
-      }
+      setSlotSearchStates(currentOutfitId ? loadStates(currentOutfitId) : {})
     } else if (currentOutfitId) {
       // Same outfit — just keep sessionStorage up to date.
       saveStates(currentOutfitId, slotSearchStates)
@@ -268,21 +207,8 @@ export function StudioContextProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     return () => {
       const outfitId = latestSelectedOutfitIdRef.current
-      const states = latestSlotSearchStatesRef.current
       if (!outfitId || typeof window === "undefined") return
-      const toSave: SlotSearchStates = {}
-      for (const [slot, state] of Object.entries(states)) {
-        if (state.committedText) toSave[slot] = state
-      }
-      if (Object.keys(toSave).length === 0) return
-      try {
-        window.sessionStorage.setItem(
-          `${STUDIO_SEARCH_SESSION_PREFIX}${outfitId}`,
-          JSON.stringify(toSave),
-        )
-      } catch {
-        // ignore
-      }
+      writeStoredSearch(outfitId, latestSlotSearchStatesRef.current)
     }
   }, []) // empty deps — runs exactly once on unmount
 

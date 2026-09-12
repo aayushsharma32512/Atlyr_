@@ -1,62 +1,51 @@
-import { Bookmark, SquareUserRound } from "lucide-react"
-
-import { PriceDisplay } from "@/design-system/primitives"
+import { Icons } from "@/design-system/icons"
 import { cn } from "@/lib/utils"
 
 /**
- * Canvas 7a bottom bar — three-up: Save, Try on, and the priced details
- * callout.
- *
- * The callout is deliberately *not* a button: dashed border, translucent, no
- * fill. It reads as a receipt stub you swipe up, which is what it does
- * (`openScrollUp`). Save is gold because saving is ownership, not action;
- * Try on is the screen's single filled terracotta, per the colour law.
+ * Canvas bottom bar — Save (pin, 40×40) · Try on (the screen's one terracotta
+ * fill) · Find items (dashed outline). No price, no receipt stub: brief §6.7.
  */
 export interface StudioActionBarProps {
-  total: number
-  pieceCount: number
   isReadOnly?: boolean
+  saved?: boolean
   onSave?: () => void
   onTryOn?: () => void
-  onDetails?: () => void
+  onFindItems?: () => void
   highlightSave?: boolean
   highlightTryOn?: boolean
-  highlightDetails?: boolean
+  highlightFindItems?: boolean
   className?: string
 }
 
+const RING = "relative z-[75] ring-2 ring-primary ring-offset-2 ring-offset-background"
+
 export function StudioActionBar({
-  total,
-  pieceCount,
   isReadOnly = false,
+  saved = false,
   onSave,
   onTryOn,
-  onDetails,
+  onFindItems,
   highlightSave = false,
   highlightTryOn = false,
-  highlightDetails = false,
+  highlightFindItems = false,
   className,
 }: StudioActionBarProps) {
   return (
-    <div
-      className={cn(
-        "flex items-stretch gap-2.5 bg-gradient-to-t from-background from-[34%] to-transparent px-5 pb-5 pt-2.5",
-        className,
-      )}
-    >
+    <div className={cn("flex items-center gap-2", className)}>
       <button
         type="button"
+        aria-label="Save this look"
+        aria-pressed={saved}
         disabled={isReadOnly}
         onClick={isReadOnly ? undefined : onSave}
         className={cn(
-          "flex flex-1 items-center justify-center gap-1.5 rounded-[3px] border border-gold",
-          "bg-card py-3 text-[11px] font-bold text-gold-deep transition-colors",
-          "hover:bg-gold/5 disabled:cursor-not-allowed disabled:opacity-60",
-          highlightSave && "relative z-[75] ring-2 ring-primary ring-offset-2 ring-offset-background",
+          "box-border flex h-control-secondary w-control-secondary flex-none items-center justify-center",
+          "rounded-control border border-hairline bg-card text-ink",
+          "disabled:cursor-not-allowed disabled:opacity-60",
+          highlightSave && RING,
         )}
       >
-        <Bookmark className="size-3.5" aria-hidden="true" />
-        Save
+        <Icons.save className="h-5 w-5" fill={saved ? "currentColor" : "none"} aria-hidden="true" />
       </button>
 
       <button
@@ -64,38 +53,29 @@ export function StudioActionBar({
         disabled={isReadOnly}
         onClick={isReadOnly ? undefined : onTryOn}
         className={cn(
-          "flex flex-1 items-center justify-center gap-1.5 rounded-[3px] bg-primary py-3",
-          "text-[11px] font-bold text-primary-foreground shadow-sm transition-shadow",
-          "hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60",
-          highlightTryOn && "relative z-[75] ring-2 ring-primary ring-offset-2 ring-offset-background",
+          "box-border flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control",
+          "bg-terracotta text-label font-semibold text-background",
+          "disabled:cursor-not-allowed disabled:opacity-60",
+          highlightTryOn && RING,
         )}
       >
-        <SquareUserRound className="size-3.5" aria-hidden="true" />
+        <Icons.tryOn className="h-5 w-5" aria-hidden="true" />
         Try on
       </button>
 
       <button
         type="button"
-        onClick={onDetails}
-        aria-label="Shop the look"
+        disabled={isReadOnly}
+        onClick={isReadOnly ? undefined : onFindItems}
         className={cn(
-          "flex flex-[1.15] flex-col justify-center gap-px rounded-[5px] border border-dashed",
-          "border-hairline-4 bg-card/50 px-[11px] py-1.5 text-left transition-colors hover:bg-card/80",
-          highlightDetails && "relative z-[75] ring-2 ring-primary ring-offset-2 ring-offset-background",
+          "box-border flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control",
+          "border border-dashed border-hairline-dashed bg-card/50 text-label font-semibold text-ink",
+          "disabled:cursor-not-allowed disabled:opacity-60",
+          highlightFindItems && RING,
         )}
       >
-        <span className="flex items-baseline gap-1.5">
-          <PriceDisplay
-            price={total}
-            className="text-[12.5px] font-bold tabular-nums text-foreground"
-          />
-          <span className="text-[7.5px] font-medium text-muted-foreground">
-            {pieceCount === 1 ? "1 piece" : `${pieceCount} pieces`}
-          </span>
-        </span>
-        <span className="text-[8px] font-semibold tracking-[0.1em] text-terracotta">
-          ⌃ SWIPE FOR DETAILS
-        </span>
+        <Icons.findItems className="h-5 w-5" aria-hidden="true" />
+        Find items
       </button>
     </div>
   )

@@ -1,27 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useNavigate, useNavigationType, useSearchParams } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
-import {
-  ChevronLeft,
-  Columns2,
-  Redo2,
-  RotateCcw,
-  Share,
-  Shuffle,
-  Sparkles,
-  Undo2,
-} from "lucide-react"
+import { ChevronLeft, Minimize2, Redo2, RotateCcw, Share, Undo2 } from "lucide-react"
 
-import { cn } from "@/lib/utils"
-import { IconButton, OutfitInspirationTile, SaveOutfitDrawer } from "@/design-system/primitives"
-import { CanvasControlCluster } from "./components/CanvasControlCluster"
+import { IconButton, OutfitInspirationTile } from "@/design-system/primitives"
 import { StudioActionBar } from "./components/StudioActionBar"
-import { StudioSlotRows } from "./components/StudioSlotRows"
-import { TraySheet, type TraySheetMode } from "./components/TraySheet"
-import { ProductPeekCard, type ProductPeekItem } from "./components/ProductPeekCard"
+import { StudioCanvas } from "./components/StudioCanvas"
+import { StudioPieceRows } from "./components/StudioPieceRows"
+import { StudioSaveCard } from "./components/StudioSaveCard"
+import { StudioFocusSheet } from "./components/StudioFocusSheet"
+import { useStudioFocus } from "./hooks/useStudioFocus"
+import { useShareLook } from "@/features/share/hooks/useShareLink"
+import { useStudioProductImages } from "./hooks/useStudioProductImages"
+import { toDisplayImages } from "./utils/productImages"
+import {
+  CANVAS_SLOTS,
+  toTraySlot,
+  type StudioCanvasSlot,
+} from "./constants/layering"
 import type { OutfitItem } from "@/types"
-import { mapTrayItemToProductDetail } from "@/services/studio/studioService"
-import type { StudioProductTrayItem } from "@/services/studio/studioService"
 import { StudioLayout } from "./StudioLayout"
 import { useStudioTourContext } from "./context/StudioTourContext"
 import { useStudioContext } from "./context/StudioContext"
@@ -33,7 +30,7 @@ import { prefetchStudioAlternatives } from "@/features/studio/hooks/useStudioAlt
 import { useStudioSwapActions } from "@/features/studio/hooks/useStudioSwapActions"
 import { prefetchStudioSearchResults } from "@/features/studio/hooks/useStudioSearchResults"
 import { useStudioResolvedSlots } from "@/features/studio/hooks/useStudioResolvedSlots"
-import type { StudioAlternativeProduct, StudioProductTraySlot } from "@/services/studio/studioService"
+import type { StudioProductTrayItem, StudioProductTraySlot } from "@/services/studio/studioService"
 import { buildStudioSearchParams, buildStudioUrl, parseStudioSearchParams, type SlotIdMap } from "@/features/studio/utils/studioUrlState"
 import { mapLegacyOutfitItemsToStudioItems, mapTrayItemToStudioRenderedItem } from "@/features/studio/mappers/renderedItemMapper"
 import type { StudioRenderedItem } from "@/features/studio/types"
@@ -51,28 +48,27 @@ import {
 import { useUpdateOutfit } from "@/features/outfits/hooks/useUpdateOutfit"
 import { useAuth } from "@/contexts/AuthContext"
 import { useToast } from "@/hooks/use-toast"
+import { useGoBack } from "@/hooks/useGoBack"
 import { resolveOutfitAttribution } from "@/utils/outfitAttribution"
 import { useStudioHistory } from "@/features/studio/hooks/useStudioHistory"
 import { useLastStudioOutfit } from "@/features/studio/hooks/useLastStudioOutfit"
 import { useStarterOutfit } from "@/features/outfits/hooks/useStarterOutfit"
-import { useStudioRemix } from "@/features/studio/hooks/useStudioRemix"
 import { useStudioShareMode } from "@/features/studio/hooks/useStudioShareMode"
 import { mergeOutfitItemsWithTray } from "@/features/studio/utils/mergeOutfitItemsWithTray"
 import { useOutfitSnapshot } from "@/features/outfits/hooks/useOutfitSnapshot"
 import { useOptionalAdminGender } from "@/features/admin/providers/AdminGenderContext"
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
 import { setPendingStudioComboChange, useStudioCombinationTracking } from "@/integrations/posthog/engagementTracking/studio/studioTracking"
+import { trackProductBuyClicked } from "@/integrations/posthog/engagementTracking/entityEvents"
 import { trackTryonFlowStarted } from "@/integrations/posthog/engagementTracking/tryon/tryonTracking"
 
 const DEFAULT_AVATAR_HEAD = "/avatars/Default.png"
-const isHttpUrl = (value?: string | null) => Boolean(value && /^https?:\/\//i.test(value))
 
-/** Labels the 7e peek's "IN YOUR STUDIO · {SLOT}" line. */
-const PEEK_SLOT_LABELS: Record<StudioProductTraySlot, string> = {
-  top: "Topwear",
-  bottom: "Bottomwear",
-  shoes: "Footwear",
-}
+/** Where back goes when there is no in-app entry behind Studio. */
+const BACK_FALLBACK = "/home"
+/** A guest on a shared look has no home to go to. */
+const GUEST_BACK_FALLBACK = "/"
+const isHttpUrl = (value?: string | null) => Boolean(value && /^https?:\/\//i.test(value))
 
 export function StudioScreenView() {
   const navigate = useNavigate()
@@ -86,10 +82,8 @@ export function StudioScreenView() {
   const bottomIdParam = parsedParams.slotIds.bottom
   const shoesIdParam = parsedParams.slotIds.shoes
   const {
-    openAlternatives,
     openAlternativesSplit,
     openProduct,
-    openScrollUp,
     selectedOutfitId,
     setSelectedOutfitId,
     setSlotProductId,
@@ -112,7 +106,7 @@ export function StudioScreenView() {
   const collectionsOverviewQuery = useCollectionsOverview()
   const moodboards = collectionsOverviewQuery.data?.moodboards ?? []
   const selectableMoodboards = useMemo(
-    () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites" || m.slug === "wardrobe"),
+    () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites"),
     [moodboards],
   )
   const moodboardsLoading = collectionsOverviewQuery.isLoading
@@ -195,11 +189,6 @@ export function StudioScreenView() {
       slotProductIds.top,
     ],
   )
-
-  const { remix, isRemixing } = useStudioRemix({
-    gender: avatarGender,
-    excludeOutfitId: resolvedOutfitId,
-  })
 
   const [hasHydratedFromUrl, setHasHydratedFromUrl] = useState(false)
 
@@ -471,40 +460,9 @@ export function StudioScreenView() {
   // vaul drawer animates out *after* onOpenChange(false), so clearing the slot
   // to close would swap the sheet's contents — or unmount it outright —
   // mid-slide. Keeping the slot lets it animate away showing what you dismissed.
-  const [traySheetOpen, setTraySheetOpen] = useState(false)
-  const [traySheetSlot, setTraySheetSlot] = useState<StudioProductTraySlot>("top")
-  const [traySheetMode, setTraySheetMode] = useState<TraySheetMode>("alternates")
+  const { focus, openFocus, closeFocus, stepFocus } = useStudioFocus()
 
-  const openTraySheet = useCallback(
-    (slot: StudioProductTraySlot, mode: TraySheetMode = "alternates") => {
-      setTraySheetSlot(slot)
-      setTraySheetMode(mode)
-      setTraySheetOpen(true)
-      if (syncOutfitId && mode === "alternates") {
-        prefetchStudioAlternatives(queryClient, { outfitId: syncOutfitId, slot, gender }).catch(() => {
-          // Prefetch failures should not block the sheet — it fetches on open.
-        })
-      }
-    },
-    [gender, queryClient, syncOutfitId],
-  )
-
-  /** Which worn slot the 7e peek is dived into. See the note on `traySheetOpen`. */
-  const [peekOpen, setPeekOpen] = useState(false)
-  const [peekSlot, setPeekSlot] = useState<StudioProductTraySlot>("top")
-
-  /**
-   * Tapping a garment on the model opens the 7c split view on that slot.
-   *
-   * The model is the spatial control — you poke a piece to go browsing what else
-   * could go there. Details are the rows' job: they already carry name, brand
-   * and price, so tapping one to get *more* is the natural next step. I had
-   * these the other way round and it read backwards in use.
-   *
-   * `openAlternatives` rather than `openAlternativesSplit` because it carries
-   * the tapped item through, so 7c lands with the right slot AND the right worn
-   * hero instead of falling back to whatever slot was last active.
-   */
+  /** Tapping a garment on the figure focuses it; the rows go to Alternates. */
   const handleAvatarItemSelect = useCallback(
     (item: OutfitItem) => {
       if (tour.isHighlighted("mannequin")) {
@@ -518,8 +476,8 @@ export function StudioScreenView() {
         return
       }
 
-      // Seed the hero cache and warm the rack, so 7c opens populated rather than
-      // on a spinner.
+      // Warm the rack and seed the hero, so Alternates opens populated when the
+      // focus sheet hands off to it.
       if (syncOutfitId) {
         const trayMatch = resolvedTrayItems.find((trayItem) => trayItem.slot === slot)
         if (trayMatch) {
@@ -529,38 +487,22 @@ export function StudioScreenView() {
           )
         }
         prefetchStudioAlternatives(queryClient, { outfitId: syncOutfitId, slot, gender }).catch(() => {
-          // Prefetch failures should not block navigation.
+          // Prefetch failures should not block the sheet.
         })
       }
 
-      openAlternatives(item, { outfitId: syncOutfitId })
+      openFocus(slot)
     },
     [
       gender,
       isViewOnly,
       normalizeSlot,
-      openAlternatives,
+      openFocus,
       queryClient,
       resolvedTrayItems,
       syncOutfitId,
       tour,
     ],
-  )
-
-  /** Slot row body — the 7e drawer for the piece already in that slot. */
-  const handlePeekSlot = useCallback((slot: StudioProductTraySlot) => {
-    setPeekSlot(slot)
-    setPeekOpen(true)
-  }, [])
-
-  const handleProductPress = useCallback(
-    (product: StudioProductTrayItem) => {
-      if (isViewOnly) {
-        return
-      }
-      openProduct(product.productId, { initialProduct: mapTrayItemToProductDetail(product) })
-    },
-    [isViewOnly, openProduct],
   )
 
   useEffect(() => {
@@ -571,74 +513,6 @@ export function StudioScreenView() {
     }
   }, [tour.isActive, tour.currentStepIndex, openAlternativesSplit, tour])
 
-
-  const handleDetailsPress = useCallback(() => {
-    if (isViewOnly) {
-      return
-    }
-    openScrollUp()
-  }, [isViewOnly, openScrollUp])
-
-  // const handleTouchStart = useCallback<React.TouchEventHandler<HTMLDivElement>>((event) => {
-  //   const touch = event.touches[0]
-  //   if (!touch) {
-  //     return
-  //   }
-  //   gestureStartYRef.current = touch.clientY
-  //   gestureStartXRef.current = touch.clientX
-  //   gestureActiveRef.current = true
-  // }, [])
-
-
-  // const handleTouchEnd = useCallback<React.TouchEventHandler<HTMLDivElement>>(
-  //   (event) => {
-  //     if (!gestureActiveRef.current || gestureStartYRef.current === null || gestureStartXRef.current === null) {
-  //       return
-  //     }
-  //     const touch = event.changedTouches[0]
-  //     if (!touch) {
-  //       return
-  //     }
-  //     const deltaY = touch.clientY - gestureStartYRef.current
-  //     const deltaX = touch.clientX - gestureStartXRef.current
-  //     gestureStartYRef.current = null
-  //     gestureStartXRef.current = null
-  //     gestureActiveRef.current = false
-  //     if (deltaY < -100 && Math.abs(deltaX) < 80 && !isViewOnly) {
-  //       openScrollUp()
-  //     }
-  //   },
-  //   [isViewOnly, openScrollUp],
-  // )
-
-  // const handlePointerDown = useCallback<React.PointerEventHandler<HTMLDivElement>>((event) => {
-  //   if (event.pointerType === "touch") {
-  //     return
-  //   }
-  //   gestureStartYRef.current = event.clientY
-  //   gestureStartXRef.current = event.clientX
-  //   gestureActiveRef.current = true
-  // }, [])
-
-  // const handlePointerUp = useCallback<React.PointerEventHandler<HTMLDivElement>>(
-  //   (event) => {
-  //     if (event.pointerType === "touch") {
-  //       return
-  //     }
-  //     if (!gestureActiveRef.current || gestureStartYRef.current === null || gestureStartXRef.current === null) {
-  //       return
-  //     }
-  //     const deltaY = event.clientY - gestureStartYRef.current
-  //     const deltaX = event.clientX - gestureStartXRef.current
-  //     gestureStartYRef.current = null
-  //     gestureStartXRef.current = null
-  //     gestureActiveRef.current = false
-  //     if (deltaY < -140 && Math.abs(deltaX) < 120 && !isViewOnly) {
-  //       openScrollUp()
-  //     }
-  //   },
-  //   [isViewOnly, openScrollUp],
-  // )
 
   const baseAvatarItems = useMemo(() => {
     if (!studioAvatar) {
@@ -956,54 +830,25 @@ export function StudioScreenView() {
     ],
   )
 
-  const handleRemix = useCallback(async () => {
-    if (isViewOnly) {
-      return
-    }
-    try {
-      setPendingStudioComboChange({ change_type: "remix" })
-      const payload = await remix()
-      const outfitId = payload.outfit?.id ?? null
-      if (!outfitId) {
-        toast({
-          title: "Remix failed",
-          description: "No outfit found for this remix.",
-          variant: "destructive",
+  const handleSaveFromCard = useCallback(
+    async (data: { name: string; tags: string[]; boardSlugs: string[] }) => {
+      try {
+        await handleSaveOutfit({
+          outfitName: data.name,
+          categoryId: studioAvatar?.category ?? "",
+          occasionId: studioAvatar?.occasion?.id ?? "",
+          vibe: "",
+          keywords: data.tags.join(", "),
+          isPrivate: false,
+          moodboardIds: data.boardSlugs,
         })
-        return
+        setIsSaveDrawerOpen(false)
+      } catch {
+        // handleSaveOutfit has already toasted; keep the card open to retry.
       }
-      const nextSlotIds: SlotIdMap = {
-        top: null,
-        bottom: null,
-        shoes: null,
-      }
-      payload.trayItems.forEach((item) => {
-        nextSlotIds[item.slot] = item.productId
-      })
-      const nextSnapshot = {
-        outfitId,
-        slotIds: {
-          top: nextSlotIds.top ?? null,
-          bottom: nextSlotIds.bottom ?? null,
-          shoes: nextSlotIds.shoes ?? null,
-        },
-        hiddenSlots: {
-          top: false,
-          bottom: false,
-          shoes: false,
-        },
-      }
-      recordChange(nextSnapshot)
-      applySnapshot(nextSnapshot)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Remix failed."
-      toast({
-        title: "Remix failed",
-        description: message,
-        variant: "destructive",
-      })
-    }
-  }, [applySnapshot, isViewOnly, recordChange, remix, toast])
+    },
+    [handleSaveOutfit, studioAvatar?.category, studioAvatar?.occasion?.id],
+  )
 
   const currentSlotIds = useMemo(
     () => ({
@@ -1014,17 +859,17 @@ export function StudioScreenView() {
     [requestedSlotIds.bottom, requestedSlotIds.shoes, requestedSlotIds.top],
   )
 
+  /** The row's × — hide the slot. Undoable, and it travels in share links. */
   const handleRemoveSlot = useCallback(
     (slot: StudioProductTraySlot) => {
       if (isViewOnly || !syncOutfitId) {
         return
       }
       setPendingStudioComboChange({ change_type: "hide_slot", slot })
-      const nextHidden = { ...hiddenSlots, [slot]: true }
       const nextSnapshot = {
         outfitId: syncOutfitId,
         slotIds: currentSlotIds,
-        hiddenSlots: nextHidden,
+        hiddenSlots: { ...hiddenSlots, [slot]: true },
       }
       recordChange(nextSnapshot)
       applySnapshot(nextSnapshot)
@@ -1032,193 +877,136 @@ export function StudioScreenView() {
     [applySnapshot, currentSlotIds, hiddenSlots, isViewOnly, recordChange, syncOutfitId],
   )
 
-  const handleRestoreSlot = useCallback(
-    (slot: StudioProductTraySlot) => {
-      if (isViewOnly || !syncOutfitId) {
-        return
-      }
-      setPendingStudioComboChange({ change_type: "restore_slot", slot })
-      const nextHidden = { ...hiddenSlots, [slot]: false }
-      const nextSnapshot = {
-        outfitId: syncOutfitId,
-        slotIds: currentSlotIds,
-        hiddenSlots: nextHidden,
-      }
-      recordChange(nextSnapshot)
-      applySnapshot(nextSnapshot)
-    },
-    [applySnapshot, currentSlotIds, hiddenSlots, isViewOnly, recordChange, syncOutfitId],
-  )
-
-  /**
-   * The ⟳ on a slot row, or an empty slot's "Add …". Both ask "what else could
-   * go here", so both open the tray sheet in place. Tapping the row *body* is a
-   * different question and goes to the details drawer; tapping the garment on
-   * the model escalates all the way to 7c.
-   */
+  /** The row's 4-square, the rail on an empty slot — both open Alternates. */
   const handleOpenAlternates = useCallback(
-    (slot: StudioProductTraySlot) => {
+    (slot: StudioCanvasSlot) => {
       if (isViewOnly) {
         return
       }
-      openTraySheet(slot)
+      const traySlot = toTraySlot(slot)
+      if (syncOutfitId) {
+        prefetchStudioAlternatives(queryClient, { outfitId: syncOutfitId, slot: traySlot, gender }).catch(() => {
+          // Prefetch failures should not block navigation.
+        })
+      }
+      openAlternativesSplit(traySlot, { forceSlot: true })
     },
-    [isViewOnly, openTraySheet],
+    [gender, isViewOnly, openAlternativesSplit, queryClient, syncOutfitId],
   )
+
+  const handleFindItems = useCallback(() => navigate("/inspiration-import"), [navigate])
 
   /**
-   * Wearing an alternate from the tray sheet. Mirrors 7c's swap contract
-   * exactly — optimistic cache swap, URL slot ids, then a history entry — so a
-   * swap made here is undoable and shareable on the same terms as one made in
-   * the split view.
+   * Move a piece up or down the layer stack. `slotOrder` is the z-order —
+   * AvatarRenderer gives the first zone the highest z-index — so this is the
+   * whole layering control.
    */
-  const handleTrayWear = useCallback(
-    (slot: StudioProductTraySlot, product: StudioAlternativeProduct) => {
-      if (isViewOnly || !syncOutfitId) {
-        return
-      }
-      if (
-        !Number.isFinite(product.placementX) ||
-        !Number.isFinite(product.placementY) ||
-        !Number.isFinite(product.imageLength)
-      ) {
-        toast({
-          title: "Missing placement data",
-          description: "This item can't be applied yet.",
-          variant: "destructive",
-        })
-        return
-      }
-
-      setPendingStudioComboChange({
-        change_type: "swap",
-        slot,
-        from_product_id: currentSlotIds[slot] ?? undefined,
-        to_product_id: product.id,
-        results_mode: "default",
-      })
-
-      swapSlot(slot, product)
-      setSlotProductId(slot, product.id)
-
-      const nextSlotIds: SlotIdMap = { ...currentSlotIds, [slot]: product.id }
-      // Wearing something into a hidden slot must unhide it, or the swap lands
-      // on a piece the model isn't showing.
-      const nextHidden = { ...hiddenSlots, [slot]: false }
-
-      setSearchParams(
-        buildStudioSearchParams({
-          outfitId: syncOutfitId,
-          slotIds: nextSlotIds,
-          hiddenSlots: nextHidden,
-          share: parsedParams.share,
-        }),
-        { replace: true },
-      )
-
-      recordChange({
-        outfitId: syncOutfitId,
-        slotIds: {
-          top: nextSlotIds.top ?? null,
-          bottom: nextSlotIds.bottom ?? null,
-          shoes: nextSlotIds.shoes ?? null,
-        },
-        hiddenSlots: nextHidden,
+  const handleReorderSlot = useCallback(
+    (slot: StudioCanvasSlot, delta: number) => {
+      if (isViewOnly) return
+      const traySlot = toTraySlot(slot)
+      setSlotOrder((prev) => {
+        const from = prev.indexOf(traySlot)
+        const to = from + delta
+        if (from < 0 || to < 0 || to >= prev.length) return prev
+        const next = [...prev]
+        next.splice(to, 0, ...next.splice(from, 1))
+        return next
       })
     },
-    [
-      currentSlotIds,
-      hiddenSlots,
-      isViewOnly,
-      parsedParams.share,
-      recordChange,
-      setSearchParams,
-      setSlotProductId,
-      swapSlot,
-      syncOutfitId,
-      toast,
-    ],
+    [isViewOnly],
   )
 
-  /** The worn piece the 7e peek is showing, assembled from data already here. */
-  const peekItem = useMemo((): ProductPeekItem | null => {
-    const trayItem = resolvedTrayItems.find((item) => item.slot === peekSlot)
-    if (!trayItem) {
-      return null
-    }
-    return {
-      id: trayItem.productId,
-      title: trayItem.title,
-      brand: trayItem.brand,
-      price: trayItem.price,
-      imageUrl: trayItem.imageUrl ?? null,
-      slotLabel: PEEK_SLOT_LABELS[peekSlot],
-      provenance: trayItem.materialType,
-      specs: [trayItem.size, trayItem.color, ...trayItem.fitTags, ...trayItem.feelTags]
-        .filter((value): value is string => Boolean(value))
-        .slice(0, 4),
-    }
-  }, [peekSlot, resolvedTrayItems])
+  /** The piece card's globe: the retailer listing when the piece has one. */
+  const handleOpenListing = useCallback(
+    (productUrl: string | null | undefined, productId: string) => {
+      if (!productUrl) {
+        handleFindItems()
+        return
+      }
+      trackProductBuyClicked(analytics, { entity_id: productId })
+      window.open(productUrl, "_blank", "noopener,noreferrer")
+    },
+    [analytics, handleFindItems],
+  )
 
-  const handleReorderSlots = useCallback((nextOrder: StudioProductTraySlot[]) => {
-    setSlotOrder(nextOrder)
-  }, [])
+  const { share: shareLook } = useShareLook()
 
   const handleShare = useCallback(async () => {
     if (!shareOutfitId) {
       return
     }
-    const sharePath = buildStudioUrl(basePath, "studio", {
-      outfitId: shareOutfitId,
-      slotIds: shareSlotIds,
-      hiddenSlots,
-      share: true,
+    await shareLook(
+      buildStudioUrl(basePath, "studio", {
+        outfitId: shareOutfitId,
+        slotIds: shareSlotIds,
+        hiddenSlots,
+        share: true,
+      }),
+    )
+  }, [basePath, hiddenSlots, shareLook, shareOutfitId, shareSlotIds])
+
+  /** Worn pieces keyed by canvas slot. The layer entry is a second top. */
+  const itemBySlot = useMemo(() => {
+    const map: Partial<Record<StudioCanvasSlot, StudioProductTrayItem | null>> = {}
+    CANVAS_SLOTS.forEach((slot) => {
+      map[slot] = resolvedTrayItems.find((item) => item.slot === toTraySlot(slot)) ?? null
     })
-    const shareUrl =
-      typeof window === "undefined" ? sharePath : `${window.location.origin}${sharePath}`
+    return map
+  }, [resolvedTrayItems])
 
-    if (typeof navigator !== "undefined" && "share" in navigator) {
-      try {
-        await navigator.share({ title: "Check this outfit", url: shareUrl })
-        return
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          return
-        }
-      }
-    }
-
-    if (navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(shareUrl)
-        toast({ title: "Link copied" })
-        return
-      } catch {
-        // Fall through to toast below.
-      }
-    }
-
-    toast({
-      title: "Unable to copy link",
-      description: "Please copy the URL from the address bar.",
+  /** Two tags per worn piece, deduped — the prototype's seed for the save card. */
+  const suggestedTags = useMemo(() => {
+    const seen = new Set<string>()
+    resolvedTrayItems.forEach((item) => {
+      ;[...item.vibeTags, ...item.feelTags, ...item.fitTags]
+        .filter(Boolean)
+        .slice(0, 2)
+        .forEach((tag) => seen.add(tag))
     })
-  }, [basePath, hiddenSlots, shareOutfitId, shareSlotIds, toast])
+    return [...seen].slice(0, 5)
+  }, [resolvedTrayItems])
 
-  // The receipt stub in the action bar. Hidden slots are excluded — the total
-  // should describe the look you can see, not the one you removed a piece from.
-  const { lookTotal, lookPieceCount } = useMemo(() => {
-    const visible = resolvedTrayItems.filter((item) => !hiddenSlots[item.slot])
-    return {
-      lookTotal: visible.reduce((sum, item) => sum + (item.price ?? 0), 0),
-      lookPieceCount: visible.length,
+  const focusItem = focus ? itemBySlot[focus] ?? null : null
+  const focusImagesQuery = useStudioProductImages(focusItem?.productId ?? null)
+
+  const focusImages = useMemo(
+    () => toDisplayImages(focusImagesQuery.data, focusItem?.imageUrl ?? focusItem?.thumbnailUrl),
+    [focusImagesQuery.data, focusItem?.imageUrl, focusItem?.thumbnailUrl],
+  )
+
+  /** fit · feel · vibe · colour · material — no brand, no price. */
+  const focusAttributes = useMemo(() => {
+    if (!focusItem) return []
+    return [
+      ...focusItem.fitTags,
+      ...focusItem.feelTags,
+      ...focusItem.vibeTags,
+      focusItem.color,
+      focusItem.materialType,
+    ].filter((value): value is string => Boolean(value)).slice(0, 5)
+  }, [focusItem])
+
+  // A slot emptied while focused has nothing to show — drop back to the canvas.
+  // Not before the look and its slots have loaded: a deep link's focus must survive the fetch.
+  useEffect(() => {
+    if (focus && !focusItem && studioAvatar && !isOutfitLoading && !slotsResolving) {
+      closeFocus()
     }
-  }, [hiddenSlots, resolvedTrayItems])
+  }, [closeFocus, focus, focusItem, isOutfitLoading, slotsResolving, studioAvatar])
 
-  const occasionLabel = (
-    studioAvatar?.occasion?.name ??
-    studioAvatar?.category ??
-    "Your look"
-  ).toString()
+  /**
+   * Back means up one level. Focus pushed its own history entry, so while
+   * zoomed a press must exit the zoom or it reads as a dead button.
+   */
+  const goBack = useGoBack(user ? BACK_FALLBACK : GUEST_BACK_FALLBACK)
+  const handleBack = useCallback(() => {
+    if (focus) {
+      closeFocus()
+      return
+    }
+    goBack()
+  }, [closeFocus, focus, goBack])
 
   const historyControls = [
     {
@@ -1242,10 +1030,12 @@ export function StudioScreenView() {
         redo()
       },
     },
+  ]
+
+  const lookControls = [
     {
-      // Canvas 7a draws this as "reset". It is the existing checkpoint toggle:
-      // press once for the outfit you started with, again to come back to your
-      // edits — with the undo stack parked and restored either way.
+      // The design's "reset". It is the existing checkpoint toggle: press once
+      // for the look you started with, again to come back to your edits.
       id: "checkpoint",
       label: checkpointActive ? "Back to your edits" : "Back to the original look",
       icon: RotateCcw,
@@ -1257,18 +1047,6 @@ export function StudioScreenView() {
         toggleCheckpoint()
       },
     },
-  ]
-
-  const creativeControls = [
-    {
-      id: "remix",
-      label: "Shuffle the look",
-      icon: Shuffle,
-      tone: "terracotta" as const,
-      disabled: isViewOnly || !resolvedOutfitId || isRemixing,
-      highlight: tour.isHighlighted("remix"),
-      onClick: handleRemix,
-    },
     {
       id: "share",
       label: "Share this look",
@@ -1279,207 +1057,141 @@ export function StudioScreenView() {
     },
   ]
 
-  // The canvas is drawn at a 390 frame and the whole studio is a phone layout.
-  // Without the max-w the card, the rows and the action bar all stretch to the
-  // desktop viewport and nothing lines up with the design — the old ProductTray
-  // carried `mx-auto w-full max-w-sm` for exactly this reason.
+  const showFocus = Boolean(focus && focusItem)
+
+  // 390x844 frame. The canvas flexes so the card can grow with a fourth row.
   return (
     <div
       className="flex justify-center overflow-hidden bg-background"
-      // Two things this height is doing.
-      //
-      // The calc: AppShellLayout's wrapper is `min-h-screen` — a minimum, not a
-      // height — so `flex-1`/`h-full` descendants have nothing definite to
-      // resolve against, and the canvas card collapsed to its content while its
-      // parent stretched, leaving a dead band above the rows. Pinning a real
-      // height (2.5rem = main's pb, which clears the fixed nav) gives the column
-      // something to divide, the same trick the old layout used with
-      // calc(100vh - 40px).
-      //
-      // The cap: the studio is drawn at a 390x844 frame. Left uncapped, a 1080p
-      // laptop stretches the canvas to ~776px tall and the model swims in a thin
-      // ribbon. Capping at the frame height and centring with my-auto keeps the
-      // design's proportions on a desktop while still filling a real phone.
-      style={{ height: "calc(100dvh - 2.5rem)" }}
+      style={{ height: "calc(100dvh - 55px)" }}
     >
-    <div className="relative my-auto flex h-full max-h-[844px] w-full max-w-sm flex-col overflow-hidden">
-      {/* Header — the wordmark's job is done by the app shell; here the label
-          just says which look you're in. */}
-      <header className="flex shrink-0 items-center px-5 pt-2">
-        <IconButton
-          tone="ghost"
-          size="xs"
-          aria-label="Back"
-          onClick={() => navigate(-1)}
-          className="-ml-1"
-        >
-          <ChevronLeft className="size-4" aria-hidden="true" />
-        </IconButton>
-        <span className="flex-1 truncate text-center text-[9.5px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-          {occasionLabel}
-        </span>
-        <IconButton
-          tone="ghost"
-          size="xs"
-          aria-label="Open split view"
-          onClick={() => openAlternativesSplit("top")}
-          disabled={isViewOnly}
-        >
-          <Columns2 className="size-3.5" aria-hidden="true" />
-        </IconButton>
-      </header>
-
-      {/* The model owns the frame: a white card on the warp/weft weave, with the
-          controls floating on its own edges rather than on rails beside it. */}
-      <div className="flex min-h-0 flex-1 px-3.5 pb-2 pt-2">
-        <div
-          className={cn(
-            "relative flex min-h-0 w-full flex-1 overflow-hidden rounded-md border border-hairline bg-card",
-            tour.isHighlighted("mannequin") ? "z-[75]" : "z-0",
+      <div className="relative my-auto flex h-full max-h-[844px] w-full max-w-sm flex-col overflow-hidden">
+        {/* 52h. Back on the left; nothing on the right but the focus exit.
+            The design draws an Import pill here — deliberately not built. */}
+        <header className="flex h-[52px] shrink-0 items-center justify-between px-2">
+          <div className="flex items-center gap-2">
+            <IconButton
+              tone="ghost"
+              size="xs"
+              aria-label="Back"
+              onClick={handleBack}
+            >
+              <ChevronLeft className="size-5" aria-hidden="true" />
+            </IconButton>
+          </div>
+          {showFocus ? (
+            <IconButton tone="ghost" size="xs" aria-label="Exit focus" onClick={closeFocus}>
+              <Minimize2 className="size-5" aria-hidden="true" />
+            </IconButton>
+          ) : (
+            <span className="size-8 shrink-0" aria-hidden="true" />
           )}
-        >
-          <div className="bg-warp-grid pointer-events-none absolute inset-0" aria-hidden="true" />
+        </header>
 
-          {/* Absolute rather than h-full so the model fills the card no matter
-              how the flex chain above resolves.
-              pb-4: the hero tile scales the figure to exactly fill the wrapper's
-              height, so without padding the feet sit flush on the canvas edge.
-              The padding shrinks the height the scale is computed from, lifting
-              the figure off the bottom (same treatment as the alternates screen). */}
-          <div className="absolute inset-0 flex items-end justify-center pb-4">
-            {studioAvatar || (isAdminMode && !outfitId) ? (
-              <OutfitInspirationTile
-                preset="heroCanonical"
-                outfitId={studioAvatar?.id ?? "temp-admin"}
-                renderedItems={displayRenderedItems ?? (studioAvatar ? mapLegacyOutfitItemsToStudioItems(displayAvatarItems) : [])}
-                fallbackImageSrc={displayRenderedItems?.[0]?.imageUrl ?? displayAvatarItems[0]?.imageUrl}
-                title={studioAvatar?.name ?? "New Outfit"}
-                chips={studioAvatar ? [studioAvatar.fit, studioAvatar.feel].filter(Boolean) as string[] : []}
-                isSaved={false}
-                avatarHeadSrc={avatarHeadSrc}
-                avatarGender={adminGender ?? avatarGender}
-                avatarHeightCm={avatarHeightCm}
-                cardClassName="h-full w-full"
-                onItemSelect={isViewOnly ? undefined : handleAvatarItemSelect}
-                slotOrder={slotOrder}
-                allowEmptyMannequin={isAdminMode}
-                onSlotSelect={isAdminMode && !isViewOnly ? (slot) => openAlternativesSplit(slot) : undefined}
-                onAvatarReady={setAvatarReady}
-                avatarRef={snapshotRef}
-              />
+        <StudioCanvas
+          figure={
+            studioAvatar || (isAdminMode && !outfitId) ? (
+              <div className="absolute inset-0 flex items-end justify-center pb-4">
+                <OutfitInspirationTile
+                  preset="heroCanonical"
+                  outfitId={studioAvatar?.id ?? "temp-admin"}
+                  renderedItems={
+                    displayRenderedItems ??
+                    (studioAvatar ? mapLegacyOutfitItemsToStudioItems(displayAvatarItems) : [])
+                  }
+                  fallbackImageSrc={displayRenderedItems?.[0]?.imageUrl ?? displayAvatarItems[0]?.imageUrl}
+                  title={studioAvatar?.name ?? "New Outfit"}
+                  chips={[]}
+                  isSaved={false}
+                  avatarHeadSrc={avatarHeadSrc}
+                  avatarGender={adminGender ?? avatarGender}
+                  avatarHeightCm={avatarHeightCm}
+                  cardClassName="h-full w-full"
+                  onItemSelect={isViewOnly ? undefined : handleAvatarItemSelect}
+                  slotOrder={slotOrder}
+                  allowEmptyMannequin={isAdminMode}
+                  onSlotSelect={isAdminMode && !isViewOnly ? (slot) => openAlternativesSplit(slot) : undefined}
+                  onAvatarReady={setAvatarReady}
+                  avatarRef={snapshotRef}
+                />
+              </div>
             ) : (
-              <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
+              <div className="flex h-full w-full items-center justify-center text-body text-taupe">
                 {isOutfitLoading || isLoadingOverrides ? "Loading outfit…" : "Select an outfit to begin"}
               </div>
+            )
+          }
+          focus={focus}
+          onStepFocus={stepFocus}
+          historyControls={historyControls}
+          lookControls={lookControls}
+          highlight={tour.isHighlighted("mannequin")}
+          className="border-y border-hairline"
+        />
+
+        {showFocus && focusItem ? (
+          <StudioFocusSheet
+            slot={focus as StudioCanvasSlot}
+            title={focusItem.title}
+            images={focusImages}
+            attributes={focusAttributes}
+            isLoading={focusImagesQuery.isLoading}
+            isReadOnly={isViewOnly}
+            onSave={() => setIsSaveDrawerOpen(true)}
+            onTryOn={handleTryOn}
+            onFindItems={() => handleOpenListing(focusItem.productUrl, focusItem.productId)}
+            onOpenAlternatives={() => handleOpenAlternates(focus as StudioCanvasSlot)}
+            onStep={stepFocus}
+          />
+        ) : (
+          <div className="flex flex-none flex-col gap-1.5 px-4 py-2.5">
+            {isSaveDrawerOpen ? (
+              <StudioSaveCard
+                defaultName={
+                  studioAvatar?.name?.startsWith("draft-look-")
+                    ? `${profile?.name ?? "Your"}'s Look #${String(Date.now()).slice(-4)}`
+                    : (studioAvatar?.name ?? "")
+                }
+                defaultTags={suggestedTags}
+                boards={selectableMoodboards.map((m) => ({ slug: m.slug, label: m.label }))}
+                defaultBoardSlugs={
+                  currentOutfitMoodboardSlugs.length ? currentOutfitMoodboardSlugs : ["favorites"]
+                }
+                onSave={(data) => void handleSaveFromCard(data)}
+                onCancel={() => setIsSaveDrawerOpen(false)}
+                onCreateBoard={(name) =>
+                  createMoodboardMutation.mutateAsync(name).then((res) => res.slug)
+                }
+              />
+            ) : (
+              <>
+            <StudioPieceRows
+              slots={slotOrder}
+              onReorder={handleReorderSlot}
+              itemBySlot={itemBySlot}
+              hiddenSlots={hiddenSlots}
+              isReadOnly={isViewOnly}
+              onOpenAlternates={handleOpenAlternates}
+              onRemove={(slot) => handleRemoveSlot(toTraySlot(slot))}
+              highlight={tour.isHighlighted("slot-rows")}
+            />
+            <StudioActionBar
+              isReadOnly={isViewOnly}
+              onSave={() => setIsSaveDrawerOpen(true)}
+              onTryOn={handleTryOn}
+              onFindItems={handleFindItems}
+              highlightSave={tour.isHighlighted("save-button")}
+              highlightTryOn={tour.isHighlighted("tryon-button")}
+              highlightFindItems={tour.isHighlighted("find-items")}
+            />
+              </>
             )}
           </div>
+        )}
 
-          {/* ✦ YOURS — empty state until Wave 2 supplies wardrobe content, so it
-              says what it will hold rather than pretending to hold it. Gold is
-              allowed here: this is ownership, not an action. */}
-          <button
-            type="button"
-            onClick={() => openTraySheet(traySheetSlot, "yours")}
-            disabled={isViewOnly}
-            className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full border border-gold bg-card/80 px-2.5 py-1 text-[8px] font-semibold tracking-[0.08em] text-gold-deep disabled:opacity-50"
-          >
-            <Sparkles className="size-2.5" aria-hidden="true" />
-            YOURS
-          </button>
-
-          <CanvasControlCluster items={historyControls} className="absolute left-2 top-11" />
-          <CanvasControlCluster items={creativeControls} className="absolute right-2 top-11" />
-        </div>
       </div>
-
-      {/* The three worn pieces, as rows. Tapping one opens its rack. */}
-      <StudioSlotRows
-        slotOrder={slotOrder}
-        items={resolvedTrayItems}
-        hiddenSlots={hiddenSlots}
-        isReadOnly={isViewOnly}
-        onOpenDetails={handlePeekSlot}
-        onOpenAlternates={handleOpenAlternates}
-        onRemoveSlot={handleRemoveSlot}
-        highlight={tour.isHighlighted("slot-rows")}
-        className="shrink-0"
-      />
-
-      <StudioActionBar
-        className="shrink-0"
-        total={lookTotal}
-        pieceCount={lookPieceCount}
-        isReadOnly={isViewOnly}
-        onSave={() => setIsSaveDrawerOpen(true)}
-        onTryOn={handleTryOn}
-        onDetails={handleDetailsPress}
-        highlightSave={tour.isHighlighted("save-button")}
-        highlightTryOn={tour.isHighlighted("tryon-button")}
-        highlightDetails={tour.isHighlighted("click-details")}
-      />
-
-      {/* 7e — the deep dive on a piece already on the model. Opened by tapping
-          the garment itself; hands off to the tray sheet for alternates. */}
-      <ProductPeekCard
-        item={peekItem}
-        open={peekOpen && peekItem !== null}
-        onOpenChange={setPeekOpen}
-        isWorn
-        isReadOnly={isViewOnly}
-        onWear={() => undefined}
-        onDetails={(item) => {
-          const trayItem = resolvedTrayItems.find((candidate) => candidate.productId === item.id)
-          setPeekOpen(false)
-          openProduct(item.id, {
-            initialProduct: trayItem ? mapTrayItemToProductDetail(trayItem) : undefined,
-          })
-        }}
-        onSeeAlternates={() => {
-          setPeekOpen(false)
-          openTraySheet(peekSlot)
-        }}
-      />
-
-      {/* 7a's tray sheet — half height, so the model stays visible while you
-          swap. §8.1 contract: slot + mode. */}
-      <TraySheet
-        open={traySheetOpen}
-        onOpenChange={setTraySheetOpen}
-        slot={traySheetSlot}
-        mode={traySheetMode}
-        onSlotChange={setTraySheetSlot}
-        onModeChange={setTraySheetMode}
-        outfitId={syncOutfitId}
-        wornItems={resolvedTrayItems}
-        hiddenSlots={hiddenSlots}
-        isReadOnly={isViewOnly}
-        mannequin={(adminGender ?? avatarGender ?? "female") as "male" | "female"}
-        onWear={handleTrayWear}
-        onOpenSplitView={(slot) => {
-          setTraySheetOpen(false)
-          openAlternativesSplit(slot, { forceSlot: true })
-        }}
-      />
-
-      {/* Lifted out of ProductTray, which no longer renders on this screen. */}
-      <SaveOutfitDrawer
-        open={isSaveDrawerOpen}
-        onOpenChange={setIsSaveDrawerOpen}
-        defaultOutfitName={
-          studioAvatar?.name?.startsWith("draft-look-")
-            ? `${profile?.name ?? "Your"}'s Look #${String(Date.now()).slice(-4)}`
-            : (studioAvatar?.name ?? "")
-        }
-        defaultCategoryId={studioAvatar?.category ?? undefined}
-        defaultOccasionId={studioAvatar?.occasion?.id ?? undefined}
-        defaultMoodboardIds={currentOutfitMoodboardSlugs.length ? currentOutfitMoodboardSlugs : ["favorites"]}
-        isLoadingMoodboards={moodboardsLoading}
-        moodboards={selectableMoodboards}
-        onCreateMoodboard={(name) => createMoodboardMutation.mutateAsync(name).then((res) => res.slug)}
-        onSave={handleSaveOutfit}
-      />
     </div>
-    </div>
+
   )
 }
 
