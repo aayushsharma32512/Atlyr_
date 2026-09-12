@@ -4,12 +4,12 @@ import { homeKeys } from "@/features/home/queryKeys"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { homeService, type HomeOutfitEntry } from "@/services/home/homeService"
 
-export function useHomeAllOutfits(sortBy: 'relevance' | 'newly_added', size = 50) {
+export function useHomeAllOutfits(sortBy: 'relevance' | 'newly_added', size = 50, enabled = true) {
   const { gender, isLoading: isProfileLoading } = useProfileContext()
 
   return useInfiniteQuery({
     queryKey: homeKeys.allOutfits(gender ?? null, size, sortBy),
-    enabled: !isProfileLoading,
+    enabled: enabled && !isProfileLoading,
     initialPageParam: 0,
     queryFn: ({ pageParam }) =>
       homeService.getAllOutfits({
