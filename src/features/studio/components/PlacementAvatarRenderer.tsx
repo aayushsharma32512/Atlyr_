@@ -23,7 +23,19 @@ const BOUNDS_SAMPLE = 256
 type Bounds = { x: number; y: number; w: number; h: number }
 
 // Layer order: bottoms sit behind tops; shoes at the base. Higher z draws later (on top).
+/** Draw order when nothing overrides it: back to front. */
 const ZONE_Z: Record<StudioRenderedZone, number> = { shoes: 0, bottom: 1, top: 2 }
+
+/**
+ * Draw depth for a zone. `zoneOrder` is the layer stack as the slot rows show
+ * it — first entry renders on top — so the draw index is its reverse, since
+ * pixi paints later children over earlier ones.
+ */
+function depthFor(zone: StudioRenderedZone, zoneOrder?: StudioRenderedZone[]): number {
+  if (!zoneOrder?.length) return ZONE_Z[zone] ?? 0
+  const index = zoneOrder.indexOf(zone)
+  return index < 0 ? -1 : zoneOrder.length - index
+}
 
 /**
  * Open the top of a figure frame so hair isn't sliced off at the crown.
@@ -274,10 +286,18 @@ type Props = {
   gender?: "male" | "female"
   containerHeight?: number
   containerWidth?: number
+  /** Layer stack, first entry on top. Falls back to shoes → bottom → top. */
+  zoneOrder?: StudioRenderedZone[]
   itemOpacity?: number
   avatarRef?: React.Ref<HTMLDivElement>
   onReady?: (ready: boolean) => void
   fetchPriority?: "high" | "low" | "auto"
+  /**
+   * 'progressive' (default): paint the webp thumbnail, swap the full-res texture in when it lands.
+   * 'thumbnail': the webp is the final texture — for tiles too small to show the upgrade.
+   * Static per surface (set by presets); not a live toggle, the scene rebuilds on `sig` only.
+   */
+  textureQuality?: "progressive" | "thumbnail"
   /** The user's hairstyle. null renders the mannequin bald. */
   hairStyle?: PlacementHairStyle | null
   hairColorHex?: string | null
@@ -312,6 +332,7 @@ export function PlacementAvatarRenderer({
   gender = "female",
   containerHeight = 460,
   containerWidth = 320,
+  zoneOrder,
   itemOpacity = 1,
   avatarRef,
   onReady,
@@ -319,6 +340,7 @@ export function PlacementAvatarRenderer({
   hairColorHex = null,
   skinTone = null,
   crop = "figure",
+  textureQuality = "progressive",
   onItemSelect,
   onItemBoundsChange,
 }: Props) {
@@ -352,10 +374,10 @@ export function PlacementAvatarRenderer({
           ? "female"
           : gender
 
-  // Garments renderable on THAT mannequin, back-to-front (shoes → bottom → top).
+  // Garments renderable on THAT mannequin, back to front.
   const placed = items
     .filter((it) => it.placement?.[mannequin] && it.imageUrl)
-    .sort((a, b) => (ZONE_Z[a.zone] ?? 0) - (ZONE_Z[b.zone] ?? 0))
+    .sort((a, b) => depthFor(a.zone, zoneOrder) - depthFor(b.zone, zoneOrder))
   // Stable signature so the effect re-runs when the outfit / transforms change.
   const sig = placed
     .map((it) => `${it.id}:${it.imageUrl}:${JSON.stringify(it.placement?.[mannequin])}`)
@@ -475,19 +497,28 @@ export function PlacementAvatarRenderer({
         // rounding only — order 0.1% of the world frame, well under a pixel once scaled into the
         // container. Recomputing would mean rebuilding every garment AND the world transform, and
         // the visible result would be the frame shifting under the user as the images land.
-        const fullTex = placed.map((it) => Assets.load(it.imageUrl) as Promise<Texture>)
+        // Under 'thumbnail' quality the webp IS the final texture: it takes the full-res slot and
+        // the item reports isFull, so the upgrade pass further down leaves it alone. Nothing else
+        // in the pipeline needs to know the mode.
+        const thumbOnly = textureQuality === "thumbnail"
+        const finalUrl = (it: StudioRenderedItem) => {
+          const thumb = it.thumbnailUrl?.trim()
+          return thumbOnly && thumb ? thumb : it.imageUrl
+        }
+        const fullTex = placed.map((it) => Assets.load(finalUrl(it)) as Promise<Texture>)
         // A full-res failure must not surface as an unhandled rejection while the thumbnail renders.
         fullTex.forEach((p) => { p.catch(() => {}) })
 
         const loaded = await Promise.all(
           placed.map(async (it, i) => {
             const thumbUrl = it.thumbnailUrl?.trim()
-            if (!thumbUrl || thumbUrl === it.imageUrl) {
-              return { url: it.imageUrl, tex: await fullTex[i], isFull: true }
+            const full = finalUrl(it)
+            if (!thumbUrl || thumbUrl === full) {
+              return { url: full, tex: await fullTex[i], isFull: true }
             }
             return firstOf(
               (Assets.load(thumbUrl) as Promise<Texture>).then((tex) => ({ url: thumbUrl, tex, isFull: false })),
-              fullTex[i].then((tex) => ({ url: it.imageUrl, tex, isFull: true })),
+              fullTex[i].then((tex) => ({ url: full, tex, isFull: true })),
             )
           }),
         )

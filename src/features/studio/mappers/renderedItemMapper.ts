@@ -118,13 +118,16 @@ export function mapSupabaseProductToStudioItem(
     return null
   }
 
-  // Render uses thumbnail_url for better performance; falls back to image_url if unavailable.
-  // Note: placement transforms were measured against image_url, so thumbnail may require re-tuning.
-  const usedThumbnail = typeof product.thumbnail_url === "string" && product.thumbnail_url.trim()
-  const imageUrl = (
-    usedThumbnail ||
-    (typeof product.image_url === "string" ? product.image_url.trim() : "")
-  )
+  // imageUrl is the FULL-RES asset; the webp lives only in thumbnailUrl below.
+  // This used to collapse the two (thumb || image), which made imageUrl equal
+  // thumbnailUrl whenever a thumb existed — and PlacementAvatarRenderer reads
+  // that equality as "nothing to upgrade to", so it painted the 400px webp and
+  // never swapped the 2K texture in. The tray mapper kept them apart and got
+  // the progressive load; this one is what feeds every OutfitInspirationTile,
+  // so Creations and the covers were stuck at thumbnail quality.
+  const fullImage = typeof product.image_url === "string" ? product.image_url.trim() : ""
+  const thumbImage = typeof product.thumbnail_url === "string" ? product.thumbnail_url.trim() : ""
+  const imageUrl = fullImage || thumbImage
   if (!imageUrl) {
     if (import.meta.env?.DEV) {
       console.warn("mapSupabaseProductToStudioItem: missing image_url; skipping item", {
