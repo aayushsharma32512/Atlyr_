@@ -22,6 +22,7 @@ export * from "./slot-row";
 export * from "./tab-bar";
 export * from "./product-sheet";
 export * from "./product-tile";
+export * from "./garment-image";
 export * from "./recent-styles-rail";
 export * from "./outfit-inspiration-grid";
 export * from "./outfit-inspiration-presets";

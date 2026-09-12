@@ -75,6 +75,19 @@ img {
   box-shadow: 0 14px 32px rgba(0, 0, 0, 0.08), 0 6px 14px rgba(0, 0, 0, 0.06);
 }
 
+/* Compact Sonner toasts: a small card centred at the top, not a full-width bar. */
+.toaster[data-sonner-toaster] {
+  --width: 300px;
+}
+@media (max-width: 600px) {
+  .toaster[data-sonner-toaster] [data-sonner-toast] {
+    left: 0;
+    right: 0;
+    margin-inline: auto;
+    width: min(300px, calc(100% - var(--mobile-offset-left) * 2));
+  }
+}
+
 /* Premium Transitions */
 .transition-premium {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -156,6 +169,8 @@ img {
     --hairline-2: 39.2308 37.14% 86.27%;
     --hairline-3: 39.3103 32.58% 82.55%;
     --hairline-4: 40 28.3% 79.22%;
+    /* #C9C0AD — dashed borders on empty slots and outline actions */
+    --hairline-dashed: 40.7143 20.59% 73.33%;
     --warp: 39.2308 46.43% 89.02%;
     --placeholder-grid: 39.3103 44.62% 87.25%;
 

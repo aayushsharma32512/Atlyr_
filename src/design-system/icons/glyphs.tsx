@@ -22,6 +22,18 @@ export function BottomsGlyph({ size = 24, strokeWidth = 1.7, ...props }: GlyphPr
   );
 }
 
+/** A coat hanger — the Wardrobe source. Path from the bundle's source segment. */
+export function HangerGlyph({ size = 24, strokeWidth = 1.7, ...props }: GlyphProps) {
+  return (
+    <svg {...base} width={size} height={size} strokeWidth={strokeWidth} strokeLinecap="round" {...props}>
+      <path d="M12 4a2 2 0 1 1 2 2" />
+      <path d="M12 6v3" />
+      <path d="m12 9-8 6h16z" />
+      <path d="M3 19h18" />
+    </svg>
+  );
+}
+
 /** A shoe in profile — the `shoes` slot. */
 export function ShoeGlyph({ size = 24, strokeWidth = 1.7, ...props }: GlyphProps) {
   return (
