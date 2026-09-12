@@ -1,33 +1,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
-import {
-  FilterSearchBar,
-  IconButton,
-  OutfitInspirationGrid,
-  ProductResultsGrid,
-  RecentStylesRail,
-  SectionHeader,
-  MoodboardPickerDrawer,
-  type FilterSearchBarChip,
-  type FilterCategory,
-} from "@/design-system/primitives"
-import { ChevronRight } from "lucide-react"
+import { MoodboardPickerDrawer, OutfitCard, ProductTile, SearchBar, type FilterCategory } from "@/design-system/primitives"
 
 import type { InspirationItem } from "@/features/studio/types"
 import { mapLegacyOutfitItemsToStudioItems } from "@/features/studio/mappers/renderedItemMapper"
 import { AppShellLayout } from "@/layouts/AppShellLayout"
 import { cn } from "@/lib/utils"
 import { getOutfitChips } from "@/utils/outfitChips"
-import { useSearchBrowseCollections } from "@/features/search/hooks/useSearchBrowseCollections"
 import { useSearchOutfitResults } from "@/features/search/hooks/useSearchOutfitResults"
 import { useSearchProductResults } from "@/features/search/hooks/useSearchProductResults"
-import { SearchRoom } from "@/features/search/SearchRoomScreen"
-import MoodboardCard from "@/features/collections/components/MoodboardCard"
 import { useProductFilterOptions } from "@/features/search/hooks/useProductFilterOptions"
 import { useSearchImageUpload } from "@/features/search/hooks/useSearchImageUpload"
+import { SearchFilterSheet } from "@/features/search/components/SearchFilterSheet"
+import { FEED_GRID } from "@/features/search/components/FeedGrid"
+import { SearchDock } from "@/features/search/components/SearchDock"
+import { SearchFeed } from "@/features/search/components/SearchFeed"
+import { SearchListPage } from "@/features/search/components/SearchListPage"
+import { SearchScopeRail } from "@/features/search/components/SearchScopeRail"
+import type { FeedHandlers, FeedList, FeedLayout } from "@/features/search/components/SearchRail"
+import { useSearchFeed } from "@/features/search/hooks/useSearchFeed"
+import type { FeedLook, FeedPiece } from "@/features/search/utils/feedShaping"
+import { isSearchScope, resolveScope, scopeToMode, scopeToSlot, type SearchScope } from "@/features/search/utils/scope"
+import { readStudioLastPath } from "@/features/studio/constants"
+import { buildStudioFocusUrl, isStudioSlot, parseStudioPath } from "@/features/studio/utils/studioUrlState"
+import { ErrorCard, NoResultsCard, ResultsSkeleton } from "@/features/search/components/SearchResultStates"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { useScrollRestoration } from "@/shared/hooks/useScrollRestoration"
-import { useResponsiveColumns } from "@/shared/hooks/useResponsiveColumns"
 import { useProductSaveActions } from "@/features/collections/hooks/useProductSaveActions"
 import {
   useCreateMoodboard,
@@ -41,12 +39,8 @@ import {
 } from "@/features/collections/hooks/useMoodboards"
 import { useLaunchStudio } from "@/features/studio/hooks/useLaunchStudio"
 import type { Database } from "@/integrations/supabase/types"
-import type {
-  ProductSearchFilters,
-  OutfitSearchFilters,
-  SearchBrowseCollection,
-  SearchBrowseOutfit,
-} from "@/services/search/searchService"
+import type { ProductSearchFilters, OutfitSearchFilters } from "@/services/search/searchService"
+import type { StudioProductTraySlot } from "@/services/studio/studioService"
 import { useToast } from "@/hooks/use-toast"
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
 import {
@@ -69,9 +63,6 @@ import {
   unobserveSearchResultsCard,
 } from "@/integrations/posthog/engagementTracking/browseDepth/searchResultsBrowseDepth"
 
-const CARD_MAX_WIDTH = "24rem"
-const DEFAULT_RESULTS_PADDING_BOTTOM = "5.5rem"
-type BrowseCollectionWithInspiration = SearchBrowseCollection & { inspirationItems: InspirationItem[] }
 
 // ---------- Search session persistence ----------
 const SEARCH_SESSION_KEY = "atlyr:search:lastState"
@@ -79,6 +70,7 @@ const SEARCH_SESSION_KEY = "atlyr:search:lastState"
 interface SearchSessionState {
   search: string
   mode: "products" | "outfits"
+  scope?: SearchScope
   imageUrl?: string
 }
 
@@ -88,32 +80,8 @@ function generateSearchId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
 
-// --- UI Components ---
-const ProductResultsSkeleton = () => (
-  <div className="grid grid-cols-3 gap-x-2 gap-y-4 px-1">
-    {Array.from({ length: 9 }).map((_, i) => (
-      <div key={i} className="flex flex-col gap-2">
-        <div className="aspect-[3/4] w-full animate-pulse rounded-xl bg-muted/20" />
-        <div className="h-3 w-3/4 animate-pulse rounded bg-muted/20" />
-        <div className="h-3 w-1/2 animate-pulse rounded bg-muted/20" />
-      </div>
-    ))}
-  </div>
-)
-
-const OutfitResultsSkeleton = () => (
-  <div className="grid grid-cols-2 gap-x-4 gap-y-4 px-1">
-    {Array.from({ length: 6 }).map((_, i) => (
-       <div key={i} className="flex flex-col gap-2">
-        <div className="aspect-[3/4] w-full animate-pulse rounded-2xl bg-muted/20" />
-      </div>
-    ))}
-  </div>
-)
-
 export function SearchScreenView() {
   useScrollRestoration("scroll:search")
-  const feedColumns = useResponsiveColumns(4)
   const location = useLocation()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -124,7 +92,10 @@ export function SearchScreenView() {
   // Read imageUrl from params if coming from Home
   const imageUrlParam = searchParams.get("imageUrl") ? decodeURIComponent(searchParams.get("imageUrl")!) : undefined
   
-  const modeParamValue = searchParams.get("mode") === "products" ? "products" : "outfits"
+  // Scope is the outer control: it picks the feed and constrains what a search returns.
+  const scope = useMemo(() => resolveScope(searchParams), [searchParams])
+  const scopeSlot = scopeToSlot(scope)
+  const listParam = searchParams.get("list")
 
   const committedSearchTerm = searchParamValue
   
@@ -140,7 +111,7 @@ export function SearchScreenView() {
     Boolean(committedSearchTerm.trim().length > 0 || imageUrlParam),
   )
   const [suppressUrlSync, setSuppressUrlSync] = useState(false)
-  const [isSearchFocused, setIsSearchFocused] = useState(false)
+  const [isFilterOpen, setIsFilterOpen] = useState(false)
 
   // ----- Mount-only: restore last search state from sessionStorage -----
   // Runs once on mount. If the URL has no search/imageUrl param (user navigated here
@@ -150,6 +121,9 @@ export function SearchScreenView() {
   useEffect(() => {
     if (hasRestoredSessionRef.current) return
     hasRestoredSessionRef.current = true
+
+    // A nav tab tap asks for the reset state, not the last search.
+    if ((location.state as { fresh?: boolean } | null)?.fresh) return
 
     // If URL already carries search state, honour it — don't overwrite with stale session.
     const currentParams = new URLSearchParams(window.location.search)
@@ -164,6 +138,7 @@ export function SearchScreenView() {
       const nextParams = new URLSearchParams()
       if (saved.search) nextParams.set("search", saved.search)
       if (saved.mode) nextParams.set("mode", saved.mode)
+      if (isSearchScope(saved.scope)) nextParams.set("scope", saved.scope)
       if (saved.imageUrl) nextParams.set("imageUrl", encodeURIComponent(saved.imageUrl))
       setSearchParams(nextParams, { replace: true })
     } catch {
@@ -176,9 +151,13 @@ export function SearchScreenView() {
   const hasTextSearch = searchParamValue.trim().length > 0
   const isResultsMode = hasTextSearch || explicitSearchTriggered || Boolean(appliedImageUrl)
 
+  // Results win over a `list` param: a stale link never hides the rail behind a list page.
+  const openList: FeedList | null =
+    !isResultsMode && (listParam === "hot" || listParam === "curations") ? listParam : null
+
   const [activeFilter, setActiveFilter] = useState<"products" | "outfits">(
-    // Respect URL mode param, defaulting to outfits if no mode is specified
-    modeParamValue,
+    // Derived from the URL scope; `mode` is the legacy name for the same choice.
+    () => scopeToMode(resolveScope(searchParams)),
   )
 
   const [outfitFilters] = useState<OutfitSearchFilters>({})
@@ -191,21 +170,14 @@ export function SearchScreenView() {
   const { gender: profileGender, heightCm } = useProfileContext()
   const productSaveActions = useProductSaveActions()
   const favoritesQuery = useFavorites()
-  const favoriteIds = favoritesQuery.data ?? []
+  const favoriteIds = useMemo(() => favoritesQuery.data ?? [], [favoritesQuery.data])
   const saveToCollectionMutation = useSaveToCollection()
   const removeOutfitFromLibraryMutation = useRemoveOutfitFromLibrary()
   const createMoodboardMutation = useCreateMoodboard()
   const collectionsOverviewQuery = useCollectionsOverview()
   const moodboards = collectionsOverviewQuery.data?.moodboards ?? []
-  const boardPreviews = collectionsOverviewQuery.data?.previews ?? {}
   const selectableMoodboards = useMemo(
     () => moodboards.filter((m) => !m.isSystem),
-    [moodboards],
-  )
-  // Real boards to surface under the results (6h "boards for this search"). Only
-  // boards that actually have pins, so the collage renders — top few.
-  const resultBoards = useMemo(
-    () => moodboards.filter((m) => (m.itemCount ?? 0) > 0).slice(0, 4),
     [moodboards],
   )
   const productCollectionMembership = useProductCollectionMembership()
@@ -220,6 +192,29 @@ export function SearchScreenView() {
   const lastEmittedSearchSigRef = useRef<string | null>(null)
   const currentSearchSigRef = useRef<string | null>(null)
   const currentSearchIdRef = useRef<string | null>(null)
+
+  // Facets chosen in the 6g search room arrive as URL params. Merge them into the
+  // product filters at read-time — no clobbering of the filter-drawer state.
+  const mergedProductFilters = useMemo<ProductSearchFilters>(() => {
+    const csv = (key: string) => {
+      const raw = searchParams.get(key)
+      if (!raw) return undefined
+      const list = raw.split(",").map((s) => s.trim()).filter(Boolean)
+      return list.length ? list : undefined
+    }
+    const merge = (a?: string[], b?: string[]) => {
+      const set = new Set([...(a ?? []), ...(b ?? [])])
+      return set.size ? Array.from(set) : undefined
+    }
+    return {
+      ...productFilters,
+      fits: merge(productFilters.fits, csv("fits")),
+      feels: merge(productFilters.feels, csv("feels")),
+      vibes: merge(productFilters.vibes, csv("vibes")),
+      // The scope owns the item type; a sheet "type:" pick cannot widen past it.
+      typeCategories: scopeSlot ? [scopeSlot] : productFilters.typeCategories,
+    }
+  }, [productFilters, scopeSlot, searchParams])
 
   const currentSearchContext = useMemo(() => {
     const queryRaw = committedSearchTerm
@@ -359,14 +354,15 @@ export function SearchScreenView() {
     try {
       const state: SearchSessionState = {
         search: searchParamValue,
-        mode: modeParamValue,
+        mode: scopeToMode(scope),
+        scope,
         ...(imageUrlParam ? { imageUrl: imageUrlParam } : {}),
       }
       window.sessionStorage.setItem(SEARCH_SESSION_KEY, JSON.stringify(state))
     } catch {
       // Quota or private-mode errors — ignore
     }
-  }, [searchParamValue, modeParamValue, imageUrlParam])
+  }, [searchParamValue, scope, imageUrlParam])
 
   // --- POPSTATE SYNC: synchronize state when the browser history changes (back/forward)
   useEffect(() => {
@@ -382,15 +378,8 @@ export function SearchScreenView() {
       const explicit = Boolean(searchParam.trim().length > 0 || imageParam)
       setExplicitSearchTriggered(explicit)
 
-      // Adjust active filter according to mode or presence of image
-      const mode = params.get("mode") === "products" ? "products" : "outfits"
-      if (searchParam.trim().length > 0) {
-        setActiveFilter(mode)
-      } else if (imageParam) {
-        setActiveFilter("products")
-      } else {
-        setActiveFilter("outfits")
-      }
+      // The scope in the restored URL decides what results show, image search included.
+      setActiveFilter(scopeToMode(resolveScope(params)))
     }
 
     window.addEventListener("popstate", onPop)
@@ -550,39 +539,12 @@ export function SearchScreenView() {
   }, [committedSearchTerm])
 
   // --- QUERIES ---
-  const {
-    data: browseCollections,
-    isLoading: isBrowseLoading,
-    isError: isBrowseError,
-  } = useSearchBrowseCollections({ enabled: !isResultsMode })
-
   const outfitResultsQuery = useSearchOutfitResults({
     query: committedSearchTerm,
     imageUrl: appliedImageUrl,
     filters: outfitFilters,
     enabled: explicitSearchTriggered && isResultsMode && activeFilter === "outfits",
   })
-
-  // Facets chosen in the 6g search room arrive as URL params. Merge them into the
-  // product filters at read-time — no clobbering of the filter-drawer state.
-  const mergedProductFilters = useMemo<ProductSearchFilters>(() => {
-    const csv = (key: string) => {
-      const raw = searchParams.get(key)
-      if (!raw) return undefined
-      const list = raw.split(",").map((s) => s.trim()).filter(Boolean)
-      return list.length ? list : undefined
-    }
-    const merge = (a?: string[], b?: string[]) => {
-      const set = new Set([...(a ?? []), ...(b ?? [])])
-      return set.size ? Array.from(set) : undefined
-    }
-    return {
-      ...productFilters,
-      fits: merge(productFilters.fits, csv("fits")),
-      feels: merge(productFilters.feels, csv("feels")),
-      vibes: merge(productFilters.vibes, csv("vibes")),
-    }
-  }, [productFilters, searchParams])
 
   // Hook uses uploadedImageUrl state
   const productResultsQuery = useSearchProductResults({
@@ -603,7 +565,7 @@ export function SearchScreenView() {
 
   const { data: filterOptions } = useProductFilterOptions({
     typeFilters: effectiveTypeFilters.length > 0 ? effectiveTypeFilters as Database["public"]["Enums"]["item_type"][] : undefined,
-    enabled: isResultsMode && activeFilter === "products",
+    enabled: isFilterOpen || (isResultsMode && activeFilter === "products"),
   })
 
   // --- AUTO-REMOVE INVALID FILTERS ---
@@ -662,7 +624,7 @@ export function SearchScreenView() {
   }
   const activeOptions = filterOptions ?? prevFilterOptionsRef.current
 
-  // Collection filter options — custom moodboards only (Favorites/Wardrobe are inline)
+  // Collection filter options — custom moodboards only (Favorites is inline)
   const collectionFilterOptions = useMemo(() => {
     const custom = selectableMoodboards.map(m => ({ id: `collection:${m.slug}`, label: m.label }))
     return custom
@@ -737,33 +699,6 @@ export function SearchScreenView() {
   }, [activeOptions, collectionFilterOptions])
 
   // --- RESULT MAPPING ---
-  const mapOutfitToInspirationItem = useCallback(
-    (entry: SearchBrowseOutfit): InspirationItem => ({
-      id: entry.id,
-      variant: "narrow",
-      title: entry.title,
-      chips: entry.chips,
-      // Creator handles are not shown in search — the cards stay clean.
-      attribution: undefined,
-      outfitId: entry.outfit.id,
-      renderedItems: entry.studioOutfit?.renderedItems ?? mapLegacyOutfitItemsToStudioItems(entry.outfit.items),
-      gender: entry.avatarGender ?? "female",
-      heightCm: entry.avatarHeightCm ?? 170,
-      showTitle: false,
-      showChips: false,
-      showSaveButton: false,
-    }),
-    [],
-  )
-
-  const visibleCollections = useMemo<BrowseCollectionWithInspiration[]>(
-    () => (browseCollections ?? []).map((collection) => ({
-      ...collection,
-      inspirationItems: collection.outfits.map(mapOutfitToInspirationItem),
-    })),
-    [browseCollections, mapOutfitToInspirationItem],
-  )
-
   const outfitResultItems = useMemo<InspirationItem[]>(() => {
     const resolvedHeight = heightCm ?? 170
     const pages = outfitResultsQuery.data?.pages ?? []
@@ -809,6 +744,7 @@ export function SearchScreenView() {
           price: result.priceLabel,
           rawPrice: result.price,
           similarity: result.similarity ?? 0,
+          type: result.type ?? null,
           isSaved: saved,
           _saved: saved,
         }
@@ -840,6 +776,7 @@ export function SearchScreenView() {
         price: item.price,
         rawPrice: item.rawPrice,
         similarity: item.similarity,
+        type: item.type,
         isSaved: saved,
         onToggleSave: () => productSaveActions.onToggleSave(item.id, !saved, uiContext),
         onLongPressSave: () => productSaveActions.onLongPressSave(item.id, uiContext),
@@ -861,14 +798,23 @@ export function SearchScreenView() {
     [location.pathname, location.search],
   )
 
+  // A piece opens Studio with that slot focused; the scope's slot is the fallback.
   const handleProductSelect = useCallback(
-    (productId: string) => {
-      const params = new URLSearchParams()
-      params.set("returnTo", encodeURIComponent(originPath))
-      const search = params.toString()
-      navigate(`/studio/product/${encodeURIComponent(productId)}${search ? `?${search}` : ""}`)
+    (productId: string, slot: StudioProductTraySlot | null) => {
+      const target = slot ?? scopeSlot ?? "top"
+      // Wear it on the look the user last had in Studio; Studio restores one itself if there is none.
+      const remembered = parseStudioPath(readStudioLastPath(profileGender))
+      navigate(
+        buildStudioFocusUrl({
+          productId,
+          slot: target,
+          returnTo: originPath,
+          outfitId: remembered.outfitId,
+          slotIds: remembered.slotIds,
+        }),
+      )
     },
-    [navigate, originPath],
+    [navigate, originPath, profileGender, scopeSlot],
   )
 
   const productPositionById = useMemo(() => {
@@ -951,7 +897,7 @@ export function SearchScreenView() {
   }, [outfitPositionById, outfitResultItems])
 
   const handleProductGridSelect = useCallback(
-    (item: { id: string }) => {
+    (item: { id: string; type?: string | null }) => {
       const position = productPositionById.get(item.id)
       trackItemClicked(analytics, {
         entity_type: "product",
@@ -959,7 +905,8 @@ export function SearchScreenView() {
         layout: "vertical_grid",
         position,
       })
-      handleProductSelect(item.id)
+      const slot = item.type ?? null
+      handleProductSelect(item.id, isStudioSlot(slot) ? slot : null)
     },
     [analytics, handleProductSelect, productPositionById],
   )
@@ -1130,112 +1077,98 @@ export function SearchScreenView() {
   const isProductResultsLoading = productResultsQuery.isLoading
   const isProductResultsError = productResultsQuery.isError
 
+  // Bar X: back to the reset state, top of the page.
+  const handleClearAll = useCallback(() => {
+    setSearchTerm("")
+    setUploadedImageUrl(undefined)
+    setAppliedImageUrl(undefined)
+    setImageSearchTriggered(false)
+    setExplicitSearchTriggered(false)
+    setActiveFilterIds([])
+    setActiveCollectionSlugs([])
+    setProductFilters({})
+    setDraftTypeFilters([])
+    try {
+      window.sessionStorage.removeItem(SEARCH_SESSION_KEY)
+    } catch {
+      // ignore
+    }
+    // Clearing the query drops back to this scope's feed, not to Looks.
+    const params = new URLSearchParams()
+    params.set("scope", scope)
+    params.set("mode", scopeToMode(scope))
+    setSearchParams(params, { replace: false })
+    window.scrollTo({ top: 0, behavior: "auto" })
+  }, [scope, setSearchParams])
+
+  const handleFindItems = useCallback(() => navigate("/inspiration-import"), [navigate])
+
+  // The sheet shows the design's groups only: Gender, Fit, Feel, Vibe, Boards.
+  // Category is owned by the scope rail (Looks / Tops / Lowers / Kicks) now.
+  const sheetCategories = useMemo<FilterCategory[]>(() => {
+    const order: Array<[string, string]> = [
+      ["gender", "Gender"],
+      ["fit", "Fit"],
+      ["feel", "Feel"],
+      ["vibe", "Vibe"],
+      ["collection", "Boards"],
+    ]
+    return order.flatMap(([id, label]) => {
+      const category = productFilterCategories.find((c) => c.id === id)
+      return category ? [{ ...category, label }] : []
+    })
+  }, [productFilterCategories])
+
   // --- RENDER HELPERS ---
-  const renderResultPlaceholder = (message: string) => (
-    <div className="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-muted-foreground/30 bg-muted/10 p-6 text-sm text-muted-foreground">
-      {message}
-    </div>
-  )
-
   const renderOutfitResultsContent = () => {
-    if (isOutfitResultsLoading) {
-      return <OutfitResultsSkeleton />
-    }
-    if (isOutfitResultsError) {
-      return renderResultPlaceholder("Unable to fetch outfits right now.")
-    }
-    if (outfitResultItems.length === 0) {
-      return renderResultPlaceholder("No outfits match this query yet.")
-    }
-
+    if (isOutfitResultsLoading) return <ResultsSkeleton kind="outfits" />
+    if (isOutfitResultsError) return <ErrorCard onRetry={() => outfitResultsQuery.refetch()} />
+    if (outfitResultItems.length === 0) return <NoResultsCard query={searchParamValue} onFindItems={handleFindItems} />
     return (
-      <div className="flex flex-col gap-2">
-        {/* 6h results header — query as editorial title + look count. */}
-        <div className="px-1">
-          <h2 className="font-display text-[22px] font-medium capitalize leading-none text-foreground">
-            {searchParamValue.trim() || "Results"}
-            <span className="ml-2 font-sans text-[11px] font-medium lowercase text-taupe">
-              — {outfitResultItems.length} {outfitResultItems.length === 1 ? "look" : "looks"}
-            </span>
-          </h2>
-        </div>
-        <OutfitInspirationGrid
-          items={outfitResultItems}
-          columns={feedColumns}
-          rows={8}
-          layoutMode="balanced"
-          cardTotalHeight={290}
-          cardVerticalGap={4}
-          cardMinAvatarHeight={128}
-          fixedAvatarHeight={156}
-          cardPreset="homeCurated"
-          stagger
-          onCardSelect={handleInspirationSelect}
-          onToggleSave={handleToggleFavorite}
-          onLongPressSave={handleLongPressSave}
-          getItemWrapperRef={(item) => {
-            const outfitId = item.outfitId ?? item.outfit?.id ?? null
-            if (!outfitId) return undefined
-            return outfitImpressionRefByOutfitId.get(outfitId)
-          }}
-        />
+      <div className={FEED_GRID}>
+        {outfitResultItems.map((item) => {
+          const outfitId = item.outfitId ?? item.outfit?.id ?? ""
+          return (
+            <div key={item.id} ref={outfitImpressionRefByOutfitId.get(outfitId)} className="h-[250px]">
+              <OutfitCard
+                title={item.title ?? ""}
+                outfitId={outfitId}
+                renderedItems={item.renderedItems}
+                gender={item.gender}
+                heightCm={item.heightCm}
+                saved={Boolean(item.isSaved)}
+                onSelect={() => handleInspirationSelect(item)}
+                onToggleSave={() => handleToggleFavorite(item, !item.isSaved)}
+                onLongPressSave={() => handleLongPressSave(item)}
+              />
+            </div>
+          )
+        })}
       </div>
     )
   }
 
   const renderProductResultsContent = () => {
-    if (isProductResultsLoading) {
-      return <ProductResultsSkeleton />
-    }
-    if (isProductResultsError) {
-      return renderResultPlaceholder("Unable to fetch products right now.")
-    }
+    if (isProductResultsLoading) return <ResultsSkeleton kind="products" />
+    if (isProductResultsError) return <ErrorCard onRetry={() => productResultsQuery.refetch()} />
     if (filteredProductResultItems.length === 0) {
-      const msg = activeCollectionSlugs.length > 0
-        ? "Nothing saved to this collection matches your search."
-        : "No products match this query yet."
-      return renderResultPlaceholder(msg)
+      return <NoResultsCard query={searchParamValue} onFindItems={handleFindItems} />
     }
-
     return (
-      <div className="flex flex-col gap-2 [&_img]:aspect-[3/4] [&_img]:object-contain">
-        {/* 6h results header — the query as an editorial title + piece count. */}
-        <div className="px-1">
-          <h2 className="font-display text-[22px] font-medium capitalize leading-none text-foreground">
-            {searchParamValue.trim() || "Results"}
-            <span className="ml-2 font-sans text-[11px] font-medium lowercase text-taupe">
-              — {filteredProductResultItems.length} {filteredProductResultItems.length === 1 ? "piece" : "pieces"}
-            </span>
-          </h2>
-        </div>
-        <ProductResultsGrid
-          items={filteredProductResultItems}
-          columns={feedColumns}
-          rows={8}
-          onItemSelect={handleProductGridSelect}
-          getItemWrapperRef={(item) => productImpressionRefById.get(item.id)}
-        />
-        {/* Boards for this search (6h bottom shelf) — real moodboards, clipboard cards. */}
-        {resultBoards.length > 0 ? (
-          <div className="mt-6 flex flex-col gap-2">
-            <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-taupe">
-              Boards for this search
-            </p>
-            <div className="grid grid-cols-2 gap-3 px-1 sm:grid-cols-3 lg:grid-cols-4">
-              {resultBoards.map((board, index) => (
-                <MoodboardCard
-                  key={board.slug}
-                  name={board.label}
-                  slug={board.slug}
-                  isSystem={board.isSystem}
-                  itemCount={board.itemCount}
-                  preview={boardPreviews[board.slug]}
-                  index={index}
-                />
-              ))}
-            </div>
+      <div className={FEED_GRID}>
+        {filteredProductResultItems.map((item) => (
+          <div key={item.id} ref={productImpressionRefById.get(item.id)}>
+            <ProductTile
+              title={item.title}
+              imageSrc={item.imageSrc}
+              saved={item.isSaved}
+              cropToContent
+              onSelect={() => handleProductGridSelect(item)}
+              onToggleSave={item.onToggleSave}
+              onLongPressSave={item.onLongPressSave}
+            />
           </div>
-        ) : null}
+        ))}
       </div>
     )
   }
@@ -1243,30 +1176,6 @@ export function SearchScreenView() {
   // --- URL & INTERACTION LOGIC ---
   const isFetchingMore =
     activeFilter === "outfits" ? outfitResultsQuery.isFetchingNextPage : productResultsQuery.isFetchingNextPage
-
-  const updateUrlState = useCallback(
-    (nextSearch: string, nextMode: "products" | "outfits") => {
-      const trimmed = nextSearch.trim()
-      const params = new URLSearchParams()
-      if (trimmed.length > 0) {
-        params.set("search", nextSearch)
-        params.set("mode", nextMode)
-        // Persist image URL if it exists
-        if (uploadedImageUrl) params.set("imageUrl", encodeURIComponent(uploadedImageUrl))
-        setSearchParams(params, { replace: false })
-      } else {
-        // If searching with just image, keep that
-        if (uploadedImageUrl) {
-           params.set("mode", nextMode)
-           params.set("imageUrl", encodeURIComponent(uploadedImageUrl))
-           setSearchParams(params, { replace: false })
-        } else {
-           setSearchParams(new URLSearchParams(), { replace: false })
-        }
-      }
-    },
-    [setSearchParams, uploadedImageUrl],
-  )
 
   const prevSearchParamRef = useRef(searchParamValue)
 
@@ -1283,13 +1192,13 @@ export function SearchScreenView() {
       // If a text search exists in the URL, ensure we clear manual image trigger
       setImageSearchTriggered(false)
       setActiveFilter((prev) => {
-        const target = modeParamValue
+        const target = scopeToMode(scope)
         return prev === target ? prev : target
       })
     }
     // Don't force products mode for image-only search - respect user's mode choice
     // Both outfit and product search support image search
-  }, [modeParamValue, searchParamValue])
+  }, [scope, searchParamValue])
 
   useEffect(() => {
     const node = loadMoreRef.current
@@ -1336,8 +1245,8 @@ export function SearchScreenView() {
     if (trimmed.length === 0 && !uploadedImageUrl) {
       return
     }
-    // Keep user's current mode - both outfit and product search support image search
-    const nextMode = activeFilter
+    // The scope decides what a search returns; mode is its legacy name.
+    const nextMode = scopeToMode(scope)
     // If user is submitting with only an image, treat that as an explicit image search
     if (trimmed.length === 0 && uploadedImageUrl) {
       setImageSearchTriggered(true)
@@ -1366,9 +1275,10 @@ export function SearchScreenView() {
       params.set("imageUrl", encodeURIComponent(uploadedImageUrl))
     }
     params.set("mode", nextMode)
+    params.set("scope", scope)
     setSearchParams(params, { replace: false })
   }, [
-    activeFilter,
+    scope,
     emitSearchSubmitted,
     outfitFilters,
     productFilters,
@@ -1377,12 +1287,6 @@ export function SearchScreenView() {
     sortValue,
     uploadedImageUrl,
   ])
-
-  const handleClear = useCallback(() => {
-    setSearchTerm("")
-    // Don't update URL or reset triggers immediately.
-    // This prevents the UI from jumping back to "Browse" mode while the user is just clearing input.
-  }, [])
 
   const handleClearImage = useCallback(() => {
     // Hide the uploaded image preview in the UI but do NOT change the URL or applied search state.
@@ -1454,6 +1358,8 @@ export function SearchScreenView() {
       // Also sync to URL if we're in results mode
       if (explicitSearchTriggered) {
         const params = new URLSearchParams(searchParams)
+        // Scope and the legacy mode param always travel together.
+        params.set("scope", next === "outfits" ? "looks" : scope === "looks" ? "tops" : scope)
         params.set("mode", next)
         setSearchParams(params, { replace: true })
       }
@@ -1467,242 +1373,214 @@ export function SearchScreenView() {
       isResultsMode,
       outfitFilters,
       productFilters,
+      scope,
       searchParams,
       setSearchParams,
       sortValue,
     ],
   )
 
-  const handleFilterToggle = useCallback(() => {
-    const next = activeFilter === "products" ? "outfits" : "products"
-    handleFilterChange(next)
-  }, [activeFilter, handleFilterChange])
-
-  const handleOpenCuratedSection = useCallback(
-    (categoryId: string, title: string) => {
-      const params = new URLSearchParams()
-      params.set("categoryId", categoryId)
-      params.set("title", title)
-      const returnTo = `${location.pathname}${location.search}` || "/search"
-      params.set("returnTo", encodeURIComponent(returnTo))
-      navigate(`/studio/outfit-suggestions?${params.toString()}`, { replace: false })
+  // The rail changes scope; mode follows so the analytics commit point still fires.
+  const handleScopeChange = useCallback(
+    (next: SearchScope) => {
+      if (next === scope) return
+      handleFilterChange(scopeToMode(next))
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev)
+          params.set("scope", next)
+          params.set("mode", scopeToMode(next))
+          params.delete("list")
+          return params
+        },
+        { replace: true },
+      )
+      window.scrollTo({ top: 0, behavior: "auto" })
     },
-    [location.pathname, location.search, navigate],
+    [handleFilterChange, scope, setSearchParams],
   )
 
-  const filterChips = useMemo<FilterSearchBarChip[]>(
-    () => [
-      {
-        id: "products",
-        label: "Products",
-        isActive: activeFilter === "products",
-        onActivate: () => handleFilterChange("products"),
-        onDeactivate: () => handleFilterToggle(),
+  // Filters with nothing typed: seed the query from the picked words and land on products.
+  const handleSheetApply = useCallback(
+    (filterIds: string[]) => {
+      if (isResultsMode) {
+        // Filters are product filters, so Apply from Outfits lands on Products.
+        if (activeFilter === "outfits") handleFilterChange("products")
+        handleFilterApply(filterIds)
+        return
+      }
+      // The sheet no longer has a Category group, but guard against stale type: ids anyway —
+      // the scope rail owns category and a sheet pick can never reach the query for it.
+      const words = filterIds
+        .filter((id) => !id.startsWith("collection:") && !id.startsWith("gender:") && !id.startsWith("type:"))
+        .map((id) => id.split(":")[1]?.replace(/[-_]/g, " ") ?? "")
+        .filter(Boolean)
+      if (words.length === 0) return
+      const csv = (prefix: string) =>
+        filterIds.filter((id) => id.startsWith(`${prefix}:`)).map((id) => id.slice(prefix.length + 1))
+      const params = new URLSearchParams()
+      params.set("search", words.join(" "))
+      params.set("mode", "products")
+      params.set("scope", scope === "looks" ? "tops" : scope)
+      if (csv("fit").length) params.set("fits", csv("fit").join(","))
+      if (csv("feel").length) params.set("feels", csv("feel").join(","))
+      if (csv("vibe").length) params.set("vibes", csv("vibe").join(","))
+      setSearchParams(params, { replace: false })
+    },
+    [activeFilter, handleFilterApply, handleFilterChange, isResultsMode, scope, setSearchParams],
+  )
+
+  const isOutfitSaved = useCallback((outfitId: string) => favoriteIds.includes(outfitId), [favoriteIds])
+  const toggleOutfitSave = useCallback(
+    (outfitId: string, next: boolean) => handleToggleOutfitById(outfitId, next, { layout: "vertical_grid" }, "click"),
+    [handleToggleOutfitById],
+  )
+  const longPressOutfitSave = useCallback(
+    (outfitId: string) => handleLongPressOutfitById(outfitId, { layout: "vertical_grid" }),
+    [handleLongPressOutfitById],
+  )
+
+  const feedHandlers = useMemo<FeedHandlers>(
+    () => ({
+      onOpenLook: (look: FeedLook, layout: FeedLayout, position: number) => {
+        trackItemClicked(analytics, { entity_type: "outfit", entity_id: look.outfit.id, layout, position })
+        void launchStudio(look.outfit)
       },
-      {
-        id: "outfits",
-        label: "Outfits",
-        isActive: activeFilter === "outfits",
-        onActivate: () => handleFilterChange("outfits"),
-        onDeactivate: () => handleFilterToggle(),
+      onOpenPiece: (piece: FeedPiece, layout: FeedLayout, position: number) => {
+        trackItemClicked(analytics, { entity_type: "product", entity_id: piece.id, layout, position })
+        handleProductSelect(piece.id, piece.slot)
       },
+      isLookSaved: isOutfitSaved,
+      onToggleLookSave: toggleOutfitSave,
+      onLongPressLookSave: longPressOutfitSave,
+      isPieceSaved: (id: string) => productSaveActions.isSaved(id),
+      onTogglePieceSave: (id: string, next: boolean) => productSaveActions.onToggleSave(id, next, { layout: "vertical_grid" }),
+      onLongPressPieceSave: (id: string) => productSaveActions.onLongPressSave(id, { layout: "vertical_grid" }),
+    }),
+    [
+      analytics,
+      handleProductSelect,
+      isOutfitSaved,
+      launchStudio,
+      longPressOutfitSave,
+      productSaveActions,
+      toggleOutfitSave,
     ],
-    [activeFilter, handleFilterChange, handleFilterToggle],
   )
 
-  // Entry state = the 6g charcoal search room (facets from the catalog). Submitting
-  // there navigates /search into results mode, which renders the block below.
-  if (!isResultsMode) {
-    return <SearchRoom />
-  }
+  // The feed only runs when results are not on screen.
+  const feed = useSearchFeed(scope, !isResultsMode)
+
+  const handleOpenList = useCallback(
+    (list: FeedList) => {
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev)
+          params.set("list", list)
+          return params
+        },
+        { replace: false },
+      )
+      window.scrollTo({ top: 0, behavior: "auto" })
+    },
+    [setSearchParams],
+  )
+
+  const handleCloseList = useCallback(() => {
+    // Go back only when we pushed the list ourselves; a deep link must stay in-app.
+    const historyIndex = (window.history.state as { idx?: number } | null)?.idx
+    if (typeof historyIndex === "number" && historyIndex > 0) {
+      navigate(-1)
+      return
+    }
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev)
+        params.delete("list")
+        return params
+      },
+      { replace: true },
+    )
+  }, [navigate, setSearchParams])
+
+  const listTitle = openList === "hot" ? "Hot Styles" : "Atlyr Curations"
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-start px-1 pt-6">
-      <div
-        className={cn(
-          // Static max-width (see HomeScreen): a template-literal max-w-[…] class
-          // can't be generated by Tailwind, so the column ran full desktop width.
-          "flex w-full max-w-[24.5rem] flex-1 flex-col rounded-frame bg-background md:max-w-[47rem] lg:max-w-[62rem] xl:max-w-[78rem]",
-          isResultsMode ? "pt-[4.5rem]" : "",
-        )}
-      >
+    <div className="flex flex-1 flex-col">
+      {/* Header like Collections: 52h title row, then the scope pills where its tab bar sits. Fixed, ghost block under it. */}
+      {openList ? null : (
+        <header className="fixed inset-x-0 top-0 z-30 bg-background">
+          <div className="flex h-control-header-title items-center border-b border-hairline px-4">
+            <h1 className="min-w-0 flex-1 font-display text-title font-medium text-ink">Search</h1>
+          </div>
+          <div className="flex h-9 items-center px-4">
+            <SearchScopeRail value={scope} onChange={handleScopeChange} />
+          </div>
+        </header>
+      )}
+      <div className={cn("shrink-0", openList ? "h-2" : "h-[88px]")} aria-hidden="true" />
+
+      {/* 56 dock + 55 nav + 16, less the shell's 40. */}
+      <div className="mx-auto w-full max-w-[24.5rem] px-4 pb-[87px] md:max-w-[47rem] lg:max-w-[62rem] xl:max-w-[78rem]">
         {isResultsMode ? (
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <div className="flex flex-1 overflow-hidden">
-              <div 
-                className="flex flex-1 flex-col overflow-y-auto px-2 pb-20 pt-3 scrollbar-hide"
-              >
-                {activeFilter === "products" ? renderProductResultsContent() : renderOutfitResultsContent()}
-                <div ref={loadMoreRef} className="h-6 w-full" />
-                {isFetchingMore ? renderResultPlaceholder("Loading more...") : null}
-              </div>
-            </div>
-          </div>
+          <>
+            {activeFilter === "products" ? renderProductResultsContent() : renderOutfitResultsContent()}
+            <div ref={loadMoreRef} className="h-6 w-full" />
+            {isFetchingMore ? <ResultsSkeleton kind={activeFilter} count={2} /> : null}
+          </>
+        ) : openList ? (
+          feed.kind === "looks" ? (
+            <SearchListPage
+              kind="looks"
+              title={listTitle}
+              section={feed[openList]}
+              heightCm={heightCm ?? 170}
+              onBack={handleCloseList}
+              handlers={feedHandlers}
+            />
+          ) : (
+            <SearchListPage
+              kind="pieces"
+              title={listTitle}
+              section={feed[openList]}
+              heightCm={heightCm ?? 170}
+              onBack={handleCloseList}
+              handlers={feedHandlers}
+            />
+          )
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <div
-              className="flex flex-1 flex-col gap-3 overflow-y-auto px-3 pt-3 scrollbar-hide"
-              style={{ paddingBottom: DEFAULT_RESULTS_PADDING_BOTTOM }}
-            >
-              {isBrowseLoading ? (
-                 <div className="grid grid-cols-3 gap-2">
-                    {Array.from({ length: 6 }).map((_, i) => (
-                      <div key={i} className="flex flex-col gap-2">
-                        <div className="aspect-[3/4] w-full animate-pulse rounded-xl bg-muted/20" />
-                      </div>
-                    ))}
-                 </div>
-              ) : isBrowseError ? (
-                <div className="flex flex-1 items-center justify-center rounded-2xl border border-destructive/40 bg-destructive/5 p-6 text-sm text-destructive">
-                  Unable to load collections right now.
-                </div>
-              ) : visibleCollections.length > 0 ? (
-                visibleCollections.map((collection) => (
-                  <section key={collection.categoryId} className="flex flex-col gap-2">
-                    <SectionHeader
-                      title={collection.title}
-                      actionSlot={
-                        <IconButton
-                          aria-label={`See more ${collection.subtitle ?? "items"}`}
-                          tone="ghost"
-                          size="xxs"
-                          className="text-muted-foreground hover:text-foreground"
-                          onClick={() => handleOpenCuratedSection(collection.categoryId, collection.title)}
-                        >
-                          <ChevronRight className="h-4 w-4" aria-hidden="true" />
-                        </IconButton>
-                      }
-                    />
-                    <RecentStylesRail
-                      items={collection.inspirationItems}
-                      className="px-0"
-                      railClassName="gap-1"
-                      itemClassName="flex h-40 w-[7.5rem] flex-shrink-0 flex-col cursor-pointer"
-                      onCardSelect={() => handleOpenCuratedSection(collection.categoryId, collection.title)}
-                      cardOptions={{
-                        showTitle: false,
-                        showChips: false,
-                        showSaveButton: false,
-                        className: "h-40 w-full",
-                      }}
-                      cardPreset="homeCurated"
-                    />
-                  </section>
-                ))
-              ) : (
-                <div className="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-muted-foreground/30 bg-muted/10 p-6 text-sm text-muted-foreground">
-                  Use the search bar to explore outfits and products.
-                </div>
-              )}
-            </div>
-          </div>
+          <SearchFeed sections={feed} heightCm={heightCm ?? 170} onOpenList={handleOpenList} handlers={feedHandlers} />
         )}
       </div>
 
-      {!isResultsMode && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-[3rem] z-10">
-          <div className="pointer-events-auto mx-auto w-full max-w-[24rem] px-2 md:max-w-[34rem]">
-            <FilterSearchBar
-              className="rounded-t-3xl"
-              value={searchTerm}
-              onValueChange={handleSearchChange}
-              filters={isSearchFocused ? filterChips : undefined}
-              pillPosition={isSearchFocused ? "top" : "none"}
-              variant="elevated"
-              onSubmit={handleSubmit}
-              onClear={handleClear}
-              placeholder={isSearchFocused 
-                ? (activeFilter === "products" ? "Search products..." : "Search outfits...") 
-                : "Discover your next look"
-              }
-              trailingAction={searchTerm.trim().length > 0 ? undefined : null}
-              onFocus={() => setIsSearchFocused(true)}
-              onBlur={() => setIsSearchFocused(false)}
-              
-              onImageUpload={handleImageUpload}
-              isUploadingImage={isUploading}
-              previewImageUrl={uploadedImageUrl}
-              onClearImage={handleClearImage}
-              showCompactPreview={false}
+      <SearchDock>
+        <SearchBar
+          mode={isResultsMode ? "results" : "idle"}
+          value={searchTerm}
+          onValueChange={handleSearchChange}
+          onSubmit={() => {
+            handleSubmit()
+            ;(document.activeElement as HTMLElement | null)?.blur()
+          }}
+          onClear={handleClearAll}
+          thumbSrc={uploadedImageUrl}
+          onClearThumb={handleClearImage}
+          onPickImage={handleImageUpload}
+          isUploading={isUploading}
+          onFilter={() => setIsFilterOpen(true)}
+          onFindItems={handleFindItems}
+        />
+      </SearchDock>
 
-              leadingActions={null}
-            />
-          </div>
-        </div>
-      )}
-
-      {isResultsMode && (
-        <div className="pointer-events-none fixed inset-x-0 top-[0.5rem] z-20">
-          <div className="pointer-events-auto mx-auto w-full max-w-[24rem] px-2 md:max-w-[34rem]">
-            <FilterSearchBar
-              className="rounded-b-3xl"
-              value={searchTerm}
-              onValueChange={handleSearchChange}
-              filters={filterChips}
-              pillPosition="bottom"
-              variant="elevated"
-              onSubmit={handleSubmit}
-              onClear={handleClear}
-              placeholder={activeFilter === "products" ? "Search products" : "Search outfits"}
-              trailingAction={searchTerm.trim().length > 0 ? undefined : null}
-              
-              onImageUpload={handleImageUpload}
-              isUploadingImage={isUploading}
-              previewImageUrl={uploadedImageUrl}
-              onClearImage={handleClearImage}
-              showCompactPreview={isResultsMode && explicitSearchTriggered}
-              
-              sortValue={sortValue}
-              onSortChange={(nextSort) => {
-                if (nextSort === sortValue) return
-
-                // Commit point: sort_change (only when results are active).
-                if (
-                  explicitSearchTriggered &&
-                  isResultsMode &&
-                  (committedSearchTerm.trim().length > 0 || Boolean(appliedImageUrl))
-                ) {
-                  const nextModeTyped = activeFilter as SearchMode
-                  const nextSearchType = computeSearchType({ queryRaw: committedSearchTerm, imageUrl: appliedImageUrl })
-                  const nextFilters =
-                    nextModeTyped === "products"
-                      ? canonicalizeProductSearchFilters(productFilters)
-                      : canonicalizeOutfitSearchFilters(outfitFilters)
-                  const nextSig = computeSearchContextSignature({
-                    query_raw: committedSearchTerm,
-                    search_type: nextSearchType,
-                    mode: nextModeTyped,
-                    filters: nextFilters,
-                    sort: nextSort,
-                  })
-
-                  const currentSig = currentSearchSigRef.current
-                  if (!currentSig || nextSig !== currentSig) {
-                    emitSearchSubmitted("sort_change", {
-                      queryRaw: committedSearchTerm,
-                      imageUrl: appliedImageUrl,
-                      mode: nextModeTyped,
-                      sort: nextSort,
-                      productFilters,
-                      outfitFilters,
-                    })
-                  }
-                }
-
-                setSortValue(nextSort)
-              }}
-
-              filterCategories={productFilterCategories}
-              activeFilters={activeFilterIds}
-              onFilterApply={handleFilterApply}
-              onFilterClearAll={handleFilterClearAll}
-              onFilterChange={handleFilterOptionsChange}
-              filterDisabled={activeFilter === "outfits"}
-              sortDisabled={activeFilter === "outfits"}
-            />
-          </div>
-        </div>
-      )}
+      <SearchFilterSheet
+        open={isFilterOpen}
+        onOpenChange={setIsFilterOpen}
+        categories={sheetCategories}
+        activeFilters={activeFilterIds}
+        onApply={handleSheetApply}
+        onClear={handleFilterClearAll}
+        onDraftChange={handleFilterOptionsChange}
+      />
 
       <MoodboardPickerDrawer
         open={isOutfitPickerOpen}

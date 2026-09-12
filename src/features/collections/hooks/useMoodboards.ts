@@ -80,13 +80,14 @@ export function useSavedProducts() {
 }
 
 /** Trending pieces for the profile's gender, ranked by feed appearances. */
-export function useTrendingProducts() {
+export function useTrendingProducts(enabled = true) {
   const { gender } = useProfileContext()
   return useQuery({
     queryKey: collectionsKeys.trendingProducts(gender),
     queryFn: () => fetchTrendingProducts({ gender }),
     staleTime: 30 * 60 * 1000,
     gcTime: 60 * 60 * 1000,
+    enabled,
   })
 }
 
