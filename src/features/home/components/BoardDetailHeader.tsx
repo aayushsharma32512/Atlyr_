@@ -19,7 +19,7 @@ interface BoardDetailHeaderProps {
   label: string
   /** Omitted where there is no meaningful count to show. */
   itemCount?: number
-  /** System boards (Try-ons, Favorites, Wardrobe) cannot be renamed or deleted. */
+  /** System boards (Try-ons, Favorites) cannot be renamed or deleted. */
   canManage: boolean
   onBack: () => void
   onDeleted: () => void

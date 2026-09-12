@@ -3,7 +3,7 @@ import { MoreVertical, Trash2, X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { useResponsiveColumns } from "@/shared/hooks/useResponsiveColumns"
-import { OutfitInspirationTile, ProductAlternateCard } from "@/design-system/primitives"
+import { OutfitInspirationTile, ProductTile } from "@/design-system/primitives"
 import type { MoodboardItem } from "@/services/collections/collectionsService"
 import { resolveOutfitAttribution } from "@/utils/outfitAttribution"
 import { getOutfitChips } from "@/utils/outfitChips"
@@ -79,14 +79,6 @@ export function MixedMasonryGrid({
     return cols
   }, [items, columnCount])
 
-  const formatPrice = (price: number | null | undefined, currency: string | null | undefined) => {
-    if (typeof price !== "number") return "—"
-    if (!currency || currency === "INR") {
-      return PRICE_FORMATTER.format(price)
-    }
-    return new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 0 }).format(price)
-  }
-
   const renderItem = (item: MoodboardItem) => {
     if (item.itemType === "outfit") {
       const isOwner = Boolean(currentUserId && item.outfit?.user_id === currentUserId)
@@ -113,36 +105,26 @@ export function MixedMasonryGrid({
     }
 
     const saved = isProductSaved ? isProductSaved(item.id) : false
-    const priceLabel = formatPrice(item.price ?? null, item.currency ?? null)
-    const isInteractive = Boolean(onProductSelect)
+    // The wrapper only carries the impressions ref and the tilt now. ProductTile
+    // is its own card and its own tap target, so the bordered role="button" box
+    // around it was a frame inside a frame with a button inside a button.
     return (
       <div
         key={`${item.itemType}-${item.id}-${item.createdAt}`}
         ref={getProductWrapperRef?.(item.id)}
-        role={isInteractive ? "button" : undefined}
-        tabIndex={isInteractive ? 0 : undefined}
-        onClick={isInteractive ? () => onProductSelect?.(item.id) : undefined}
-        onKeyDown={
-          isInteractive
-            ? (event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault()
-                  onProductSelect?.(item.id)
-                }
-              }
-            : undefined
-        }
-        className={cn("rounded-lg border border-hairline bg-card p-1 transition-transform", tiltFor(item.id), isInteractive && "cursor-pointer")}
+        className={cn("transition-transform", tiltFor(item.id))}
       >
-        <ProductAlternateCard
-          imageSrc={item.imageUrl ?? ""}
-          title={item.productName ?? "Product"}
-          brand={item.brand ?? "Brand"}
-          price={priceLabel}
-          isSaved={saved}
+        {/* Name only — the design carries no brand or price on a tile (brief §3.2).
+            cropToContent frames a segmented cutout instead of the empty canvas
+            around it, same as ProductsTab and the board covers. */}
+        <ProductTile
+          title={item.productName ?? "Piece"}
+          imageSrc={item.imageUrl ?? null}
+          saved={saved}
+          cropToContent
+          onSelect={onProductSelect ? () => onProductSelect(item.id) : undefined}
           onToggleSave={() => onToggleProductSave?.(item.id, !saved)}
           onLongPressSave={() => onLongPressProductSave?.(item.id)}
-          layout="masonry"
         />
       </div>
     )

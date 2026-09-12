@@ -47,3 +47,40 @@ export function jobTitle(job: Job) {
     ? `${TYPE_LABEL[job.type] ?? "Job"} failed`
     : READY_TITLE[job.type] ?? "Ready"
 }
+
+/** 0..100, always a number; a ready job reads full even if the poller never wrote 100. */
+export function jobProgress(job: Job) {
+  if (job.status === "ready") return 100
+  const raw = typeof job.progress === "number" ? job.progress : 0
+  return Math.min(100, Math.max(0, Math.round(raw)))
+}
+
+/**
+ * What the job is doing right now. Mirrors the poller's coarse steps in
+ * JobsContext (try-on: 20 queued → 60 generating; likeness: candidates / expected),
+ * so the card says something truer than a lone percentage.
+ */
+export function jobStage(job: Job) {
+  if (job.status !== "processing") return ""
+  const progress = jobProgress(job)
+
+  if (job.type === "likeness") {
+    const expected =
+      typeof job.metadata?.expectedCount === "number" && job.metadata.expectedCount > 0
+        ? job.metadata.expectedCount
+        : 2
+    const landed = Math.floor((progress / 100) * expected)
+    return landed > 0 ? `${landed} of ${expected} looks ready` : "Building your likeness"
+  }
+
+  if (progress >= 60) return "Dressing your likeness"
+  if (progress >= 20) return "In the queue"
+  return "Sending to the studio"
+}
+
+/** Second line of a notification card. */
+export function jobSubtitle(job: Job) {
+  if (job.status === "ready") return "Tap to open"
+  if (job.status === "failed") return "Something went wrong. Retry when you're ready."
+  return jobStage(job)
+}
