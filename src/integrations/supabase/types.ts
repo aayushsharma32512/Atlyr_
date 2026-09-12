@@ -1407,6 +1407,27 @@ export type Database = {
         }
         Relationships: []
       }
+      share_links: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          path: string
+          slug: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          path: string
+          slug: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          path?: string
+          slug?: string
+        }
+        Relationships: []
+      }
       silhouettes: {
         Row: {
           created_at: string

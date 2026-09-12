@@ -29,6 +29,7 @@ const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 const InventoryDashboard = lazy(() => import("@/components/hitl/InventoryDashboard"));
 const DesignSystemPreview = lazy(() => import("./pages/DesignSystemPreview.tsx"));
 const StudioRedesign = lazy(() => import("./pages/studio/index.tsx"));
+const ShareLinkRedirect = lazy(() => import("./features/share/ShareLinkRedirect.tsx"));
 const ProductPagePreview = lazy(() => import("./pages/ProductPagePreview.tsx"));
 const SimilarItemsPreview = lazy(() => import("./pages/SimilarItemsPreview.tsx"));
 const HomePreview = lazy(() => import("./pages/HomePreview.tsx"));
@@ -352,6 +353,8 @@ const App = () => (
                         </AdminAccessGuard>
                       }
                     />
+                    {/* Short share links. Public: the target carries share=1, which the guard admits. */}
+                    <Route path="/s/:slug" element={<ShareLinkRedirect />} />
                     <Route path="/design-system/studio/*" element={<Navigate to="/studio" replace />} />
                     <Route
                       path="/design-system/studio-alternatives" 
