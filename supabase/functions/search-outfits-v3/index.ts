@@ -26,7 +26,7 @@ const RESOLVER_MODEL = 'gemini-3.5-flash-lite'
 const RESOLVER_TIMEOUT_MS = 6000
 const IMAGE_BYTE_CAP = 4_000_000
 const DEFAULT_N = 10
-const DEFAULT_MAX_PER_DESCRIPTION = 0 // 0 = no cap
+const DEFAULT_MAX_PER_DESCRIPTION = 3 // 0 = no cap
 const PER_LIST_COUNT = 100
 const RESULT_COUNT = 50
 
