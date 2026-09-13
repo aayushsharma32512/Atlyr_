@@ -346,6 +346,9 @@ export function PlacementAvatarRenderer({
 }: Props) {
   const [host, setHost] = useState<HTMLDivElement | null>(null)
   const appRef = useRef<Application | null>(null)
+  // Tears down the last build that reached the screen. Deferred until the next build presents, so a
+  // changed outfit keeps the previous frame up instead of blanking while the new textures load.
+  const retireRef = useRef<(() => void) | null>(null)
 
   // The scene is rebuilt only when `sig` changes, so a handler captured while building it would go
   // stale against anything the caller closes over. Held in a ref and called through, which keeps the
@@ -390,6 +393,7 @@ export function PlacementAvatarRenderer({
     if (!host) return
     let disposed = false
     let released = false
+    let shown = false
     onReady?.(false)
     const app = new Application()
 
@@ -413,7 +417,6 @@ export function PlacementAvatarRenderer({
         })
         if (disposed) { app.destroy(true); return }
         appRef.current = app
-        host.appendChild(app.canvas)
 
         const mannequinUrl = mannequinAssetUrl(mannequin)
         // Loaded via loadImage rather than Assets.load because the skin retone needs CPU-side pixel
@@ -714,8 +717,13 @@ export function PlacementAvatarRenderer({
         }
 
         app.render()
+        // The canvas joins the DOM only now, fully drawn, replacing the previous frame in one step.
+        if (interactive) host.replaceChildren(app.canvas)
         const upgradable = loaded.some((l) => !l.isFull)
         present(!upgradable)
+        shown = true
+        retireRef.current?.()
+        retireRef.current = null
         // Ready on the FIRST visible composite, not on the upgrade: the full-res texture lands on an
         // avatar the user is already looking at, so gating the studio on it just re-adds the wait.
         onReady?.(true)
@@ -734,6 +742,10 @@ export function PlacementAvatarRenderer({
         present(true)
       } catch {
         if (!disposed) {
+          // Don't leave the previous outfit on screen as if it were this one.
+          host.replaceChildren()
+          retireRef.current?.()
+          retireRef.current = null
           onItemBoundsChangeRef.current?.({
             items: [],
             canvasWidth: containerWidth,
@@ -747,12 +759,26 @@ export function PlacementAvatarRenderer({
     return () => {
       disposed = true
       appRef.current = null
-      if (!released) {
+      if (released) return
+      const destroy = () => {
         try { app.destroy(true, { children: true }) } catch { /* already torn down */ }
+      }
+      if (shown) {
+        retireRef.current?.()
+        retireRef.current = destroy
+      } else {
+        destroy()
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig, host])
+
+  // Declared after the build effect so its cleanup runs last on unmount, once that one has parked
+  // its app here.
+  useEffect(() => () => {
+    retireRef.current?.()
+    retireRef.current = null
+  }, [])
 
   return (
     <div
