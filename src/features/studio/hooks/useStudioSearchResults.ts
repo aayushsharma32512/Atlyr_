@@ -1,6 +1,8 @@
+import { useState } from "react"
 import { useQuery, type QueryClient } from "@tanstack/react-query"
 
 import { studioKeys } from "@/features/studio/queryKeys"
+import { useSearchRetryToast } from "@/features/search/hooks/useSearchRetryToast"
 import {
     studioService,
     type StudioAlternativeProduct,
@@ -63,7 +65,11 @@ export function useStudioSearchResults({
     // Enable query if we have either text or image search, OR if empty search is allowed
     const hasSearchParams = trimmedQuery.length > 0 || Boolean(safeImageUrl) || Boolean(productId) || allowEmptySearch
 
-    return useQuery<StudioAlternativeProduct[]>({
+    // The service falls back to a DB list when the product search fails, so the query
+    // does not error. The last failure is kept here to drive the retry toast.
+    const [searchFailure, setSearchFailure] = useState<{ error: unknown; tick: number } | null>(null)
+
+    const resultsQuery = useQuery<StudioAlternativeProduct[]>({
         queryKey,
         enabled: enabled && hasSearchParams,
         queryFn: async () => {
@@ -82,6 +88,7 @@ export function useStudioSearchResults({
                 productId: productId ?? undefined,
                 filters,
                 gender,
+                onSearchError: (error) => setSearchFailure((prev) => ({ error, tick: (prev?.tick ?? 0) + 1 })),
             })
             console.log('[StudioSearchResults] Got', results.length, 'results')
             return results
@@ -90,6 +97,14 @@ export function useStudioSearchResults({
         staleTime: 30 * 1000, // 30 seconds
         gcTime: 5 * 60 * 1000, // 5 minutes
     })
+
+    useSearchRetryToast({
+        error: searchFailure?.error,
+        errorKey: searchFailure?.tick ?? 0,
+        onRetry: () => resultsQuery.refetch(),
+    })
+
+    return resultsQuery
 }
 
 // Export query options for prefetching if needed

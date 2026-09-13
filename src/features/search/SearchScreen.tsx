@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils"
 import { getOutfitChips } from "@/utils/outfitChips"
 import { useSearchOutfitResults } from "@/features/search/hooks/useSearchOutfitResults"
 import { useSearchProductResults } from "@/features/search/hooks/useSearchProductResults"
+import { useSearchRetryToast } from "@/features/search/hooks/useSearchRetryToast"
 import { useProductFilterOptions } from "@/features/search/hooks/useProductFilterOptions"
 import { useSearchImageUpload } from "@/features/search/hooks/useSearchImageUpload"
 import { SearchFilterSheet } from "@/features/search/components/SearchFilterSheet"
@@ -552,6 +553,12 @@ export function SearchScreenView() {
     imageUrl: appliedImageUrl,
     enabled: explicitSearchTriggered && isResultsMode && activeFilter === "products",
     filters: mergedProductFilters,
+  })
+
+  useSearchRetryToast({
+    error: productResultsQuery.error,
+    errorKey: productResultsQuery.isError ? productResultsQuery.errorUpdatedAt : 0,
+    onRetry: () => productResultsQuery.refetch(),
   })
 
   // --- FILTER OPTIONS ---
