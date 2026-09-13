@@ -4,7 +4,6 @@ import { Icons } from "@/design-system/icons"
 import { AppShellLayout } from "@/layouts/AppShellLayout"
 import { useJobs, type Job } from "@/features/progress/providers/JobsContext"
 import {
-  jobProgress,
   jobSubtitle,
   jobTitle,
   selectActiveJobs,
@@ -77,7 +76,7 @@ function Section({ label, children }: { label: string; children: React.ReactNode
   )
 }
 
-// One card per job. A running job shows its bar and what it is doing right now;
+// One card per job. A running job shows a spinner and what it is doing right now;
 // a finished one says what tapping does. Dismiss only exists once the work is over.
 function JobCard({
   job,
@@ -92,7 +91,6 @@ function JobCard({
 }) {
   const failed = job.status === "failed"
   const processing = job.status === "processing"
-  const progress = jobProgress(job)
   const Icon = TYPE_ICON[job.type] ?? Icons.navStudio
   const Wrapper = onOpen ? "button" : "div"
 
@@ -121,23 +119,14 @@ function JobCard({
           </div>
 
           {processing ? (
-            <div className="flex flex-col gap-1">
-              <div
-                className="h-1 w-full overflow-hidden rounded-full bg-muted"
+            <div className="flex items-center justify-between gap-2">
+              <p className="truncate text-chip text-taupe">{jobSubtitle(job)}</p>
+              <span
+                className="h-4 w-4 shrink-0 animate-spin rounded-full border-[1.5px] border-terracotta/25 border-t-terracotta"
                 role="progressbar"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={progress}
-              >
-                <div
-                  className="h-full rounded-full bg-terracotta transition-[width] duration-500 ease-out"
-                  style={{ width: `${Math.max(progress, 4)}%` }}
-                />
-              </div>
-              <p className="flex items-baseline justify-between text-chip text-taupe">
-                <span className="truncate">{jobSubtitle(job)}</span>
-                <span className="shrink-0 tabular-nums">{progress}%</span>
-              </p>
+                aria-label="In progress"
+                aria-busy="true"
+              />
             </div>
           ) : (
             <div className="flex items-center justify-between gap-2">
@@ -204,7 +193,7 @@ function Thumb({ job }: { job: Job }) {
         <div className="h-full w-full animate-pulse bg-muted" />
       ) : (
         <div className="flex h-full w-full items-center justify-center">
-          <span className="font-deva text-chip font-medium text-ink/60">कलागृह</span>
+          <span className="text-chip font-medium text-ink/60">Atlyr</span>
         </div>
       )}
     </div>

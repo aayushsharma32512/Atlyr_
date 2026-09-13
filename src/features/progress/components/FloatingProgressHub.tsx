@@ -300,7 +300,7 @@ export function FloatingProgressHub() {
       </div>
     ) : (
       <div className="flex flex-col items-center justify-center">
-        <span className="font-deva text-[13px] font-medium text-foreground/90">कलागृह</span>
+        <span className="text-[13px] font-medium text-foreground/90">Atlyr</span>
       </div>
     )
 
@@ -541,7 +541,7 @@ function JobCard({
           <div className="h-full w-full animate-pulse bg-muted/60" />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <span className="font-deva text-[11px] font-medium text-foreground/60">कलागृह</span>
+            <span className="text-[11px] font-medium text-foreground/60">Atlyr</span>
           </div>
         )}
       </div>
