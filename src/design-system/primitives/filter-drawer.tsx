@@ -191,8 +191,8 @@ export function FilterDrawer({
           // "type" filters are usually valid since they drove the change, so we keep them
           if (catPrefix === 'type') return
 
-          // Favorites is inline — never pruned by category cleanup
-          if (filterId === 'collection:favorites') return
+          // Favorites/Wardrobe are inline — never pruned by category cleanup
+          if (filterId === 'collection:favorites' || filterId === 'collection:wardrobe') return
 
           // Find the category object in props
           const category = categories.find(c => c.id === catPrefix)
@@ -289,6 +289,7 @@ export function FilterDrawer({
 
   const getFilterLabel = (filterId: string) => {
     if (filterId === 'collection:favorites') return 'Favorites'
+    if (filterId === 'collection:wardrobe') return 'Wardrobe'
     for (const category of categories) {
       const option = category.options.find((opt) => opt.id === filterId)
       if (option) return option.label
@@ -370,12 +371,13 @@ export function FilterDrawer({
               </div>
             </div>
 
-            {/* Favorites — inline checkbox */}
+            {/* Favorites + Wardrobe — inline checkboxes */}
             <div className="flex items-center gap-3 py-1">
               <span className="shrink-0 text-xs font-medium text-foreground">Show From</span>
               <div className="flex flex-1 items-center gap-6">
                 {([
                   { id: "collection:favorites", label: "Favorites" },
+                  { id: "collection:wardrobe", label: "Wardrobe" },
                 ] as const).map(({ id, label }) => (
                   <label key={id} className="flex items-center gap-1.5 cursor-pointer">
                     <Checkbox
