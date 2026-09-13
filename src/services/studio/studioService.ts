@@ -280,6 +280,7 @@ async function searchAlternatives({
       productId,
       filters: searchFilters,
       limit: 48,
+      gender,
     })
 
     return results.map((result) => mapSearchResultToAlternative(result, slot))
