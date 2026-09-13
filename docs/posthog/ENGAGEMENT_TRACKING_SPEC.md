@@ -11,7 +11,8 @@ This spec is written to be followed **step-by-step** when implementing tracking.
 ## 0) Scope + non‑negotiables (locked)
 
 ### 0.1 In scope
-- New app: `/home`, `/search`, `/collection`, `/profile`, `/studio/*`
+- New app: `/search`, `/collection`, `/collection/board/:slug`, `/profile`, `/studio/*`
+  - `/home` is retired and redirects; it still resolves to the same surfaces for old links.
 - Auth funnel: `/auth/login`, `/auth/signup`, `/auth/callback`
 - Landing (waitlist entry): `surface=landing`
 
@@ -112,7 +113,7 @@ Landing + auth:
 
 Main tabs:
 - `home_feed`
-- `home_moodboard` (use `moodboard_slug`)
+- `home_moodboard` (use `moodboard_slug`) — board detail, now at `/collection/board/:slug`
 - `search_results`
 - `collections_moodboards`
 - `collections_creations`

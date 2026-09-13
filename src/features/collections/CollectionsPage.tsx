@@ -15,6 +15,7 @@ import { StudioSaveCard } from "@/features/studio/components/StudioSaveCard"
 import { useCollectionsOverview, useCreateMoodboard, useProductsByIds } from "./hooks/useMoodboards"
 import { useProductSaveActions } from "@/features/collections/hooks/useProductSaveActions"
 import { productDisplayImage } from "@/services/collections/collectionsService"
+import { boardPath } from "./boardUrl"
 import type { Moodboard } from "@/services/collections/collectionsService"
 
 import { useToast } from "@/hooks/use-toast"
@@ -109,7 +110,7 @@ export function CollectionsPage() {
 
   // The grid's first four cells are fixed: + New, Try-Ons, Favorites, then the
   // board created most recently. Everything after that scrolls, sorted by
-  // recency.
+  // recency. Wardrobe lives on the Products tab, so it is not a board here.
   const orderedMoodboards = useMemo(() => {
     const time = (value?: string | null) => (value ? new Date(value).getTime() : 0)
     const byRecency = (a: Moodboard, b: Moodboard) => {
@@ -118,9 +119,6 @@ export function CollectionsPage() {
     }
 
     const pinnedSlugs = ["try-ons", "favorites"]
-    // wardrobe is dropped at the service boundary too, but a cached overview
-    // payload from before that change still carries the row — this keeps it
-    // off the grid regardless of where the list came from.
     const hidden = ["wardrobe", "for-you", "all-outfits"]
 
     const pinned = pinnedSlugs
@@ -253,7 +251,7 @@ export function CollectionsPage() {
         // does. Before, this only closed the drawer, so the chips looked inert.
         onSelect={(slug) => {
           setIsPickerOpen(false)
-          navigate(`/home?${new URLSearchParams({ moodboard: slug }).toString()}`)
+          navigate(boardPath(slug))
         }}
         onCreate={handleCreateMoodboard}
         isSaving={createMoodboardMutation.isPending}

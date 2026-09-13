@@ -1,4 +1,5 @@
 import type { Surface } from "./specTypes"
+import { boardSlugFromPath } from "@/features/collections/boardUrl"
 
 export type SurfaceContext = {
   surface: Surface | null
@@ -67,13 +68,16 @@ export function computeSurfaceContext(opts: {
     }
   }
 
+  // Board detail moved to /collection/board/:slug. Same two surfaces as before —
+  // the vocabulary is locked; only the path that resolves to them changed.
+  // `/home` is read from the slug query for as long as old links survive.
+  const boardSlug = boardSlugFromPath(pathname) ?? (pathname === "/home" ? params.get("moodboard") : null)
+  if (isNonEmptyString(boardSlug)) {
+    // Canonicalize legacy alias that can still arrive via old deep links/bookmarks.
+    const canonical = boardSlug === "generations" ? "try-ons" : boardSlug
+    return { surface: "home_moodboard", props: { moodboard_slug: canonical } }
+  }
   if (pathname === "/home") {
-    const moodboardSlug = params.get("moodboard")
-    if (isNonEmptyString(moodboardSlug)) {
-      // Canonicalize legacy alias that can still arrive via old deep links/bookmarks.
-      const canonical = moodboardSlug === "generations" ? "try-ons" : moodboardSlug
-      return { surface: "home_moodboard", props: { moodboard_slug: canonical } }
-    }
     return { surface: "home_feed", props: {} }
   }
 

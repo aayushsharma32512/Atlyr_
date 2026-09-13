@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 
 import { openLikenessDrawer } from "@/features/likeness/openLikenessDrawer"
 import type { Job } from "./providers/JobsContext"
+import { boardPath } from "@/features/collections/boardUrl"
 
 /** Pulls the outfit the job was started from out of its metadata. */
 export function getOutfitContext(job: Job) {
@@ -68,7 +69,7 @@ export function useOpenJobResult(entrySource: EntrySource = "fromProgressHub") {
       if (job.type === "tryon") {
         // Try-ons still live on the Home board view. Re-point at the Collections
         // Try-ons board once Collections owns board detail.
-        navigate("/home?moodboard=try-ons")
+        navigate(boardPath("try-ons"))
       }
     },
     [entrySource, navigate],

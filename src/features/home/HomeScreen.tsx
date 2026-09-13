@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefCallback } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { supabase } from "@/integrations/supabase/client"
 
 import { Button } from "@/components/ui/button"
@@ -19,6 +19,7 @@ import {
 import { AppShellLayout } from "@/layouts/AppShellLayout"
 import { BoardDetailHeader } from "./components/BoardDetailHeader"
 import { MoodboardPins, type MoodboardTab } from "./components/MoodboardPins"
+import { boardPath, isBoardPath } from "@/features/collections/boardUrl"
 import { FeedHeroBand } from "./components/FeedHeroBand"
 import { useResponsiveColumns } from "@/shared/hooks/useResponsiveColumns"
 import { cn } from "@/lib/utils"
@@ -86,9 +87,12 @@ export function HomeScreenView() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const location = useLocation()
+  const { slug: routeSlug } = useParams<{ slug: string }>()
   const searchParamValue = searchParams.get("search") ?? ""
   const modeParamValue = searchParams.get("mode") === "products" ? "products" : "outfits"
-  const moodboardParam = searchParams.get("moodboard")
+  // The board is a path segment now (/collection/board/:slug). The query param
+  // is still read so an old link works until the redirect swaps it out.
+  const moodboardParam = routeSlug ?? searchParams.get("moodboard")
 
   // Derive state from URL params to prevent flash during navigation
   const committedSearchTerm = searchParamValue
@@ -351,9 +355,12 @@ export function HomeScreenView() {
 
   const collectionsOverviewQuery = useCollectionsOverview()
   const moodboards = collectionsOverviewQuery.data?.moodboards ?? []
-  const itemMoodboards = useMemo(() => moodboards.filter((m) => !m.isSystem), [moodboards])
+  const itemMoodboards = useMemo(
+    () => moodboards.filter((m) => !m.isSystem || m.slug === "wardrobe"),
+    [moodboards],
+  )
   const outfitPickerMoodboards = useMemo(
-    () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites"),
+    () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites" || m.slug === "wardrobe"),
     [moodboards],
   )
   const prefetchMoodboardSlugs = useMemo(() => {
@@ -367,7 +374,8 @@ export function HomeScreenView() {
     () => moodboards.some((board) => board.slug === activeMoodboardId && !board.isSystem),
     [activeMoodboardId, moodboards],
   )
-  const isItemMoodboardActive = isUserMoodboardActive
+  const isWardrobeActive = activeMoodboardId === "wardrobe"
+  const isItemMoodboardActive = isUserMoodboardActive || isWardrobeActive
 
   const moodboardItemsQuery = useMoodboardItems(
     isItemMoodboardActive ? activeMoodboardId : null,
@@ -412,8 +420,9 @@ export function HomeScreenView() {
   }, [favoritesItems])
 
   const moodboardTabs = useMemo<MoodboardTab[]>(() => {
-    const systemOrder = ["for-you", "try-ons", "favorites", "all-outfits"]
+    const systemOrder = ["for-you", "wardrobe", "try-ons", "favorites", "all-outfits"]
     const labels: Record<string, string> = {
+      wardrobe: "Wardrobe",
       "try-ons": "Try-ons",
       favorites: "Favorites",
       "for-you": "For You",
@@ -639,7 +648,7 @@ export function HomeScreenView() {
   const launchStudio = useLaunchStudio()
 
   const originPath = useMemo(
-    () => `${location.pathname}${location.search}` || "/home",
+    () => `${location.pathname}${location.search}` || "/collection",
     [location.pathname, location.search],
   )
 
@@ -975,7 +984,7 @@ export function HomeScreenView() {
     const hasQuery = searchParamValue.trim().length > 0
 
     // On home page, if there's a search query, navigate to /search instead
-    if (hasQuery && location.pathname === "/home") {
+    if (hasQuery && isBoardPath(location.pathname)) {
       navigate(`/search?search=${encodeURIComponent(searchParamValue)}&mode=${modeParamValue}`, { replace: true })
       return
     }
@@ -1170,11 +1179,9 @@ export function HomeScreenView() {
     (nextId: string) => {
       setActiveMoodboardId(nextId)
       sessionStorage.setItem("home:activeMoodboard", nextId)
-      const params = new URLSearchParams(searchParams)
-      params.set("moodboard", nextId)
-      setSearchParams(params, { replace: true })
+      navigate(boardPath(nextId), { replace: true })
     },
-    [searchParams, setSearchParams],
+    [navigate],
   )
 
   const handleMoodboardPickerSelect = useCallback(
@@ -1956,7 +1963,7 @@ export function HomeScreenView() {
       </div>
 
       {/* The wordmark and search stay put on every board. They used to be hidden
-          whenever isItemMoodboardActive was true — user boards — so
+          whenever isItemMoodboardActive was true — Wardrobe and user boards — so
           the chrome vanished on those two but stayed on Try-ons, Favorites and
           All Outfits. The scroll container reserves pt-[130px] for this row
           either way, so hiding it only left a gap. */}
