@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/integrations/supabase/client'
 import { resolveByProductId, type JobLinkRow } from './productJobLink'
+import { pageAll } from '@/utils/pageAll'
 
 /**
  * What the segmentation editor needs for one product: the cutout it edits, the original frame
@@ -45,21 +46,33 @@ export function useProductSegmentation(productIds: string[]): Record<string, Pro
     ;(async () => {
       // sha1 is one-way, so we cannot derive job ids from the products on screen — we pull the
       // jobs that have a cutout and hash their ids to find the matches.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase as any)
-        .from('ingestion_pipeline_jobs')
-        .select('job_id, ingested_product_id, segmented_image_url, vton_image_url')
-        .not('segmented_image_url', 'is', null)
-      if (cancelled) return
-      if (error) {
+      //
+      // Paged: more jobs carry a cutout than PostgREST will return in one response, and it
+      // truncates at max-rows silently. Unpaged, the products whose jobs fell past the cap simply
+      // showed no edit button — indistinguishable from a product that never had a cutout.
+      let rows: Row[]
+      try {
+        rows = await pageAll<Row>(async (from, to) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data, error } = await (supabase as any)
+            .from('ingestion_pipeline_jobs')
+            .select('job_id, ingested_product_id, segmented_image_url, vton_image_url')
+            .not('segmented_image_url', 'is', null)
+            .order('job_id', { ascending: true })
+            .range(from, to)
+          if (error) throw new Error(error.message)
+          return (data ?? []) as Row[]
+        })
+      } catch (e) {
         // Surfaced rather than swallowed: a missing edit button otherwise looks identical whether
         // the product has no cutout or the query was rejected outright.
-        console.warn('[useProductSegmentation] jobs lookup failed:', error.message)
+        console.warn('[useProductSegmentation] jobs lookup failed:', e instanceof Error ? e.message : e)
         setMap({})
         return
       }
+      if (cancelled) return
 
-      const byProduct = await resolveByProductId((data ?? []) as Row[], new Set(ids))
+      const byProduct = await resolveByProductId(rows, new Set(ids))
       if (cancelled) return
 
       const next: Record<string, ProductSegmentation> = {}
