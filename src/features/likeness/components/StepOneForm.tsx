@@ -97,7 +97,7 @@ export function StepOneForm({
                   Generate User Avatar
                 </p>
                 <p className="text-sm font-normal text-muted-foreground leading-5">
-                  Upload a full body photo and a selfie
+                  Upload a selfie and a full body photo
                 </p>
               </div>
             </CardHeader>
@@ -111,102 +111,6 @@ export function StepOneForm({
                 : 'flex gap-4 items-center justify-center px-4 py-4',
             )}
           >
-            {/* Full Body Photo Upload */}
-            <div
-              className={cn(
-                'relative flex w-full flex-col',
-                isDrawer ? '' : 'gap-3 items-center max-w-[210px]',
-              )}
-            >
-              <div
-                className={cn(
-                  'relative w-full overflow-hidden',
-                  isDrawer
-                    ? cn('rounded-[5px] border border-hairline bg-card', fullBodyPhoto ? 'aspect-[3/4]' : 'h-[86px]')
-                    : 'aspect-[2/3] bg-muted rounded-[10px]',
-                )}
-              >
-                {fullBodyPhoto ? (
-                  <>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <img
-                        src={URL.createObjectURL(fullBodyPhoto)}
-                        alt="Full body preview"
-                        className="h-full w-full object-cover"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleFullBodyClick}
-                      className="absolute bottom-0 inset-x-0 flex flex-col gap-1 items-center justify-center py-2.5 bg-black/40 hover:bg-black/55 transition-colors"
-                    >
-                      <RotateCcw className="size-4 text-white" />
-                      <span className="text-xs font-medium text-white">Try another?</span>
-                    </button>
-                  </>
-                ) : isDrawer ? (
-                  <button
-                    type="button"
-                    onClick={handleFullBodyClick}
-                    className="absolute inset-0 flex flex-col items-start justify-center gap-1 px-3 text-left transition-colors hover:bg-muted/30"
-                  >
-                    <span className="flex size-[22px] items-center justify-center rounded-full bg-ink text-[8px] font-bold text-on-ink-1">
-                      01
-                    </span>
-                    <span className="text-[11px] font-semibold leading-none text-foreground">Full body</span>
-                    <span className="text-[8px] leading-none text-muted-foreground">standing, head to toe</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleFullBodyClick}
-                    className="absolute inset-0 flex flex-col gap-1.5 items-center justify-center bg-muted hover:bg-muted/80 transition-colors rounded-[10px]"
-                  >
-                    <Plus className="size-4 text-muted-foreground" />
-                    <span className="text-xs font-medium text-muted-foreground">full body</span>
-                  </button>
-                )}
-                {/* Info trigger — visible in both states */}
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); setShowFullBodyInfo(true); }}
-                  className="absolute top-2 right-2 z-10 flex items-center justify-center text-muted-foreground"
-                  aria-label="Full body photo guidelines"
-                >
-                  <Info className="size-4" />
-                </button>
-                {/* Info overlay */}
-                {showFullBodyInfo && (
-                  <div className="absolute inset-0 z-20 bg-muted rounded-[10px]">
-                    <button
-                      type="button"
-                      onClick={() => setShowFullBodyInfo(false)}
-                      className="absolute top-2 left-2 z-10 flex items-center gap-0.5 text-xs text-muted-foreground"
-                      aria-label="Back to upload"
-                    >
-                      <ChevronLeft className="size-3" />
-                      <span>back</span>
-                    </button>
-                    <div className="absolute inset-0 overflow-y-auto pt-8 px-3 pb-3">
-                      <p className="text-xs text-muted-foreground leading-relaxed">
-                        {FULL_BODY_INFO}
-                      </p>
-                    </div>
-                  </div>
-                )}
-                <input
-                  ref={fullBodyInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] || null;
-                    handleFileChange('fullBodyPhoto', file);
-                  }}
-                />
-              </div>
-            </div>
-
             {/* Face Selfie Photo Upload */}
             <div
               className={cn(
@@ -247,7 +151,7 @@ export function StepOneForm({
                     className="absolute inset-0 flex flex-col items-start justify-center gap-1 px-3 text-left transition-colors hover:bg-muted/30"
                   >
                     <span className="flex size-[22px] items-center justify-center rounded-full bg-ink text-[8px] font-bold text-on-ink-1">
-                      02
+                      01
                     </span>
                     <span className="text-[11px] font-semibold leading-none text-foreground">Selfie</span>
                     <span className="text-[8px] leading-none text-muted-foreground">clear face, good light</span>
@@ -298,6 +202,102 @@ export function StepOneForm({
                   onChange={(e) => {
                     const file = e.target.files?.[0] || null;
                     handleFileChange('faceSelfiePhoto', file);
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Full Body Photo Upload */}
+            <div
+              className={cn(
+                'relative flex w-full flex-col',
+                isDrawer ? '' : 'gap-3 items-center max-w-[210px]',
+              )}
+            >
+              <div
+                className={cn(
+                  'relative w-full overflow-hidden',
+                  isDrawer
+                    ? cn('rounded-[5px] border border-hairline bg-card', fullBodyPhoto ? 'aspect-[3/4]' : 'h-[86px]')
+                    : 'aspect-[2/3] bg-muted rounded-[10px]',
+                )}
+              >
+                {fullBodyPhoto ? (
+                  <>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <img
+                        src={URL.createObjectURL(fullBodyPhoto)}
+                        alt="Full body preview"
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleFullBodyClick}
+                      className="absolute bottom-0 inset-x-0 flex flex-col gap-1 items-center justify-center py-2.5 bg-black/40 hover:bg-black/55 transition-colors"
+                    >
+                      <RotateCcw className="size-4 text-white" />
+                      <span className="text-xs font-medium text-white">Try another?</span>
+                    </button>
+                  </>
+                ) : isDrawer ? (
+                  <button
+                    type="button"
+                    onClick={handleFullBodyClick}
+                    className="absolute inset-0 flex flex-col items-start justify-center gap-1 px-3 text-left transition-colors hover:bg-muted/30"
+                  >
+                    <span className="flex size-[22px] items-center justify-center rounded-full bg-ink text-[8px] font-bold text-on-ink-1">
+                      02
+                    </span>
+                    <span className="text-[11px] font-semibold leading-none text-foreground">Full body</span>
+                    <span className="text-[8px] leading-none text-muted-foreground">standing, head to toe</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleFullBodyClick}
+                    className="absolute inset-0 flex flex-col gap-1.5 items-center justify-center bg-muted hover:bg-muted/80 transition-colors rounded-[10px]"
+                  >
+                    <Plus className="size-4 text-muted-foreground" />
+                    <span className="text-xs font-medium text-muted-foreground">full body</span>
+                  </button>
+                )}
+                {/* Info trigger — visible in both states */}
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setShowFullBodyInfo(true); }}
+                  className="absolute top-2 right-2 z-10 flex items-center justify-center text-muted-foreground"
+                  aria-label="Full body photo guidelines"
+                >
+                  <Info className="size-4" />
+                </button>
+                {/* Info overlay */}
+                {showFullBodyInfo && (
+                  <div className="absolute inset-0 z-20 bg-muted rounded-[10px]">
+                    <button
+                      type="button"
+                      onClick={() => setShowFullBodyInfo(false)}
+                      className="absolute top-2 left-2 z-10 flex items-center gap-0.5 text-xs text-muted-foreground"
+                      aria-label="Back to upload"
+                    >
+                      <ChevronLeft className="size-3" />
+                      <span>back</span>
+                    </button>
+                    <div className="absolute inset-0 overflow-y-auto pt-8 px-3 pb-3">
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        {FULL_BODY_INFO}
+                      </p>
+                    </div>
+                  </div>
+                )}
+                <input
+                  ref={fullBodyInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    handleFileChange('fullBodyPhoto', file);
                   }}
                 />
               </div>

@@ -99,6 +99,38 @@ export function useProductSaveActions() {
     [analytics, favoriteSet, getProductMoodboardSlugs, saveMutation, toast],
   )
 
+  /** Every board a product is on, Favorites included — the save card's starting selection. */
+  const getProductBoardSlugs = useCallback(
+    (productId: string): string[] => [
+      ...(favoriteSet.has(productId) ? ["favorites"] : []),
+      ...getProductMoodboardSlugs(productId),
+    ],
+    [favoriteSet, getProductMoodboardSlugs],
+  )
+
+  /** The save card: sync a product to exactly these boards, Favorites included. */
+  const handleSaveToBoards = useCallback(
+    async (productId: string, slugs: string[], uiContext: EntityUiContext = {}) => {
+      const current = getProductBoardSlugs(productId)
+      const labelBySlug = new Map<string, string>([["favorites", "Favorites"]])
+      selectableMoodboards.forEach((m) => labelBySlug.set(m.slug, m.label))
+      try {
+        for (const slug of slugs.filter((s) => !current.includes(s))) {
+          await saveMutation.mutateAsync({ productId, slug, label: labelBySlug.get(slug) })
+          trackSavedToCollection(analytics, { entity_type: "product", entity_id: productId, collection_slug: slug, save_method: "click", ...uiContext })
+        }
+        for (const slug of current.filter((s) => !slugs.includes(s))) {
+          await removeFromCollectionMutation.mutateAsync({ productId, slug })
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unable to save product"
+        toast({ title: "Save failed", description: message, variant: "destructive" })
+        throw err
+      }
+    },
+    [analytics, getProductBoardSlugs, removeFromCollectionMutation, saveMutation, selectableMoodboards, toast],
+  )
+
   /** Diff-sync: add newly selected boards, remove deselected boards */
   const handleApplyMoodboards = useCallback(
     async (selectedSlugs: string[]) => {
@@ -167,6 +199,8 @@ export function useProductSaveActions() {
     isSaved,
     onToggleSave: handleToggleSave,
     onLongPressSave: handleLongPressSave,
+    getProductBoardSlugs,
+    onSaveToBoards: handleSaveToBoards,
     onApplyMoodboards: handleApplyMoodboards,
     onCreateMoodboard: handleCreateMoodboard,
     isPickerOpen: state.isPickerOpen,

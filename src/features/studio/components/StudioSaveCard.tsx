@@ -9,7 +9,8 @@ export interface StudioSaveBoard {
 }
 
 export interface StudioSaveCardProps {
-  defaultName: string
+  /** Omit for a product save — the card is then boards only, no name or tags. */
+  defaultName?: string
   /** Suggested tags, drawn from the worn pieces. */
   defaultTags?: string[]
   boards: StudioSaveBoard[]
@@ -41,7 +42,8 @@ export function StudioSaveCard({
   onCreateBoard,
   className,
 }: StudioSaveCardProps) {
-  const [name, setName] = useState(defaultName)
+  const isLook = defaultName !== undefined
+  const [name, setName] = useState(defaultName ?? "")
   const [tags, setTags] = useState<string[]>(defaultTags)
   const [boardSlugs, setBoardSlugs] = useState<string[]>(defaultBoardSlugs)
   const [addingTag, setAddingTag] = useState(false)
@@ -71,6 +73,8 @@ export function StudioSaveCard({
 
   return (
     <div className={cn("flex flex-1 flex-col justify-start gap-1.5", className)}>
+      {isLook ? (
+      <>
       <label className="box-border flex h-[34px] flex-none items-center gap-1.5 rounded-control border border-hairline bg-card/60 pl-2.5 pr-1">
         <span className="sr-only">Look name</span>
         <input
@@ -124,6 +128,8 @@ export function StudioSaveCard({
           </span>
         ))}
       </div>
+      </>
+      ) : null}
 
       <div className={RAIL}>
         {onCreateBoard ? (
@@ -159,7 +165,7 @@ export function StudioSaveCard({
         <button
           type="button"
           disabled={isSaving}
-          onClick={() => onSave({ name: name.trim() || defaultName, tags, boardSlugs })}
+          onClick={() => onSave({ name: name.trim() || (defaultName ?? ""), tags, boardSlugs })}
           className={cn(
             "box-border flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control",
             "bg-terracotta text-label font-semibold text-background disabled:opacity-60",
