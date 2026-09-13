@@ -74,6 +74,8 @@ export const Icons = {
   navNotifications: Bell,
   navProfile: UserRound,
 
+  addWardrobe: Shirt,
+
   camera: Camera,
   filter: ListFilter,
   remove: Trash2,

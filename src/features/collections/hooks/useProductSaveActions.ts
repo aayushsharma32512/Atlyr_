@@ -34,7 +34,7 @@ export function useProductSaveActions() {
   const membershipQuery = useProductCollectionMembership()
   const selectableMoodboards = useMemo(
     () => (collectionsOverviewQuery.data?.moodboards ?? [])
-      .filter((m) => !m.isSystem),
+      .filter((m) => !m.isSystem || m.slug === "wardrobe"),
     [collectionsOverviewQuery.data?.moodboards],
   )
 
@@ -50,6 +50,11 @@ export function useProductSaveActions() {
   const membership = useMemo(() => membershipQuery.data ?? {}, [membershipQuery.data])
 
   const isSaved = useCallback((productId: string) => favoriteSet.has(productId), [favoriteSet])
+  const isInWardrobe = useCallback(
+    (productId: string) => membership.wardrobe?.has(productId) ?? false,
+    [membership],
+  )
+
   /** Returns the custom moodboard slugs a product currently belongs to */
   const getProductMoodboardSlugs = useCallback(
     (productId: string): string[] =>
@@ -77,6 +82,26 @@ export function useProductSaveActions() {
       }
     },
     [analytics, favoritesQuery, removeFromCollectionMutation, saveMutation, toast],
+  )
+
+  const handleToggleWardrobe = useCallback(
+    async (productId: string, nextSaved: boolean, uiContext: EntityUiContext = {}) => {
+      try {
+        if (nextSaved) {
+          await saveMutation.mutateAsync({ productId, slug: "wardrobe", label: "Wardrobe" })
+          trackSaveToggled(analytics, { entity_type: "product", entity_id: productId, collection_slug: "wardrobe", new_state: true, save_method: "click", ...uiContext })
+          trackSavedToCollection(analytics, { entity_type: "product", entity_id: productId, collection_slug: "wardrobe", save_method: "click", ...uiContext })
+        } else {
+          await removeFromCollectionMutation.mutateAsync({ productId, slug: "wardrobe" })
+          trackSaveToggled(analytics, { entity_type: "product", entity_id: productId, collection_slug: "wardrobe", new_state: false, save_method: "click", ...uiContext })
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unable to update Wardrobe"
+        toast({ title: "Wardrobe update failed", description: message, variant: "destructive" })
+        membershipQuery.refetch()
+      }
+    },
+    [analytics, membershipQuery, removeFromCollectionMutation, saveMutation, toast],
   )
 
   const handleLongPressSave = useCallback(
@@ -197,7 +222,9 @@ export function useProductSaveActions() {
     moodboards: selectableMoodboards as Moodboard[],
     favoriteIds,
     isSaved,
+    isInWardrobe,
     onToggleSave: handleToggleSave,
+    onToggleWardrobe: handleToggleWardrobe,
     onLongPressSave: handleLongPressSave,
     getProductBoardSlugs,
     onSaveToBoards: handleSaveToBoards,
