@@ -32,7 +32,7 @@ type Group = {
 const GROUPS: Group[] = [
   {
     title: "Design previews",
-    note: "The Kalagriha screens. These render in the app palette, not this one.",
+    note: "The Atlyr screens. These render in the app palette, not this one.",
     entries: [
       {
         ref: "6a",

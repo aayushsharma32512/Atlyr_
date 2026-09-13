@@ -60,11 +60,11 @@ export function TryOnGrid({ items, onSelect, onOpenStudio, overlay = true, getIt
                   draggable={false}
                 />
                 <div
-                  className="absolute bottom-1 right-1.5 z-10 font-deva text-[11px] leading-none text-background/85 drop-shadow-[0_1px_2px_rgba(23,20,16,0.55)]"
+                  className="absolute bottom-1 right-1.5 z-10 text-[11px] leading-none text-background/85 drop-shadow-[0_1px_2px_rgba(23,20,16,0.55)]"
                   onContextMenu={(event) => event.preventDefault()}
                   style={{ WebkitTouchCallout: "none" }}
                 >
-                  कलागृह
+                  Atlyr
                 </div>
               </>
             ) : (

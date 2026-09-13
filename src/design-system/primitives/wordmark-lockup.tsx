@@ -1,17 +1,16 @@
 import { cn } from "@/lib/utils"
 
 /**
- * कलागृह — the house wordmark.
+ * Atlyr — the house wordmark.
  *
- * Locked decisions (Kalagriha handoff §2.3):
- *  · In-app the wordmark is **Devanagari only**. The Latin "KALAGRIHA" survives
- *    solely as the letterspaced whisper caption on the landing lockup — never
- *    in a screen header.
+ * Locked decisions (brand handoff §2.3):
+ *  · The mark is the Latin wordmark. On the landing lockup it repeats as the
+ *    letterspaced whisper caption under the thread — never in a screen header.
  *  · The lockup thread renders **taupe** in-app. The canvas art for 6c/6c2 draws
  *    that rule in gold, but that art predates the rebrand; the handoff's gold law
  *    is later and stricter — gold is provenance only (Nama, seals, ✦ YOURS), so a
  *    decorative gold rule under a wordmark is exactly the usage it forbids.
- *  · App copy is English. Devanagari lives in branding only, never on a control.
+ *  · App copy is English. The wordmark lives in branding only, never on a control.
  */
 export type WordmarkSize = "header" | "firstRun" | "landing" | "micro"
 
@@ -28,7 +27,7 @@ export interface WordmarkLockupProps {
   className?: string
 }
 
-const MARK = "कलागृह"
+const MARK = "Atlyr"
 
 /**
  * `micro` and `header` stay literal: both sit inside fixed chrome (the landing
@@ -59,12 +58,9 @@ export function WordmarkLockup({
         className,
       )}
     >
-      {/* aria-label carries the Latin name so screen readers and search don't
-          only ever see the Devanagari glyphs. */}
       <span
-        aria-label="Kalagriha"
         className={cn(
-          "font-deva font-medium leading-none tracking-[0.04em]",
+          "font-medium leading-none tracking-[0.04em]",
           MARK_SIZE[size],
           onDark ? "text-background" : "text-foreground",
         )}
@@ -95,7 +91,7 @@ export function WordmarkLockup({
             onDark ? "text-on-ink-1" : "text-muted-foreground",
           )}
         >
-          Kalagriha
+          Atlyr
         </span>
       )}
     </div>

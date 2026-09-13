@@ -655,7 +655,7 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
           <div className="mt-6 pt-8 border-t border-white/10 mb-6">
             <div className="flex justify-start">
               <span className="text-xs text-white/50 tracking-wider text-left">
-                DESIGN BY KALAGRIHA • COPYRIGHT © {new Date().getFullYear()}. ALL RIGHTS RESERVED
+                DESIGN BY ATLYR • COPYRIGHT © {new Date().getFullYear()}. ALL RIGHTS RESERVED
               </span>
             </div>
           </div>
