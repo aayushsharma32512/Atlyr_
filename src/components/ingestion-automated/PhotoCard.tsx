@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Loader2, X as XIcon, Plus, Maximize2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { DEFAULT_STENCIL_OPACITY } from './stencilOpacity'
 
 export type TileState = 'available' | 'processing' | 'error' | 'empty'
 
@@ -15,6 +16,16 @@ type Props = {
   size?: 'sm' | 'md' | 'xl' | 'lg'
   onExpand?: () => void
   actions?: TileAction[]
+  /**
+   * Drawn behind `url` at `backdropOpacity`, as a tracing guide.
+   *
+   * Used to put the original try-on frame behind a segmented cutout: the two are pixel-aligned
+   * 1:1 (segmentation neither crops nor resizes), so the ghost shows exactly where the garment's
+   * edge sat before it was cut out. PhotoCard stays decoupled — it only knows "show this behind".
+   */
+  backdropUrl?: string | null
+  /** 0–0.4. Defaults to DEFAULT_STENCIL_OPACITY; callers pass the shared, user-set value. */
+  backdropOpacity?: number
   // Extra controls overlaid at the bottom-left of the tile, shown on hover (e.g. the inline
   // retag/delete actions). Kept generic so PhotoCard stays decoupled from what they do.
   overlay?: ReactNode
@@ -34,7 +45,7 @@ const STATE_BORDER: Record<TileState, string> = {
   empty: 'border-dashed border-border',
 }
 
-export function PhotoCard({ label, state, url, badge, note, size = 'md', onExpand, actions, overlay }: Props) {
+export function PhotoCard({ label, state, url, badge, note, size = 'md', onExpand, actions, overlay, backdropUrl, backdropOpacity = DEFAULT_STENCIL_OPACITY }: Props) {
   return (
     <div className="flex flex-col gap-1">
       <div
@@ -43,10 +54,23 @@ export function PhotoCard({ label, state, url, badge, note, size = 'md', onExpan
           SIZE_CLASS[size], STATE_BORDER[state]
         )}
       >
+        {state === 'available' && url && backdropUrl && (
+          // Behind the cutout, same box and same object-fit so the two stay registered.
+          // aria-hidden: it carries no information a screen reader could use, it is a tracing aid.
+          <img
+            src={backdropUrl}
+            alt=""
+            aria-hidden
+            loading="lazy"
+            decoding="async"
+            style={{ opacity: backdropOpacity }}
+            className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+          />
+        )}
         {state === 'available' && url && (
           // Lazy + async: these grids run to hundreds of tiles, and eagerly fetching every one
           // saturates the connection before the tile you actually clicked can load.
-          <img src={url} alt={label} loading="lazy" decoding="async" className="w-full h-full object-contain" />
+          <img src={url} alt={label} loading="lazy" decoding="async" className="relative w-full h-full object-contain" />
         )}
         {state === 'available' && !url && (
           <span className="text-[10px] text-muted-foreground text-center px-1">No image</span>

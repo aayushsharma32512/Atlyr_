@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/integrations/supabase/client'
 import { fetchInChunks, type ArtifactClient, type ArtifactRow } from './fetchArtifacts'
+// products.id is a deterministic sha1 of the job id — the linking rule and its tests live in
+// productJobLink.ts so both product-side hooks share one copy of it.
+import { sha1Hex } from './productJobLink'
 
 export type VtonReference = { url: string; label: string }
 
@@ -9,16 +12,6 @@ type JobRow = {
   ingested_product_id: string | null
   vton_image_url: string | null
   v_ton_preferred_image: string | null
-}
-
-// products.id is a deterministic sha1 of the job id — see catalogId() in
-// services/ingestion-automated/src/domain/catalog.ts. Hashing job ids lets us map job → product
-// WITHOUT relying on ingested_product_id, which is only written on the publish path, so a job that
-// was staged but never published would otherwise join to nothing.
-// crypto.subtle needs a secure context; localhost and https both qualify.
-async function sha1Hex(input: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(input))
-  return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
 // The try-on reference for a catalog product, keyed by product id — the same job data the

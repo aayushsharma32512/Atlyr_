@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../integrations/supabase/client';
 import { Product, ProductImage } from '../types';
+import { pageAll } from '@/utils/pageAll';
 
 interface UseProductsOptions {
   // legacy single-value filters
@@ -16,7 +17,19 @@ interface UseProductsOptions {
   sizes?: string[];
   minPrice?: number;
   maxPrice?: number;
+  // NOTE: currently ignored — the query is never given a .limit(). Left as-is rather than wired
+  // up, because the one caller that passes it (the legacy SearchScreen) has been getting up to
+  // the PostgREST cap for a long time, and honouring it now would silently cut that screen to
+  // 50 results. Honouring it is a product decision, not a cleanup.
   limit?: number;
+  /**
+   * Page past PostgREST's max-rows instead of taking the first 1000 and stopping.
+   *
+   * Off by default: it costs one round trip per 1000 rows, and only a screen that shows an
+   * unpaged backlog actually needs it. The placement dashboard does — it lists every product
+   * awaiting placement and has no pagination of its own.
+   */
+  fetchAll?: boolean;
   searchQuery?: string;
   // ISO timestamps for a created_at range (admin browse/filter).
   createdAfter?: string;
@@ -68,7 +81,7 @@ interface ProductWithImages {
 }
 
 export function useProducts(options: UseProductsOptions = {}): UseProductsReturn {
-  const { gender, category, genders, typeCategories, brands, fits, feels, colorGroups, sizes, minPrice, maxPrice, limit = 20, searchQuery, createdAfter, createdBefore, productId, hasPlacement2D, columns } = options;
+  const { gender, category, genders, typeCategories, brands, fits, feels, colorGroups, sizes, minPrice, maxPrice, limit = 20, searchQuery, createdAfter, createdBefore, productId, hasPlacement2D, columns, fetchAll } = options;
   
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -148,8 +161,22 @@ export function useProducts(options: UseProductsOptions = {}): UseProductsReturn
         query = query.or(`product_name.ilike.%${searchQuery}%,brand.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`);
       }
 
-      // Fetch all rows (Supabase default cap applies, which is acceptable for client-side paging here)
-      const { data, error: fetchError } = await query;
+      // Without fetchAll this is a single request, and PostgREST truncates it at max-rows without
+      // saying so — fine for a screen that only needs a first page, wrong for one showing a backlog.
+      const { data, error: fetchError } = fetchAll
+        ? await (async () => {
+            try {
+              const rows = await pageAll<unknown>(async (from, to) => {
+                const { data: page, error } = await query.range(from, to);
+                if (error) throw new Error(error.message);
+                return page ?? [];
+              });
+              return { data: rows, error: null as { message: string } | null };
+            } catch (e) {
+              return { data: null, error: { message: e instanceof Error ? e.message : 'Failed to load products.' } };
+            }
+          })()
+        : await query;
 
       if (fetchError) {
         setError(fetchError.message);
@@ -185,7 +212,7 @@ export function useProducts(options: UseProductsOptions = {}): UseProductsReturn
     } finally {
       setLoading(false);
     }
-  }, [gender, genders, category, typeCategories, brands, fits, feels, colorGroups, sizes, minPrice, maxPrice, limit, searchQuery, createdAfter, createdBefore, productId, hasPlacement2D, columns]);
+  }, [gender, genders, category, typeCategories, brands, fits, feels, colorGroups, sizes, minPrice, maxPrice, limit, searchQuery, createdAfter, createdBefore, productId, hasPlacement2D, columns, fetchAll]);
 
   useEffect(() => {
     fetchProducts();
