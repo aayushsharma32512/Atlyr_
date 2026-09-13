@@ -16,9 +16,11 @@ import { readReturnTo } from "@/utils/returnTo"
 
 interface AppShellLayoutProps {
   children?: ReactNode
+  /** For screens that own the whole frame, e.g. Studio's alternates panel. */
+  hideNav?: boolean
 }
 
-export function AppShellLayout({ children }: AppShellLayoutProps) {
+export function AppShellLayout({ children, hideNav = false }: AppShellLayoutProps) {
   const location = useLocation()
   const navigate = useNavigate()
   const { gender, profile, isLoading } = useProfileContext()
@@ -67,18 +69,23 @@ export function AppShellLayout({ children }: AppShellLayoutProps) {
     }
   }
 
+  // The padding only exists to clear the bar, so it goes when the bar does.
+  const showNav = !isViewOnly && !hideNav
+
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <main className="flex flex-1 flex-col overflow-hidden pb-[2.5rem] sm:pb-10">
+      <main
+        className={`flex flex-1 flex-col overflow-hidden${showNav ? " pb-[2.5rem] sm:pb-10" : ""}`}
+      >
         {children ?? <Outlet />}
       </main>
-      {isViewOnly ? null : (
+      {showNav ? (
         <BottomNavBar
           activeId={activeId}
           onNavigate={handleNavigate}
           className="fixed inset-x-0 bottom-0 z-20 border-t"
         />
-      )}
+      ) : null}
     </div>
   )
 }

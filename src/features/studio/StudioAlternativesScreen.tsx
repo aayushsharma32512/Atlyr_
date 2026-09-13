@@ -139,7 +139,7 @@ export function StudioAlternativesView() {
   const outfitMembershipQuery = useOutfitCollectionMembership()
   const { data: moodboards = [], isLoading: moodboardsLoading } = useMoodboards()
   const selectableMoodboards = useMemo(
-    () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites"),
+    () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites" || m.slug === "wardrobe"),
     [moodboards],
   )
   const productCollectionMembership = useProductCollectionMembership()
@@ -1168,9 +1168,14 @@ export function StudioAlternativesView() {
 
   return (
     <>
-      {/* 390x844, no nav: header 52 · (figure | rack) · piece card 225. */}
-      <div className="flex justify-center overflow-hidden bg-background" style={{ height: "calc(100dvh - 55px)" }}>
-        <div className="relative my-auto flex h-full max-h-[844px] w-full max-w-sm flex-col overflow-hidden">
+      {/* 390x844, no nav: header 52 · (figure | rack) · piece card 260.
+          StudioLayout hides the tab bar here, so the frame takes the full height. */}
+      <div className="flex justify-center overflow-hidden bg-background" style={{ height: "100dvh" }}>
+        {/* No 844 cap here, unlike the other frames: with the tab bar gone this
+            screen owns the height, and capping it would centre the frame and
+            leave the freed strip as empty margin. The figure/rack row is
+            `flex-1`, so the extra goes to the rack instead. */}
+        <div className="relative flex h-full w-full max-w-sm flex-col overflow-hidden">
           <AlternatesHeader
             source={source}
             onSourceChange={handleSourceChange}
@@ -1178,7 +1183,9 @@ export function StudioAlternativesView() {
             isReadOnly={isViewOnly}
           />
 
-          <div className="flex min-h-0 flex-1 border-b border-hairline">
+          {/* `relative`: the search button and its open bar both anchor here, so
+              expanding keeps the field on the line the button sat on. */}
+          <div className="relative flex min-h-0 flex-1 border-b border-hairline">
             {/* Figure half. Same rail and control stacks as the canvas — the
                 category icons live here, not in a second horizontal rail. */}
             <StudioCanvas
@@ -1269,12 +1276,28 @@ export function StudioAlternativesView() {
                 <AlternatesSearchButton onOpen={() => setIsSearchOpen(true)} isReadOnly={isViewOnly} />
               )}
             </div>
+
+            {isSearchOpen ? (
+              <AlternatesSearchBar
+                value={search.draftText}
+                onValueChange={search.setDraftText}
+                onSubmit={search.handleSubmit}
+                onClose={() => setIsSearchOpen(false)}
+                onClear={search.handleClearDraftText}
+                placeholder={`Search ${SLOT_DISPLAY_LABELS[slot].toLowerCase()}`}
+                thumbSrc={search.draftImageUrl}
+                onClearThumb={search.handleClearImage}
+                onOpenImagePicker={() => setIsReferenceDialogOpen(true)}
+                onFilter={() => setIsFilterOpen(true)}
+              />
+            ) : null}
           </div>
 
           {/* The Focus card, with the similarity corner in place of the 4-square.
+              Taller than Studio's 225: the tag rail was clipping mid-row.
               Save takes the same slot here as it does on Studio. */}
           <div
-            className={`box-border flex-none px-4 py-2.5${isSaveDrawerOpen || productSaveId ? "" : " h-[225px]"}`}
+            className={`box-border flex-none px-4 py-2.5${isSaveDrawerOpen || productSaveId ? "" : " h-[260px]"}`}
           >
             {isSaveDrawerOpen ? (
               <StudioSaveCard
@@ -1327,25 +1350,11 @@ export function StudioAlternativesView() {
               onTryOn={handleTryOn}
               onFindItems={heroProduct?.productUrl ? handleBuyClick : handleFindItems}
               isLoading={heroProductQuery.isLoading}
-              className="h-[205px]"
+              className="h-[240px]"
             />
             )}
           </div>
 
-          {isSearchOpen ? (
-            <AlternatesSearchBar
-              value={search.draftText}
-              onValueChange={search.setDraftText}
-              onSubmit={search.handleSubmit}
-              onClose={() => setIsSearchOpen(false)}
-              onClear={search.handleClearDraftText}
-              placeholder={`Search ${SLOT_DISPLAY_LABELS[slot].toLowerCase()}`}
-              thumbSrc={search.draftImageUrl}
-              onClearThumb={search.handleClearImage}
-              onOpenImagePicker={() => setIsReferenceDialogOpen(true)}
-              onFilter={() => setIsFilterOpen(true)}
-            />
-          ) : null}
 
           <ReferenceImageDialog
             open={isReferenceDialogOpen}

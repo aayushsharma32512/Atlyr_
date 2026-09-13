@@ -221,7 +221,12 @@ export function OutfitInspirationCard({
 
   const config = variantConfig[variant]
   const visibleChips = showChips ? chips : []
-  const hasExplicitRenderedItems = renderedItems != null
+  // Explicit items are only authoritative if they actually carry placement.
+  // The collections RPC builds its renderedItems from the legacy columns and
+  // omits placement, so trusting that array left the card with an unplaceable
+  // outfit. Treating it as incomplete lets the card fetch the real product rows,
+  // which do carry placement and the webp thumbnail.
+  const hasExplicitRenderedItems = renderedItems != null && renderedItems.some((it) => it.placement)
   const shouldFetchOutfitProducts = Boolean(outfitId) && !hasExplicitRenderedItems
 
   const outfitProducts = useOutfitProducts({
@@ -618,7 +623,7 @@ export function OutfitInspirationCard({
         {attribution ? (
           <div className="absolute bottom-0.5 right-1 flex items-center justify-end px-0.5">
             {isBrandAttribution ? (
-              <span className="font-deva text-[9px] leading-none text-taupe">कलागृह</span>
+              <span className="text-[9px] leading-none text-taupe">Atlyr</span>
             ) : (
               <span className="rounded-md px-1 text-[7px] font-thin text-muted-foreground">
                 {attribution}
