@@ -46,7 +46,7 @@ const MoodboardCard = ({
 }: MoodboardCardProps) => {
   const navigate = useNavigate()
   const items = useMemo(() => preview?.items ?? [], [preview?.items])
-  const isClickable = Boolean(slug) && itemCount > 0
+  const isClickable = Boolean(slug)
 
   const cells = useMemo(() => {
     const out: PreviewCell[] = []
@@ -70,8 +70,13 @@ const MoodboardCard = ({
 
   const handleNavigate = useCallback(() => {
     if (!slug) return
+    // An empty board has nothing to show — send the user off to find things to save.
+    if (itemCount === 0) {
+      navigate("/search")
+      return
+    }
     navigate(`/home?${new URLSearchParams({ moodboard: slug }).toString()}`)
-  }, [navigate, slug])
+  }, [navigate, slug, itemCount])
 
   const renderCover = () => {
     if (cells.length === 0) {
