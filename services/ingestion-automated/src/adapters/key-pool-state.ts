@@ -73,9 +73,12 @@ export function classifyPoolExhaustion(
     return { reason: 'saturated', backpressure: true, retryAfterMs: transientRetryMs };
   }
 
-  // Everything is parked. If even one is parked merely for a rate limit, this clears on its own
-  // and the job never ran — backpressure, not a verdict.
-  if (pools.some((p) => p.parkReason === 'rate_limit')) {
+  // Everything is parked. Charging is reserved for the one case that provably needs a human:
+  // EVERY pool explicitly reported 402. Anything else — a rate limit, or a park whose reason was
+  // never recorded — clears on its own and the job never ran. The reason map is best-effort
+  // bookkeeping beside the governor's pause state and the two can disagree; resolving the gap to
+  // "out of credits" made every bookkeeping miss cost a job an attempt and a six-hour sleep.
+  if (!pools.every((p) => p.parkReason === 'credits')) {
     return { reason: 'rate_limited', backpressure: true, retryAfterMs: transientRetryMs };
   }
 

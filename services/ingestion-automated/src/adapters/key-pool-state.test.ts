@@ -81,3 +81,37 @@ describe('pool exhaustion — transient deferrals are capped', () => {
     expect(MAX_TRANSIENT_RETRY_MS).toBeGreaterThanOrEqual(60 * 1000);
   });
 });
+
+// ─── A park with no recorded reason is a wait, not a verdict ─────────────────
+//
+// The reason map is best-effort bookkeeping beside the governor's own pause state; the two can
+// disagree (a pool paused by a path that never wrote a reason, a reason cleared on success while
+// the pause is still running). Defaulting the unknown case to `credits_exhausted` — the ONLY
+// branch that is charged and uncapped — meant any bookkeeping gap cost a job an attempt and six
+// hours. Observed 2026-09-13: 6-hour deferrals on jobs whose keys both answered 200 to a probe.
+// Unknown must resolve to the safe side: transient, backpressure, capped.
+describe('pool exhaustion — an unexplained park is treated as transient', () => {
+  test('all parked, no reasons recorded → rate_limited, not charged, capped', () => {
+    const e = classifyPoolExhaustion([{ pauseRemainingMs: 90_000 }, { pauseRemainingMs: 90_000 }]);
+    expect(e.reason).toBe('rate_limited');
+    expect(e.backpressure).toBe(true);
+    expect(e.retryAfterMs).toBe(90_000);
+  });
+
+  test('a long unexplained park is still capped by the ceiling', () => {
+    const e = classifyPoolExhaustion([{ pauseRemainingMs: 6 * 60 * 60 * 1000 }, { pauseRemainingMs: 6 * 60 * 60 * 1000 }]);
+    expect(e.backpressure).toBe(true);
+    expect(e.retryAfterMs).toBe(MAX_TRANSIENT_RETRY_MS);
+  });
+
+  test('one explicit credits park plus one unexplained park → still transient', () => {
+    const e = classifyPoolExhaustion([outOfCredits(), { pauseRemainingMs: 90_000 }]);
+    expect(e.reason).toBe('rate_limited');
+    expect(e.backpressure).toBe(true);
+  });
+
+  // Charging is reserved for the case where EVERY pool explicitly said 402.
+  test('only when every pool explicitly reports credits is it a verdict', () => {
+    expect(classifyPoolExhaustion([outOfCredits(), outOfCredits()]).reason).toBe('credits_exhausted');
+  });
+});
