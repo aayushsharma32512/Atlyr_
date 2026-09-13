@@ -260,7 +260,8 @@ export function StudioAlternativesView() {
     slot,
     query: search.committedText,
     imageUrl: search.committedImageUrl,
-    productId: searchProductId,
+    // A typed query searches alone. The worn item joins only the similar-item search.
+    productId: search.committedText ? null : searchProductId,
     filters: search.activeFilters,
     gender: adminGender ?? gender,
     allowEmptySearch: isAdminMode || isColdStart, // Allow fetching all items on cold start or in admin mode
@@ -1059,11 +1060,14 @@ export function StudioAlternativesView() {
    */
   const handleSimilarSearch = useCallback(() => {
     const imageUrl = currentSlotImageUrl
-    if (isViewOnly || !imageUrl) {
+    if (isViewOnly || !imageUrl || !currentSlotProductId) {
       return
     }
+    // Search by the id of the item on screen. The image is still sent, because the
+    // results panel opens only when a search has text or an image.
+    setSearchProductId(currentSlotProductId)
     search.handleForceSearch(imageUrl)
-  }, [currentSlotImageUrl, isViewOnly, search])
+  }, [currentSlotImageUrl, currentSlotProductId, isViewOnly, search])
 
   const handleFindItems = useCallback(() => navigate("/inspiration-import"), [navigate])
 

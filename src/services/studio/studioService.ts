@@ -231,6 +231,8 @@ interface SearchAlternativesInput {
   productId?: string
   filters?: ProductSearchFilters
   gender: Gender
+  /** Called when the product search fails, before the DB fallback runs. The UI shows a toast. */
+  onSearchError?: (error: unknown) => void
 }
 
 const isHttpUrl = (value?: string | null) => Boolean(value && /^https?:\/\//i.test(value))
@@ -242,6 +244,7 @@ async function searchAlternatives({
   productId,
   filters = {},
   gender,
+  onSearchError,
 }: SearchAlternativesInput): Promise<StudioAlternativeProduct[]> {
   const itemType = SLOT_TO_ITEM_TYPE[slot]
   const safeImageUrl = isHttpUrl(imageUrl) ? imageUrl : undefined
@@ -280,11 +283,13 @@ async function searchAlternatives({
       productId,
       filters: searchFilters,
       limit: 48,
+      gender,
     })
 
     return results.map((result) => mapSearchResultToAlternative(result, slot))
   } catch (error) {
     console.warn("[studioService] searchProducts failed, falling back to DB results.", error)
+    onSearchError?.(error)
     return getAlternatives({
       slot,
       gender,

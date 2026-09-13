@@ -1,6 +1,8 @@
+import { useState } from "react"
 import { useQuery, type QueryClient } from "@tanstack/react-query"
 
 import { studioKeys } from "@/features/studio/queryKeys"
+import { useSearchRetryToast } from "@/features/search/hooks/useSearchRetryToast"
 import {
     studioService,
     type StudioAlternativeProduct,
@@ -63,33 +65,41 @@ export function useStudioSearchResults({
     // Enable query if we have either text or image search, OR if empty search is allowed
     const hasSearchParams = trimmedQuery.length > 0 || Boolean(safeImageUrl) || Boolean(productId) || allowEmptySearch
 
-    return useQuery<StudioAlternativeProduct[]>({
+    // The service falls back to a DB list when the product search fails, so the query
+    // does not error. The last failure is kept here to drive the retry toast.
+    const [searchFailure, setSearchFailure] = useState<{ error: unknown; tick: number } | null>(null)
+
+    const resultsQuery = useQuery<StudioAlternativeProduct[]>({
         queryKey,
         enabled: enabled && hasSearchParams,
         queryFn: async () => {
-            console.log('[StudioSearchResults] Executing search:', {
-                slot,
-                query: trimmedQuery || '(none)',
-                imageUrl: imageUrl || '(none)',
-                productId: productId || '(none)',
-                filters,
-                gender,
-            })
-            const results = await studioService.searchAlternatives({
+            return studioService.searchAlternatives({
                 slot,
                 query: trimmedQuery || undefined,
                 imageUrl: safeImageUrl || undefined,
                 productId: productId ?? undefined,
                 filters,
                 gender,
+                onSearchError: (error) => setSearchFailure((prev) => ({ error, tick: (prev?.tick ?? 0) + 1 })),
             })
-            console.log('[StudioSearchResults] Got', results.length, 'results')
-            return results
         },
         select: (data) => data ?? [],
-        staleTime: 30 * 1000, // 30 seconds
+        // The model returns different descriptions on each call, so a silent refetch changes
+        // the grid. Fetch once per key. Only a new key, the refresh button, or Retry fetches again.
+        staleTime: Infinity,
         gcTime: 5 * 60 * 1000, // 5 minutes
+        refetchOnWindowFocus: false,
+        refetchOnMount: false,
+        refetchOnReconnect: false,
     })
+
+    useSearchRetryToast({
+        error: searchFailure?.error,
+        errorKey: searchFailure?.tick ?? 0,
+        onRetry: () => resultsQuery.refetch(),
+    })
+
+    return resultsQuery
 }
 
 // Export query options for prefetching if needed
@@ -123,7 +133,10 @@ export function getStudioSearchResultsQueryOptions({
                 filters,
                 gender,
             }),
-        staleTime: 30 * 1000,
+        staleTime: Infinity, // same reason as in useStudioSearchResults above
+        refetchOnWindowFocus: false,
+        refetchOnMount: false,
+        refetchOnReconnect: false,
     }
 }
 

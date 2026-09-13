@@ -323,7 +323,7 @@ export function StudioScreenView() {
     }
   }, [resolvedOutfitId, topIdParam, bottomIdParam, shoesIdParam, slotProductIds, parsedParams.hiddenSlots])
 
-  // Background prefetch of search-v2 after initial render (Option B: deferred)
+  // Background prefetch of search-v3 after initial render (Option B: deferred)
   // Starts after page loads so it doesn't block initial paint, but data ready
   // if user opens alternatives panel and searches.
   useEffect(() => {

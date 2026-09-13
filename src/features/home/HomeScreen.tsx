@@ -29,6 +29,7 @@ import { useHomeCuratedOutfits } from "@/features/home/hooks/useHomeCuratedOutfi
 import { useHomeAllOutfits } from "@/features/home/hooks/useHomeAllOutfits"
 import { useSearchOutfitResults } from "@/features/search/hooks/useSearchOutfitResults"
 import { useSearchProductResults } from "@/features/search/hooks/useSearchProductResults"
+import { useSearchRetryToast } from "@/features/search/hooks/useSearchRetryToast"
 import type { OutfitSearchFilters, ProductSearchFilters } from "@/services/search/searchService"
 import { useLaunchStudio } from "@/features/studio/hooks/useLaunchStudio"
 import type { InspirationItem } from "@/features/studio/types"
@@ -161,6 +162,12 @@ export function HomeScreenView() {
   const productResultsQuery = useSearchProductResults({
     query: committedSearchTerm,
     enabled: isResultsMode && activeFilter === "products" && !isSearchSubmitting,
+  })
+
+  useSearchRetryToast({
+    error: productResultsQuery.error,
+    errorKey: productResultsQuery.isError ? productResultsQuery.errorUpdatedAt : 0,
+    onRetry: () => productResultsQuery.refetch(),
   })
 
   const allOutfitsSortParam = searchParams.get("sort")

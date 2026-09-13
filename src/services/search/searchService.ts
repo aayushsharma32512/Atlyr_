@@ -1,3 +1,4 @@
+import { FunctionsHttpError } from "@supabase/supabase-js"
 import { supabase } from "@/integrations/supabase/client"
 import type { Database } from "@/integrations/supabase/types"
 import type { Outfit } from "@/types"
@@ -84,6 +85,47 @@ interface SearchProductsInput {
   cursor?: number | null
   limit?: number
   filters?: ProductSearchFilters
+  /** Profile gender. search-v3 uses it only to phrase the LLM query, never as a filter. */
+  gender?: Gender
+}
+
+/** Thrown by searchProducts when search-v3 responds with a non-2xx status. */
+export class ProductSearchError extends Error {
+  status?: number
+  code?: string
+
+  constructor(message: string, options?: { status?: number; code?: string }) {
+    super(message)
+    this.name = "ProductSearchError"
+    this.status = options?.status
+    this.code = options?.code
+  }
+}
+
+interface SearchV3ErrorBody {
+  error?: string
+  code?: string
+}
+
+/** One search-v3 result row. `final_score` decreases with rank; the app sorts by it. */
+interface SearchV3Result {
+  id: string
+  product_name: string | null
+  similarity: number
+  final_score: number
+  /** Similarity bucket floor in percent (10 = 10.0-10.99 %). */
+  tier: number
+  /** The description that placed this product, and the product's rank in that description's list. */
+  matched: { description_index: number | null; description: string | null; rank: number }
+}
+
+/** search-v3's response shape. `descriptions` and `timings` feed the dev console log. */
+interface SearchV3Response {
+  results?: SearchV3Result[]
+  nextCursor?: number | null
+  descriptions?: string[]
+  resolver?: { model?: string | null; ms?: number }
+  timings?: { resolver_ms?: number; embed_ms?: number; search_ms?: number; total_ms?: number }
 }
 
 export interface OutfitSearchResult {
@@ -483,6 +525,122 @@ async function searchOutfits({
   return { results: ordered, nextCursor: null }
 }
 
+export interface SearchV3RequestBody {
+  q?: string
+  imageUrl?: string
+  productId?: string
+  filters?: ProductSearchFilters
+  gender?: string
+}
+
+/** Builds the search-v3 request body from a searchProducts call. Exported for tests. */
+export function buildSearchV3RequestBody({
+  query,
+  imageUrl,
+  productId,
+  filters,
+  gender,
+}: SearchProductsInput): SearchV3RequestBody {
+  const trimmed = query?.trim() ?? ""
+  return {
+    q: trimmed || undefined,
+    imageUrl: imageUrl || undefined,
+    productId: productId || undefined,
+    filters: filters || {},
+    gender: gender || undefined,
+  }
+}
+
+/** Dev only: one collapsed console group per search with one table: position, round,
+ * similarity, product, the description that placed it, and its rank in that description's list. */
+function logSearchV3Dev(body: SearchV3RequestBody, data: SearchV3Response): void {
+  const t = data.timings ?? {}
+  const descriptions = data.descriptions ?? []
+  const results = data.results ?? []
+  const source = body.productId ? "product" : body.imageUrl ? "image" : null
+  const mode = source ? (body.q ? `${source}+text` : source) : "text"
+  const header =
+    `[search-v3] "${body.q ?? ""}" · ${mode} · ${body.gender ?? "any"} · ${t.total_ms ?? "?"} ms ` +
+    `(resolver ${t.resolver_ms ?? 0}, embed ${t.embed_ms ?? 0}, search ${t.search_ms ?? 0}) · ${results.length} results`
+
+  // keyed by position so the table's index column is the 1-based numbering
+  const rows: Record<number, Record<string, unknown>> = {}
+  results.forEach((r, i) => {
+    rows[i + 1] = {
+      bucket: r.tier,
+      similarity: (r.similarity * 100).toFixed(3) + " %",
+      product: r.product_name,
+      description: r.matched.description_index != null ? descriptions[r.matched.description_index] : "image",
+      rank: r.matched.rank,
+    }
+  })
+  console.groupCollapsed(header)
+  console.table(rows)
+  console.groupEnd()
+}
+
+async function readErrorBody(response: Response | undefined): Promise<SearchV3ErrorBody> {
+  if (!response) return {}
+  try {
+    return (await response.json()) as SearchV3ErrorBody
+  } catch {
+    return {}
+  }
+}
+
+/** Dev-only: search-v3's URL when calling it directly instead of through supabase.functions.invoke. */
+function getDevSearchV3Url(): string | undefined {
+  const env = import.meta.env as { DEV?: boolean; VITE_SEARCH_V3_URL?: string }
+  return env.DEV && env.VITE_SEARCH_V3_URL ? env.VITE_SEARCH_V3_URL : undefined
+}
+
+async function invokeSearchV3(body: SearchV3RequestBody): Promise<SearchV3Response> {
+  const devUrl = getDevSearchV3Url()
+
+  if (devUrl) {
+    const env = import.meta.env as { VITE_SUPABASE_ANON_KEY?: string }
+    const anonKey = env.VITE_SUPABASE_ANON_KEY ?? ""
+    const { data: sessionData } = await supabase.auth.getSession()
+    const accessToken = sessionData.session?.access_token || anonKey
+
+    const response = await fetch(devUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: anonKey,
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(body),
+    })
+
+    if (!response.ok) {
+      const errorBody = await readErrorBody(response)
+      throw new ProductSearchError(errorBody.error ?? `search-v3 request failed (${response.status})`, {
+        status: response.status,
+        code: errorBody.code,
+      })
+    }
+
+    return (await response.json()) as SearchV3Response
+  }
+
+  const { data, error } = await supabase.functions.invoke("search-v3", { body })
+
+  if (error) {
+    if (error instanceof FunctionsHttpError) {
+      const response = error.context as Response | undefined
+      const errorBody = await readErrorBody(response)
+      throw new ProductSearchError(errorBody.error ?? error.message, {
+        status: response?.status,
+        code: errorBody.code,
+      })
+    }
+    throw new ProductSearchError(error.message)
+  }
+
+  return (data ?? {}) as SearchV3Response
+}
+
 function mapProductRowToResult(row: Record<string, unknown>): ProductSearchResult | null {
   if (typeof row.id !== "string") {
     return null
@@ -535,6 +693,7 @@ async function searchProducts({
   imageUrl,
   productId,
   filters,
+  gender,
 }: SearchProductsInput): Promise<SearchFunctionResponse<ProductSearchResult>> {
   const trimmed = query?.trim() ?? ""
 
@@ -542,26 +701,15 @@ async function searchProducts({
     return { results: [], nextCursor: null }
   }
 
-  const { data, error } = await supabase.functions.invoke("search-v2", {
-    body: {
-      q: trimmed || undefined,
-      imageUrl: imageUrl || undefined,
-      productId: productId || undefined,
-      filters: filters || {},
-    },
-  })
+  const body = buildSearchV3RequestBody({ query: trimmed, imageUrl, productId, filters, gender })
+  const data = await invokeSearchV3(body)
 
-  if (error) {
-    throw new Error(error.message)
-  }
+  if (import.meta.env.DEV) logSearchV3Dev(body, data)
 
-  const raw = (data ?? { results: [] }) as { results?: Record<string, unknown>[] }
-  const rawResults = (raw.results ?? [])
-    .sort((a, b) => ((b.final_score as number) ?? 0) - ((a.final_score as number) ?? 0))
+  const rawResults = (data.results ?? [])
+    .sort((a, b) => (b.final_score ?? 0) - (a.final_score ?? 0))
 
-  const ids = rawResults
-    .map((row) => (typeof row.id === "string" ? row.id : null))
-    .filter((value): value is string => Boolean(value))
+  const ids = rawResults.map((row) => row.id)
 
   if (!ids.length) {
     return { results: [], nextCursor: null }
