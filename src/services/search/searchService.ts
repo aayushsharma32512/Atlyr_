@@ -128,6 +128,29 @@ interface SearchV3Response {
   timings?: { resolver_ms?: number; embed_ms?: number; search_ms?: number; total_ms?: number }
 }
 
+/** One search-outfits-v3 result row. `final_score` decreases with rank; the app sorts by it. */
+interface SearchOutfitsV3Result {
+  id: string
+  name: string | null
+  category: string | null
+  occasion: string | null
+  gender: string | null
+  similarity: number
+  final_score: number
+  /** Similarity band floor, whole percent (31 = 31.0-31.99 %). */
+  tier: number
+  /** The description that found this outfit first, and its rank in that description's list. */
+  matched: { description_index: number | null; description: string | null; rank: number }
+}
+
+/** search-outfits-v3's response shape. `descriptions` and `timings` feed the dev console log. */
+interface SearchOutfitsV3Response {
+  results?: SearchOutfitsV3Result[]
+  descriptions?: string[]
+  resolver?: { model?: string | null; ms?: number }
+  timings?: { resolver_ms?: number; embed_ms?: number; search_ms?: number; total_ms?: number }
+}
+
 export interface OutfitSearchResult {
   outfit: Outfit
   studioOutfit?: StudioOutfitDTO | null
@@ -459,6 +482,56 @@ export async function fetchProductsByIds(
   return map
 }
 
+export interface SearchOutfitsV3RequestBody {
+  q?: string
+  imageUrl?: string
+  filters?: OutfitSearchFilters
+  gender?: string
+}
+
+/** Builds the search-outfits-v3 request body from a searchOutfits call. Exported for tests. */
+export function buildSearchOutfitsV3RequestBody({
+  query,
+  imageUrl,
+  filters,
+  gender,
+}: Pick<SearchOutfitsInput, "query" | "imageUrl" | "filters" | "gender">): SearchOutfitsV3RequestBody {
+  const trimmed = query?.trim() ?? ""
+  return {
+    q: trimmed || undefined,
+    imageUrl: imageUrl || undefined,
+    filters: filters || {},
+    gender: gender || undefined,
+  }
+}
+
+/** Dev only: one collapsed console group per search with one table: position, tier,
+ * similarity, outfit name, the description that placed it, and its rank in that description's list. */
+function logSearchOutfitsV3Dev(body: SearchOutfitsV3RequestBody, data: SearchOutfitsV3Response): void {
+  const t = data.timings ?? {}
+  const descriptions = data.descriptions ?? []
+  const results = data.results ?? []
+  const header =
+    `[search-outfits-v3] "${body.q ?? ""}" · ${body.gender ?? "any"} · ${t.total_ms ?? "?"} ms ` +
+    `(resolver ${t.resolver_ms ?? 0}, embed ${t.embed_ms ?? 0}, search ${t.search_ms ?? 0}) · ` +
+    `${descriptions.length} descriptions · ${results.length} results`
+
+  // keyed by position so the table's index column is the 1-based numbering
+  const rows: Record<number, Record<string, unknown>> = {}
+  results.forEach((r, i) => {
+    rows[i + 1] = {
+      tier: r.tier,
+      similarity: (r.similarity * 100).toFixed(3) + " %",
+      outfit: r.name,
+      description: r.matched.description_index != null ? descriptions[r.matched.description_index] : null,
+      rank: r.matched.rank,
+    }
+  })
+  console.groupCollapsed(header)
+  console.table(rows)
+  console.groupEnd()
+}
+
 async function searchOutfits({
   query,
   imageUrl,
@@ -473,25 +546,15 @@ async function searchOutfits({
     return { results: [], nextCursor: null }
   }
 
-  // Use the new Modal-based edge function for outfit search
-  const { data, error } = await supabase.functions.invoke("search-outfits-v2", {
-    body: {
-      q: trimmed,
-      imageUrl: imageUrl,
-      filters: filters || {},
-    },
-  })
+  const body = buildSearchOutfitsV3RequestBody({ query: trimmed, imageUrl, gender, filters })
+  const data = await invokeSearchOutfitsV3(body)
 
-  if (error) {
-    throw new Error(error.message)
-  }
+  if (import.meta.env.DEV) logSearchOutfitsV3Dev(body, data)
 
-  const raw = (data ?? { results: [] }) as { results?: Record<string, unknown>[] }
-  const rawResults = raw.results ?? []
+  const rawResults = (data.results ?? [])
+    .sort((a, b) => (b.final_score ?? 0) - (a.final_score ?? 0))
 
-  const ids = rawResults
-    .map((row) => (typeof row.id === "string" ? row.id : null))
-    .filter((value): value is string => Boolean(value))
+  const ids = rawResults.map((row) => row.id)
 
   if (!ids.length) {
     return { results: [], nextCursor: null }
@@ -506,22 +569,17 @@ async function searchOutfits({
         return null
       }
 
-      const rawMatch = rawResults.find(r => r.id === id)
-      // search-outfits-v2 returns 'final_score' (from fusion) or we can look for 'similarity'
-      const similarity = typeof rawMatch?.final_score === "number"
-        ? rawMatch.final_score
-        : (typeof rawMatch?.similarity === "number" ? rawMatch.similarity : undefined)
+      const rawMatch = rawResults.find((r) => r.id === id)
 
       return {
         outfit: entry.outfit,
         studioOutfit: entry.studioOutfit,
-        similarity,
+        similarity: rawMatch?.similarity,
       }
     })
     .filter(Boolean) as OutfitSearchResult[]
 
-  // Note: search-outfits-v2 currently returns a fixed set (top 50) without backend-side cursor pagination logic.
-  // We return nextCursor: null to signal end of list for now, or we could implement client-side slicing.
+  // search-outfits-v3 returns a fixed page (top 50), no backend cursor pagination yet.
   return { results: ordered, nextCursor: null }
 }
 
@@ -588,15 +646,20 @@ async function readErrorBody(response: Response | undefined): Promise<SearchV3Er
   }
 }
 
-/** Dev-only: search-v3's URL when calling it directly instead of through supabase.functions.invoke. */
-function getDevSearchV3Url(): string | undefined {
-  const env = import.meta.env as { DEV?: boolean; VITE_SEARCH_V3_URL?: string }
-  return env.DEV && env.VITE_SEARCH_V3_URL ? env.VITE_SEARCH_V3_URL : undefined
+/** Dev-only: an edge function's URL when calling it directly instead of through supabase.functions.invoke. */
+function getDevFunctionUrl(envKey: "VITE_SEARCH_V3_URL" | "VITE_SEARCH_OUTFITS_V3_URL"): string | undefined {
+  const env = import.meta.env as { DEV?: boolean } & Record<string, string | undefined>
+  const value = env[envKey]
+  return env.DEV && value ? value : undefined
 }
 
-async function invokeSearchV3(body: SearchV3RequestBody): Promise<SearchV3Response> {
-  const devUrl = getDevSearchV3Url()
-
+/** Shared by search-v3 and search-outfits-v3: dev-only direct fetch when a dev URL is set,
+ * else supabase.functions.invoke. Non-2xx becomes a ProductSearchError either way. */
+async function invokeEdgeFunction<TBody extends Record<string, unknown>, TResponse>(
+  functionName: string,
+  devUrl: string | undefined,
+  body: TBody,
+): Promise<TResponse> {
   if (devUrl) {
     const env = import.meta.env as { VITE_SUPABASE_ANON_KEY?: string }
     const anonKey = env.VITE_SUPABASE_ANON_KEY ?? ""
@@ -615,16 +678,16 @@ async function invokeSearchV3(body: SearchV3RequestBody): Promise<SearchV3Respon
 
     if (!response.ok) {
       const errorBody = await readErrorBody(response)
-      throw new ProductSearchError(errorBody.error ?? `search-v3 request failed (${response.status})`, {
+      throw new ProductSearchError(errorBody.error ?? `${functionName} request failed (${response.status})`, {
         status: response.status,
         code: errorBody.code,
       })
     }
 
-    return (await response.json()) as SearchV3Response
+    return (await response.json()) as TResponse
   }
 
-  const { data, error } = await supabase.functions.invoke("search-v3", { body })
+  const { data, error } = await supabase.functions.invoke(functionName, { body })
 
   if (error) {
     if (error instanceof FunctionsHttpError) {
@@ -638,7 +701,23 @@ async function invokeSearchV3(body: SearchV3RequestBody): Promise<SearchV3Respon
     throw new ProductSearchError(error.message)
   }
 
-  return (data ?? {}) as SearchV3Response
+  return (data ?? {}) as TResponse
+}
+
+async function invokeSearchV3(body: SearchV3RequestBody): Promise<SearchV3Response> {
+  return invokeEdgeFunction<SearchV3RequestBody, SearchV3Response>(
+    "search-v3",
+    getDevFunctionUrl("VITE_SEARCH_V3_URL"),
+    body,
+  )
+}
+
+async function invokeSearchOutfitsV3(body: SearchOutfitsV3RequestBody): Promise<SearchOutfitsV3Response> {
+  return invokeEdgeFunction<SearchOutfitsV3RequestBody, SearchOutfitsV3Response>(
+    "search-outfits-v3",
+    getDevFunctionUrl("VITE_SEARCH_OUTFITS_V3_URL"),
+    body,
+  )
 }
 
 function mapProductRowToResult(row: Record<string, unknown>): ProductSearchResult | null {

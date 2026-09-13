@@ -561,6 +561,12 @@ export function SearchScreenView() {
     onRetry: () => productResultsQuery.refetch(),
   })
 
+  useSearchRetryToast({
+    error: outfitResultsQuery.error,
+    errorKey: outfitResultsQuery.isError ? outfitResultsQuery.errorUpdatedAt : 0,
+    onRetry: () => outfitResultsQuery.refetch(),
+  })
+
   // --- FILTER OPTIONS ---
   const activeTypeFilters = useMemo(() => {
     return activeFilterIds
