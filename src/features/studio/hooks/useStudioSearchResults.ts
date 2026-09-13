@@ -73,15 +73,7 @@ export function useStudioSearchResults({
         queryKey,
         enabled: enabled && hasSearchParams,
         queryFn: async () => {
-            console.log('[StudioSearchResults] Executing search:', {
-                slot,
-                query: trimmedQuery || '(none)',
-                imageUrl: imageUrl || '(none)',
-                productId: productId || '(none)',
-                filters,
-                gender,
-            })
-            const results = await studioService.searchAlternatives({
+            return studioService.searchAlternatives({
                 slot,
                 query: trimmedQuery || undefined,
                 imageUrl: safeImageUrl || undefined,
@@ -90,12 +82,15 @@ export function useStudioSearchResults({
                 gender,
                 onSearchError: (error) => setSearchFailure((prev) => ({ error, tick: (prev?.tick ?? 0) + 1 })),
             })
-            console.log('[StudioSearchResults] Got', results.length, 'results')
-            return results
         },
         select: (data) => data ?? [],
-        staleTime: 30 * 1000, // 30 seconds
+        // The model returns different descriptions on each call, so a silent refetch changes
+        // the grid. Fetch once per key. Only a new key, the refresh button, or Retry fetches again.
+        staleTime: Infinity,
         gcTime: 5 * 60 * 1000, // 5 minutes
+        refetchOnWindowFocus: false,
+        refetchOnMount: false,
+        refetchOnReconnect: false,
     })
 
     useSearchRetryToast({
@@ -138,7 +133,10 @@ export function getStudioSearchResultsQueryOptions({
                 filters,
                 gender,
             }),
-        staleTime: 30 * 1000,
+        staleTime: Infinity, // same reason as in useStudioSearchResults above
+        refetchOnWindowFocus: false,
+        refetchOnMount: false,
+        refetchOnReconnect: false,
     }
 }
 
