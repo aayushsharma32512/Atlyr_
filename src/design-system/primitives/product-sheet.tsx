@@ -275,7 +275,9 @@ export function ProductSheet({
           {title}
         </p>
 
-        <div className="flex min-h-0 flex-[0_1_auto] flex-wrap content-start gap-1.5 overflow-hidden">
+        {/* Scrolls rather than clips: a piece with many attributes lost the last
+            row entirely, and the card cannot grow past its slot. */}
+        <div className="flex min-h-0 flex-[0_1_auto] flex-wrap content-start gap-1.5 overflow-y-auto overscroll-contain scrollbar-hide">
           {showSlot && slot && SlotIcon ? (
             <span className="box-border inline-flex h-control-chip items-center gap-[5px] whitespace-nowrap rounded-control border border-hairline bg-muted px-2.5 text-chip font-medium tracking-[0.08em] text-ink">
               <SlotIcon className="h-3.5 w-3.5" strokeWidth={1.7} aria-hidden="true" />
