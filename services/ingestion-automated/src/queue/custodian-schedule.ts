@@ -24,7 +24,11 @@ export function registerCustodianSchedule(boss: BossHandle): void {
   boss.work(CUSTODIAN_QUEUE, {}, async () => {
     try {
       const result = await runCustodian(boss);
-      if (result.resumed || result.modalTimedOut || result.reaped || result.clearedQueueRows) {
+      // Every pass belongs in this condition. `failuresRetried` was missing, so a tick whose ONLY
+      // work was retrying failures logged nothing at all — the pass looked dead from the outside
+      // while it was running, which is exactly the silence that hid the retry-budget bug.
+      if (result.resumed || result.modalTimedOut || result.reaped
+          || result.clearedQueueRows || result.failuresRetried) {
         logger.info({ ...result }, 'custodian tick');
       }
     } catch (err) {
@@ -38,7 +42,7 @@ export function registerCustodianSchedule(boss: BossHandle): void {
   });
 
   logger.info(
-    { enabled: config.CUSTODIAN_ENABLED, cron: config.CUSTODIAN_CRON, reaperMode: config.REAPER_MODE },
+    { enabled: config.CUSTODIAN_ENABLED, cron: config.CUSTODIAN_CRON, reaperMode: config.REAPER_MODE, autoRetryFailed: config.AUTO_RETRY_FAILED, autoRetryBatchSize: config.AUTO_RETRY_BATCH_SIZE },
     'custodian schedule registered',
   );
 }

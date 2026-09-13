@@ -1,4 +1,6 @@
 import { config } from '../config/index';
+import { blockedPageReason } from './blocked-page';
+import { classifyPoolExhaustion, type ParkReason, type PoolSnapshot } from './key-pool-state';
 import { withRetry } from '../utils/retry';
 import { governor } from '../utils/governor';
 import { classifyError, extractRetryDelayMs } from '../utils/error-classify';
@@ -33,7 +35,7 @@ const logger = createLogger({ stage: 'firecrawl' });
  */
 export class UpstreamBusyError extends Error {
   readonly retryAfterMs: number;
-  readonly reason: 'paused' | 'saturated';
+  readonly reason: 'saturated' | 'rate_limited' | 'credits_exhausted';
   /**
    * True when every key was merely OUT OF SLOTS rather than rate limited — i.e. other jobs are
    * using the capacity right now. That is backpressure, not a failure: being 19th in a queue of 24
@@ -42,12 +44,17 @@ export class UpstreamBusyError extends Error {
    */
   readonly backpressure: boolean;
 
-  constructor(message: string, retryAfterMs: number, reason: 'paused' | 'saturated') {
+  constructor(
+    message: string,
+    retryAfterMs: number,
+    reason: 'saturated' | 'rate_limited' | 'credits_exhausted',
+    backpressure: boolean,
+  ) {
     super(message);
     this.name = 'UpstreamBusyError';
     this.retryAfterMs = retryAfterMs;
     this.reason = reason;
-    this.backpressure = reason === 'saturated';
+    this.backpressure = backpressure;
   }
 }
 
@@ -57,7 +64,12 @@ const SATURATED_RETRY_MS = 5_000;
 
 const CREDITS_EXHAUSTED_PAUSE_MS = 6 * 60 * 60 * 1000;
 const poolFor = (i: number) => `firecrawl::${i}`;
-config.FIRECRAWL_API_KEYS.forEach((_k, i) => governor.setLimit(poolFor(i), config.FIRECRAWL_MAX_CONCURRENCY));
+// Why each pool was parked. The governor tracks how LONG a pool is paused but not what caused
+// it, and that difference decides whether a job loses a life — see key-pool-state.ts.
+const parkReasons = new Map<string, ParkReason>();
+// Each key gets ITS OWN plan's limit, not one shared number — see utils/per-key-limits.ts.
+config.FIRECRAWL_API_KEYS.forEach((_k, i) =>
+  governor.setLimit(poolFor(i), config.FIRECRAWL_MAX_CONCURRENCIES[i] ?? config.FIRECRAWL_MAX_CONCURRENCY));
 
 export interface FirecrawlProductResult {
   finalUrl: string;
@@ -142,6 +154,8 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
         formats,
         jsonOptions: { prompt },
         actions,
+        // Only sent when a profile opts in; Firecrawl defaults to the basic (datacenter) tier.
+        ...(profile?.proxy ? { proxy: profile.proxy } : {}),
         // Render from the catalogue's home market. Firecrawl's default proxies exit in the US,
         // and multi-currency storefronts (Fabindia, Tasva, Shopify Markets) localise off the
         // visitor IP — so an unpinned scrape returns a converted USD price for an INR product.
@@ -169,7 +183,7 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
         allBusy = false; // at least one key was actually reachable this pass
 
         const r = outcome.value;
-        if (r.ok) { resp = r; break; }
+        if (r.ok) { parkReasons.delete(pool); resp = r; break; }
 
         const body = await r.text();
         lastError = new Error(`Firecrawl error ${r.status}: ${body}`);
@@ -178,6 +192,7 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
           // Out of credits: dead until a human tops it up, so park it for hours rather than
           // re-asking every scrape for the rest of the sheet.
           governor.reportRateLimit(pool, CREDITS_EXHAUSTED_PAUSE_MS);
+          parkReasons.set(pool, 'credits');
           logger.error(
             { keyIndex: i, keysConfigured: config.FIRECRAWL_API_KEYS.length },
             'firecrawl key is OUT OF CREDITS — parking it and falling through to the next key',
@@ -190,6 +205,7 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
           // so they only burned more quota before the job failed.
           const delayMs = extractRetryDelayMs(lastError);
           governor.reportRateLimit(pool, delayMs);
+          parkReasons.set(pool, 'rate_limit');
           logger.warn({ url: targetUrl, keyIndex: i, pauseMs: delayMs ?? null }, 'firecrawl rate limited — pausing this key');
           continue;
         }
@@ -210,26 +226,26 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
         // key, or a short constant for one that is simply out of slots. If ANY key is unparked
         // there is real capacity behind this and it is backpressure — the job never ran, so it
         // must not be charged an attempt.
-        const perPool = config.FIRECRAWL_API_KEYS.map((_k, i) => governor.pauseRemainingMs(poolFor(i)));
-        const anyUnparked = perPool.some((ms) => ms === 0);
-        const retryAfterMs = perPool.length
-          ? Math.min(...perPool.map((ms) => (ms > 0 ? ms : SATURATED_RETRY_MS)))
-          : SATURATED_RETRY_MS;
+        const snapshots: PoolSnapshot[] = config.FIRECRAWL_API_KEYS.map((_k, i) => ({
+          pauseRemainingMs: governor.pauseRemainingMs(poolFor(i)),
+          parkReason: parkReasons.get(poolFor(i)),
+        }));
+        const { reason, backpressure, retryAfterMs } = classifyPoolExhaustion(snapshots, SATURATED_RETRY_MS);
 
         if (lastError) {
           logger.warn(
-            { url: targetUrl, anyUnparked, retryAfterMs, lastError: lastError.message.slice(0, 120) },
+            { url: targetUrl, reason, backpressure, retryAfterMs, lastError: lastError.message.slice(0, 120) },
             'every key declined this request — deferring rather than failing the job',
           );
         }
 
-        throw new UpstreamBusyError(
-          anyUnparked
-            ? 'Every Firecrawl key was busy — no capacity for this request right now'
-            : 'Every Firecrawl key is paused (rate limited or out of credits)',
-          retryAfterMs,
-          anyUnparked ? 'saturated' : 'paused',
-        );
+        const MESSAGES = {
+          saturated: 'Every Firecrawl key was busy — no capacity for this request right now',
+          rate_limited: 'Every Firecrawl key is rate limited — backing off, the job was never attempted',
+          credits_exhausted: 'Every Firecrawl key is out of credits — top up to resume scraping',
+        } as const;
+
+        throw new UpstreamBusyError(MESSAGES[reason], retryAfterMs, reason, backpressure);
       }
 
       const payload = await resp.json() as Record<string, unknown>;
@@ -242,6 +258,20 @@ export async function scrapeProductPage(url: string): Promise<FirecrawlProductRe
 
       const finalUrl = (metadata['sourceURL'] ?? metadata['sourceUrl'] ?? targetUrl) as string;
       const jsonImages = extractJsonImages(json['images']);
+
+      // A block page arrives as HTTP 200, so `resp.ok` proved nothing. Check before the extracted
+      // fields are used for anything: the failure mode this prevents is not an error but INVENTED
+      // product data (see blocked-page.ts). Thrown bare so classifyError reads it as transient —
+      // a block can lift, and the step cap bounds it if it does not.
+      const blocked = blockedPageReason({
+        title: typeof metadata['title'] === 'string' ? metadata['title'] : undefined,
+        body: typeof data['markdown'] === 'string' ? data['markdown'] : cleanedHtml,
+        imageUrls: jsonImages,
+      });
+      if (blocked) {
+        logger.warn({ url: targetUrl, proxy: profile?.proxy ?? 'basic', reason: blocked }, 'scrape returned a blocked page, not a product');
+        throw new Error(`Upstream served a blocked page, not the product — ${blocked}`);
+      }
 
       // Apply site-specific image filter; fall back to generic Shopify; then raw JSON images with generic filter.
       let imageUrls: string[];

@@ -1,4 +1,10 @@
 import { z } from 'zod';
+import {
+  DEFAULT_AUTO_RETRY_MAX_ATTEMPTS,
+  DEFAULT_STEP_MAX_ATTEMPTS,
+  autoRetryBudgetIsReachable,
+} from '../orchestration/step-retry';
+import { resolvePerKeyLimits } from '../utils/per-key-limits';
 
 // Empty strings in .env are treated as absent (undefined) for optional fields.
 const optStr = z.string().min(1).optional().or(z.literal('').transform(() => undefined as undefined));
@@ -20,6 +26,9 @@ const EnvSchema = z.object({
   // the whole sheet (observed: batch 147 lost jobs to 402 mid-run). Listing spares lets the adapter
   // walk to the next one instead.
   FIRECRAWL_API_KEY: optStr,
+  // In-flight requests per key, in the SAME priority order as FIRECRAWL_API_KEY. A single value
+  // applies to every key. Plans differ — measured 2026-09-13, the paid key allows 5 and the free
+  // one 2 — and sending a key more than its plan permits earns 429s that park it.
   FIRECRAWL_MAX_CONCURRENCY: z.string().default('3'),
   // Country whose storefront the scrape should see. Firecrawl's proxies exit in the US by default,
   // and geo-localised stores then serve a converted price in the local currency. The catalogue is
@@ -157,11 +166,17 @@ const EnvSchema = z.object({
   AUTO_RETRY_MIN_IDLE_SECONDS: z.string().default('1800'),
   // Bound on automatic retries, read from error_count. A human restart zeroes that counter and so
   // grants a fresh budget; the custodian only ever spends the existing one.
-  AUTO_RETRY_MAX_ATTEMPTS: z.string().default('5'),
+  // MUST stay strictly above STEP_MAX_ATTEMPTS: a dispatcher-failed row already carries exactly
+  // that many errors, so an equal cap makes this whole pass unreachable. Checked below.
+  AUTO_RETRY_MAX_ATTEMPTS: z.string().default(String(DEFAULT_AUTO_RETRY_MAX_ATTEMPTS)),
+  // How many failures one custodian tick may restart. Kept well under the upstream's concurrency:
+  // restarting 50 at once on 2026-09-13 tripped Firecrawl's rate limit within seconds, and every
+  // job in the burst that found no key was charged an attempt for a scrape that never ran.
+  AUTO_RETRY_BATCH_SIZE: z.string().default('10'),
   // How many times a step may be deferred on a retryable error (rate limit, transient upstream)
   // before the job is failed for good. Bounds the one thing a defer-instead-of-fail policy can get
   // wrong: a permanently broken upstream cycling jobs forever with no failure ever surfacing.
-  STEP_MAX_ATTEMPTS: z.string().default('5'),
+  STEP_MAX_ATTEMPTS: z.string().default(String(DEFAULT_STEP_MAX_ATTEMPTS)),
   // Wait used when the upstream named no delay of its own. Long enough to outlive an ordinary rate
   // limit window rather than landing back inside it, which is how the in-adapter retries died.
   STEP_RETRY_FALLBACK_SECONDS: z.string().default('60'),
@@ -184,6 +199,13 @@ if (!parsed.success) {
   process.exit(1);
 }
 
+const FIRECRAWL_KEYS = (parsed.data.FIRECRAWL_API_KEY ?? '')
+  .split(',')
+  .map((k) => k.trim())
+  .filter(Boolean);
+
+const FIRECRAWL_CONCURRENCIES = resolvePerKeyLimits(parsed.data.FIRECRAWL_MAX_CONCURRENCY, FIRECRAWL_KEYS.length, 3);
+
 export const config = {
   ...parsed.data,
   PORT: Number(parsed.data.PORT),
@@ -197,19 +219,19 @@ export const config = {
   BOSS_RESTART_BASE_MS: Number(parsed.data.BOSS_RESTART_BASE_MS),
   BOSS_RESTART_MAX_MS: Number(parsed.data.BOSS_RESTART_MAX_MS),
   BOSS_RESTART_MAX_ATTEMPTS: Number(parsed.data.BOSS_RESTART_MAX_ATTEMPTS),
-  FIRECRAWL_MAX_CONCURRENCY: Number(parsed.data.FIRECRAWL_MAX_CONCURRENCY),
+  FIRECRAWL_MAX_CONCURRENCY: FIRECRAWL_CONCURRENCIES[0] ?? 3,
+  /** Per-key in-flight limits, index-aligned with FIRECRAWL_API_KEYS. */
+  FIRECRAWL_MAX_CONCURRENCIES: FIRECRAWL_CONCURRENCIES,
   CUSTODIAN_ENABLED: parsed.data.CUSTODIAN_ENABLED === 'true',
   AUTO_RETRY_FAILED: parsed.data.AUTO_RETRY_FAILED === 'true',
   AUTO_RETRY_MIN_IDLE_SECONDS: Number(parsed.data.AUTO_RETRY_MIN_IDLE_SECONDS),
   AUTO_RETRY_MAX_ATTEMPTS: Number(parsed.data.AUTO_RETRY_MAX_ATTEMPTS),
+  AUTO_RETRY_BATCH_SIZE: Number(parsed.data.AUTO_RETRY_BATCH_SIZE),
   STEP_MAX_ATTEMPTS: Number(parsed.data.STEP_MAX_ATTEMPTS),
   STEP_RETRY_FALLBACK_SECONDS: Number(parsed.data.STEP_RETRY_FALLBACK_SECONDS),
   GEMINI_ROUTE_MAX_CONCURRENT: Number(parsed.data.GEMINI_ROUTE_MAX_CONCURRENT),
   /** Firecrawl keys in priority order; a single key parses to a one-element list. */
-  FIRECRAWL_API_KEYS: (parsed.data.FIRECRAWL_API_KEY ?? '')
-    .split(',')
-    .map((k) => k.trim())
-    .filter(Boolean),
+  FIRECRAWL_API_KEYS: FIRECRAWL_KEYS,
   MODAL_REQUEST_TIMEOUT_SECONDS: Number(parsed.data.MODAL_REQUEST_TIMEOUT_SECONDS),
   VTON_BATCH_ENABLED: parsed.data.VTON_BATCH_ENABLED === 'true',
   VTON_BATCH_FLUSH_SIZE: Number(parsed.data.VTON_BATCH_FLUSH_SIZE),
@@ -219,3 +241,16 @@ export const config = {
   VTON_BATCH_STALE_WARN_SECONDS: Number(parsed.data.VTON_BATCH_STALE_WARN_SECONDS),
   VTON_BATCH_FETCH_CONCURRENCY: Number(parsed.data.VTON_BATCH_FETCH_CONCURRENCY),
 } as const;
+
+// The retry budgets are two numbers in two different files that only work as a pair, so the pair is
+// checked at boot rather than trusted. Equal caps do not throw anywhere — the custodian simply
+// scans and matches nothing, every five minutes, forever. That silence hid the bug that stranded
+// 435 jobs on 2026-09-13; this turns it into a startup failure.
+if (config.AUTO_RETRY_FAILED && !autoRetryBudgetIsReachable(config.STEP_MAX_ATTEMPTS, config.AUTO_RETRY_MAX_ATTEMPTS)) {
+  console.error(
+    `Invalid retry budgets: AUTO_RETRY_MAX_ATTEMPTS (${config.AUTO_RETRY_MAX_ATTEMPTS}) must be greater than ` +
+    `STEP_MAX_ATTEMPTS (${config.STEP_MAX_ATTEMPTS}). A job the dispatcher fails already carries ` +
+    `${config.STEP_MAX_ATTEMPTS} errors, so the custodian's auto-retry pass could never match one.`,
+  );
+  process.exit(1);
+}

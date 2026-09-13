@@ -23,7 +23,15 @@ import {
   RESCUE_EXCLUDED_STATES,
 } from './recovery-scope';
 import { classifyError, extractRetryDelayMs } from '../utils/error-classify';
-import { decideStepFailure, isRecoverableFailure } from './step-retry';
+import {
+  DEFAULT_AUTO_RETRY_MAX_ATTEMPTS,
+  DEFAULT_STEP_MAX_ATTEMPTS,
+  autoRetryBudgetIsReachable,
+  decideStepFailure,
+  errorCountAfterGivingUp,
+  hasAutoRetryBudget,
+  isRecoverableFailure,
+} from './step-retry';
 import { ModalTimeoutError, shouldRetryModalCall } from '../adapters/modal.protocol';
 import {
   CORRELATION_KEY,
@@ -473,5 +481,48 @@ describe('drill 12 — a fallen-through key is not a verdict', () => {
   // If it somehow does, it is at least recoverable rather than a dead end.
   test('a raw 402 is recoverable even if it does leak through', () => {
     expect(isRecoverableFailure(new Error('Firecrawl error 402: Insufficient credits'))).toBe(true);
+  });
+});
+
+// ─── Drill 13 · the custodian's retry budget must be reachable ───────────────
+//
+// The bug this encodes destroyed 435 jobs on 2026-09-13, and it was invisible because both halves
+// were individually correct. The dispatcher gives up only once `error_count` has REACHED
+// STEP_MAX_ATTEMPTS, and markJobFailed then increments it one last time — so every row the
+// dispatcher fails lands at exactly the cap. The custodian then looks for `error_count < cap`.
+// With both caps defaulted to 5, that predicate is false for every job the dispatcher ever fails:
+// the whole auto-retry pass was dead code for its own headline case, an exhausted API key.
+//
+// Nothing raised an error. The pass ran every five minutes, scanned, and found nothing, forever.
+describe('drill 13 — a job the dispatcher gave up on is still within the custodian budget', () => {
+  test('a row the dispatcher failed lands at exactly the step cap', () => {
+    // decideStepFailure gives up at errorCount + 1 >= max, so the last charged attempt is max - 1;
+    // markJobFailed's increment then writes max.
+    const max = 5;
+    const lastCharged = max - 1;
+    expect(decideStepFailure({ err: new Error('boom'), errorCount: lastCharged, maxAttempts: max, fallbackDelayMs: 1 }).action)
+      .toBe('fail');
+    expect(errorCountAfterGivingUp(max)).toBe(max);
+  });
+
+  test('equal caps make the custodian pass unreachable — the 2026-09-13 regression', () => {
+    expect(autoRetryBudgetIsReachable(5, 5)).toBe(false);
+  });
+
+  test('a custodian cap below the step cap is worse still', () => {
+    expect(autoRetryBudgetIsReachable(5, 3)).toBe(false);
+  });
+
+  test('the shipped defaults leave real budget behind', () => {
+    expect(autoRetryBudgetIsReachable(DEFAULT_STEP_MAX_ATTEMPTS, DEFAULT_AUTO_RETRY_MAX_ATTEMPTS)).toBe(true);
+  });
+
+  // The condition that actually stranded the batch: every key paused. It is classed recoverable,
+  // so the ONLY thing keeping it out of the custodian's scan was the budget.
+  test('an exhausted-keys failure is recoverable and, with the fixed caps, retryable', () => {
+    const stored = new Error('Every Firecrawl key is paused (rate limited or out of credits)');
+    expect(isRecoverableFailure(stored)).toBe(true);
+    expect(hasAutoRetryBudget(errorCountAfterGivingUp(DEFAULT_STEP_MAX_ATTEMPTS), DEFAULT_AUTO_RETRY_MAX_ATTEMPTS))
+      .toBe(true);
   });
 });
