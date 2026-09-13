@@ -5,7 +5,6 @@ import { useOutfitSnapshot } from "@/features/outfits/hooks/useOutfitSnapshot"
 
 import {
   FilterDrawer,
-  MoodboardPickerDrawer,
   ProductSheet,
   OutfitInspirationTile,
   type FilterCategory,
@@ -151,6 +150,8 @@ export function StudioAlternativesView() {
   const { user } = useAuth()
   const { profile, gender } = useProfileContext()
   const [isSaveDrawerOpen, setIsSaveDrawerOpen] = useState(false)
+  /** The product a pin opened the save card for; null when the card isn't up. */
+  const [productSaveId, setProductSaveId] = useState<string | null>(null)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [isReferenceDialogOpen, setIsReferenceDialogOpen] = useState(false)
   const [isSearchOpen, setIsSearchOpen] = useState(false)
@@ -835,6 +836,26 @@ export function StudioAlternativesView() {
     [handleSaveOutfit, outfitData?.outfit?.category, outfitData?.outfit?.occasion?.id],
   )
 
+  /** Product pins open the same card, boards only. */
+  const handleSaveProduct = useCallback(
+    async (boardSlugs: string[]) => {
+      if (!productSaveId) return
+      try {
+        await productSaveActions.onSaveToBoards(productSaveId, boardSlugs)
+        setProductSaveId(null)
+        toast({ title: boardSlugs.length ? "Saved" : "Removed from boards" })
+      } catch {
+        // onSaveToBoards has already toasted; keep the card open to retry.
+      }
+    },
+    [productSaveActions, productSaveId, toast],
+  )
+
+  const openProductSave = useCallback((productId: string) => {
+    setIsSaveDrawerOpen(false)
+    setProductSaveId(productId)
+  }, [])
+
   // --- PASSIVE SELECTION: Grid item click updates avatar but NOT search ---
   const handleAlternativeSelect = useCallback(
     async (product: StudioAlternativeProduct) => {
@@ -1118,7 +1139,10 @@ export function StudioAlternativesView() {
       label: "Save this look",
       icon: Pin,
       disabled: isViewOnly,
-      onClick: () => setIsSaveDrawerOpen(true),
+      onClick: () => {
+        setProductSaveId(null)
+        setIsSaveDrawerOpen(true)
+      },
     },
     {
       id: "share",
@@ -1260,14 +1284,7 @@ export function StudioAlternativesView() {
                 showWebSearch={source === "explore"}
                 onSelect={isViewOnly ? undefined : (product) => void handleAlternativeSelect(product)}
                 isProductSaved={productSaveActions.isSaved}
-                onToggleSave={
-                  isViewOnly
-                    ? undefined
-                    : (productId, nextSaved) => productSaveActions.onToggleSave(productId, nextSaved)
-                }
-                onLongPressSave={
-                  isViewOnly ? undefined : (productId) => productSaveActions.onLongPressSave(productId)
-                }
+                onToggleSave={isViewOnly ? undefined : openProductSave}
               />
 
               {isSearchOpen ? null : (
@@ -1279,7 +1296,7 @@ export function StudioAlternativesView() {
           {/* The Focus card, with the similarity corner in place of the 4-square.
               Save takes the same slot here as it does on Studio. */}
           <div
-            className={`box-border flex-none px-4 py-2.5${isSaveDrawerOpen ? "" : " h-[225px]"}`}
+            className={`box-border flex-none px-4 py-2.5${isSaveDrawerOpen || productSaveId ? "" : " h-[225px]"}`}
           >
             {isSaveDrawerOpen ? (
               <StudioSaveCard
@@ -1299,6 +1316,22 @@ export function StudioAlternativesView() {
                   createMoodboardMutation.mutateAsync(name).then((res) => res.slug)
                 }
               />
+            ) : productSaveId ? (
+              <StudioSaveCard
+                key={productSaveId}
+                boards={selectableMoodboards.map((m) => ({ slug: m.slug, label: m.label }))}
+                defaultBoardSlugs={
+                  productSaveActions.getProductBoardSlugs(productSaveId).length
+                    ? productSaveActions.getProductBoardSlugs(productSaveId)
+                    : ["favorites"]
+                }
+                isSaving={productSaveActions.isSaving}
+                onSave={(data) => void handleSaveProduct(data.boardSlugs)}
+                onCancel={() => setProductSaveId(null)}
+                onCreateBoard={(name) =>
+                  createMoodboardMutation.mutateAsync(name).then((res) => res.slug)
+                }
+              />
             ) : (
             <ProductSheet
               title={heroTitle}
@@ -1312,17 +1345,7 @@ export function StudioAlternativesView() {
               onCorner={handleSimilarSearch}
               actions={isViewOnly ? "none" : "icons"}
               saved={heroProduct ? productSaveActions.isSaved(heroProduct.productId) : false}
-              onSave={
-                heroProduct
-                  ? () => productSaveActions.onToggleSave(
-                      heroProduct.productId,
-                      !productSaveActions.isSaved(heroProduct.productId),
-                    )
-                  : undefined
-              }
-              onLongPressSave={
-                heroProduct ? () => productSaveActions.onLongPressSave(heroProduct.productId) : undefined
-              }
+              onSave={heroProduct ? () => openProductSave(heroProduct.productId) : undefined}
               onTryOn={handleTryOn}
               onFindItems={heroProduct?.productUrl ? handleBuyClick : handleFindItems}
               isLoading={heroProductQuery.isLoading}
@@ -1367,22 +1390,6 @@ export function StudioAlternativesView() {
         activeFilters={search.activeFilterIds}
         onApply={handleFilterApply}
         onClearAll={handleFilterClearAll}
-      />
-
-      <MoodboardPickerDrawer
-        open={productSaveActions.isPickerOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            productSaveActions.closePicker()
-          }
-        }}
-        moodboards={productSaveActions.moodboards}
-        mode="multi"
-        onSelect={() => {}}
-        onApply={productSaveActions.onApplyMoodboards}
-        onCreate={productSaveActions.onCreateMoodboard}
-        isSaving={productSaveActions.isSaving}
-        title="Add to moodboard"
       />
     </>
   )

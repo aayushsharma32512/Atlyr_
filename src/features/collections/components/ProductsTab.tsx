@@ -19,9 +19,11 @@ type Tile = { id: string; title: string; imageUrl: string | null; type: ProductS
 
 interface ProductsTabProps {
   saveActions: SaveActions
+  /** A pin opens the save card for that product. */
+  onSave: (productId: string) => void
 }
 
-export function ProductsTab({ saveActions }: ProductsTabProps) {
+export function ProductsTab({ saveActions, onSave }: ProductsTabProps) {
   const [slot, setSlot] = useState<ProductSlot>("top")
   const navigate = useNavigate()
   const location = useLocation()
@@ -60,8 +62,7 @@ export function ProductsTab({ saveActions }: ProductsTabProps) {
         imageSrc={t.imageUrl}
         saved={saved}
         onSelect={() => openProduct(t.id)}
-        onToggleSave={() => saveActions.onToggleSave(t.id, !saved)}
-        onLongPressSave={() => saveActions.onLongPressSave(t.id)}
+        onToggleSave={() => onSave(t.id)}
       />
     )
   }
