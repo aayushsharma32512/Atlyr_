@@ -15,7 +15,7 @@ of sitting at the top.
 
 | Row | Spec |
 |---|---|
-| Scope rail | 34h, fixed top, `role="group"`. Four `aria-pressed` `Chip`s (Looks · Tops · Lowers · Kicks), gap 6, active = ink fill. Ghost spacer under it |
+| Scope rail | 34h, fixed top, `role="group"`. Three `aria-pressed` `Chip`s (Outfits · Tops · Lowers), flex-1, gap 8, radius 10, active = ink fill. Ghost spacer under it |
 | Hot Styles | 20h header (`SectionHeader`, ↗ action) + 136h rail. 96w cards, gap 8, free scroll, no snap, 3½ visible |
 | Atlyr Curations | same shape as Hot Styles |
 | For You | 20h header + 2-col grid (`OutfitCard` 250h / `ProductTile` 215h), gap 8. Sentinel-driven infinite scroll |
@@ -29,7 +29,7 @@ scope rail; no count header, no boards shelf.
 
 ## Scope
 
-`?scope=looks|tops|lowers|kicks`, default `looks`. One control for what the feed shows and
+`?scope=looks|tops|lowers`, default `looks`. One control for what the feed shows and
 what a search returns — it replaces the old Products · Outfits chip segment (`SearchBar`
 keeps its `chip`/`onChipChange` props for other callers; Search stops passing them).
 
@@ -38,7 +38,6 @@ keeps its `chip`/`onChipChange` props for other callers; Search stops passing th
 | looks | outfits | outfits | — |
 | tops | products | products | `top` |
 | lowers | products | products | `bottom` |
-| kicks | products | products | `shoes` |
 
 The slot merges into `ProductSearchFilters.typeCategories` the same way
 `studioService.searchAlternatives` merges a slot for the rack — no edge-function change.
@@ -86,7 +85,7 @@ Changed:
 
 ## Data
 
-| Section | Looks | Tops / Lowers / Kicks |
+| Section | Outfits | Tops / Lowers |
 |---|---|---|
 | Hot Styles | `useHomeAllOutfits("relevance")`, first 12 on the rail, same infinite query on the full page | `useTrendingProducts()[slot]`, `perSlot` 40, finite |
 | Atlyr Curations | `useSearchBrowseCollections()` → `flattenBrowseLooks`, finite | `useSearchBrowseCollections()` → `piecesFromBrowseLooks(slot)`, derived in `useSearchFeed`, no new query |
@@ -123,7 +122,7 @@ Results-mode extras (clear ×, Find items globe) behave as before.
 
 Surface stays `search_results` for `/search` (pathname-keyed); `?scope` and `?list` are
 query-only and do not rotate it.
-- A lateral scope change between product scopes (tops/lowers/kicks) while results are
+- A lateral scope change between product scopes (tops/lowers) while results are
   showing emits `search_submitted` with the locked trigger `filters_apply`; looks↔products
   still goes through `mode_change`. `filters` canonicalise the merged product filters,
   which carry the scope slot as `typeCategories`. No new events, no `section`.
@@ -140,7 +139,7 @@ query-only and do not rotate it.
   footer name (`OutfitCard footer={false}`).
 - Scope rail replaces the Products · Outfits segment; reverting is a one-line change in
   `SearchScreen`.
-- "Lowers" and "Kicks" are not in the brief §2.3 whitelist. Used as written on the board.
+- "Lowers" is not in the brief §2.3 whitelist. Used as written on the board. Kicks was dropped on 2026-09-13; the outfits chip reads "Outfits" (URL value stays `looks`).
 - For You (looks) is a seeded shuffle, not newest-first; a one-token change to
   `useHomeAllOutfits("newly_added")` would switch it.
 - Atlyr Curations is the existing browse collections, flattened. There is no house-curated

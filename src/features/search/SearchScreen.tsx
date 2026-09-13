@@ -631,7 +631,7 @@ export function SearchScreenView() {
   }
   const activeOptions = filterOptions ?? prevFilterOptionsRef.current
 
-  // Collection filter options — custom moodboards only (Favorites is inline)
+  // Collection filter options — custom moodboards only (Favorites/Wardrobe are inline)
   const collectionFilterOptions = useMemo(() => {
     const custom = selectableMoodboards.map(m => ({ id: `collection:${m.slug}`, label: m.label }))
     return custom
@@ -1111,7 +1111,7 @@ export function SearchScreenView() {
   const handleFindItems = useCallback(() => navigate("/inspiration-import"), [navigate])
 
   // The sheet shows the design's groups only: Gender, Fit, Feel, Vibe, Boards.
-  // Category is owned by the scope rail (Looks / Tops / Lowers / Kicks) now.
+  // Category is owned by the scope rail (Outfits / Tops / Lowers) now.
   const sheetCategories = useMemo<FilterCategory[]>(() => {
     const order: Array<[string, string]> = [
       ["gender", "Gender"],

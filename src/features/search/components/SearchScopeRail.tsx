@@ -6,7 +6,7 @@ interface SearchScopeRailProps {
   onChange: (next: SearchScope) => void
 }
 
-/** Looks · Tops · Lowers · Kicks. One control for what the page shows and what a search returns. */
+/** Outfits · Tops · Lowers. One control for what the page shows and what a search returns. */
 export function SearchScopeRail({ value, onChange }: SearchScopeRailProps) {
   return (
     <div role="group" aria-label="Scope" className="flex h-[34px] w-full items-center gap-2">
