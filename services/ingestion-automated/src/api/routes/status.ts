@@ -19,10 +19,15 @@ export async function registerStatusRoutes(app: FastifyInstance): Promise<void> 
       offset?: string;
     };
 
+    // No default ceiling. `limit` omitted means "every matching job" — listJobs pages, so a big
+    // queue costs more round trips rather than silently losing the tail. The old default of 50
+    // was fine for curl and wrong for the dashboard, which then had to hardcode limit=1000 and
+    // inherited PostgREST's truncation anyway.
+    const parsedLimit = limit ? Number(limit) : undefined;
     const jobs = await listJobs({
       state,
       created_by,
-      limit: limit ? Number(limit) : 50,
+      limit: Number.isFinite(parsedLimit) && (parsedLimit as number) > 0 ? parsedLimit : undefined,
       offset: offset ? Number(offset) : 0,
     });
 

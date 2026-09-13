@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Eraser, Sparkles, Undo2, Redo2, Loader2, Pencil, X, ZoomIn, ZoomOut, RotateCcw, Brush, Eye } from 'lucide-react'
+import { Eraser, Sparkles, Undo2, Redo2, Loader2, Pencil, X, ZoomIn, ZoomOut, RotateCcw, Brush, Eye, Layers } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
@@ -10,13 +10,31 @@ import { useToast } from '@/hooks/use-toast'
 import { v2Api, type PipelineJob } from '@/utils/ingestionV2Api'
 import { magicErase, warmUpEraser } from '@/utils/eraserApi'
 import { useSegmentationSteps } from './useSegmentationSteps'
+import { useStencilOpacity, STENCIL_OPACITY_MAX, STENCIL_OPACITY_MIN } from './stencilOpacity'
+
+/**
+ * Everything this editor reads off a job. Narrower than `PipelineJob` on purpose: the dialog is
+ * opened from the ingestion queue (which has whole jobs) AND from the placement dashboard (which
+ * has catalog products and resolves these four fields — see useProductSegmentation). `PipelineJob`
+ * satisfies this structurally, so job-side callers pass their job unchanged.
+ */
+export type EraserSubject = Pick<
+  PipelineJob,
+  'job_id' | 'segmented_image_url' | 'vton_image_url' | 'ingested_product_id'
+>
 
 type Props = {
-  job: PipelineJob | null
+  job: EraserSubject | null
   open: boolean
   onOpenChange: (open: boolean) => void
   /** Called after a successful in-place save. */
   onSaved: () => void
+  /**
+   * Offer to re-run placement after saving. True for the ingestion queue, where placement is a
+   * pipeline step the edit invalidates. False on the placement dashboard, where the operator is
+   * placing by hand right now and a re-run would overwrite the work they are doing.
+   */
+  restartAfterSave?: boolean
 }
 
 type Mode = 'view' | 'edit'
@@ -66,7 +84,7 @@ const buildGatePreview = (gate: Uint8Array, w: number, h: number) => {
   return c
 }
 
-export function SegmentEraserDialog({ job, open, onOpenChange, onSaved }: Props) {
+export function SegmentEraserDialog({ job, open, onOpenChange, onSaved, restartAfterSave = true }: Props) {
   const { toast } = useToast()
   const imageCanvasRef = useRef<HTMLCanvasElement>(null)
   const maskCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -85,6 +103,13 @@ export function SegmentEraserDialog({ job, open, onOpenChange, onSaved }: Props)
   const [clothOnly, setClothOnly] = useState(true)
   const [gateSource, setGateSource] = useState<'fashn' | 'color'>('color')
   const [preview, setPreview] = useState(false)
+  // The original try-on frame ghosted behind the cutout. On by default because that is the state
+  // it is useful in; toggleable because while erasing, a faint ghost and a not-yet-erased pixel
+  // can look alike, and the only way to be sure is to take the ghost away.
+  const [stencil, setStencil] = useState(true)
+  // Shared with both dashboards' tiles, so tuning it here re-tints what is behind the dialog too,
+  // and it survives closing the editor.
+  const [stencilOpacity, setStencilOpacity] = useStencilOpacity()
   const [blockedHint, setBlockedHint] = useState(false)
   // Bumped when a gate build completes, so the source pointer and the preview re-aim.
   const [gateVer, setGateVer] = useState(0)
@@ -715,7 +740,7 @@ export function SegmentEraserDialog({ job, open, onOpenChange, onSaved }: Props)
       // about half the change. The LoFTR registration is computed from the vton image and is
       // unaffected — it just has to run again. 'placement' is the last STEP_ORDER entry, so the
       // restart keeps the segmentation data and the ingested_product link (restart.ts:84,89).
-      if (job!.ingested_product_id && window.confirm('Placement was computed from the previous cutout and is now offset. Re-run placement?')) {
+      if (restartAfterSave && job!.ingested_product_id && window.confirm('Placement was computed from the previous cutout and is now offset. Re-run placement?')) {
         try {
           await v2Api.restart(job!.job_id, 'placement')
           toast({ title: 'Placement re-queued' })
@@ -778,6 +803,19 @@ export function SegmentEraserDialog({ job, open, onOpenChange, onSaved }: Props)
               className="relative m-auto shrink-0 rounded-lg border border-border bg-[repeating-conic-gradient(#e5e7eb_0_25%,#f3f4f6_0_50%)] bg-[length:16px_16px]"
               style={{ width: disp.w * zoom, height: disp.h * zoom }}
             >
+              {stencil && vtonUrl && (
+                // object-fill, not contain: the canvases above stretch to this exact box, so the
+                // ghost has to stretch the same way or it drifts out of register at the edges.
+                // The pipeline's cutout and its source frame share dimensions 1:1 anyway.
+                <img
+                  src={vtonUrl}
+                  alt=""
+                  aria-hidden
+                  draggable={false}
+                  style={{ opacity: stencilOpacity }}
+                  className="pointer-events-none absolute inset-0 h-full w-full object-fill"
+                />
+              )}
               <canvas ref={imageCanvasRef} className="absolute inset-0 h-full w-full" />
               <canvas
                 ref={maskCanvasRef}
@@ -833,6 +871,18 @@ export function SegmentEraserDialog({ job, open, onOpenChange, onSaved }: Props)
               >
                 <Brush className="mr-1 h-3.5 w-3.5" /> Restore
               </Button>
+              <Button
+                size="sm"
+                variant={stencil ? 'default' : 'outline'}
+                className="shrink-0 px-2 text-[11px]"
+                onClick={() => setStencil(v => !v)}
+                disabled={!vtonUrl}
+                title={vtonUrl
+                  ? 'Ghost the original try-on frame behind the cutout as a tracing guide'
+                  : 'No try-on frame for this job'}
+              >
+                <Layers className="h-3.5 w-3.5" />
+              </Button>
             </div>
             {tool === 'restore' && (
               <div className="-mt-1 flex flex-col gap-1">
@@ -884,6 +934,21 @@ export function SegmentEraserDialog({ job, open, onOpenChange, onSaved }: Props)
             )}
 
             {/* Brush + zoom */}
+            {stencil && vtonUrl && (
+              <div className="-mt-1 flex items-center gap-2">
+                <span className="w-14 shrink-0 text-[10.5px] text-muted-foreground">
+                  Ghost {Math.round(stencilOpacity * 100)}%
+                </span>
+                <Slider
+                  value={[Math.round(stencilOpacity * 100)]}
+                  min={Math.round(STENCIL_OPACITY_MIN * 100)}
+                  max={Math.round(STENCIL_OPACITY_MAX * 100)}
+                  step={2}
+                  onValueChange={([v]) => setStencilOpacity(v / 100)}
+                  className="flex-1"
+                />
+              </div>
+            )}
             <div className="flex items-center gap-3">
               <div className="flex flex-1 items-center gap-2">
                 <span className="w-14 shrink-0 text-[10.5px] text-muted-foreground">Brush {brush}</span>

@@ -15,6 +15,7 @@ import { v2Api, type PipelineJob, type UpdateJobDetailsBody } from '@/utils/inge
 import { STATE_LABELS } from '@/components/ingestion-v2/constants'
 import { rowStateOf, isPushed, canProceed, attentionNote, type RowState, type Stage } from './stateMapping'
 import { PhotoCard } from './PhotoCard'
+import { useStencilOpacity } from './stencilOpacity'
 import type { ViewerImage } from './PhotoViewerDialog'
 import { useNotWiredDialog } from './NotWiredDialog'
 import { ConfirmDialog } from './ConfirmDialog'
@@ -102,6 +103,9 @@ type Props = {
 export function RowItem({
   job, stage, tags, selection, sourceImages, product, enrichment, refetchProduct, placementImage, selected, onToggleSelect, onOpenDetail, onOpenError, onOpenPlacement, onOpenMesh, catalogStatus, onPublished, highlighted, onOpenViewer, onOpenEraser, refetch, refetchSelection, refetchTags,
 }: Props) {
+  // Subscribed once per ROW, not per tile: a page of rows renders hundreds of tiles and they all
+  // agree on this one number.
+  const [stencilOpacity] = useStencilOpacity()
   const [expanded, setExpanded] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
   const [srcIdx, setSrcIdx] = useState(0)
@@ -747,6 +751,11 @@ export function RowItem({
               label="Sgmtd"
               state={job.segmented_image_url ? 'available' : rowState === 'processing' ? 'processing' : 'empty'}
               url={job.segmented_image_url}
+              // The try-on frame this cutout came out of, ghosted behind it: segmentation neither
+              // crops nor resizes, so the two line up 1:1 and the ghost shows where the garment's
+              // edge used to be.
+              backdropUrl={job.vton_image_url}
+              backdropOpacity={stencilOpacity}
               note={!job.segmented_image_url ? 'Waiting on Gen' : 'Click ✎ to erase (HITL)'}
               size="xl"
               onExpand={job.segmented_image_url ? () => onOpenEraser(job.job_id) : undefined}

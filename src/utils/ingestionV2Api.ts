@@ -227,10 +227,14 @@ export interface BatchStatusResponse {
 }
 
 export const v2Api = {
-  // ponytail: fixed high limit, the dashboard filters/pages client-side. Add server-side
-  // paging when the queue outgrows ~1000 jobs.
+  // An explicit ceiling far above any real queue, NOT an omitted limit. The service pages the
+  // query, so this returns everything; an older service that still defaults an absent limit to 50
+  // reads this as "a lot" and returns its own max instead of 50. Sending nothing looked cleaner
+  // and silently cut the dashboard to 50 rows the moment the frontend reloaded ahead of the
+  // service. The old fixed limit=1000 was the other half of the bug: it hid 432 jobs once the
+  // queue reached 1432, because PostgREST truncates at max-rows without an error.
   listJobs: (state?: string) =>
-    call<{ jobs: PipelineJob[]; count: number }>(`/jobs?limit=1000${state ? `&state=${state}` : ''}`),
+    call<{ jobs: PipelineJob[]; count: number }>(`/jobs?limit=100000${state ? `&state=${state}` : ''}`),
 
   getJob: (jobId: string) =>
     call<PipelineJob>(`/jobs/${jobId}`),

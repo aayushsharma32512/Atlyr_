@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../db/supabase';
 import type { IngestionPipelineJob, PipelineState } from './types';
+import { fetchAllPages, POSTGREST_PAGE_SIZE } from '../utils/paged-fetch';
 
 export async function getJob(jobId: string): Promise<IngestionPipelineJob> {
   const { data, error } = await supabaseAdmin
@@ -133,20 +134,30 @@ export async function markJobFailed(
 export async function listJobs(filters: {
   state?: string;
   created_by?: string;
+  /** Omit for "every matching job" — the result is paged, not truncated. */
   limit?: number;
   offset?: number;
 }): Promise<IngestionPipelineJob[]> {
-  let query = supabaseAdmin
-    .from('ingestion_pipeline_jobs')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(filters.limit ?? 50);
+  // Paged rather than a single `.limit()`: PostgREST caps a response at max-rows (1000 on
+  // Supabase) and truncates SILENTLY — no error, no flag. The old code asked for limit(1000) and
+  // looked right until the queue passed 1000 on 2026-09-13, at which point the dashboard simply
+  // stopped showing the extra jobs. `limit` is now a real ceiling the caller chooses, and leaving
+  // it out means everything.
+  return (await fetchAllPages<IngestionPipelineJob>(
+    async (from, to) => {
+      let query = supabaseAdmin
+        .from('ingestion_pipeline_jobs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .range(from, to);
 
-  if (filters.state) query = query.eq('current_state', filters.state);
-  if (filters.created_by) query = query.eq('created_by', filters.created_by);
-  if (filters.offset) query = query.range(filters.offset, (filters.offset ?? 0) + (filters.limit ?? 50) - 1);
+      if (filters.state) query = query.eq('current_state', filters.state);
+      if (filters.created_by) query = query.eq('created_by', filters.created_by);
 
-  const { data, error } = await query;
-  if (error) throw new Error(`listJobs failed: ${error.message ?? error.code ?? JSON.stringify(error)}`);
-  return (data ?? []) as IngestionPipelineJob[];
+      const { data, error } = await query;
+      if (error) throw new Error(`listJobs failed: ${error.message ?? error.code ?? JSON.stringify(error)}`);
+      return (data ?? []) as IngestionPipelineJob[];
+    },
+    { limit: filters.limit, offset: filters.offset, pageSize: POSTGREST_PAGE_SIZE },
+  ));
 }

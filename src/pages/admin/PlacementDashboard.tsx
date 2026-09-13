@@ -1,10 +1,14 @@
 import { useMemo, useState } from 'react'
+import { Eraser } from 'lucide-react'
 import { AppShellLayout } from '@/layouts/AppShellLayout'
 import { PhotoCard } from '@/components/ingestion-automated/PhotoCard'
 import { ProductPlacementEditor, type PlacementProduct } from '@/components/ingestion-automated/PlacementMeshEditor'
 import { Placement2DEditor, type Placement2DProduct } from '@/components/ingestion-automated/Placement2DEditor'
 import { useProducts } from '@/hooks/useProducts'
 import { useProductVton } from '@/components/ingestion-automated/useProductVton'
+import { useProductSegmentation } from '@/components/ingestion-automated/useProductSegmentation'
+import { useStencilOpacity } from '@/components/ingestion-automated/stencilOpacity'
+import { SegmentEraserDialog } from '@/components/ingestion-automated/SegmentEraserDialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -39,6 +43,7 @@ export default function PlacementDashboard() {
   // The 3D backlog: already placed in 2D, still missing a 3D placement entry.
   const [needs3D, setNeeds3D] = useState(false)
   const [openProduct, setOpenProduct] = useState<CatalogRow | null>(null)
+  const [eraserProductId, setEraserProductId] = useState<string | null>(null)
 
   // Memoize the array/derived args: useProducts refetches whenever these change *identity*, so a
   // fresh `[gender]` array every render would loop forever (fetch → render → new array → fetch …).
@@ -74,6 +79,9 @@ export default function PlacementDashboard() {
     // Server-side half of the "needs 3D" filter. The page has no pagination, so narrowing here
     // keeps the backlog from hiding behind Supabase's default row cap.
     hasPlacement2D: needs3D || undefined,
+    // This page lists the whole placement backlog with no pagination of its own, so it must read
+    // past PostgREST's 1000-row cap — the catalog passed that on 2026-09-13.
+    fetchAll: true,
   })
 
   const rows = products as unknown as CatalogRow[]
@@ -101,7 +109,13 @@ export default function PlacementDashboard() {
   const placedCount = visibleRows.filter(isPlaced).length
 
   // Try-on references for what's on screen — resolved from the pipeline jobs, not the products row.
-  const vtonByProduct = useProductVton(useMemo(() => visibleRows.map(r => r.id), [visibleRows]))
+  const productIdsOnScreen = useMemo(() => visibleRows.map(r => r.id), [visibleRows])
+  const vtonByProduct = useProductVton(productIdsOnScreen)
+  // Cutouts for the same products, so the segmentation eraser can be opened from this side too.
+  // Products with no pipeline job behind them (legacy imports, footwear) get no entry and no button.
+  const segByProduct = useProductSegmentation(productIdsOnScreen)
+  // One subscription for the whole grid — see stencilOpacity.ts.
+  const [stencilOpacity] = useStencilOpacity()
 
   return (
     <AppShellLayout>
@@ -212,10 +226,17 @@ export default function PlacementDashboard() {
                     // the webp, and a few hundred of those stall the whole page. Both editors keep
                     // reading `image_url`: the placement math is measured against that exact image.
                     url={r.thumbnail_url ?? r.image_url}
+                    // Try-on frame ghosted behind the cutout — same stencil the ingestion queue
+                    // shows on its segmentation tile.
+                    backdropUrl={segByProduct[r.id]?.vton_image_url}
+                    backdropOpacity={stencilOpacity}
                     size="lg"
                     badge={placed ? `Placed ${mode.toUpperCase()}` : `Needs ${mode.toUpperCase()}`}
                     note={[r.brand, r.gender, r.type_category].filter(Boolean).join(' · ')}
                     onExpand={() => setOpenProduct(r)}
+                    actions={segByProduct[r.id] ? [
+                      { icon: <Eraser className="h-3 w-3" />, label: 'AI eraser', onClick: () => setEraserProductId(r.id) },
+                    ] : undefined}
                   />
                 )
               })}
@@ -239,6 +260,17 @@ export default function PlacementDashboard() {
           onSaved={refetch}
         />
       )}
+
+      {/* Same editor the ingestion queue uses. restartAfterSave is off here: the operator is
+          placing this product by hand right now, and re-running the placement step would
+          overwrite the work in progress. */}
+      <SegmentEraserDialog
+        job={eraserProductId ? segByProduct[eraserProductId] ?? null : null}
+        open={eraserProductId !== null}
+        onOpenChange={(o) => { if (!o) setEraserProductId(null) }}
+        onSaved={refetch}
+        restartAfterSave={false}
+      />
     </AppShellLayout>
   )
 }
