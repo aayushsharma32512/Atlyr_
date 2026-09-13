@@ -184,10 +184,17 @@ interface LoadedItemData {
  * the frame. Placement coverage is the fix for that, not a fallback.
  */
 export function AvatarRenderer(props: AvatarRendererProps) {
-  const renderable = props.items.filter((it) => it.imageUrl)
-  const hasPlacement = renderable.some((it) => it.placement)
-  const usePlacement = props.placementMode === "3d"
-    || (props.placementMode !== "2d" && hasPlacement)
+  // The photoreal mannequin is the ONLY avatar the app shows. The legacy SVG is
+  // reachable only by asking for it by name, which just the placement mesh
+  // editor does.
+  //
+  // It used to be picked automatically whenever no garment carried a placement —
+  // but "no placement" is not always a fact about the garment. Payloads built by
+  // the collections RPC omit the column entirely, so a perfectly well-placed
+  // outfit arrived looking unplaced and silently downgraded to a bare 2D figure.
+  // Choosing a renderer from a field that some callers do not send is the bug;
+  // the guard below is not worth the failure mode it produced.
+  const usePlacement = props.placementMode !== "2d"
   if (usePlacement) {
     return (
       <PlacementAvatarRenderer

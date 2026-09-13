@@ -10,11 +10,19 @@ overrides the brief on behaviour.
 
 Routes: `/studio` (landing and focus) and `/studio/alternatives`.
 
-The design has no nav on Focus or Alternates. We keep it on all three: the nav is
-5 tabs by decision (see the redesign notes), and it is rendered by
-`AppShellLayout`, which `StudioLayout` wraps. Every Studio frame therefore
-reserves `calc(100dvh - 55px)` — the old `2.5rem` left content 15px underneath
-the fixed 55h bar.
+The design has no nav on Focus or Alternates. Focus keeps it, since it is a state
+of the Studio frame rather than a screen. **Alternates does not**: it owns the
+whole frame, so `StudioLayout` passes `hideNav` to `AppShellLayout` for that
+path and the frame takes the full `100dvh`. `hideNav` also drops the bottom
+padding, which exists only to clear the bar.
+
+That frame also drops the `max-h-[844px]` the other frames carry. The frames are
+`my-auto`, so a cap centres them and any height beyond 844 becomes equal top and
+bottom margin — the 55px freed by hiding the bar went straight into an empty
+strip above the header. Uncapped, the `flex-1` figure/rack row takes it instead.
+
+Every other Studio frame reserves `calc(100dvh - 55px)` — the old `2.5rem` left
+content 15px underneath the fixed 55h bar.
 
 ## Frames at 390 × 844
 
@@ -29,7 +37,7 @@ layer slot on, the landing card grows to 204 and the container flexes to 533.
 
 ## Landing
 
-**Header 52h.** Back chevron only, plus the focus exit on the right. The artboard
+**Header 52h.** Back chevron only; the right side is an empty spacer. The artboard
 draws an Import pill there; it is **not** built. The try-on job pill takes that
 spot while a job runs.
 
@@ -81,6 +89,13 @@ through `OutfitInspirationTile`. Static bands frame the zone without depending o
 placement data being present, which unplaced products do not have. Exact bounds
 via `onItemBoundsChange` is a follow-up if the framing reads loose.
 
+Stepping in focus cycles top, bottom, shoes, top, and **skips slots with
+nothing worn**. `stepCanvasSlot` wraps, but landing on an empty slot left
+`focusItem` null, and the guard that drops focus when a slot empties then took
+the user out to the full figure. `handleStepFocus` in StudioScreen walks the
+wrap until it finds a worn slot, so it needs the tray; the step helper that used
+to live in `useStudioFocus` is gone.
+
 The window is `1 / zoom` of the figure, and when it is taller than its band the
 slack spills past the anchored edge. Bottoms anchor on the ankle, so at the
 shared 2.2 cap that slack all landed on the top's hem: a band of 0.44–0.84 was
@@ -101,7 +116,7 @@ the canvas stuck zoomed. `focusBox()` grows the figure's box instead
 The 220ms `ease.inOut` is dropped with it: animating those properties would
 re-run the observer every frame.
 
-Header right becomes `Minimize2` (exit focus). Both control stacks hide. Starting a try-on clears focus. The `layer` zone focuses to the same band
+The header does not change: the back chevron leaves the zoom, so a separate `Minimize2` was redundant and is gone. Both control stacks hide. Starting a try-on clears focus. The `layer` zone focuses to the same band
 as `top`.
 
 A 225 dock slides up **covering the slot rows and the action bar**, carrying
@@ -130,7 +145,7 @@ Layout follows the artboard's split, not brief §7's stacked version.
 | Rack | 2 columns, gap 6, 8px inset. `ProductTile size="small"` |
 | Web search | Closes the **catalogue** rack only (`source === "explore"`): a full-width dashed row, 44h, centred globe + "Web Search". It means "not in the catalogue? look on the web", which says nothing under an empty Wardrobe or Saves. Drawn per design, **disabled** — see Stubs |
 | Search bar | Collapsed 40×40 at the rack's bottom-right; expands over the rack. See below |
-| Piece card 225 | 10px 16px inset. The Focus card with `corner="similar"` |
+| Piece card 260 | 10px 16px inset. The Focus card with `corner="similar"`. Taller than Studio's 225 — the tag rail clipped mid-row |
 
 **The two stacked segments read as one doubled rail until the icons differ.**
 The source segment is 195px right-aligned in the header — exactly the rack column
@@ -173,7 +188,7 @@ artboards:
 | State | Spec |
 |---|---|
 | Inactive | 40×40 lens button, `right:8 bottom:8` of the **rack pane**, translucent white |
-| Active | 40h field spanning the **whole frame** — `left:8 right:8` of 390, not of the rack column — sitting 8px above the keyboard. The collapsed lens hides. Leading `ListFilter`; then the thumb chip when a reference is set; input; clear ×; camera; ink 32×32 submit square |
+| Active | 40h field spanning the **whole frame** — `left:8 right:8` of 390, not of the rack column — resting 8px above the figure row's bottom edge, the same line the collapsed lens sat on, and lifting only by however much a keyboard would cover it. The collapsed lens hides. Leading `ListFilter`; then the thumb chip when a reference is set; input; clear ×; camera; ink 32×32 submit square |
 
 The two states live in different boxes, so `open` is held by the screen rather
 than the component: the button is a child of the rack column, the open bar a

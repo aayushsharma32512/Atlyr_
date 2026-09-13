@@ -1,8 +1,11 @@
-import { useEffect, useState, type KeyboardEvent } from "react"
+import { useEffect, useRef, useState, type KeyboardEvent } from "react"
 
 import { Icons } from "@/design-system/icons"
 import { useViewportZoomLockController } from "@/hooks/useViewportZoomLock"
 import { cn } from "@/lib/utils"
+
+/** Both states hang this far off their container's bottom edge. */
+const RESTING_GAP = 8
 
 /**
  * Collapsed: a 40x40 lens in the rack's bottom-right corner.
@@ -57,10 +60,11 @@ export interface AlternatesSearchBarProps {
 }
 
 /**
- * The open bar: full frame width, riding above the keyboard.
+ * The open bar: full frame width, resting exactly where the lens button was.
  *
- * iOS Safari does not move `position: fixed` elements with the keyboard, so the
- * offset comes from `visualViewport` rather than `bottom: 0` (brief §2.6).
+ * It only moves when a keyboard would cover it, and then only by the overlap.
+ * The offset comes from `visualViewport` because a keyboard does not shrink the
+ * layout viewport on iOS, so neither `bottom` nor `dvh` sees it (brief §2.6).
  *
  * Blur does not dismiss, though the brief lists it: the reference-image dialog
  * opens from this bar and takes focus, and the picked photo has to land back in
@@ -79,7 +83,9 @@ export function AlternatesSearchBar({
   onFilter,
   className,
 }: AlternatesSearchBarProps) {
-  const [keyboardInset, setKeyboardInset] = useState(0)
+  const barRef = useRef<HTMLDivElement>(null)
+  /** How far to lift off the resting spot so the keyboard does not cover it. */
+  const [lift, setLift] = useState(0)
   const { lock, unlock } = useViewportZoomLockController()
 
   useEffect(() => {
@@ -88,9 +94,16 @@ export function AlternatesSearchBar({
     if (!viewport) return
 
     const sync = () => {
+      const el = barRef.current
+      if (!el) return
       // How much of the layout viewport the keyboard is covering.
       const covered = window.innerHeight - viewport.height - viewport.offsetTop
-      setKeyboardInset(Math.max(0, Math.round(covered)))
+      const rect = el.getBoundingClientRect()
+      setLift((prev) => {
+        // Undo the lift already applied, so this measures the resting spot.
+        const gapBelow = window.innerHeight - (rect.bottom + prev)
+        return Math.max(0, Math.round(covered + RESTING_GAP - gapBelow))
+      })
     }
     sync()
     viewport.addEventListener("resize", sync)
@@ -118,7 +131,11 @@ export function AlternatesSearchBar({
   }
 
   return (
-    <div className={cn("absolute inset-x-2 z-[7]", className)} style={{ bottom: keyboardInset + 8 }}>
+    <div
+      ref={barRef}
+      className={cn("absolute inset-x-2 z-[7]", className)}
+      style={{ bottom: RESTING_GAP, transform: lift ? `translateY(${-lift}px)` : undefined }}
+    >
       <div className="flex h-control-field w-full items-center gap-1.5 rounded-control border border-hairline bg-card px-1">
         {onFilter ? (
           <button

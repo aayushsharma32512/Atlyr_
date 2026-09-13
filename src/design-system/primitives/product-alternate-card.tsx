@@ -1,9 +1,13 @@
 import { useCallback, useRef, useState } from "react"
 
 import { cn } from "@/lib/utils"
+import { GarmentImage } from "./garment-image"
 import { useToast } from "@/hooks/use-toast"
 
 import { Heart, Trash2 } from "lucide-react"
+
+/** Cropped garments stop short of the corner overlays (pin, remove). */
+const CROP_FILL = 0.7
 
 export interface ProductAlternateCardProps {
   imageSrc: string
@@ -133,22 +137,26 @@ export function ProductAlternateCard({
           isInteractive && "cursor-pointer",
         )}
       >
+        {/* GarmentImage frames the garment rather than the transparent placement
+            canvas it was authored on, so a pair of shoes is not a sliver at the
+            foot of an apparently empty card. Same primitive as ProductTile and
+            the board covers; it no-ops on real photographs. */}
         {isWide ? (
-          <img
+          <GarmentImage
             src={imageSrc}
             alt={title}
-            loading="lazy"
+            cropToContent
+            fill={CROP_FILL}
             onError={onImageError}
-            className="h-full w-full object-contain p-3"
           />
         ) : (
-          <div className={cn("object-contain p-2 h-full w-max", imageMaxHeightClass)}>
-            <img
+          <div className={cn("relative object-contain p-2 h-full w-max", imageMaxHeightClass)}>
+            <GarmentImage
               src={imageSrc}
               alt={title}
-              loading="lazy"
+              cropToContent
+              fill={CROP_FILL}
               onError={onImageError}
-              className={cn("object-contain rounded-sm h-full w-full", imageMaxHeightClass)}
             />
           </div>
         )}

@@ -397,6 +397,7 @@ export function ProductPageView() {
                 highlightCorner={tour.isHighlighted("return-from-product")}
                 title={title}
                 images={sheetImages}
+                cropToContent
                 slot={sheetSlot}
                 showSlot={Boolean(sheetSlot)}
                 attributes={tags}

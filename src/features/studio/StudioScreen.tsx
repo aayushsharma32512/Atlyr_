@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useNavigate, useNavigationType, useSearchParams } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
-import { ChevronLeft, Minimize2, Redo2, RotateCcw, Share, Undo2 } from "lucide-react"
+import { ChevronLeft, Redo2, RotateCcw, Share, Undo2 } from "lucide-react"
 
 import { IconButton, OutfitInspirationTile } from "@/design-system/primitives"
 import { StudioActionBar } from "./components/StudioActionBar"
@@ -15,6 +15,7 @@ import { useStudioProductImages } from "./hooks/useStudioProductImages"
 import { toDisplayImages } from "./utils/productImages"
 import {
   CANVAS_SLOTS,
+  stepCanvasSlot,
   toTraySlot,
   type StudioCanvasSlot,
 } from "./constants/layering"
@@ -65,7 +66,7 @@ import { trackTryonFlowStarted } from "@/integrations/posthog/engagementTracking
 const DEFAULT_AVATAR_HEAD = "/avatars/Default.png"
 
 /** Where back goes when there is no in-app entry behind Studio. */
-const BACK_FALLBACK = "/home"
+const BACK_FALLBACK = "/collection"
 /** A guest on a shared look has no home to go to. */
 const GUEST_BACK_FALLBACK = "/"
 const isHttpUrl = (value?: string | null) => Boolean(value && /^https?:\/\//i.test(value))
@@ -106,7 +107,7 @@ export function StudioScreenView() {
   const collectionsOverviewQuery = useCollectionsOverview()
   const moodboards = collectionsOverviewQuery.data?.moodboards ?? []
   const selectableMoodboards = useMemo(
-    () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites"),
+    () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites" || m.slug === "wardrobe"),
     [moodboards],
   )
   const moodboardsLoading = collectionsOverviewQuery.isLoading
@@ -460,7 +461,7 @@ export function StudioScreenView() {
   // vaul drawer animates out *after* onOpenChange(false), so clearing the slot
   // to close would swap the sheet's contents — or unmount it outright —
   // mid-slide. Keeping the slot lets it animate away showing what you dismissed.
-  const { focus, openFocus, closeFocus, stepFocus } = useStudioFocus()
+  const { focus, openFocus, closeFocus } = useStudioFocus()
 
   /** Tapping a garment on the figure focuses it; the rows go to Alternates. */
   const handleAvatarItemSelect = useCallback(
@@ -968,6 +969,28 @@ export function StudioScreenView() {
   }, [resolvedTrayItems])
 
   const focusItem = focus ? itemBySlot[focus] ?? null : null
+
+  /**
+   * Step to the next WORN piece, wrapping top -> bottom -> shoes -> top.
+   * Empty slots are skipped: focusing one has nothing to show, and the guard
+   * below would then drop out of focus entirely rather than carry on round.
+   */
+  const handleStepFocus = useCallback(
+    (delta: number) => {
+      if (!focus) return
+      const step = delta < 0 ? -1 : 1
+      let next = focus
+      for (let i = 0; i < CANVAS_SLOTS.length; i++) {
+        next = stepCanvasSlot(next, step)
+        if (next === focus) return
+        if (itemBySlot[next]) {
+          openFocus(next)
+          return
+        }
+      }
+    },
+    [focus, itemBySlot, openFocus],
+  )
   const focusImagesQuery = useStudioProductImages(focusItem?.productId ?? null)
 
   const focusImages = useMemo(
@@ -1066,7 +1089,7 @@ export function StudioScreenView() {
       style={{ height: "calc(100dvh - 55px)" }}
     >
       <div className="relative my-auto flex h-full max-h-[844px] w-full max-w-sm flex-col overflow-hidden">
-        {/* 52h. Back on the left; nothing on the right but the focus exit.
+        {/* 52h. Back on the left, nothing on the right.
             The design draws an Import pill here — deliberately not built. */}
         <header className="flex h-[52px] shrink-0 items-center justify-between px-2">
           <div className="flex items-center gap-2">
@@ -1079,13 +1102,8 @@ export function StudioScreenView() {
               <ChevronLeft className="size-5" aria-hidden="true" />
             </IconButton>
           </div>
-          {showFocus ? (
-            <IconButton tone="ghost" size="xs" aria-label="Exit focus" onClick={closeFocus}>
-              <Minimize2 className="size-5" aria-hidden="true" />
-            </IconButton>
-          ) : (
-            <span className="size-8 shrink-0" aria-hidden="true" />
-          )}
+          {/* No exit-focus button: the back chevron already leaves the zoom. */}
+          <span className="size-8 shrink-0" aria-hidden="true" />
         </header>
 
         <StudioCanvas
@@ -1122,7 +1140,7 @@ export function StudioScreenView() {
             )
           }
           focus={focus}
-          onStepFocus={stepFocus}
+          onStepFocus={handleStepFocus}
           historyControls={historyControls}
           lookControls={lookControls}
           highlight={tour.isHighlighted("mannequin")}
@@ -1141,7 +1159,7 @@ export function StudioScreenView() {
             onTryOn={handleTryOn}
             onFindItems={() => handleOpenListing(focusItem.productUrl, focusItem.productId)}
             onOpenAlternatives={() => handleOpenAlternates(focus as StudioCanvasSlot)}
-            onStep={stepFocus}
+            onStep={handleStepFocus}
           />
         ) : (
           <div className="flex flex-none flex-col gap-1.5 px-4 py-2.5">

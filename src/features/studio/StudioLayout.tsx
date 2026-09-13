@@ -13,6 +13,11 @@ interface StudioLayoutProps {
   children?: ReactNode
 }
 
+/** Alternates owns the full frame — no tab bar under it. */
+function isAlternatesPath(pathname: string): boolean {
+  return pathname.replace(/\/+$/, "").endsWith("/alternatives")
+}
+
 export function StudioLayout({ children }: StudioLayoutProps) {
   const location = useLocation()
   const { isViewOnly } = useStudioShareMode()
@@ -30,7 +35,7 @@ export function StudioLayout({ children }: StudioLayoutProps) {
   return (
     <StudioTourProvider>
       <StudioContextProvider>
-        <AppShellLayout>
+        <AppShellLayout hideNav={isAlternatesPath(location.pathname)}>
           {children ?? <Outlet />}
           <StudioTour />
           {isViewOnly ? (

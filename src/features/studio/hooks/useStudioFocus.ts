@@ -1,11 +1,7 @@
 import { useCallback, useMemo, useRef } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 
-import {
-  isCanvasSlot,
-  stepCanvasSlot,
-  type StudioCanvasSlot,
-} from "@/features/studio/constants/layering"
+import { isCanvasSlot, type StudioCanvasSlot } from "@/features/studio/constants/layering"
 
 /**
  * Studio focus zoom, held in `?focus=`. Entering pushes a history entry so the
@@ -62,14 +58,7 @@ export function useStudioFocus() {
     write(null, true)
   }, [navigate, write])
 
-  /** Swipe / arrows — move to the next worn piece, wrapping. */
-  const stepFocus = useCallback(
-    (delta: number) => {
-      if (!focus) return
-      write(stepCanvasSlot(focus, delta), true)
-    },
-    [focus, write],
-  )
-
-  return { focus, openFocus, closeFocus, stepFocus }
+  // Stepping lives in StudioScreen: it has to skip slots with nothing worn,
+  // which needs the tray. `openFocus` replaces while focused, so it steps.
+  return { focus, openFocus, closeFocus }
 }
