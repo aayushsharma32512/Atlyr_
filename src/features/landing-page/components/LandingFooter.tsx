@@ -139,7 +139,7 @@ export function LandingFooter() {
           style={{ position: 'relative', userSelect: 'none' }}
         >
           <TextPressure
-            text="KALAGRIHA"
+            text="ATLYR"
             flex={true}
             alpha={false}
             stroke={false}
@@ -156,7 +156,7 @@ export function LandingFooter() {
         <div className="mt-16 pt-8 border-t border-white/10">
           <div className="flex justify-center">
             <span className="text-xs text-white/50 tracking-wider text-center">
-              DESIGN BY KALAGRIHA • COPYRIGHT © {new Date().getFullYear()}. ALL RIGHTS RESERVED
+              DESIGN BY ATLYR • COPYRIGHT © {new Date().getFullYear()}. ALL RIGHTS RESERVED
             </span>
           </div>
         </div>

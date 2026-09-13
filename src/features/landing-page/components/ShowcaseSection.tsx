@@ -93,7 +93,7 @@ export function ShowcaseSection() {
                             {/* Bodoni italic terracotta — see the note in HeroSection. */}
                             <span className="px-1 font-display italic text-terracotta">try-on outfit</span> using your avatar <br />
                             discover styles from <span className="px-1 font-display italic text-terracotta">your circle</span> <br />
-                            <span className="px-1 font-display italic text-terracotta">ask Kalagriha agent</span> to search, style, refine <br />
+                            <span className="px-1 font-display italic text-terracotta">ask Atlyr agent</span> to search, style, refine <br />
                             find your <span className="px-1 font-display italic text-terracotta">personal style</span> with us
                         </motion.div>
                     </motion.div>
@@ -171,7 +171,7 @@ export function ShowcaseSection() {
                                             </video>
                                             <div className="absolute bottom-6 left-1/2 -translate-x-1/2 rounded-full bg-foreground/80 px-3 py-1 text-xs font-semibold text-background backdrop-blur-md shadow"
                                             >
-                                                curated by Kalagriha
+                                                curated by Atlyr
                                             </div>
                                         </div>
                                     </motion.div>

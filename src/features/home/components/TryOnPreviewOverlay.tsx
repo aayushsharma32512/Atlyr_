@@ -276,10 +276,10 @@ export function TryOnPreviewOverlay({
             </Button>
           ) : null}
           <div
-            className="px-2 py-0.5 font-deva text-[15px] leading-none text-foreground"
+            className="px-2 py-0.5 text-[15px] leading-none text-foreground"
             style={{ touchAction: "pan-y", WebkitTouchCallout: "none" }}
           >
-            कलागृह
+            Atlyr
           </div>
         </div>
       </div>
