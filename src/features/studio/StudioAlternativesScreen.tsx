@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
-import { Pin, Redo2, RotateCcw, Share, Undo2 } from "lucide-react"
+import { Pin, Redo2, RotateCcw, Undo2 } from "lucide-react"
 import { useOutfitSnapshot } from "@/features/outfits/hooks/useOutfitSnapshot"
 
 import {
@@ -17,7 +17,6 @@ import { StudioCanvas } from "./components/StudioCanvas"
 import { AlternatesSearchBar, AlternatesSearchButton } from "./components/AlternatesSearchDock"
 import { ReferenceImageDialog } from "./components/ReferenceImageDialog"
 import { useStudioProductImages } from "./hooks/useStudioProductImages"
-import { useShareLook } from "@/features/share/hooks/useShareLink"
 import { toDisplayImages } from "./utils/productImages"
 import { CANVAS_SLOTS, toTraySlot, type StudioCanvasSlot } from "./constants/layering"
 import { selectRackProducts } from "./utils/rackOrder"
@@ -54,7 +53,6 @@ import { useStartLikenessFlow } from "@/features/likeness/hooks/useStartLikeness
 import { resolveOutfitAttribution } from "@/utils/outfitAttribution"
 import {
   buildStudioSearchParams,
-  buildStudioUrl,
   isStudioSlot,
   parseStudioSearchParams,
   type SlotIdMap,
@@ -1069,23 +1067,6 @@ export function StudioAlternativesView() {
 
   const handleFindItems = useCallback(() => navigate("/inspiration-import"), [navigate])
 
-  const { share: shareLook } = useShareLook()
-
-  /** Share the look, not the rack — the same view-only studio link as the canvas. */
-  const handleShare = useCallback(async () => {
-    if (!resolvedOutfitId) {
-      return
-    }
-    await shareLook(
-      buildStudioUrl("/studio", "studio", {
-        outfitId: resolvedOutfitId,
-        slotIds: activeSlotIds,
-        hiddenSlots,
-        share: true,
-      }),
-    )
-  }, [activeSlotIds, hiddenSlots, resolvedOutfitId, shareLook])
-
   /** The query line's × — back to the whole slot. */
   const handleClearQuery = useCallback(() => {
     if (isViewOnly) {
@@ -1143,13 +1124,6 @@ export function StudioAlternativesView() {
         setProductSaveId(null)
         setIsSaveDrawerOpen(true)
       },
-    },
-    {
-      id: "share",
-      label: "Share this look",
-      icon: Share,
-      disabled: !resolvedOutfitId,
-      onClick: handleShare,
     },
   ]
 
