@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test"
 
-import type { ProductSearchFilters } from "@/services/search/searchService"
+import type { OutfitSearchFilters, ProductSearchFilters } from "@/services/search/searchService"
 
 // searchService.ts imports the real supabase client module at the top, which would
 // otherwise construct a client against the project's real (production) Supabase URL.
@@ -21,11 +21,13 @@ mock.module("@/integrations/supabase/client", () => ({
 
 let searchService: typeof import("@/services/search/searchService").searchService
 let buildSearchV3RequestBody: typeof import("@/services/search/searchService").buildSearchV3RequestBody
+let buildSearchOutfitsV3RequestBody: typeof import("@/services/search/searchService").buildSearchOutfitsV3RequestBody
 
 beforeAll(async () => {
   const mod = await import("@/services/search/searchService")
   searchService = mod.searchService
   buildSearchV3RequestBody = mod.buildSearchV3RequestBody
+  buildSearchOutfitsV3RequestBody = mod.buildSearchOutfitsV3RequestBody
 })
 
 const ORIGINAL_FETCH = globalThis.fetch
@@ -80,6 +82,89 @@ describe("buildSearchV3RequestBody", () => {
       filters: {},
       gender: undefined,
     })
+  })
+})
+
+describe("buildSearchOutfitsV3RequestBody", () => {
+  it("builds the search-outfits-v3 request body from a searchOutfits call", () => {
+    const filters: OutfitSearchFilters = { occasions: ["beach"] }
+
+    const body = buildSearchOutfitsV3RequestBody({
+      query: "  beach date night  ",
+      imageUrl: "https://example.com/inspo.jpg",
+      filters,
+      gender: "female",
+    })
+
+    expect(body).toEqual({
+      q: "beach date night",
+      imageUrl: "https://example.com/inspo.jpg",
+      filters,
+      gender: "female",
+    })
+  })
+
+  it("sends text only, with no imageUrl in the body", () => {
+    const body = buildSearchOutfitsV3RequestBody({ query: "office wear", gender: "male" })
+
+    expect(body).toEqual({
+      q: "office wear",
+      imageUrl: undefined,
+      filters: {},
+      gender: "male",
+    })
+  })
+
+  it("sends image only, with no q in the body", () => {
+    const body = buildSearchOutfitsV3RequestBody({ imageUrl: "https://example.com/crop.jpg", gender: "female" })
+
+    expect(body).toEqual({
+      q: undefined,
+      imageUrl: "https://example.com/crop.jpg",
+      filters: {},
+      gender: "female",
+    })
+  })
+
+  it("sends text plus image together", () => {
+    const body = buildSearchOutfitsV3RequestBody({
+      query: "beach date night",
+      imageUrl: "https://example.com/inspo.jpg",
+      gender: "female",
+    })
+
+    expect(body).toEqual({
+      q: "beach date night",
+      imageUrl: "https://example.com/inspo.jpg",
+      filters: {},
+      gender: "female",
+    })
+  })
+
+  it("omits gender when absent instead of sending null", () => {
+    const body = buildSearchOutfitsV3RequestBody({ query: "boots", gender: null })
+
+    expect(body.gender).toBeUndefined()
+  })
+
+  it("passes filters through unchanged", () => {
+    const filters: OutfitSearchFilters = { categories: ["dress"], occasions: ["wedding"], fits: ["fitted"] }
+    const body = buildSearchOutfitsV3RequestBody({ query: "wedding guest", filters, gender: "female" })
+
+    expect(body.filters).toEqual(filters)
+    expect(body.filters).toBe(filters)
+  })
+
+  it("keeps filters as {} when none are given", () => {
+    const body = buildSearchOutfitsV3RequestBody({ query: "boots", gender: "male" })
+
+    expect(body.filters).toEqual({})
+  })
+
+  it("trims an empty or whitespace-only query to undefined", () => {
+    const body = buildSearchOutfitsV3RequestBody({ query: "   ", gender: "female" })
+
+    expect(body.q).toBeUndefined()
   })
 })
 

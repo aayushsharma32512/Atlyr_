@@ -188,3 +188,6 @@ lib_match.py
 shoes placement/
 *.excalidraw
 atlyr-app-design-system-creativity-focus/
+
+# Garment image download cache of scripts/outfit_embedding_update.py
+scripts/.cache/
