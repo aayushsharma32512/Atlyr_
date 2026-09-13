@@ -45,6 +45,7 @@ export function CreationsTab() {
   const [isExpanded, setIsExpanded] = useState(false)
   const [isTryOnOpen, setIsTryOnOpen] = useState(false)
   const trackRef = useRef<HTMLDivElement>(null)
+  const fullscreenTrackRef = useRef<HTMLDivElement>(null)
 
   const creationsQuery = useCreations(PAGE_SIZE)
   const creations = useMemo<Creation[]>(
@@ -106,6 +107,15 @@ export function CreationsTab() {
     setIsTryOnOpen(false)
   }, [activeCreation?.id])
 
+  // The overlay mounts at scrollLeft 0, which would read as slide 0 and snap the
+  // carousel back. Jump it to the active look before it can be measured.
+  useEffect(() => {
+    if (!isExpanded) return
+    scrollToSlide(currentSlide, "auto")
+    // Only on open — following currentSlide here would fight an in-flight swipe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isExpanded])
+
   // Escape closes the enlarged view, as a fullscreen layer should.
   useEffect(() => {
     if (!isExpanded) return
@@ -121,11 +131,15 @@ export function CreationsTab() {
   // this screen once already.
   usePrefetchCreationAssets({ creations, currentSlide })
 
-  const scrollToSlide = useCallback((index: number) => {
-    const track = trackRef.current
-    if (!track) return
-    // Slides are exactly one container wide, so the offset is just the index.
-    track.scrollTo({ left: index * track.clientWidth, behavior: "smooth" })
+  const scrollToSlide = useCallback((index: number, behavior: ScrollBehavior = "smooth") => {
+    // Both tracks are kept on the same index. Slides are exactly one container
+    // wide, so the offset is just the index.
+    for (const track of [trackRef.current, fullscreenTrackRef.current]) {
+      if (!track || !track.clientWidth) continue
+      const left = index * track.clientWidth
+      if (Math.abs(track.scrollLeft - left) < 1) continue
+      track.scrollTo({ left, behavior })
+    }
   }, [])
 
   const goTo = useCallback(
@@ -150,17 +164,17 @@ export function CreationsTab() {
   // That flicker is the "skipping" users reported.
   const settleTimerRef = useRef<number | null>(null)
   const commitSlideFromTrack = useCallback(() => {
-    const track = trackRef.current
+    const track = isExpanded ? fullscreenTrackRef.current : trackRef.current
     if (!track || !track.clientWidth) return
     const index = Math.round(track.scrollLeft / track.clientWidth)
     const clamped = Math.max(0, Math.min(index, totalSlides - 1))
     setCurrentSlide((prev) => (prev === clamped ? prev : clamped))
-  }, [totalSlides])
+  }, [isExpanded, totalSlides])
 
   // scrollend where the browser has it; a short debounce where it does not
   // (Safari before 17). Both routes land on the same commit.
   useEffect(() => {
-    const track = trackRef.current
+    const track = isExpanded ? fullscreenTrackRef.current : trackRef.current
     if (!track) return
     const clearTimer = () => {
       if (settleTimerRef.current !== null) window.clearTimeout(settleTimerRef.current)
@@ -181,7 +195,7 @@ export function CreationsTab() {
       track.removeEventListener("scroll", onScroll)
       track.removeEventListener("scrollend", onScrollEnd)
     }
-  }, [commitSlideFromTrack])
+  }, [commitSlideFromTrack, isExpanded])
 
   // If the list shrinks under us (a creation deleted elsewhere), keep the index
   // on a real slide rather than pointing past the end.
@@ -413,6 +427,9 @@ export function CreationsTab() {
           >
             <Icons.carouselPrev className="h-5 w-5" aria-hidden="true" />
           </button>
+          <p className="min-w-0 flex-1 truncate px-2 text-center text-label font-semibold text-ink">
+            {activeCreation.name}
+          </p>
           <button
             type="button"
             onClick={() => setIsExpanded(false)}
@@ -422,38 +439,97 @@ export function CreationsTab() {
             <Icons.close className="h-5 w-5" aria-hidden="true" />
           </button>
         </div>
-        <div
-          className="min-h-0 flex-1"
-          style={{ paddingBottom: "env(safe-area-inset-bottom,0px)" }}
-        >
-          <OutfitInspirationTile
-            preset="heroCanonical"
-            outfitId={activeCreation.outfitId}
-            title={activeCreation.name}
-            chips={[]}
-            cardClassName="h-full w-full"
-            wrapperClassName="h-full w-full rounded-none bg-transparent p-0"
-            avatarHeadSrc="/avatars/Default.png"
-            avatarGender={resolveGender(activeCreation.gender)}
-            avatarHeightCm={170}
-            disableAvatarSwipe
-          />
-        </div>
-      </div>
-    ) : null}
 
-    {/* Outside the pinned frame for the same reason as the enlarge layer: it has
-        to clear the Collections header (z-50) and the nav (z-20). The overlay
-        owns its own z-index, so the wrapper only lifts the stacking context. */}
-    {isTryOnOpen && existingTryOn ? (
-      <div className="fixed inset-0 z-[60]">
-        <TryOnPreviewOverlay
-          items={[existingTryOn]}
-          activeIndex={0}
-          onClose={() => setIsTryOnOpen(false)}
-          onIndexChange={() => {}}
-          onOpenStudio={handleOpenStudio}
-        />
+        {/* Its own track, driven by the same currentSlide. Swiping here moves the
+            look behind the overlay too, so closing lands on what you were seeing. */}
+        <div className="relative min-h-0 flex-1">
+          <div
+            ref={fullscreenTrackRef}
+            className="flex h-full w-full snap-x snap-mandatory overflow-x-auto overflow-y-hidden scrollbar-hide"
+          >
+            {creations.map((creation, index) => (
+              <div
+                key={creation.id}
+                className="h-full w-full flex-none snap-center snap-always"
+                aria-hidden={index !== currentSlide}
+              >
+                {Math.abs(index - currentSlide) <= 1 ? (
+                  <OutfitInspirationTile
+                    preset="heroCanonical"
+                    outfitId={creation.outfitId}
+                    title={creation.name}
+                    chips={[]}
+                    cardClassName="h-full w-full"
+                    wrapperClassName="h-full w-full rounded-none bg-transparent p-0"
+                    avatarHeadSrc="/avatars/Default.png"
+                    avatarGender={resolveGender(creation.gender)}
+                    avatarHeightCm={170}
+                    disableAvatarSwipe
+                  />
+                ) : (
+                  <div className="h-full w-full bg-skeleton" />
+                )}
+              </div>
+            ))}
+          </div>
+
+          {totalSlides > 1 ? (
+            <>
+              <button
+                type="button"
+                onClick={() => goTo(currentSlide - 1)}
+                disabled={currentSlide === 0}
+                aria-label="Previous look"
+                className="absolute left-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-hairline bg-card/85 text-ink backdrop-blur disabled:opacity-40"
+              >
+                <Icons.carouselPrev className="h-4 w-4" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                onClick={() => goTo(currentSlide + 1)}
+                disabled={currentSlide === totalSlides - 1}
+                aria-label="Next look"
+                className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-hairline bg-card/85 text-ink backdrop-blur disabled:opacity-40"
+              >
+                <Icons.carouselNext className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </>
+          ) : null}
+        </div>
+
+        <div
+          className="flex flex-none items-center gap-2 px-4 pb-2.5 pt-2.5"
+          style={{ paddingBottom: "calc(0.625rem + env(safe-area-inset-bottom,0px))" }}
+        >
+          <button
+            type="button"
+            onClick={handleOpenStudio}
+            className="flex h-control-secondary flex-1 items-center justify-center gap-2 rounded-control border border-hairline bg-card text-label font-semibold text-ink"
+          >
+            <Icons.navStudio className="h-5 w-5" aria-hidden="true" />
+            Studio
+          </button>
+          {existingTryOn ? (
+            <button
+              type="button"
+              onClick={() => setIsTryOnOpen(true)}
+              className="flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control bg-primary text-label font-semibold text-primary-foreground"
+            >
+              <Icons.tryOn className="h-5 w-5" aria-hidden="true" />
+              View try-on
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleTryOn}
+              disabled={isTryOnRunning}
+              className="flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control bg-primary text-label font-semibold text-primary-foreground disabled:opacity-60"
+            >
+              <Icons.tryOn className="h-5 w-5" aria-hidden="true" />
+              {isTryOnRunning ? "Try-on running…" : "Try on"}
+            </button>
+          )}
+        </div>
       </div>
     ) : null}
     </>

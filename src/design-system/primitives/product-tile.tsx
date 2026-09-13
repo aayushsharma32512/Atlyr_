@@ -18,7 +18,13 @@ export interface ProductTileProps {
   onToggleSave?: () => void
   onLongPressSave?: () => void
   onImageError?: () => void
-  /** Frame the garment, not the transparent placement canvas around it. */
+  /**
+   * Frame the garment, not the transparent placement canvas around it. On by
+   * default: every surface wants it, and it is a no-op on real photographs —
+   * GarmentImage only crops an image that is genuinely mostly transparent.
+   * Opting out was the wrong default; it left segmented cutouts rendering as a
+   * small garment adrift in an empty card.
+   */
   cropToContent?: boolean
   /** Optional — the design carries none; kept for surfaces that still show them. */
   price?: string
@@ -42,7 +48,7 @@ export function ProductTile({
   onToggleSave,
   onLongPressSave,
   onImageError,
-  cropToContent = false,
+  cropToContent = true,
   price,
   brand,
   className,
