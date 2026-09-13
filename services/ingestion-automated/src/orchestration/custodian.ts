@@ -134,8 +134,9 @@ async function findRecoverableFailures(): Promise<RecoverableRow[]> {
         and j.error_count < $2::int
         and now() - j.updated_at > make_interval(secs => $3::int)
       order by j.updated_at asc
-      limit 50`,
-    [STEP_ORDER as unknown as string[], config.AUTO_RETRY_MAX_ATTEMPTS, config.AUTO_RETRY_MIN_IDLE_SECONDS],
+      limit $4`,
+    [STEP_ORDER as unknown as string[], config.AUTO_RETRY_MAX_ATTEMPTS,
+     config.AUTO_RETRY_MIN_IDLE_SECONDS, config.AUTO_RETRY_BATCH_SIZE],
   );
   // The predicate that decides "worth another go" lives in a pure module so the drills can test it;
   // the stored message is re-wrapped as an Error because that is what the classifier reads.
@@ -146,6 +147,14 @@ async function retryRecoverableFailures(boss: BossHandle): Promise<number> {
   if (!config.AUTO_RETRY_FAILED) return 0;
 
   const candidates = await findRecoverableFailures();
+  // Observability, not decoration: this pass is silent by design when it finds nothing, and that
+  // silence is indistinguishable from "the scan is broken". On 2026-09-13 the scan returned rows
+  // in a standalone script while the tick did nothing, and there was no way to tell which half
+  // was lying. Logging the candidate count separates them in one line.
+  if (candidates.length > 0) {
+    logger.info({ candidates: candidates.length, batchSize: config.AUTO_RETRY_BATCH_SIZE },
+      'failure retry pass found candidates');
+  }
   let retried = 0;
 
   for (const row of candidates) {
@@ -170,6 +179,7 @@ async function retryRecoverableFailures(boss: BossHandle): Promise<number> {
       logger.error({ jobId: row.job_id, error: (err as Error).message }, 'could not retry failed job');
     }
   }
+  logger.info({ candidates: candidates.length, retried }, 'failure retry pass complete');
   return retried;
 }
 
@@ -179,6 +189,17 @@ async function retryRecoverableFailures(boss: BossHandle): Promise<number> {
  */
 export async function runCustodian(boss: BossHandle): Promise<CustodianResult> {
   const result: CustodianResult = { resumed: 0, clearedQueueRows: 0, modalTimedOut: 0, reaped: 0, failuresRetried: 0 };
+  // Unconditional, and carrying the config the passes will actually run under. On 2026-09-13 a
+  // tick completed in pg-boss while none of the per-pass log lines appeared, and there was no
+  // way to tell from outside whether a pass was skipped, returned early, or ran against a value
+  // that differed from .env (a shell-level env var wins over dotenv silently). One line at the
+  // start and one at the end removes the guesswork.
+  logger.info(
+    { custodianEnabled: config.CUSTODIAN_ENABLED, autoRetryFailed: config.AUTO_RETRY_FAILED,
+      autoRetryBatchSize: config.AUTO_RETRY_BATCH_SIZE, autoRetryMinIdleSeconds: config.AUTO_RETRY_MIN_IDLE_SECONDS,
+      reaperMode: config.REAPER_MODE },
+    'custodian tick start',
+  );
   if (!config.CUSTODIAN_ENABLED) return result;
 
   // 1. Resume orphans. Unlike boot, workers are consuming right now, so an `active` row is far more
@@ -218,5 +239,6 @@ export async function runCustodian(boss: BossHandle): Promise<CustodianResult> {
     logger.error({ error: (err as Error).message }, 'failure retry pass failed');
   }
 
+  logger.info({ ...result }, 'custodian tick end');
   return result;
 }

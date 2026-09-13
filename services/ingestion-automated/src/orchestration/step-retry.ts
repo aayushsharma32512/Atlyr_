@@ -104,3 +104,44 @@ export function isRecoverableFailure(err: unknown): boolean {
   const status = errorHttpStatus(err);
   return status !== undefined && CAPACITY_STATUSES.includes(status);
 }
+
+/**
+ * The two attempt budgets, and the invariant that ties them together.
+ *
+ * They live here rather than in `config` so the drills can assert the relationship without
+ * importing the env-validating config — the same constraint that forced `recovery-scope.ts` to
+ * exist. `config` reads these as its defaults, so there is one source of truth.
+ *
+ * The invariant is not decorative. `decideStepFailure` gives up at `errorCount + 1 >= max`, and
+ * `markJobFailed` increments once more, so a row the dispatcher failed carries EXACTLY
+ * STEP_MAX_ATTEMPTS. The custodian then scans for `error_count < AUTO_RETRY_MAX_ATTEMPTS`. Set the
+ * two to the same number and that predicate is false for every job the dispatcher ever fails:
+ * the retry pass still runs, still scans, and can never match anything. It cost 435 jobs on
+ * 2026-09-13 — an exhausted Firecrawl key, which is the exact case the pass was written for.
+ */
+export const DEFAULT_STEP_MAX_ATTEMPTS = 5;
+
+/**
+ * Strictly greater than the step cap, so a dispatcher-failed row still has budget left. The gap IS
+ * the custodian's allowance: 8 − 5 = three retries on the slow clock (AUTO_RETRY_MIN_IDLE_SECONDS
+ * apart) before the row is left for a human.
+ */
+export const DEFAULT_AUTO_RETRY_MAX_ATTEMPTS = 8;
+
+/** The `error_count` a row carries once the dispatcher has given up on it. */
+export function errorCountAfterGivingUp(stepMaxAttempts: number): number {
+  return stepMaxAttempts;
+}
+
+/** Does a failed row still have budget for the custodian's slower retry? Mirrors its SQL predicate. */
+export function hasAutoRetryBudget(errorCount: number, autoRetryMaxAttempts: number): boolean {
+  return errorCount < autoRetryMaxAttempts;
+}
+
+/**
+ * Can the custodian's retry pass ever match a job the dispatcher failed? False means the pass is
+ * dead code — checked at boot so the misconfiguration is loud instead of silent.
+ */
+export function autoRetryBudgetIsReachable(stepMaxAttempts: number, autoRetryMaxAttempts: number): boolean {
+  return hasAutoRetryBudget(errorCountAfterGivingUp(stepMaxAttempts), autoRetryMaxAttempts);
+}

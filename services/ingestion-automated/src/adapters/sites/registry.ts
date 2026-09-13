@@ -22,6 +22,12 @@ export interface SiteProfile {
   transformUrl?: (url: string) => string;
   buildScrapePrompt?: (originalUrl: string) => string;
   extraActions?: Record<string, unknown>[];
+  /**
+   * Firecrawl proxy tier for this site. Default ('basic') exits from a datacenter IP, which some
+   * retailers now answer with an anti-bot page served as HTTP 200 — see `blocked-page.ts`.
+   * 'stealth' costs more per scrape, so it is opt-in per site rather than global.
+   */
+  proxy?: 'basic' | 'stealth' | 'auto';
   postProcess(params: PostProcessParams): string[];
 }
 
@@ -39,6 +45,11 @@ const PROFILES: Array<{
       id: 'myntra',
       needsHtml: true,
       needsRawHtml: true,
+      // Myntra started serving its "Site Maintenance" anti-bot page to datacenter IPs around
+      // 2026-09-10 — HTTP 200, no product, and the extraction step invented one from it. Nothing
+      // in our code changed; the last successful Myntra scrape was 2026-09-09. Stealth exits from
+      // a residential IP and returns the real PDP.
+      proxy: 'stealth',
       buildScrapePrompt(originalUrl) {
         const styleId = getMyntraStyleId(originalUrl);
         const styleLine = styleId ? `Myntra style_id for THIS PDP: ${styleId}` : 'Myntra style_id for THIS PDP: (unknown)';
