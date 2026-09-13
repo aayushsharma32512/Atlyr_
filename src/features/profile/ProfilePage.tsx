@@ -8,6 +8,7 @@ import { useAvatarHairStyles } from "@/features/profile/hooks/useAvatarHairStyle
 import { useDailyLimits } from "@/features/profile/hooks/useDailyLimits"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { AppShellLayout } from "@/layouts/AppShellLayout"
+import { boardPath } from "@/features/collections/boardUrl"
 
 type ProfileRowProps = {
   label: string
@@ -74,6 +75,7 @@ function ProfilePageView() {
   })()
 
   const moodboards = collectionsQuery.data?.moodboards ?? []
+  const wardrobe = moodboards.find((board) => board.slug === "wardrobe")
   const boardPinCount = moodboards.reduce((total, board) => total + board.itemCount, 0)
 
   const tryon = limitsQuery.data?.tryon
@@ -143,6 +145,15 @@ function ProfilePageView() {
           aria-label="Profile details"
         >
           <ProfileRow
+            label="Wardrobe"
+            value={
+              collectionsQuery.isLoading
+                ? "Loading…"
+                : pluralize(wardrobe?.itemCount ?? 0, "piece")
+            }
+            onClick={() => navigate("/collection")}
+          />
+          <ProfileRow
             label="Try-ons"
             value={
               limitsQuery.isLoading
@@ -151,7 +162,7 @@ function ProfilePageView() {
                   ? "Unavailable"
                   : `${tryonsRemaining} of ${tryon.limit} left`
             }
-            onClick={() => navigate("/home?moodboard=try-ons")}
+            onClick={() => navigate(boardPath("try-ons"))}
           />
           <ProfileRow
             label="User details"

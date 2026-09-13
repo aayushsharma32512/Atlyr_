@@ -5,6 +5,7 @@ import { openLikenessDrawer } from "@/features/likeness/openLikenessDrawer"
 import { supabase } from "@/integrations/supabase/client"
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
 import { getRememberedTryonComboKey, trackTryonGenerationCompleted } from "@/integrations/posthog/engagementTracking/tryon/tryonTracking"
+import { boardPath } from "@/features/collections/boardUrl"
 
 const STORAGE_KEY = "jobs_tracker_state"
 const POLL_INTERVAL = 4000 // 4 seconds
@@ -461,7 +462,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
                 
                 // Navigate only when user clicks "View"
                 if (job.type === "tryon") {
-                  window.location.href = "/home?moodboard=try-ons"
+                  window.location.href = boardPath("try-ons")
                 } else if (job.type === "likeness" && job.metadata?.batchId) {
                   const outfitParams = job.metadata.outfitParams as Record<string, string | null> | undefined
                   const outfitItems = outfitParams

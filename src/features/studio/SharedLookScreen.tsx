@@ -15,6 +15,7 @@ import { useStudioResolvedSlots } from "@/features/studio/hooks/useStudioResolve
 import { mapTrayItemToStudioRenderedItem } from "@/features/studio/mappers/renderedItemMapper"
 import { buildStudioUrl, parseStudioSearchParams } from "@/features/studio/utils/studioUrlState"
 import type { StudioProductTrayItem, StudioProductTraySlot } from "@/services/studio/studioService"
+import { boardPath } from "@/features/collections/boardUrl"
 
 const SLOT_LABELS: Record<StudioProductTraySlot, string> = {
   top: "Topwear",
@@ -142,7 +143,7 @@ export function SharedLookScreen() {
         <header className="grid shrink-0 grid-cols-[2.75rem_1fr_2.75rem] items-center">
           <button
             type="button"
-            onClick={() => navigate(isAuthenticated ? "/home?moodboard=for-you" : "/")}
+            onClick={() => navigate(isAuthenticated ? boardPath("for-you") : "/")}
             className="flex size-11 items-center justify-start rounded-md text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label={isAuthenticated ? "Back to home" : "Back to Atlyr"}
           >

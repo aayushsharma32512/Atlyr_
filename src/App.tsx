@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { GuestProvider, useGuest } from "@/contexts/GuestContext";
 import { ProfileProvider, useProfileContext } from "@/features/profile/providers/ProfileProvider";
 import { CollectionsPrefetcher } from "@/features/collections/providers/CollectionsPrefetcher";
+import { boardPath } from "@/features/collections/boardUrl";
 import { JobsProvider } from "@/features/progress/providers/JobsContext";
 import { LikenessDrawerHost } from "@/features/likeness/LikenessDrawerHost";
 import { PostHogIdentitySync } from "@/integrations/posthog/PostHogIdentitySync";
@@ -117,6 +118,16 @@ function AdminAccessGuard({ children }: { children: ReactNode }) {
 }
 
 /**
+ * `/home` is gone. Old links carried the board in `?moodboard=`; it is a path
+ * segment now, so translate rather than drop it.
+ */
+function LegacyHomeRedirect() {
+  const location = useLocation();
+  const slug = new URLSearchParams(location.search).get("moodboard");
+  return <Navigate to={slug ? boardPath(slug) : "/collection"} replace />;
+}
+
+/**
  * Applies `data-surface` to <html> so /admin and /hitl keep the pre-Kalagriha
  * stone theme while the rest of the app uses the Tantu palette. Renders
  * nothing; must live inside BrowserRouter.
@@ -197,14 +208,8 @@ const App = () => (
                         </ShareAccessGuard>
                       }
                     />
-                    <Route
-                      path="/home"
-                      element={
-                        <ShareAccessGuard>
-                          <HomePreview />
-                        </ShareAccessGuard>
-                      }
-                    />
+                    {/* Retired. Kept only so old links keep working. */}
+                    <Route path="/home" element={<LegacyHomeRedirect />} />
                     <Route
                       path="/search"
                       element={
@@ -393,6 +398,14 @@ const App = () => (
                       element={
                         <ShareAccessGuard>
                           <CollectionsPreview />
+                        </ShareAccessGuard>
+                      }
+                    />
+                    <Route
+                      path="/collection/board/:slug"
+                      element={
+                        <ShareAccessGuard>
+                          <HomePreview />
                         </ShareAccessGuard>
                       }
                     />

@@ -5,6 +5,7 @@ import { Icons } from "@/design-system/icons"
 import { GarmentImage, OutfitInspirationTile } from "@/design-system/primitives"
 import type { MoodboardPreview } from "@/services/collections/collectionsService"
 import { CANONICAL_HERO_RENDER_BOX } from "@/features/studio/constants/renderBox"
+import { boardPath } from "../boardUrl"
 
 interface MoodboardCardProps {
   name: string
@@ -75,7 +76,7 @@ const MoodboardCard = ({
       navigate("/search")
       return
     }
-    navigate(`/home?${new URLSearchParams({ moodboard: slug }).toString()}`)
+    navigate(boardPath(slug))
   }, [navigate, slug, itemCount])
 
   const renderCover = () => {

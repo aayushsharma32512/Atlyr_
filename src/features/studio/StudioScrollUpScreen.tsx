@@ -61,6 +61,7 @@ import {
   useStudioCombinationTracking,
 } from "@/integrations/posthog/engagementTracking/studio/studioTracking"
 import { trackTryonFlowStarted } from "@/integrations/posthog/engagementTracking/tryon/tryonTracking"
+import { boardPath } from "@/features/collections/boardUrl"
 
 export function StudioScrollUpView() {
   const {
@@ -410,7 +411,7 @@ export function StudioScrollUpView() {
     if (typeof window !== "undefined") {
       window.sessionStorage.setItem("home:activeMoodboard", "for-you")
     }
-    navigate("/home?moodboard=for-you")
+    navigate(boardPath("for-you"))
   }, [navigate])
 
   const handleCheckpoint = useCallback(() => {
@@ -489,7 +490,7 @@ export function StudioScrollUpView() {
   const collectionsOverviewQuery = useCollectionsOverview()
   const moodboards = collectionsOverviewQuery.data?.moodboards ?? []
   const selectableMoodboards = useMemo(
-    () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites"),
+    () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites" || m.slug === "wardrobe"),
     [moodboards],
   )
   // The boards this exact outfit id is really on right now, so the save
