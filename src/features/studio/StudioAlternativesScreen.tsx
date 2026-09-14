@@ -32,6 +32,7 @@ import type { StudioAlternativeProduct, StudioProductTraySlot } from "@/services
 import { useStudioResolvedSlots } from "@/features/studio/hooks/useStudioResolvedSlots"
 import { isPlaceableOnMannequin, shouldFilterSlotByPlacement } from "@/features/studio/utils/placementSupport"
 import { mapTrayItemToStudioRenderedItem } from "@/features/studio/mappers/renderedItemMapper"
+import { usePlaceholderItems } from "@/features/studio/hooks/usePlaceholderItems"
 import { mapTrayItemToProductDetail } from "@/services/studio/studioService"
 import { useSaveOutfit } from "@/features/outfits/hooks/useSaveOutfit"
 import { useCreateDraftOutfit } from "@/features/outfits/hooks/useCreateDraftOutfit"
@@ -468,6 +469,7 @@ export function StudioAlternativesView() {
   }, [hiddenSlots, outfitData?.outfit, resolvedTrayItems])
 
   const heroAvatar = outfitData?.outfit ? { ...outfitData.outfit, items: heroAvatarItems ?? outfitData.outfit.items } : null
+  const { top: placeholderTop, bottom: placeholderBottom } = usePlaceholderItems(outfitData?.avatarGender ?? "female")
   const heroRenderedItems = useMemo<StudioRenderedItem[] | null>(() => {
     const baseRendered = outfitData?.studioOutfit?.renderedItems ?? null
     const trayRendered = resolvedTrayItems
@@ -487,7 +489,7 @@ export function StudioAlternativesView() {
     return zones
       .map((zone) => {
         if (hiddenSlots[zone]) {
-          return null
+          return zone === "top" ? placeholderTop : zone === "bottom" ? placeholderBottom : null
         }
         const trayItem = trayByZone.get(zone)
         const baseItem = baseByZone.get(zone)
@@ -503,7 +505,7 @@ export function StudioAlternativesView() {
         return baseItem ?? null
       })
       .filter((item): item is StudioRenderedItem => Boolean(item))
-  }, [hiddenSlots, outfitData?.studioOutfit?.renderedItems, resolvedTrayItems])
+  }, [hiddenSlots, outfitData?.studioOutfit?.renderedItems, placeholderBottom, placeholderTop, resolvedTrayItems])
   
   const heroProduct = heroProductQuery.data ?? null
   const heroImagesQuery = useStudioProductImages(heroProduct?.productId ?? null)
