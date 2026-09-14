@@ -13,6 +13,8 @@ import {
 } from "@/design-system/primitives"
 import { AlternatesHeader } from "./components/AlternatesHeader"
 import { StudioSaveCard } from "./components/StudioSaveCard"
+import { StudioFocusSheet } from "./components/StudioFocusSheet"
+import { useStudioFocus } from "./hooks/useStudioFocus"
 import { AlternatesRack } from "./components/AlternatesRack"
 import { SlotIconRow } from "./components/SlotIconRow"
 import { StudioCanvas } from "./components/StudioCanvas"
@@ -166,13 +168,20 @@ export function StudioAlternativesView() {
    * the swap is thrown away. Going forward to a URL built from the live context
    * is what carries it. The cost is a duplicate Studio entry in the stack.
    */
+  // Focus view, as on Studio: `?focus=` in the URL, so back leaves the zoom first.
+  const { focus, openFocus, closeFocus } = useStudioFocus()
+
   const handleBack = useCallback(() => {
+    if (focus) {
+      closeFocus()
+      return
+    }
     if (decodedReturnTo) {
       navigate(decodedReturnTo)
       return
     }
     openStudio()
-  }, [decodedReturnTo, navigate, openStudio])
+  }, [closeFocus, decodedReturnTo, focus, navigate, openStudio])
 
   const { swapSlot } = useStudioSwapActions(resolvedOutfitId)
   const { data: outfitData, isLoading: isOutfitLoading } = useStudioOutfit(resolvedOutfitId)
@@ -982,9 +991,14 @@ export function StudioAlternativesView() {
     ],
   )
 
-  /** Slot icon row. Search state per slot is resumed by the effect below. */
+  /**
+   * Slot icon row. Search state per slot is resumed by the effect below.
+   * `focus` rides along: the rebuilt query must keep (or, from a garment tap,
+   * set) the zoom, and it has to be ONE write — a second setSearchParams in the
+   * same tick starts from a stale copy and one of the two changes is lost.
+   */
   const handleCategoryChange = useCallback(
-    (category: StudioCanvasSlot) => {
+    (category: StudioCanvasSlot, options: { focus?: StudioCanvasSlot | null } = {}) => {
       if (isViewOnly) {
         return
       }
@@ -1008,8 +1022,10 @@ export function StudioAlternativesView() {
         share: parsedParams.share,
         hiddenSlots: parsedParams.hiddenSlots,
         source,
+        focus: "focus" in options ? options.focus : parsedParams.focus,
       })
-      setSearchParams(params, { replace: true })
+      // Entering focus pushes, so the back gesture returns to the rack.
+      setSearchParams(params, { replace: !(options.focus && !parsedParams.focus) })
       // Search reset will happen via useEffect when slot changes
     },
     [
@@ -1022,6 +1038,7 @@ export function StudioAlternativesView() {
       source,
       parsedParams.share,
       parsedParams.hiddenSlots,
+      parsedParams.focus,
     ],
   )
 
@@ -1083,6 +1100,23 @@ export function StudioAlternativesView() {
     [heroProduct?.imageUrl, heroProduct?.thumbnailUrl, slot],
   )
   const handleFindItems = useCallback(() => navigate(findItemsUrl("inventory")), [findItemsUrl, navigate])
+
+  // A garment tap: zoom to that slot and show its rack state. Same slot → only
+  // the zoom changes; a different slot → slot and zoom in one query write.
+  const enterFocus = useCallback(
+    (nextSlot: StudioCanvasSlot) => {
+      if (toTraySlot(nextSlot) === slot) openFocus(nextSlot)
+      else handleCategoryChange(nextSlot, { focus: nextSlot })
+    },
+    [handleCategoryChange, openFocus, slot],
+  )
+  const handleStepFocus = useCallback(
+    (delta: number) => {
+      const index = CANVAS_SLOTS.indexOf(slot)
+      enterFocus(CANVAS_SLOTS[(index + delta + CANVAS_SLOTS.length) % CANVAS_SLOTS.length])
+    },
+    [enterFocus, slot],
+  )
   const handleWebSearch = useCallback(() => navigate(findItemsUrl("web")), [findItemsUrl, navigate])
 
   /** The query line's × — back to the whole slot. */
@@ -1185,10 +1219,69 @@ export function StudioAlternativesView() {
         ? "Nothing saved in this slot"
         : "No results found"
 
+  // One figure for both layouts: the split (with the rack) and focus.
+  const figureNode = (
+      <div className="absolute inset-0 flex items-end justify-center pb-3">
+      {heroAvatar ? (
+        <OutfitInspirationTile
+          preset="heroCanonical"
+          outfitId={outfitData?.studioOutfit?.id ?? heroAvatar.id}
+          renderedItems={heroRenderedItems ?? outfitData?.studioOutfit?.renderedItems}
+          fallbackImageSrc={
+            hiddenSlots.top || hiddenSlots.bottom || hiddenSlots.shoes
+              ? heroRenderedItems?.[0]?.imageUrl ?? heroAvatar.items[0]?.imageUrl
+              : outfitData?.studioOutfit?.imageSrcFallback ??
+                heroRenderedItems?.[0]?.imageUrl ??
+                heroAvatar.items[0]?.imageUrl
+          }
+          title={outfitData?.studioOutfit?.name ?? heroAvatar.name ?? ""}
+          chips={[]}
+          isSaved={false}
+          avatarHeadSrc={outfitData?.avatarHeadSrc ?? undefined}
+          avatarGender={outfitData?.avatarGender ?? "female"}
+          avatarHeightCm={outfitData?.avatarHeightCm ?? 170}
+          cardClassName="h-full w-full"
+          // A tap on a garment opens the focus view — Studio's, with the rack collapsed.
+          onItemSelect={(item) => {
+            if (isStudioSlot(item.type)) enterFocus(item.type)
+          }}
+          onAvatarReady={setAvatarReady}
+          avatarRef={snapshotRef}
+        />
+      ) : (isAdminMode && !resolvedOutfitId) ? (
+        <OutfitInspirationTile
+          preset="heroCanonical"
+          outfitId="temp-admin-outfit"
+          renderedItems={heroRenderedItems || []}
+          fallbackImageSrc={heroRenderedItems?.[0]?.imageUrl ?? undefined}
+          title="New Outfit"
+          chips={[]}
+          isSaved={false}
+          avatarGender={adminGender || "female"}
+          avatarHeightCm={170}
+          cardClassName="h-full w-full"
+          allowEmptyMannequin
+          onItemSelect={(item) => {
+            if (isStudioSlot(item.type)) enterFocus(item.type)
+          }}
+          onSlotSelect={(nextSlot) => handleCategoryChange(nextSlot)}
+          onAvatarReady={setAvatarReady}
+          avatarRef={snapshotRef}
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center px-3 text-center text-body text-taupe">
+          {isOutfitLoading ? "Loading outfit…" : "Select an outfit to view alternatives"}
+        </div>
+      )}
+      </div>
+  )
+
   return (
     <>
-      {/* 390x844, no nav: header 52 · (figure | rack) · piece card 260.
-          StudioLayout hides the tab bar here, so the frame takes the full height. */}
+      {/* header 52 · (figure | rack) · piece card 225. No tab bar here, so the
+          frame takes the full height; the tray is Studio's 170 plus the 55 the
+          bar would take, so its top edge sits exactly where it does on Studio
+          and it runs to the bottom of the screen with nothing under it. */}
       <div className="flex justify-center overflow-hidden bg-background" style={{ height: "100dvh" }}>
         {/* No 844 cap here, unlike the other frames: with the tab bar gone this
             screen owns the height, and capping it would centre the frame and
@@ -1202,6 +1295,59 @@ export function StudioAlternativesView() {
             isReadOnly={isViewOnly}
           />
 
+          {focus ? (
+            <>
+              {/* Focus: Studio's own view — full-width zoomed figure, then the piece
+                  card. The rack is collapsed; back returns to it. */}
+              <StudioCanvas
+                figure={figureNode}
+                focus={focus}
+                onStepFocus={handleStepFocus}
+                historyControls={historyControls}
+                lookControls={lookControls}
+                className="border-b border-hairline"
+              />
+              {productSaveId ? (
+                <div className="box-border flex h-[225px] flex-none flex-col px-4 py-2.5">
+                  <StudioSaveCard
+                    key={productSaveId}
+                    kind="piece"
+                    className="h-full"
+                    defaultName={heroTitle}
+                    defaultTags={heroAttributes}
+                    boards={selectableMoodboards.map((m) => ({ slug: m.slug, label: m.label }))}
+                    defaultBoardSlugs={
+                      productSaveActions.getProductBoardSlugs(productSaveId).length
+                        ? productSaveActions.getProductBoardSlugs(productSaveId)
+                        : ["favorites"]
+                    }
+                    isSaving={productSaveActions.isSaving}
+                    onSave={(data) => void handleSaveProduct(data.boardSlugs)}
+                    onCancel={() => setProductSaveId(null)}
+                    onCreateBoard={(name) =>
+                      createMoodboardMutation.mutateAsync(name).then((res) => res.slug)
+                    }
+                  />
+                </div>
+              ) : (
+                <StudioFocusSheet
+                  slot={focus}
+                  title={heroTitle}
+                  images={heroImages}
+                  attributes={heroAttributes}
+                  saved={heroProduct ? productSaveActions.isSaved(heroProduct.productId) : false}
+                  isLoading={heroProductQuery.isLoading}
+                  isReadOnly={isViewOnly}
+                  onSave={heroProduct ? () => openProductSave(heroProduct.productId) : undefined}
+                  onTryOn={handleTryOn}
+                  onFindItems={handleFindItems}
+                  onOpenAlternatives={closeFocus}
+                  onStep={handleStepFocus}
+                />
+              )}
+            </>
+          ) : (
+            <>
           {/* `relative`: the search button and its open bar both anchor here, so
               expanding keeps the field on the line the button sat on. */}
           <div className="relative flex min-h-0 flex-1 border-b border-hairline">
@@ -1213,60 +1359,7 @@ export function StudioAlternativesView() {
               focus={null}
               historyControls={historyControls}
               lookControls={lookControls}
-              figure={
-                <div className="absolute inset-0 flex items-end justify-center pb-3">
-                {heroAvatar ? (
-                  <OutfitInspirationTile
-                    preset="heroCanonical"
-                    outfitId={outfitData?.studioOutfit?.id ?? heroAvatar.id}
-                    renderedItems={heroRenderedItems ?? outfitData?.studioOutfit?.renderedItems}
-                    fallbackImageSrc={
-                      hiddenSlots.top || hiddenSlots.bottom || hiddenSlots.shoes
-                        ? heroRenderedItems?.[0]?.imageUrl ?? heroAvatar.items[0]?.imageUrl
-                        : outfitData?.studioOutfit?.imageSrcFallback ??
-                          heroRenderedItems?.[0]?.imageUrl ??
-                          heroAvatar.items[0]?.imageUrl
-                    }
-                    title={outfitData?.studioOutfit?.name ?? heroAvatar.name ?? ""}
-                    chips={[]}
-                    isSaved={false}
-                    avatarHeadSrc={outfitData?.avatarHeadSrc ?? undefined}
-                    avatarGender={outfitData?.avatarGender ?? "female"}
-                    avatarHeightCm={outfitData?.avatarHeightCm ?? 170}
-                    cardClassName="h-full w-full"
-                    onItemSelect={(item) => {
-                      if (isStudioSlot(item.type)) handleCategoryChange(item.type)
-                    }}
-                    onAvatarReady={setAvatarReady}
-                    avatarRef={snapshotRef}
-                  />
-                ) : (isAdminMode && !resolvedOutfitId) ? (
-                  <OutfitInspirationTile
-                    preset="heroCanonical"
-                    outfitId="temp-admin-outfit"
-                    renderedItems={heroRenderedItems || []}
-                    fallbackImageSrc={heroRenderedItems?.[0]?.imageUrl ?? undefined}
-                    title="New Outfit"
-                    chips={[]}
-                    isSaved={false}
-                    avatarGender={adminGender || "female"}
-                    avatarHeightCm={170}
-                    cardClassName="h-full w-full"
-                    allowEmptyMannequin
-                    onItemSelect={(item) => {
-                      if (isStudioSlot(item.type)) handleCategoryChange(item.type)
-                    }}
-                    onSlotSelect={(nextSlot) => handleCategoryChange(nextSlot)}
-                    onAvatarReady={setAvatarReady}
-                    avatarRef={snapshotRef}
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center px-3 text-center text-body text-taupe">
-                    {isOutfitLoading ? "Loading outfit…" : "Select an outfit to view alternatives"}
-                  </div>
-                )}
-                </div>
-              }
+              figure={figureNode}
             />
 
             {/* Rack half. */}
@@ -1313,14 +1406,14 @@ export function StudioAlternativesView() {
             ) : null}
           </div>
 
-          {/* The Focus card, with the similarity corner in place of the 4-square.
-              Taller than Studio's 225: the tag rail was clipping mid-row.
-              Save takes the same slot here as it does on Studio. */}
-          <div
-            className={`box-border flex-none px-4 py-2.5${isSaveDrawerOpen || productSaveId ? "" : " h-[260px]"}`}
-          >
-            {isSaveDrawerOpen ? (
+          {/* The piece card, with the similarity corner in place of the 4-square.
+              225 — Studio's focus card, sized as above. Both save cards take its
+              place at the same height, so the figure never moves. */}
+          <div className="box-border flex h-[225px] flex-none flex-col px-4 py-2.5">
+            {isSaveDrawerOpen || productSaveId ? (
+              isSaveDrawerOpen ? (
               <StudioSaveCard
+                className="h-full"
                 defaultName={
                   outfitData?.outfit?.name?.startsWith("draft-look-")
                     ? `${profile?.name ?? "Your"}'s Look #${String(Date.now()).slice(-4)}`
@@ -1338,16 +1431,17 @@ export function StudioAlternativesView() {
                   createMoodboardMutation.mutateAsync(name).then((res) => res.slug)
                 }
               />
-            ) : productSaveId ? (
+              ) : (
               <StudioSaveCard
                 key={productSaveId}
                 kind="piece"
+                className="h-full"
                 defaultName={heroTitle}
                 defaultTags={heroAttributes}
                 boards={selectableMoodboards.map((m) => ({ slug: m.slug, label: m.label }))}
                 defaultBoardSlugs={
-                  productSaveActions.getProductBoardSlugs(productSaveId).length
-                    ? productSaveActions.getProductBoardSlugs(productSaveId)
+                  productSaveActions.getProductBoardSlugs(productSaveId!).length
+                    ? productSaveActions.getProductBoardSlugs(productSaveId!)
                     : ["favorites"]
                 }
                 isSaving={productSaveActions.isSaving}
@@ -1357,6 +1451,7 @@ export function StudioAlternativesView() {
                   createMoodboardMutation.mutateAsync(name).then((res) => res.slug)
                 }
               />
+              )
             ) : (
             <ProductSheet
               title={heroTitle}
@@ -1374,10 +1469,12 @@ export function StudioAlternativesView() {
               onTryOn={handleTryOn}
               onFindItems={handleFindItems}
               isLoading={heroProductQuery.isLoading}
-              className="h-[240px]"
+              className="h-[205px]"
             />
             )}
           </div>
+            </>
+          )}
 
 
           <ReferenceImageDialog

@@ -925,8 +925,6 @@ export function StudioScreenView() {
     [gender, isViewOnly, openAlternativesSplit, queryClient, syncOutfitId],
   )
 
-  const handleFindItems = useCallback(() => navigate("/inspiration-import"), [navigate])
-
   /**
    * Move a piece up or down the layer stack. `slotOrder` is the z-order —
    * AvatarRenderer gives the first zone the highest z-index — so this is the
@@ -955,19 +953,6 @@ export function StudioScreenView() {
    * crop of a photo. Kicks are not a detector category, so they take the
    * blank import.
    */
-  const handleFindItemsFor = useCallback(
-    (slot: StudioCanvasSlot, item: StudioProductTrayItem) => {
-      const traySlot = toTraySlot(slot)
-      const image = item.imageUrl ?? item.thumbnailUrl
-      if (traySlot === "shoes" || !image) {
-        handleFindItems()
-        return
-      }
-      navigate(`/inspiration-import?source=${encodeURIComponent(image)}&slot=${traySlot}`)
-    },
-    [handleFindItems, navigate],
-  )
-
   const { share: shareLook } = useShareLook()
 
   const handleShare = useCallback(async () => {
@@ -996,6 +981,37 @@ export function StudioScreenView() {
     })
     return map
   }, [hiddenSlots, resolvedTrayItems])
+
+  /**
+   * The same seeded import the globe on a piece opens, for the worn top and
+   * bottom together (no shoes): both cutouts become the selected candidates
+   * and the rack opens with a tab per slot. Nothing worn → the upload flow.
+   */
+  const handleFindItems = useCallback(() => {
+    const params = new URLSearchParams()
+    for (const traySlot of ["top", "bottom"] as const) {
+      if (hiddenSlots[traySlot]) continue
+      const item = itemBySlot[traySlot]
+      const image = item?.imageUrl ?? item?.thumbnailUrl
+      if (!image) continue
+      params.append("source", image)
+      params.append("slot", traySlot)
+    }
+    navigate(params.has("source") ? `/inspiration-import?${params.toString()}` : "/inspiration-import")
+  }, [hiddenSlots, itemBySlot, navigate])
+
+  const handleFindItemsFor = useCallback(
+    (slot: StudioCanvasSlot, item: StudioProductTrayItem) => {
+      const traySlot = toTraySlot(slot)
+      const image = item.imageUrl ?? item.thumbnailUrl
+      if (traySlot === "shoes" || !image) {
+        handleFindItems()
+        return
+      }
+      navigate(`/inspiration-import?source=${encodeURIComponent(image)}&slot=${traySlot}`)
+    },
+    [handleFindItems, navigate],
+  )
 
   /** Two tags per worn piece, deduped — the prototype's seed for the save card. */
   const suggestedTags = useMemo(() => {
@@ -1131,9 +1147,13 @@ export function StudioScreenView() {
       // Same signal the layout uses to drop the nav, so the two never disagree.
       style={{ height: focus ? "100dvh" : "calc(100dvh - 55px)" }}
     >
-      <div className="relative my-auto flex h-full max-h-[844px] w-full max-w-sm flex-col overflow-hidden">
+      {/* No 844 cap (unlike the artboard): a capped frame on a taller window left
+          a blank band under the card once focus dropped the nav, and re-centred
+          the header on the way in. The frame fills whatever height it is given. */}
+      <div className="relative flex h-full w-full max-w-sm flex-col overflow-hidden">
         {/* 52h: back, then the screen names itself here and nowhere else.
-            The design draws an Import pill on the right — deliberately not built. */}
+            The design draws an Import pill on the right — deliberately not built.
+            Stays through focus: the row never moves. */}
         <header className="flex h-[52px] shrink-0 items-center justify-between border-b border-hairline px-2">
           <div className="flex min-w-0 items-center gap-1">
             <IconButton
@@ -1206,9 +1226,12 @@ export function StudioScreenView() {
             onStep={handleStepFocus}
           />
         ) : (
-          <div className="flex flex-none flex-col gap-1.5 px-4 py-2.5">
+          <div className="box-border flex h-[170px] flex-none flex-col gap-1.5 px-4 py-2.5">
             {isSaveDrawerOpen ? (
+              // Same 170 as the rows it replaces, so the canvas — and the figure — never move.
               <StudioSaveCard
+                compact
+                className="h-full"
                 defaultName={
                   studioAvatar?.name?.startsWith("draft-look-")
                     ? `${profile?.name ?? "Your"}'s Look #${String(Date.now()).slice(-4)}`

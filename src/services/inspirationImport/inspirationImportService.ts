@@ -84,23 +84,41 @@ async function startImageImport(file: File): Promise<{ importId: string }> {
   }
 }
 
+export type SeedPiece = { file: File; category: "top" | "bottom" }
+
+const EXT_BY_MIME: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" }
+
 /**
- * Product-level import: the cutout the client already holds becomes the
- * selected candidate directly. No detection round trip — the server seeds the
- * candidate from the uploaded file, so the import opens on the rack.
+ * Seeded import: cutouts the client already holds become the selected
+ * candidates directly — no detection round trip — so the import opens on the
+ * rack. One piece is the globe on a product; two is Studio's Find items (the
+ * worn top and bottom). The first cutout is the import's source; any other sits
+ * beside it as original.<category>.<ext>, which the bucket policy admits.
  */
-async function startProductImport(file: File, category: "top" | "bottom"): Promise<{ importId: string }> {
-  console.log("[find-items] 3/5 creating import", { category, bytes: file.size, type: file.type })
-  const created = await createImport(file)
+async function startSeededImport(pieces: SeedPiece[]): Promise<{ importId: string }> {
+  const [first, ...rest] = pieces
+  if (!first) throw new Error("Nothing to search with.")
+  console.log("[find-items] 3/5 creating import", pieces.map((piece) => ({ category: piece.category, bytes: piece.file.size })))
+  const created = await createImport(first.file)
   console.log("[find-items] 3/5 import created", created)
   try {
-    await uploadSource(created.uploadPath, file)
-    console.log("[find-items] 4/5 crop uploaded", { path: created.uploadPath })
-    await markSourceReady(created.importId, file)
-    const seeded = await invokeImport<{ importId: string; candidateId: string; status: string }>({
-      action: "seed-candidate", importId: created.importId, category, mimeType: file.type, sizeBytes: file.size,
+    await uploadSource(created.uploadPath, first.file)
+    const extra = await Promise.all(
+      rest.map(async (piece) => {
+        const ext = EXT_BY_MIME[piece.file.type] ?? "webp"
+        const path = created.uploadPath.replace(/original\.[^/]+$/, `original.${piece.category}.${ext}`)
+        await uploadSource(path, piece.file)
+        return { category: piece.category, path }
+      }),
+    )
+    console.log("[find-items] 4/5 crops uploaded", { source: created.uploadPath, extra })
+    await markSourceReady(created.importId, first.file)
+    const seeded = await invokeImport<{ importId: string; candidateIds: string[]; status: string }>({
+      action: "seed-candidate",
+      importId: created.importId,
+      pieces: [{ category: first.category, path: created.uploadPath }, ...extra],
     })
-    console.log("[find-items] 5/5 candidate seeded", seeded)
+    console.log("[find-items] 5/5 candidates seeded", seeded)
     return { importId: created.importId }
   } catch (error) {
     console.error("[find-items] FAILED after create", { importId: created.importId, error })
@@ -108,6 +126,10 @@ async function startProductImport(file: File, category: "top" | "bottom"): Promi
       importId: created.importId,
     })
   }
+}
+
+async function startProductImport(file: File, category: "top" | "bottom"): Promise<{ importId: string }> {
+  return startSeededImport([{ file, category }])
 }
 
 async function getImport(importId: string): Promise<InspirationImport> {
@@ -176,6 +198,7 @@ async function openInStudio(importId: string, input: InspirationOpenStudioInput)
 export const inspirationImportService = {
   startImageImport,
   startProductImport,
+  startSeededImport,
   getImport,
   detectCandidates,
   selectCandidates,

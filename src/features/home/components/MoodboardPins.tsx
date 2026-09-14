@@ -24,7 +24,7 @@ interface MoodboardPinsProps extends Omit<HTMLAttributes<HTMLDivElement>, "onSel
  */
 export function MoodboardPins({ tabs, activeTabId, onTabSelect, className, ...rest }: MoodboardPinsProps) {
   return (
-    <div className={cn("w-full bg-background", className)} {...rest}>
+    <div className={cn("w-full bg-background lowercase", className)} {...rest}>
       <TabBar
         items={tabs}
         activeId={activeTabId}

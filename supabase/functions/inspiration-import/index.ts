@@ -126,25 +126,41 @@ async function sourceReady(context: Awaited<ReturnType<typeof requireUser>>, bod
  */
 async function seedCandidate(context: Awaited<ReturnType<typeof requireUser>>, body: Record<string, unknown>) {
   const importId = requiredString(body, "importId")
-  const category = requiredString(body, "category")
-  if (category !== "top" && category !== "bottom") throw new HttpError(400, "invalid_category", "Category must be top or bottom")
+  // One piece (the globe on a product) or two (Studio's Find items: the worn top
+  // and bottom). Each is its own object under the import's source folder; the
+  // first is the source itself, so `path` may be omitted for it.
+  const rawPieces = Array.isArray(body.pieces) ? body.pieces : [{ category: body.category, path: null }]
+  if (rawPieces.length < 1 || rawPieces.length > 2) throw new HttpError(400, "invalid_pieces", "Seed one or two pieces")
+  const pieces = rawPieces.map((raw) => {
+    const piece = (raw ?? {}) as Record<string, unknown>
+    const category = piece.category
+    if (category !== "top" && category !== "bottom") throw new HttpError(400, "invalid_category", "Category must be top or bottom")
+    return { category, path: typeof piece.path === "string" ? piece.path : null }
+  })
+  if (new Set(pieces.map((piece) => piece.category)).size !== pieces.length) {
+    throw new HttpError(400, "invalid_pieces", "One piece per category")
+  }
   const importRow = await ownedImport(context.admin, context.userId, importId)
   // Same gate as begin_inspiration_detection; a stale "detecting" lease is retried by the RPC.
   if (!["source_ready", "failed", "detecting"].includes(importRow.status as string)) {
     throw new HttpError(409, "import_not_seedable", "Confirm the uploaded image first")
   }
-  // The web search posts this exact file to Lens, which caps uploads at 500 KB.
   const sourcePath = importRow.source_path as string
-  const split = sourcePath.lastIndexOf("/")
-  const { data: listed, error: listError } = await context.admin.storage.from(INSPIRATION_BUCKET)
-    .list(sourcePath.slice(0, split), { search: sourcePath.slice(split + 1), limit: 10 })
+  const folder = sourcePath.slice(0, sourcePath.lastIndexOf("/"))
+  const { data: listed, error: listError } = await context.admin.storage.from(INSPIRATION_BUCKET).list(folder, { limit: 20 })
   queryError(listError, "Unable to verify source upload")
-  const object = (listed ?? []).find((entry) => entry.name === sourcePath.slice(split + 1))
-  if (!object) throw new HttpError(409, "source_missing", "Uploaded source image was not found")
-  const size = Number((object.metadata as Record<string, unknown> | null)?.size ?? body.sizeBytes)
-  if (!Number.isFinite(size) || size <= 0 || size > 500 * 1024) {
-    throw new HttpError(400, "invalid_image_size", "Garment crop must be smaller than 500 KB")
-  }
+  const resolved = pieces.map((piece) => {
+    const path = piece.path ?? sourcePath
+    if (!path.startsWith(`${folder}/`)) throw new HttpError(400, "invalid_path", "Piece must sit in the import's source folder")
+    const object = (listed ?? []).find((entry) => entry.name === path.slice(folder.length + 1))
+    if (!object) throw new HttpError(409, "source_missing", "Uploaded garment image was not found")
+    // The web search posts this exact file to Lens, which caps uploads at 500 KB.
+    const size = Number((object.metadata as Record<string, unknown> | null)?.size ?? body.sizeBytes)
+    if (!Number.isFinite(size) || size <= 0 || size > 500 * 1024) {
+      throw new HttpError(400, "invalid_image_size", "Garment crop must be smaller than 500 KB")
+    }
+    return { category: piece.category, path }
+  })
 
   // 1 · begin: claims a detection attempt (authenticated RPC, like startDetection).
   const { data: beginData, error: beginError } = await context.client.rpc("begin_inspiration_detection", {
@@ -154,26 +170,26 @@ async function seedCandidate(context: Awaited<ReturnType<typeof requireUser>>, b
   const attempt = Array.isArray(beginData) ? beginData[0] : beginData
   if (!attempt?.started || !attempt.attempt_id) throw new HttpError(409, "import_busy", "This import is busy; try again")
 
-  // 2 · finalize: the one candidate, the source file as its crop (service-role RPC).
-  const candidateId = crypto.randomUUID()
+  // 2 · finalize: one full-frame candidate per piece, its file as its crop (service-role RPC).
+  const candidates = resolved.map((piece) => ({
+    id: crypto.randomUUID(), category: piece.category, label: null, confidence: 1,
+    bbox: { l: 0, t: 0, w: 1, h: 1 }, boxSource: "dino_only",
+    retrievalCropPath: piece.path, metrics: { seeded: "product" },
+  }))
   const { data: finalized, error: finalizeError } = await context.admin.rpc("finalize_inspiration_detection", {
     p_import_id: importId, p_attempt_id: attempt.attempt_id,
-    p_candidates: [{
-      id: candidateId, category, label: null, confidence: 1,
-      bbox: { l: 0, t: 0, w: 1, h: 1 }, boxSource: "dino_only",
-      retrievalCropPath: sourcePath, metrics: { seeded: "product" },
-    }],
-    p_error_code: null, p_error_message: null,
+    p_candidates: candidates, p_error_code: null, p_error_message: null,
   })
   queryError(finalizeError, "Unable to seed candidate")
   if (!finalized) throw new HttpError(409, "seed_stale", "The import changed while seeding; try again")
 
-  // 3 · select it (authenticated RPC, like selectCandidate).
+  // 3 · select them all (authenticated RPC, like selectCandidate).
+  const candidateIds = candidates.map((candidate) => candidate.id)
   const { error: selectError } = await context.client.rpc("select_inspiration_candidates", {
-    p_import_id: importId, p_candidate_ids: [candidateId],
+    p_import_id: importId, p_candidate_ids: candidateIds,
   })
   if (selectError) throw new HttpError(409, "candidate_unavailable", "Seeded candidate could not be selected")
-  return { importId, candidateId, status: "candidate_selected" }
+  return { importId, candidateId: candidateIds[0], candidateIds, status: "candidate_selected" }
 }
 
 async function startDetection(context: Awaited<ReturnType<typeof requireUser>>, body: Record<string, unknown>) {

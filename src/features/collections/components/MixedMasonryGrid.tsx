@@ -3,29 +3,14 @@ import { MoreVertical, Trash2, X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { useResponsiveColumns } from "@/shared/hooks/useResponsiveColumns"
-import { OutfitInspirationTile, ProductTile } from "@/design-system/primitives"
+import { OutfitCard, ProductTile } from "@/design-system/primitives"
 import type { MoodboardItem } from "@/services/collections/collectionsService"
-import { resolveOutfitAttribution } from "@/utils/outfitAttribution"
-import { getOutfitChips } from "@/utils/outfitChips"
 
 const PRICE_FORMATTER = new Intl.NumberFormat("en-IN", {
   style: "currency",
   currency: "INR",
   maximumFractionDigits: 0,
 })
-
-const MASONRY_OUTFIT_CARD_TOTAL_HEIGHT = 320
-const MASONRY_OUTFIT_CARD_VERTICAL_GAP = 2
-const MASONRY_OUTFIT_CARD_MIN_AVATAR_HEIGHT = 128
-
-// Scrapbook tilt — a fixed per-item rotation so the saves masonry reads like the
-// canvas board (6e2), deterministic so cards don't re-tilt on re-mount.
-const PIN_TILTS = ["pin-tilt-1", "pin-tilt-2", "pin-tilt-3", "pin-tilt-4", "pin-tilt-5", "pin-tilt-6"]
-function tiltFor(id: string): string {
-  let h = 0
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0
-  return PIN_TILTS[Math.abs(h) % PIN_TILTS.length]
-}
 
 type OutfitMoodboardItem = Extract<MoodboardItem, { itemType: "outfit" }>
 
@@ -86,7 +71,7 @@ export function MixedMasonryGrid({
       return (
         <div
           key={`${item.itemType}-${item.id}-${item.createdAt}`}
-          className={cn("transition-transform", tiltFor(item.id))}
+          className="transition-transform"
         >
           <OutfitMasonryCard
             item={item}
@@ -112,7 +97,7 @@ export function MixedMasonryGrid({
       <div
         key={`${item.itemType}-${item.id}-${item.createdAt}`}
         ref={getProductWrapperRef?.(item.id)}
-        className={cn("transition-transform", tiltFor(item.id))}
+        className="transition-transform"
       >
         {/* Name only — the design carries no brand or price on a tile (brief §3.2).
             cropToContent frames a segmented cutout instead of the empty canvas
@@ -169,7 +154,6 @@ function OutfitMasonryCard({
   onRemoveFromAll,
   getOutfitWrapperRef,
 }: OutfitMasonryCardProps) {
-  const [metaHeight, setMetaHeight] = useState(0)
   const [showRemoveOptions, setShowRemoveOptions] = useState(false)
   const removeOptionsRef = useRef<HTMLDivElement>(null)
 
@@ -186,15 +170,9 @@ function OutfitMasonryCard({
   }, [showRemoveOptions])
 
   const title = item.outfit?.name ?? "Moodboard look"
-  const chips = getOutfitChips(item.outfit)
   const gender = item.gender ?? "female"
-  const avatarHeight = Math.max(
-    MASONRY_OUTFIT_CARD_MIN_AVATAR_HEIGHT,
-    MASONRY_OUTFIT_CARD_TOTAL_HEIGHT - metaHeight - MASONRY_OUTFIT_CARD_VERTICAL_GAP,
-  )
 
   const hasMultipleMoodboards = moodboardSlugs.length >= 2
-  const editButtonBottom = metaHeight + MASONRY_OUTFIT_CARD_VERTICAL_GAP
 
   const handleSelect = useCallback(() => {
     onOutfitSelect?.(item)
@@ -218,38 +196,17 @@ function OutfitMasonryCard({
   const showEdit = Boolean(onEdit || onMoveToMoodboard)
 
   return (
-    <div className="relative">
-      <OutfitInspirationTile
-        preset="homeCurated"
-        wrapperClassName="flex flex-col gap-1"
-        wrapperStyle={{ minHeight: MASONRY_OUTFIT_CARD_TOTAL_HEIGHT }}
-        wrapperRef={getOutfitWrapperRef?.(item.id)}
-        wrapperProps={{
-          role: onOutfitSelect ? "button" : undefined,
-          tabIndex: onOutfitSelect ? 0 : undefined,
-          onClick: onOutfitSelect ? handleSelect : undefined,
-          onKeyDown: onOutfitSelect
-            ? (event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault()
-                  handleSelect()
-                }
-              }
-            : undefined,
-        }}
-        outfitId={item.id}
-        renderedItems={item.renderedItems}
-        title={title}
-        chips={chips}
-        attribution={resolveOutfitAttribution(item.outfit?.created_by)}
-        showSaveButton={false}
-        avatarGender={gender}
-        sizeMode="fluid"
-        fluidLayout="avatar"
-        fluidHeight={avatarHeight}
-        onMetaHeightChange={setMetaHeight}
-        cardClassName="w-full"
-      />
+    <div ref={getOutfitWrapperRef?.(item.id)} className="relative">
+      {/* The same look tile Search draws: figure to the hairline, name under it. */}
+      <div className="h-[300px]">
+        <OutfitCard
+          title={title}
+          outfitId={item.id}
+          renderedItems={item.renderedItems}
+          gender={gender}
+          onSelect={onOutfitSelect ? handleSelect : undefined}
+        />
+      </div>
 
       {/* Three-dot edit — top-right */}
       {showEdit && (
@@ -263,9 +220,9 @@ function OutfitMasonryCard({
         </button>
       )}
 
-      {/* Dustbin — bottom-left, dropdown opens upward-right */}
+      {/* Dustbin — bottom-left of the frame, dropdown opens upward-right */}
       {showDustbin && (
-        <div ref={removeOptionsRef} className="absolute z-10" style={{ bottom: editButtonBottom, left: 8 }}>
+        <div ref={removeOptionsRef} className="absolute bottom-9 left-2 z-10">
           <button
             type="button"
             onClick={handleDustbinClick}

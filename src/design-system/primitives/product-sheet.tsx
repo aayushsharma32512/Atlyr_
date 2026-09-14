@@ -17,6 +17,8 @@ export interface ProductSheetProps {
   showSlot?: boolean
   /** fit · feel · vibe · colour · material. No brand, no price. */
   attributes?: string[]
+  /** Whole rows of tag chips to show before they scroll. 3 fits a 205px sheet, 1 a 150px one. */
+  chipRows?: 1 | 2 | 3
   /** Which side the square carousel sits on. */
   carousel?: "left" | "right"
   /** `panel` stacks media over details for a column; `sheet` is always horizontal. */
@@ -83,6 +85,7 @@ export function ProductSheet({
   slot = null,
   showSlot = false,
   attributes = [],
+  chipRows = 3,
   carousel = "left",
   layout = "sheet",
   mediaSize = 176,
@@ -271,7 +274,9 @@ export function ProductSheet({
 
       <div
         className={cn(
-          "flex min-w-0 flex-1 flex-col gap-2",
+          // 6px rhythm: title (39) + chips + buttons (40) then fill a 150px sheet
+          // with two chip rows exactly, no slack above the buttons.
+          "flex min-w-0 flex-1 flex-col gap-1.5",
           !panel && "min-h-0",
           onOpenAlternatives && "cursor-pointer",
         )}
@@ -286,9 +291,13 @@ export function ProductSheet({
           {title}
         </p>
 
-        {/* Scrolls rather than clips: a piece with many attributes lost the last
-            row entirely, and the card cannot grow past its slot. */}
-        <div className="flex min-h-0 flex-[0_1_auto] flex-wrap content-start gap-1.5 overflow-y-auto overscroll-contain scrollbar-hide">
+        {/* Whole rows only (26px chips, 6px gaps), so the window never cuts a
+            chip in half against the buttons. Past the cap it scrolls, so a piece
+            with many attributes still keeps them all. */}
+        <div
+          className="flex flex-none flex-wrap content-start gap-1.5 overflow-y-auto overscroll-contain scrollbar-hide"
+          style={{ maxHeight: chipRows * 26 + (chipRows - 1) * 6 }}
+        >
           {showSlot && slot && SlotIcon ? (
             <span className="box-border inline-flex h-control-chip items-center gap-[5px] whitespace-nowrap rounded-control border border-hairline bg-white px-2.5 text-chip font-medium tracking-normal text-ink">
               <SlotIcon className="h-3.5 w-3.5" strokeWidth={1.7} aria-hidden="true" />

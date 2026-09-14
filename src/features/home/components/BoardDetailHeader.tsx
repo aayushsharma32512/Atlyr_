@@ -141,7 +141,7 @@ export function BoardDetailHeader({
           }}
           aria-label="Board name"
           maxLength={60}
-          className="min-w-0 flex-1 border-b border-ink bg-transparent font-display text-title font-medium text-ink outline-none"
+          className="min-w-0 flex-1 border-b border-ink bg-transparent font-display text-title font-medium lowercase text-ink outline-none"
         />
       ) : (
         <button
@@ -149,7 +149,7 @@ export function BoardDetailHeader({
           onClick={canManage ? () => setIsEditing(true) : undefined}
           aria-label={canManage ? `Rename ${label}` : undefined}
           disabled={!canManage}
-          className="min-w-0 flex-1 truncate text-left font-display text-title font-medium text-ink disabled:cursor-default"
+          className="min-w-0 flex-1 truncate text-left font-display text-title font-medium lowercase text-ink disabled:cursor-default"
         >
           {label}
         </button>

@@ -3,16 +3,18 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { AppShellLayout } from "@/layouts/AppShellLayout"
 import CollectionsHeader from "./components/CollectionsHeader"
-import MoodboardCard from "./components/MoodboardCard"
+import MoodboardCard, { FIGURE_FRAME_ASPECT } from "./components/MoodboardCard"
 import { CreationsTab } from "./components/CreationsTab"
 import { ProductsTab } from "./components/ProductsTab"
 
-import { MoodboardPickerDrawer, SectionHeader } from "@/design-system/primitives"
+import { MoodboardPickerDrawer, OutfitInspirationTile, SectionHeader } from "@/design-system/primitives"
 import { Icons } from "@/design-system/icons"
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer"
 import { StudioSaveCard } from "@/features/studio/components/StudioSaveCard"
+import { buildStudioUrl } from "@/features/studio/utils/studioUrlState"
+import { cn } from "@/lib/utils"
 
-import { useCollectionsOverview, useCreateMoodboard, useProductsByIds } from "./hooks/useMoodboards"
+import { useCollectionsOverview, useCreateMoodboard, useMoodboardItems, useProductsByIds } from "./hooks/useMoodboards"
 import { useProductSaveActions } from "@/features/collections/hooks/useProductSaveActions"
 import { productDisplayImage } from "@/services/collections/collectionsService"
 import { boardPath } from "./boardUrl"
@@ -65,6 +67,17 @@ export function CollectionsPage() {
   }, [previewProductsQuery.data])
   const productSaveActions = useProductSaveActions()
   const createMoodboardMutation = useCreateMoodboard()
+
+  // The strip above the grid: the looks saved most recently, newest first.
+  const recentSavesQuery = useMoodboardItems("favorites", 12)
+  const recentSaves = useMemo(
+    () =>
+      (recentSavesQuery.data?.pages ?? [])
+        .flat()
+        .filter((item) => item.itemType === "outfit")
+        .slice(0, 12),
+    [recentSavesQuery.data],
+  )
 
   // Product pins open the Studio save card (boards only) in a drawer.
   const [productSaveId, setProductSaveId] = useState<string | null>(null)
@@ -163,6 +176,35 @@ export function CollectionsPage() {
     }
     return (
       <>
+      {/* Recent saves — a strip of looks on the tall 112x168 card the other
+          rails use. A tap opens the look in Studio. */}
+      {recentSaves.length ? (
+        <section className="mb-4 flex flex-col gap-2.5">
+          <SectionHeader title="recent saves" />
+          <div className="flex gap-2 overflow-x-auto py-0.5 scrollbar-hide">
+            {recentSaves.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                aria-label="Open look in Studio"
+                onClick={() => navigate(buildStudioUrl("/studio", "studio", { outfitId: item.id }))}
+                // Flex, so the figure box centres; a block child inside a button did not.
+                className="flex h-[168px] w-[112px] shrink-0 items-center justify-center overflow-hidden rounded-lg border border-hairline bg-background"
+              >
+                <div className="h-full" style={{ aspectRatio: FIGURE_FRAME_ASPECT }}>
+                  <OutfitInspirationTile
+                    preset="moodboardPreview"
+                    outfitId={item.id}
+                    avatarGender={item.gender ?? profileGender ?? "female"}
+                    avatarHeightCm={heightCm ?? 170}
+                    wrapperClassName="h-full w-full rounded-none bg-transparent p-0"
+                  />
+                </div>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
       <SectionHeader title="Boards" className="mb-2" />
       <div className="grid grid-cols-2 items-start gap-2 sm:grid-cols-3 lg:grid-cols-4">
         {/* + New leads the grid, then Try-Ons, Favorites, newest board, the rest.

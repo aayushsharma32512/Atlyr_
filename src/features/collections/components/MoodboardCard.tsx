@@ -135,7 +135,7 @@ const MoodboardCard = ({
   }
 
   return (
-    <div className={`pin-tilt-${(index % 6) + 1}`}>
+    <div>
       <div
         role={isClickable ? "button" : undefined}
         tabIndex={isClickable ? 0 : undefined}

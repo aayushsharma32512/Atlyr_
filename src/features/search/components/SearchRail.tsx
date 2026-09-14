@@ -88,7 +88,7 @@ export function SearchRail(props: SearchRailProps) {
         title={title}
         className="border-t border-hairline pt-2"
         actionSlot={
-          <button type="button" aria-label={`Open ${title}`} onClick={onOpenList} className="flex h-8 w-8 items-center justify-center text-ink">
+          <button type="button" aria-label={`Open ${title}`} onClick={onOpenList} className="-mr-2 flex h-8 w-8 items-center justify-center text-ink">
             <Icons.openList className="h-4 w-4" aria-hidden="true" />
           </button>
         }

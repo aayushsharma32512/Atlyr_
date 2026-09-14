@@ -20,7 +20,10 @@ import { SearchListPage } from "@/features/search/components/SearchListPage"
 import { SearchScopeRail } from "@/features/search/components/SearchScopeRail"
 import type { FeedHandlers, FeedList, FeedLayout } from "@/features/search/components/SearchRail"
 import { useSearchFeed } from "@/features/search/hooks/useSearchFeed"
-import type { FeedLook, FeedPiece } from "@/features/search/utils/feedShaping"
+import { flattenBrowseLooks, type FeedLook, type FeedPiece } from "@/features/search/utils/feedShaping"
+import { CurationBoardsPage } from "@/features/search/components/CurationBoards"
+import type { FeedSection } from "@/features/search/hooks/useSearchFeed"
+import type { SearchBrowseCollection } from "@/services/search/searchService"
 import { isSearchScope, resolveScope, scopeToMode, scopeToSlot, type SearchScope } from "@/features/search/utils/scope"
 import { readStudioLastPath } from "@/features/studio/constants"
 import { buildStudioFocusUrl, isStudioSlot, parseStudioPath } from "@/features/studio/utils/studioUrlState"
@@ -97,6 +100,8 @@ export function SearchScreenView() {
   const scope = useMemo(() => resolveScope(searchParams), [searchParams])
   const scopeSlot = scopeToSlot(scope)
   const listParam = searchParams.get("list")
+  // A curation opened from the boards grid (or straight from the rail).
+  const boardParam = searchParams.get("board")
 
   const committedSearchTerm = searchParamValue
   
@@ -1519,6 +1524,60 @@ export function SearchScreenView() {
     )
   }, [navigate, setSearchParams])
 
+  // A curation board: list=curations&board=<id> in one write, so the rail can
+  // open a board directly and the grid page sits behind it on the way back.
+  const handleOpenBoard = useCallback(
+    (board: SearchBrowseCollection) => {
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev)
+          params.set("list", "curations")
+          params.set("board", board.categoryId)
+          return params
+        },
+        { replace: false },
+      )
+      window.scrollTo({ top: 0, behavior: "auto" })
+    },
+    [setSearchParams],
+  )
+
+  const handleCloseBoard = useCallback(() => {
+    const historyIndex = (window.history.state as { idx?: number } | null)?.idx
+    if (typeof historyIndex === "number" && historyIndex > 0) {
+      navigate(-1)
+      return
+    }
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev)
+        params.delete("board")
+        return params
+      },
+      { replace: true },
+    )
+  }, [navigate, setSearchParams])
+
+  const openBoard = useMemo(
+    () =>
+      feed.kind === "looks" && openList === "curations" && boardParam
+        ? feed.boards.find((board) => board.categoryId === boardParam) ?? null
+        : null,
+    [boardParam, feed, openList],
+  )
+  // One board's looks as a finite section for the list page.
+  const boardSection = useMemo<FeedSection<FeedLook>>(
+    () => ({
+      items: openBoard && feed.kind === "looks" ? flattenBrowseLooks([openBoard], feed.gender) : [],
+      isLoading: false,
+      isError: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: () => {},
+    }),
+    [feed, openBoard],
+  )
+
   const listTitle = openList === "hot" ? "Hot styles" : "Atlyr curations"
 
   return (
@@ -1545,7 +1604,27 @@ export function SearchScreenView() {
             {isFetchingMore ? <ResultsSkeleton kind={activeFilter} count={2} /> : null}
           </>
         ) : openList ? (
-          feed.kind === "looks" ? (
+          feed.kind === "looks" && openList === "curations" ? (
+            openBoard ? (
+              <SearchListPage
+                kind="looks"
+                title={openBoard.title}
+                section={boardSection}
+                heightCm={heightCm ?? 170}
+                onBack={handleCloseBoard}
+                handlers={feedHandlers}
+              />
+            ) : (
+              <CurationBoardsPage
+                boards={feed.boards}
+                isLoading={feed.boardsLoading}
+                gender={feed.gender}
+                heightCm={heightCm ?? 170}
+                onBack={handleCloseList}
+                onOpenBoard={handleOpenBoard}
+              />
+            )
+          ) : feed.kind === "looks" ? (
             <SearchListPage
               kind="looks"
               title={listTitle}
@@ -1565,7 +1644,14 @@ export function SearchScreenView() {
             />
           )
         ) : (
-          <SearchFeed sections={feed} heightCm={heightCm ?? 170} onOpenList={handleOpenList} onPersonalise={handleFindItems} handlers={feedHandlers} />
+          <SearchFeed
+            sections={feed}
+            heightCm={heightCm ?? 170}
+            onOpenList={handleOpenList}
+            onOpenBoard={handleOpenBoard}
+            onPersonalise={handleFindItems}
+            handlers={feedHandlers}
+          />
         )}
       </div>
 

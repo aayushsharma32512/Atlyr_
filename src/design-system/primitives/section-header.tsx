@@ -20,7 +20,7 @@ export function SectionHeader({
   onActionClick,
 }: SectionHeaderProps) {
   return (
-    <div className={cn("flex w-full items-start justify-between px-1", className)}>
+    <div className={cn("flex w-full items-center justify-between px-1", className)}>
       <div className="flex flex-col gap-0.5">
         {/* Section label. V2 casing rule: lowercase, normal tracking — it was
            tracked caps under Kalagriha. Normalised here rather than at the ten

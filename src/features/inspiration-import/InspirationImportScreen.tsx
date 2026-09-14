@@ -129,16 +129,22 @@ export default function InspirationImportScreen() {
   const location = useLocation()
   // Boards' "+" card sends ?intent=wardrobe; the copy changes, the flow does not.
   const intent: InspirationIntent = new URLSearchParams(location.search).get("intent") === "wardrobe" ? "wardrobe" : "inspiration"
-  // Product-level entry (the globe on a piece): ?source=<cutout url>&slot=top|bottom,
-  // plus &results=web from the rack's "web search" row. The import is seeded
-  // from the cutout, the best candidate for that slot is picked automatically,
-  // and the screen opens straight on the rack.
+  // Seeded entry: ?source=<cutout url>&slot=top|bottom, once for the globe on a
+  // piece, twice (top then bottom) for Studio's Find items; plus &results=web
+  // from the rack's "web search" row. The cutouts are seeded as the selected
+  // candidates and the screen opens straight on the rack.
   const seedParams = useMemo(() => {
     const params = new URLSearchParams(location.search)
-    const source = params.get("source")
-    const slotParam = params.get("slot")
-    const slot: InspirationCategory | null = slotParam === "top" || slotParam === "bottom" ? slotParam : null
-    return source ? { source, slot, results: params.get("results") === "web" ? ("web" as const) : ("inventory" as const) } : null
+    const sources = params.getAll("source")
+    const slots = params.getAll("slot")
+    const pieces = sources.map((source, index) => {
+      const slotParam = slots[index]
+      const slot: InspirationCategory = slotParam === "bottom" ? "bottom" : slotParam === "top" ? "top" : index === 0 ? "top" : "bottom"
+      return { source, slot }
+    })
+    return pieces.length
+      ? { pieces, results: params.get("results") === "web" ? ("web" as const) : ("inventory" as const) }
+      : null
   }, [location.search])
   const { user } = useAuth()
   const { profile, gender } = useProfileContext()
@@ -157,7 +163,8 @@ export default function InspirationImportScreen() {
   const [choosingCandidate, setChoosingCandidate] = useState(false)
   const [pickError, setPickError] = useState<string | null>(null)
   const [activeCandidateId, setActiveCandidateId] = useState<string | null>(null)
-  const [resultsSource, setResultsSource] = useState<"inventory" | "web">("inventory")
+  // Web first: the rack opens on the Lens results, inventory is the option.
+  const [resultsSource, setResultsSource] = useState<"inventory" | "web">("web")
   const [sourcePreviewUrl, setSourcePreviewUrl] = useState<string | null>(null)
   const importStartTriggeredRef = useRef(false)
   const seededRef = useRef(false)
@@ -172,7 +179,6 @@ export default function InspirationImportScreen() {
     }
   }, [])
   const autoRef = useRef<{ slot: InspirationCategory | null; results: "inventory" | "web" } | null>(null)
-  const webModeRef = useRef(false)
   const [isSeeding, setIsSeeding] = useState(false)
   const openedDraftRef = useRef<{ signature: string; outfitId: string } | null>(null)
 
@@ -191,17 +197,18 @@ export default function InspirationImportScreen() {
     // Runs exactly once per seeded URL: no cleanup flag, because a re-render
     // (which setIsSeeding itself causes) must not orphan the in-flight fetch.
     seededRef.current = true
-    autoRef.current = { slot: seedParams.slot, results: seedParams.results }
+    autoRef.current = { slot: seedParams.pieces[0]?.slot ?? null, results: seedParams.results }
     setIsSeeding(true)
-    console.log("[find-items] 0/5 seeding from product", seedParams)
-    cutoutToFile(seedParams.source)
-      .then((file) => {
+    console.log("[find-items] 0/5 seeding", seedParams)
+    Promise.all(seedParams.pieces.map((piece) => cutoutToFile(piece.source)))
+      .then((files) => {
         if (!mountedRef.current) return
         setValidationError(null)
-        setSourceFile(file)
-        // No detector: the cutout is uploaded as the candidate itself and the
-        // import opens straight on the rack for that slot.
-        return inspirationImportService.startProductImport(file, seedParams.slot ?? "top").then(({ importId: nextId }) => {
+        setSourceFile(files[0] ?? null)
+        // No detector: the cutouts are uploaded as the candidates themselves and
+        // the import opens straight on the rack.
+        const pieces = files.map((file, index) => ({ file, category: seedParams.pieces[index].slot }))
+        return inspirationImportService.startSeededImport(pieces).then(({ importId: nextId }) => {
           if (!mountedRef.current) return
           console.log("[find-items] opening rack", { importId: nextId })
           navigate(`/inspiration-import/${nextId}`, { replace: true })
@@ -243,6 +250,7 @@ export default function InspirationImportScreen() {
     ?? selectedCandidates[0]
     ?? null
   const webQuery = useImportWebResults(importId ?? "", selectedCandidate?.id ?? null)
+  const refetchWeb = webQuery.refetch
   const activeCandidateIdRef = useRef<string | null>(null)
   activeCandidateIdRef.current = selectedCandidate?.id ?? null
   const catalogueSearches = useImportCatalogueResults(record)
@@ -310,8 +318,16 @@ export default function InspirationImportScreen() {
   }, [record])
 
   useEffect(() => {
-    setResultsSource("inventory")
+    setResultsSource("web")
   }, [selectedCandidate?.id])
+
+  // The Lens search runs the moment a candidate is shown in web mode. The query
+  // is manual (enabled: false), so flipping to inventory and back never refires it.
+  useEffect(() => {
+    if (!selectedCandidate || resultsSource !== "web") return
+    if (webQuery.data !== undefined || webQuery.isFetching || webQuery.isError) return
+    void refetchWeb()
+  }, [refetchWeb, resultsSource, selectedCandidate, webQuery.data, webQuery.isError, webQuery.isFetching])
 
   useEffect(() => {
     if (!record) return
@@ -424,18 +440,6 @@ export default function InspirationImportScreen() {
     setPendingCandidateIds((current) => [...current, candidateId])
   }
 
-  const showWebResults = async () => {
-    if (!selectedCandidate) return
-    const candidateId = selectedCandidate.id
-    if (webQuery.data !== undefined) {
-      setResultsSource("web")
-      return
-    }
-    const result = await webQuery.refetch()
-    if (!result.error && result.data !== undefined && activeCandidateIdRef.current === candidateId) {
-      setResultsSource("web")
-    }
-  }
 
   const setCandidateChoice = (
     candidate: { id: string; category: InspirationCategory },
@@ -473,15 +477,6 @@ export default function InspirationImportScreen() {
     // explicitly selects an inventory card, so that first click cannot be mistaken for a deselect.
     setCandidateChoice(candidate, null)
   }
-
-  // The rack's "web search" row asked for web results: flip once the pick has landed.
-  useEffect(() => {
-    if (autoRef.current?.results !== "web" || webModeRef.current || !selectedCandidate) return
-    webModeRef.current = true
-    void showWebResults()
-    // showWebResults is a plain closure over the same render; the ref guard makes this fire once.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCandidate])
 
   const showInventoryResults = () => {
     if (selectedCandidate) showCandidateInventoryResults(selectedCandidate)
@@ -724,7 +719,7 @@ export default function InspirationImportScreen() {
                       aria-selected={active}
                       aria-label={category === "top" ? "tops" : "lowers"}
                       disabled={!candidate}
-                      onClick={() => candidate && showCandidateInventoryResults(candidate)}
+                      onClick={() => candidate && setActiveCandidateId(candidate.id)}
                       className={cn(
                         "flex h-[26px] w-10 items-center justify-center border-b-2",
                         active ? "border-violet text-ink" : "border-transparent text-ink",
@@ -741,14 +736,13 @@ export default function InspirationImportScreen() {
               </div>
               {resultsSource === "web" ? (
                 <button type="button" onClick={showInventoryResults} className={TOGGLE}>
-                  <Icons.carouselPrev className="h-3.5 w-3.5" aria-hidden="true" />
                   inventory
+                  <Icons.carouselNext className="h-3.5 w-3.5" aria-hidden="true" />
                 </button>
               ) : (
-                <button type="button" disabled={webQuery.isFetching} onClick={() => void showWebResults()} className={TOGGLE}>
-                  {webQuery.isFetching ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : null}
+                <button type="button" onClick={() => setResultsSource("web")} className={TOGGLE}>
+                  <Icons.carouselPrev className="h-3.5 w-3.5" aria-hidden="true" />
                   web search
-                  {webQuery.isFetching ? null : <Icons.carouselNext className="h-3.5 w-3.5" aria-hidden="true" />}
                 </button>
               )}
             </div>
@@ -757,8 +751,14 @@ export default function InspirationImportScreen() {
               {resultsSource === "web" ? (
                 webResults.length ? (
                   <ImportRack kind="web" results={webResults} selectedId={activeWebProviderResultId} onSelect={selectWebResult} />
+                ) : webQuery.isFetching ? (
+                  <div className="flex min-h-40 items-center justify-center">
+                    <Loader2 className="h-5 w-5 animate-spin text-ink" aria-hidden="true" />
+                  </div>
                 ) : (
-                  <p className="px-4 py-8 text-center text-body text-taupe">No online matches for this piece.</p>
+                  <p className="px-4 py-8 text-center text-body text-taupe">
+                    {webQuery.isError ? "Online search failed — try inventory." : "No online matches for this piece."}
+                  </p>
                 )
               ) : activeCatalogueSearch?.isLoading ? (
                 <div className="flex min-h-40 items-center justify-center">

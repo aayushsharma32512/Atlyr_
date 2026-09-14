@@ -182,16 +182,13 @@ export function ProductsTab({ saveActions, onSave }: ProductsTabProps) {
           >
             <Icons.add className="h-5 w-5" aria-hidden="true" />
           </button>
-          {wardrobe.map((t, i) => (
+          {wardrobe.map((t) => (
             <button
               key={t.id}
               type="button"
               onClick={() => openProduct(t)}
               title={t.title}
-              className={cn(
-                "relative h-[168px] w-[112px] shrink-0 overflow-hidden rounded-lg border border-hairline bg-background",
-                i % 2 === 0 ? "-rotate-[0.6deg]" : "rotate-[0.6deg]",
-              )}
+              className="relative h-[168px] w-[112px] shrink-0 overflow-hidden rounded-lg border border-hairline bg-background"
             >
               {/* Same framing as the tiles below — a raw img here showed the
                   garment adrift in the transparent canvas it was cut from. */}

@@ -455,7 +455,12 @@ export function OutfitInspirationCard({
     // frame owns the corner radius, so the well itself is square-cornered. Some
     // cards flip to the dark charcoal grid (canvas mix).
     // Plain ground: the woven warp/weft texture went with the Kalagriha palette.
-    framed ? (darkCard ? "bg-ink-deep rounded-none" : "bg-background rounded-none") : "rounded-xl",
+    // V2: the frame is the figure's alone; the name sits under it, outside.
+    framed
+      ? darkCard
+        ? "rounded-frame border border-ink-line bg-ink-deep"
+        : "rounded-frame border border-hairline bg-background"
+      : "rounded-xl",
     isFluid && fluidLayout === "card" && "h-full",
   )
 
@@ -475,11 +480,7 @@ export function OutfitInspirationCard({
       ref={articleRef}
       className={cn(
         "relative flex flex-col",
-        framed
-          ? darkCard
-            ? "gap-0 overflow-hidden rounded-frame border border-ink-line bg-ink-deep shadow-[0_1px_3px_rgba(0,0,0,0.05)]"
-            : "gap-0 overflow-hidden rounded-frame border border-hairline bg-background"
-          : "gap-1",
+        framed ? "gap-1.5" : "gap-1",
         isFluid ? "h-full" : config.containerWidth,
         className,
       )}
@@ -645,33 +646,24 @@ export function OutfitInspirationCard({
             "flex flex-col gap-0.5",
             // Fixed footer height so every framed card's meta block is identical —
             // the grid reads this height to size the avatar, so uniform footers give
-            // a uniform grid regardless of title length.
-            framed &&
-              (darkCard
-                ? "h-[46px] overflow-hidden border-t border-ink-line px-2 pb-2 pt-1.5"
-                : "h-[46px] overflow-hidden border-t border-hairline px-2 pb-2 pt-1.5"),
+            // a uniform grid regardless of title length. One line: the name.
+            framed && "h-5 overflow-hidden px-0.5",
           )}
         >
           {showTitle && title ? (
             <p
               className={cn(
                 framed
-                  ? cn("line-clamp-1 text-[11.5px] font-semibold leading-snug", darkCard ? "text-on-ink-2" : "text-foreground")
+                  ? "truncate text-card font-medium leading-tight text-ink"
                   : cn("text-[9px] font-normal text-foreground", config.titleClamp),
               )}
             >
               {title}
             </p>
           ) : null}
-          {/* Canvas card: name + one small line (piece count) — no tag chips. Chips
+          {/* Framed card: the name only — no piece count, no tag chips. Chips
               stay only on the unframed studio card. */}
-          {framed ? (
-            resolvedRenderedItems.length > 0 ? (
-              <p className={cn("text-[10px] leading-none", darkCard ? "text-on-ink-1" : "text-taupe")}>
-                {resolvedRenderedItems.length} {resolvedRenderedItems.length === 1 ? "piece" : "pieces"}
-              </p>
-            ) : null
-          ) : visibleChips.length ? (
+          {framed ? null : visibleChips.length ? (
             <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap scrollbar-hide">
               {visibleChips.map((chip, index) => (
                 <span

@@ -45,7 +45,7 @@ export function AlternatesRack({
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col", className)}>
       {queryLine ? (
-        <div className="box-border flex h-[34px] flex-none items-center gap-1.5 border-b border-hairline px-2">
+        <div className="box-border flex h-[34px] flex-none items-center gap-1.5 border-b border-hairline pl-2">
           <span className="min-w-0 flex-1 truncate text-chip font-medium tracking-[0.08em] text-ink">
             {queryLine}
           </span>
@@ -60,7 +60,8 @@ export function AlternatesRack({
         </div>
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2 scrollbar-hide">
+      {/* No right padding: with the scrollbar gone the tiles run to the edge. */}
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-2 pl-2 scrollbar-hide">
         {isLoading ? (
           <div className="grid grid-cols-2 content-start gap-1.5">
             {Array.from({ length: 6 }).map((_, index) => (

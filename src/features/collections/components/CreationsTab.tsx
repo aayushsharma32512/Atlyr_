@@ -299,10 +299,10 @@ export function CreationsTab() {
     <>
     <div className={frameClass}>
       {/* Container — edge to edge, takes whatever the card leaves. */}
-      <div className="relative min-h-0 flex-1 overflow-hidden border-y border-hairline bg-background">
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden border-y border-hairline bg-background">
         <div
           ref={trackRef}
-          className="flex h-full w-full snap-x snap-mandatory overflow-x-auto overflow-y-hidden scrollbar-hide"
+          className="flex min-h-0 w-full flex-1 snap-x snap-mandatory overflow-x-auto overflow-y-hidden scrollbar-hide"
         >
           {creations.map((creation, index) => (
             <div
@@ -336,19 +336,18 @@ export function CreationsTab() {
           ))}
         </div>
 
-        {/* Expand — the artboard's disc, moved to the top right. */}
+        {/* Expand — bare glyph, top right. No disc anywhere in V2. */}
         <button
           type="button"
           onClick={() => setIsExpanded(true)}
           aria-label="Expand look"
-          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full border border-hairline bg-white text-ink"
+          className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center text-ink"
         >
           <Icons.expand className="h-4 w-4" aria-hidden="true" />
         </button>
 
-        {/* Pager — two discs on the side rails. The artboard's dot pill sat over
-            the figure's feet, so the dots are gone and only the arrows remain;
-            swiping the track still works and drives the same state. */}
+        {/* Pager — bare charcoal arrows on the side rails, dots under them.
+            Swiping the track still works and drives the same state. */}
         {totalSlides > 1 ? (
           <>
             <button
@@ -356,21 +355,40 @@ export function CreationsTab() {
               onClick={() => goTo(currentSlide - 1)}
               disabled={currentSlide === 0}
               aria-label="Previous look"
-              className="absolute left-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-hairline bg-white/85 text-ink backdrop-blur disabled:opacity-40"
+              className="absolute left-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center text-ink disabled:opacity-30"
             >
-              <Icons.carouselPrev className="h-4 w-4" aria-hidden="true" />
+              <Icons.carouselPrev className="h-5 w-5" aria-hidden="true" />
             </button>
             <button
               type="button"
               onClick={() => goTo(currentSlide + 1)}
               disabled={currentSlide === totalSlides - 1}
               aria-label="Next look"
-              className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-hairline bg-white/85 text-ink backdrop-blur disabled:opacity-40"
+              className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center text-ink disabled:opacity-30"
             >
-              <Icons.carouselNext className="h-4 w-4" aria-hidden="true" />
+              <Icons.carouselNext className="h-5 w-5" aria-hidden="true" />
             </button>
           </>
         ) : null}
+          {/* Plain dots under the chevrons — no pill. The track above stops short
+              of them, so they sit on the ground, never on the figure's feet. */}
+          {totalSlides > 1 ? (
+            <div className="flex h-6 flex-none items-center justify-center gap-1.5" role="tablist" aria-label="Looks">
+              {creations.map((creation, index) => (
+                <button
+                  key={creation.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={index === currentSlide}
+                  aria-label={`Look ${index + 1}`}
+                  onClick={() => goTo(index)}
+                  className="flex h-4 w-4 items-center justify-center"
+                >
+                  <span className={cn("h-1.5 w-1.5 rounded-full", index === currentSlide ? "bg-charcoal" : "bg-faint")} />
+                </button>
+              ))}
+            </div>
+          ) : null}
       </div>
 
       {/* Card — 170h: three 32h rows over the action pair, as in the artboard. */}
@@ -456,10 +474,10 @@ export function CreationsTab() {
 
         {/* Its own track, driven by the same currentSlide. Swiping here moves the
             look behind the overlay too, so closing lands on what you were seeing. */}
-        <div className="relative min-h-0 flex-1">
+        <div className="relative flex min-h-0 flex-1 flex-col">
           <div
             ref={fullscreenTrackRef}
-            className="flex h-full w-full snap-x snap-mandatory overflow-x-auto overflow-y-hidden scrollbar-hide"
+            className="flex min-h-0 w-full flex-1 snap-x snap-mandatory overflow-x-auto overflow-y-hidden scrollbar-hide"
           >
             {creations.map((creation, index) => (
               <div
@@ -517,14 +535,33 @@ export function CreationsTab() {
 
             </>
           ) : null}
+          {/* Plain dots under the chevrons — no pill. The track above stops short
+              of them, so they sit on the ground, never on the figure's feet. */}
+          {totalSlides > 1 ? (
+            <div className="flex h-6 flex-none items-center justify-center gap-1.5" role="tablist" aria-label="Looks">
+              {creations.map((creation, index) => (
+                <button
+                  key={creation.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={index === currentSlide}
+                  aria-label={`Look ${index + 1}`}
+                  onClick={() => goTo(index)}
+                  className="flex h-4 w-4 items-center justify-center"
+                >
+                  <span className={cn("h-1.5 w-1.5 rounded-full", index === currentSlide ? "bg-charcoal" : "bg-faint")} />
+                </button>
+              ))}
+            </div>
+          ) : null}
 
-          {/* Collapse — white disc, top right on the figure, the same spot
+          {/* Collapse — bare glyph, top right on the figure, the same spot
               the Creations card puts its expand control. */}
           <button
             type="button"
             onClick={() => setIsExpanded(false)}
             aria-label="Collapse look"
-            className="absolute right-5 top-5 flex h-9 w-9 items-center justify-center rounded-full border border-hairline bg-white text-ink"
+            className="absolute right-5 top-5 flex h-9 w-9 items-center justify-center text-ink"
           >
             <Icons.collapse className="h-4 w-4" aria-hidden="true" />
           </button>

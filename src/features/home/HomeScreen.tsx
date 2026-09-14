@@ -5,15 +5,12 @@ import { supabase } from "@/integrations/supabase/client"
 
 import { Button } from "@/components/ui/button"
 import {
-  FilterSearchBar,
-  type FilterSearchBarChip,
   OutfitInspirationGrid,
   ProductResultsGrid,
   RecentStylesRail,
   SectionHeader,
   MoodboardPickerDrawer,
   SaveOutfitDrawer,
-  WordmarkLockup,
   type FilterCategory,
 } from "@/design-system/primitives"
 import { AppShellLayout } from "@/layouts/AppShellLayout"
@@ -422,11 +419,12 @@ export function HomeScreenView() {
   const moodboardTabs = useMemo<MoodboardTab[]>(() => {
     const systemOrder = ["for-you", "wardrobe", "try-ons", "favorites", "all-outfits"]
     const labels: Record<string, string> = {
-      wardrobe: "Wardrobe",
-      "try-ons": "Try-ons",
-      favorites: "Favorites",
-      "for-you": "For You",
-      "all-outfits": "All Outfits",
+      // V2 casing: pills and board titles are lowercase.
+      wardrobe: "wardrobe",
+      "try-ons": "try-ons",
+      favorites: "favorites",
+      "for-you": "for you",
+      "all-outfits": "all outfits",
     }
     const systemTabs: MoodboardTab[] = systemOrder.map((slug) => ({
       id: slug,
@@ -1155,26 +1153,6 @@ export function HomeScreenView() {
     setUploadedImageUrl(undefined)
   }, [])
 
-  const filterChips = useMemo<FilterSearchBarChip[]>(
-    () => [
-      {
-        id: "products",
-        label: "Products",
-        isActive: activeFilter === "products",
-        onActivate: () => handleFilterChange("products"),
-        onDeactivate: () => handleFilterToggle(),
-      },
-      {
-        id: "outfits",
-        label: "Outfits",
-        isActive: activeFilter === "outfits",
-        onActivate: () => handleFilterChange("outfits"),
-        onDeactivate: () => handleFilterToggle(),
-      },
-    ],
-    [activeFilter, handleFilterChange, handleFilterToggle],
-  )
-
   const handleMoodboardSelect = useCallback(
     (nextId: string) => {
       setActiveMoodboardId(nextId)
@@ -1790,14 +1768,15 @@ export function HomeScreenView() {
         ) : (
           <div
             ref={scrollContainerRef}
-            className="flex flex-1 min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-24 pt-[130px]"
+            className="flex flex-1 min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-24 pt-[44px]"
             onScroll={(event) => handleScroll(event.currentTarget.scrollTop)}
           >
             <div
               className={cn(
                 // No px-4 here: the tab bar carries the gutter itself, so it lines up with
                 // the Collections header's tabs rather than sitting 32px in.
-                "fixed top-[88px] inset-x-0 z-10 mx-auto w-full max-w-[24.5rem] md:max-w-[47rem] lg:max-w-[62rem] xl:max-w-[78rem] transition-transform transition-opacity duration-200",
+                // Top of the page now: the board has no search bar or wordmark above its pills.
+                "fixed top-0 inset-x-0 z-10 mx-auto w-full max-w-[24.5rem] md:max-w-[47rem] lg:max-w-[62rem] xl:max-w-[78rem] transition-transform transition-opacity duration-200",
                 // Hide the tab row while the search is focused so the expanded
                 // search sheet (with its filter pill) doesn't overlap it.
                 isTopBarVisible && !isSearchFocused ? "translate-y-0 opacity-100" : "-translate-y-6 opacity-0 pointer-events-none",
@@ -1813,7 +1792,7 @@ export function HomeScreenView() {
               <>
                 <BoardDetailHeader
                   slug="try-ons"
-                  label="Try-ons"
+                  label="try-ons"
                   itemCount={tryOnItems.length}
                   canManage={false}
                   onBack={() => navigate("/collection")}
@@ -1825,7 +1804,7 @@ export function HomeScreenView() {
               <>
                 <BoardDetailHeader
                   slug="favorites"
-                  label="Favorites"
+                  label="favorites"
                   itemCount={favoritesItems.length}
                   canManage={false}
                   onBack={() => navigate("/collection")}
@@ -1837,7 +1816,7 @@ export function HomeScreenView() {
               <>
                 <BoardDetailHeader
                   slug="all-outfits"
-                  label="All Outfits"
+                  label="all outfits"
                   canManage={false}
                   onBack={() => navigate("/collection")}
                   onDeleted={() => navigate("/collection")}
@@ -1961,90 +1940,6 @@ export function HomeScreenView() {
           </div>
         )}
       </div>
-
-      {/* The wordmark and search stay put on every board. They used to be hidden
-          whenever isItemMoodboardActive was true — Wardrobe and user boards — so
-          the chrome vanished on those two but stayed on Try-ons, Favorites and
-          All Outfits. The scroll container reserves pt-[130px] for this row
-          either way, so hiding it only left a gap. */}
-      {!isResultsMode && (
-        <div className="pointer-events-none fixed inset-x-0 top-3 z-20">
-          {/* House wordmark — pinned to the far-left edge of the screen (canvas 6d),
-              its own row above the centred search. Non-interactive, so it never
-              blocks the feed behind it. */}
-          <div className="mb-1.5 pl-4 md:pl-6">
-            <WordmarkLockup size="header" />
-          </div>
-          <div
-            className={cn(
-              "pointer-events-auto mx-auto w-full px-2 max-w-[24.5rem] md:max-w-[34rem]",
-              // Opaque backing while focused so the expanded search (filter pill +
-              // input) never shows the feed through it.
-              isSearchFocused && "rounded-frame bg-background/95 backdrop-blur-sm",
-            )}
-          >
-            <FilterSearchBar
-              className="rounded-frame"
-              value={searchTerm}
-              onValueChange={handleSearchChange}
-              filters={isSearchFocused ? filterChips : undefined}
-              pillPosition={isSearchFocused ? "top" : "none"}
-              variant="elevated"
-              onSubmit={handleSubmit}
-              onClear={handleClear}
-              placeholder={isSearchFocused
-                ? (activeFilter === "products" ? "Search products..." : "Search outfits...")
-                : "Search outfits & pieces"
-              }
-              trailingAction={searchTerm.trim().length > 0 ? undefined : null}
-              onFocus={() => setIsSearchFocused(true)}
-              onBlur={() => setIsSearchFocused(false)}
-              
-              onImageUpload={handleImageUpload}
-              isUploadingImage={isUploading}
-              previewImageUrl={uploadedImageUrl}
-              onClearImage={handleClearImage}
-              showCompactPreview={false}
-
-              leadingActions={null}
-            />
-          </div>
-        </div>
-      )}
-
-      {isResultsMode && (
-        <div
-          className={cn(
-            "pointer-events-none fixed inset-x-0 top-[0.5rem] z-10 transition-transform transition-opacity duration-200",
-            isTopBarVisible ? "translate-y-0 opacity-100" : "-translate-y-6 opacity-0",
-          )}
-        >
-          <div
-            className={cn("pointer-events-auto mx-auto w-full px-2 max-w-[24.5rem] md:max-w-[34rem]", !isTopBarVisible && "pointer-events-none")}
-          >
-            <FilterSearchBar
-              className="rounded-frame"
-              value={searchTerm}
-              onValueChange={handleSearchChange}
-              filters={filterChips}
-              pillPosition="bottom"
-              variant="elevated"
-              onSubmit={handleSubmit}
-              onClear={handleClear}
-              placeholder={activeFilter === "products" ? "Search products" : "Search outfits"}
-              trailingAction={searchTerm.trim().length > 0 ? undefined : null}
-              
-              onImageUpload={handleImageUpload}
-              isUploadingImage={isUploading}
-              previewImageUrl={uploadedImageUrl}
-              onClearImage={handleClearImage}
-              showCompactPreview={isResultsMode}
-
-              leadingActions={null}
-            />
-          </div>
-        </div>
-      )}
 
       {/* 6f board-detail action bar — Add to board · Style this look → */}
       {!isResultsMode && isItemMoodboardActive && (

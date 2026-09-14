@@ -21,6 +21,8 @@ export interface StudioSaveCardProps {
   boards: StudioSaveBoard[]
   /** Look saves: how many pieces are worn, for the "save look · N pieces" callout. */
   pieceCount?: number
+  /** Fits Studio's 170px band: no callout line, shorter field and buttons. */
+  compact?: boolean
   defaultBoardSlugs?: string[]
   isSaving?: boolean
   onSave: (data: { name: string; tags: string[]; boardSlugs: string[] }) => void
@@ -44,6 +46,7 @@ export function StudioSaveCard({
   defaultTags = [],
   boards,
   pieceCount,
+  compact = false,
   defaultBoardSlugs = [],
   isSaving = false,
   onSave,
@@ -82,18 +85,20 @@ export function StudioSaveCard({
   }
 
   return (
-    <div className={cn("flex flex-1 flex-col justify-start gap-1.5", className)}>
+    <div className={cn("flex flex-1 flex-col justify-start", compact ? "gap-1" : "gap-1.5", className)}>
       {/* Callout row: what is being saved. */}
-      <p className="text-chip text-taupe">
-        {isLook
-          ? typeof pieceCount === "number"
-            ? `save look · ${pieceCount} ${pieceCount === 1 ? "piece" : "pieces"}`
-            : "save look"
-          : "save item"}
-      </p>
+      {compact ? null : (
+        <p className="text-chip text-taupe">
+          {isLook
+            ? typeof pieceCount === "number"
+              ? `save look · ${pieceCount} ${pieceCount === 1 ? "piece" : "pieces"}`
+              : "save look"
+            : "save item"}
+        </p>
+      )}
       {hasDetails ? (
       <>
-      <label className="box-border flex h-11 flex-none items-center gap-1.5 rounded-control border border-hairline bg-white pl-2.5 pr-1">
+      <label className={cn("box-border flex flex-none items-center gap-1.5 rounded-control border border-hairline bg-white pl-2.5 pr-1", compact ? "h-9" : "h-11")}>
         <span className="sr-only">Look name</span>
         <input
           value={name}
@@ -186,7 +191,8 @@ export function StudioSaveCard({
           type="button"
           onClick={onCancel}
           className={cn(
-            "box-border flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control",
+            "box-border flex flex-1 items-center justify-center gap-2 rounded-control",
+            compact ? "h-control-secondary" : "h-control-primary",
             "border border-hairline bg-white text-label font-semibold text-ink",
           )}
         >
@@ -198,7 +204,8 @@ export function StudioSaveCard({
           disabled={isSaving}
           onClick={() => onSave({ name: name.trim() || (defaultName ?? ""), tags, boardSlugs })}
           className={cn(
-            "box-border flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control",
+            "box-border flex flex-1 items-center justify-center gap-2 rounded-control",
+            compact ? "h-control-secondary" : "h-control-primary",
             "bg-primary text-label font-semibold text-primary-foreground disabled:opacity-60",
           )}
         >

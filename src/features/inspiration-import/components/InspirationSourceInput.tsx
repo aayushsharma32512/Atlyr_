@@ -83,16 +83,19 @@ export function InspirationSourceInput({ file, isPending, error, intent = "inspi
         ) : null}
       </button>
 
-      {/* The camera: on a phone this opens the camera directly, elsewhere the picker. */}
-      <button
-        type="button"
-        disabled={isPending}
-        onClick={() => inputRef.current?.click()}
-        className="flex h-11 flex-none items-center justify-center gap-2 rounded-control border border-hairline bg-white text-card font-medium text-ink disabled:opacity-50"
-      >
-        <Icons.camera className="h-[18px] w-[18px]" aria-hidden="true" />
-        camera
-      </button>
+      {/* The camera: on a phone this opens the camera directly, elsewhere the
+          picker. Wardrobe pieces come from the gallery, so that flow has none. */}
+      {intent === "wardrobe" ? null : (
+        <button
+          type="button"
+          disabled={isPending}
+          onClick={() => inputRef.current?.click()}
+          className="flex h-11 flex-none items-center justify-center gap-2 rounded-control border border-hairline bg-white text-card font-medium text-ink disabled:opacity-50"
+        >
+          <Icons.camera className="h-[18px] w-[18px]" aria-hidden="true" />
+          camera
+        </button>
+      )}
 
       <input
         ref={inputRef}
