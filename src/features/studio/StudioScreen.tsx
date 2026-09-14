@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useNavigate, useNavigationType, useSearchParams } from "react-router-dom"
-import { useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { ChevronLeft, Redo2, RotateCcw, Share, Undo2 } from "lucide-react"
 
 import { IconButton, OutfitInspirationTile } from "@/design-system/primitives"
@@ -31,7 +31,7 @@ import { prefetchStudioAlternatives } from "@/features/studio/hooks/useStudioAlt
 import { useStudioSwapActions } from "@/features/studio/hooks/useStudioSwapActions"
 import { prefetchStudioSearchResults } from "@/features/studio/hooks/useStudioSearchResults"
 import { useStudioResolvedSlots } from "@/features/studio/hooks/useStudioResolvedSlots"
-import type { StudioProductTrayItem, StudioProductTraySlot } from "@/services/studio/studioService"
+import { studioService, type StudioProductTrayItem, type StudioProductTraySlot } from "@/services/studio/studioService"
 import { buildStudioSearchParams, buildStudioUrl, parseStudioSearchParams, type SlotIdMap } from "@/features/studio/utils/studioUrlState"
 import { mapLegacyOutfitItemsToStudioItems, mapTrayItemToStudioRenderedItem } from "@/features/studio/mappers/renderedItemMapper"
 import type { StudioRenderedItem } from "@/features/studio/types"
@@ -61,6 +61,25 @@ import { useOptionalAdminGender } from "@/features/admin/providers/AdminGenderCo
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
 import { setPendingStudioComboChange, useStudioCombinationTracking } from "@/integrations/posthog/engagementTracking/studio/studioTracking"
 import { trackTryonFlowStarted } from "@/integrations/posthog/engagementTracking/tryon/tryonTracking"
+
+/** Product drawn on the canvas in place of a removed top/bottom. Missing entry = bare mannequin. */
+const PLACEHOLDER_PRODUCT_IDS: Record<"male" | "female", { top?: string; bottom?: string }> = {
+  // TODO: Aayush — swap in the grey placeholder product IDs (female top/bottom, male top/bottom)
+  female: { bottom: "bb1064983005bebc85a2258ca8a264890b07a87d" },
+  male: {},
+}
+
+function usePlaceholderProduct(productId: string | undefined) {
+  // Own cache key: studioKeys.product holds StudioProductDetail, a different shape.
+  return useQuery({
+    queryKey: [...studioKeys.all, "placeholder-product", productId ?? "none"],
+    queryFn: () => studioService.getProductById(productId as string),
+    enabled: Boolean(productId),
+    // Same for every user: fetch once per page load, never evict.
+    staleTime: Infinity,
+    gcTime: Infinity,
+  }).data ?? null
+}
 
 const DEFAULT_AVATAR_HEAD = "/avatars/Default.png"
 
@@ -98,6 +117,10 @@ export function StudioScreenView() {
   const avatarHeadSrc = outfitData?.avatarHeadSrc ?? DEFAULT_AVATAR_HEAD
   const avatarGender = outfitData?.avatarGender ?? "female"
   const avatarHeightCm = outfitData?.avatarHeightCm ?? 170
+  // Shown on the canvas when a slot is ×'d, so the mannequin isn't bare. Canvas-only:
+  // tray, outfitItems, search and save never see it.
+  const placeholderTop = usePlaceholderProduct(PLACEHOLDER_PRODUCT_IDS[avatarGender]?.top)
+  const placeholderBottom = usePlaceholderProduct(PLACEHOLDER_PRODUCT_IDS[avatarGender]?.bottom)
   const traySourceId = outfitData?.trayItems?.length
     ? null
     : (outfitId ?? selectedOutfitId ?? studioAvatar?.id ?? null)
@@ -475,6 +498,11 @@ export function StudioScreenView() {
       if (!slot) {
         return
       }
+      // Tapping the placeholder picks a real piece rather than focusing a product we don't have.
+      if (hiddenSlots[slot]) {
+        openAlternativesSplit(slot, { forceSlot: true })
+        return
+      }
 
       // Warm the rack and seed the hero, so Alternates opens populated when the
       // focus sheet hands off to it.
@@ -495,8 +523,10 @@ export function StudioScreenView() {
     },
     [
       gender,
+      hiddenSlots,
       isViewOnly,
       normalizeSlot,
+      openAlternativesSplit,
       openFocus,
       queryClient,
       resolvedTrayItems,
@@ -549,7 +579,8 @@ export function StudioScreenView() {
     return zones
       .map((zone) => {
         if (hiddenSlots[zone]) {
-          return null
+          const placeholder = zone === "top" ? placeholderTop : zone === "bottom" ? placeholderBottom : null
+          return mapTrayItemToStudioRenderedItem(placeholder)
         }
         const trayItem = trayByZone.get(zone)
         const baseItem = baseByZone.get(zone)
@@ -565,7 +596,7 @@ export function StudioScreenView() {
         return baseItem ?? null
       })
       .filter((item): item is StudioRenderedItem => Boolean(item))
-  }, [hiddenSlots, outfitData?.studioOutfit?.renderedItems, resolvedTrayItems])
+  }, [hiddenSlots, outfitData?.studioOutfit?.renderedItems, placeholderBottom, placeholderTop, resolvedTrayItems])
   const isLoadingOverrides = slotsResolving && Boolean(requestedSlotIds.top || requestedSlotIds.bottom || requestedSlotIds.shoes)
 
   const outfitItems = useMemo(
