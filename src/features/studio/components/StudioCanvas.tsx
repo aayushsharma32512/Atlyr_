@@ -23,11 +23,10 @@ const FOCUS_BANDS: Record<StudioCanvasSlot, FocusBand> = {
   // Head stays in frame; the window grows downward.
   // 20% under the shared 2.2 cap.
   top: { start: 0.08, end: 0.52, anchor: "start", maxZoom: 1.76 },
-  // Sits low: the window's slack lands on the anchored edge, so anchoring at
-  // the ankle put every spare pixel on the top's hem. Ends just past the ankle
-  // and carries its own cap — the shared 2.2 made the window far taller than
-  // the band. Wide-leg trousers clip sideways above 2.7; now 20% under that.
-  bottom: { start: 0.53, end: 0.9, anchor: "end", maxZoom: 2.16 },
+  // Frame opens above the waist (`start`) and runs to just past the ankle
+  // (`end`); the band's height sets the zoom, so raising `start` also zooms out.
+  // Wide-leg trousers clip sideways above 2.7; capped 20% under that.
+  bottom: { start: 0.4, end: 0.9, anchor: "start", maxZoom: 1.76 },
   // Sits in the middle of the frame, with ground beneath — the zone is too
   // short to fill the window, and pinning it to the feet left it in the
   // bottom third.
