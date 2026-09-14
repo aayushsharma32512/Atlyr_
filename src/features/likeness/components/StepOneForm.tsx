@@ -122,7 +122,7 @@ export function StepOneForm({
                 className={cn(
                   'relative w-full overflow-hidden',
                   isDrawer
-                    ? cn('rounded-[5px] border border-hairline bg-card', faceSelfiePhoto ? 'aspect-[3/4]' : 'h-[86px]')
+                    ? cn('rounded-control border border-hairline bg-white', faceSelfiePhoto ? 'aspect-[3/4]' : 'h-[86px]')
                     : 'aspect-[2/3] bg-muted rounded-[10px]',
                 )}
               >
@@ -218,7 +218,7 @@ export function StepOneForm({
                 className={cn(
                   'relative w-full overflow-hidden',
                   isDrawer
-                    ? cn('rounded-[5px] border border-hairline bg-card', fullBodyPhoto ? 'aspect-[3/4]' : 'h-[86px]')
+                    ? cn('rounded-control border border-hairline bg-white', fullBodyPhoto ? 'aspect-[3/4]' : 'h-[86px]')
                     : 'aspect-[2/3] bg-muted rounded-[10px]',
                 )}
               >
@@ -327,7 +327,7 @@ export function StepOneForm({
               <Button
                 type="button"
                 onClick={handleGenerate}
-                className="flex h-11 w-full items-center justify-center rounded-[3px] bg-primary px-4 shadow-sm"
+                className="flex h-11 w-full items-center justify-center rounded-control bg-primary px-4 shadow-sm"
                 disabled={!fullBodyPhoto || !faceSelfiePhoto || isSaving}
               >
                 <span className="text-[12px] font-bold text-primary-foreground">

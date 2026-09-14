@@ -268,7 +268,7 @@ export function TryOnPreviewOverlay({
           {activeItem.outfitId ? (
             <Button
               variant="secondary"
-              className="pointer-events-auto h-10 rounded-[3px] bg-transparent px-4 py-0.5 text-sm font-semibold shadow-none hover:bg-transparent"
+              className="pointer-events-auto h-10 rounded-control bg-transparent px-4 py-0.5 text-sm font-semibold shadow-none hover:bg-transparent"
               onClick={() => onOpenStudio(activeItem)}
             >
               Studio

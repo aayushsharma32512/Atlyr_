@@ -65,7 +65,9 @@ export function FloatingProgressHub() {
     if (activeJobs.length > 1) return `${activeJobs.length} things in progress…`
     return activeJobs[0].type === "likeness"
       ? "Building your likeness…"
-      : "Dressing your likeness…"
+      : activeJobs[0].type === "import"
+        ? "Finding pieces…"
+        : "Dressing your likeness…"
   })()
 
   // Collapse the tray whenever the hub itself closes, so reopening the hub
@@ -397,7 +399,7 @@ export function FloatingProgressHub() {
                       event.stopPropagation()
                       setIsTrayOpen((open) => !open)
                     }}
-                    className="relative inline-flex h-7 w-7 items-center justify-center rounded-[3px] text-ink-body"
+                    className="relative inline-flex h-7 w-7 items-center justify-center rounded-control text-ink-body"
                     aria-label="Notifications"
                     aria-expanded={isTrayOpen}
                   >
@@ -408,7 +410,7 @@ export function FloatingProgressHub() {
                   </button>
                   <button
                     onClick={() => setIsExpanded(false)}
-                    className="h-7 w-7 inline-flex items-center justify-center rounded-[3px]"
+                    className="h-7 w-7 inline-flex items-center justify-center rounded-control"
                     aria-label="Close"
                   >
                     <X className="h-3.5 w-3.5" />

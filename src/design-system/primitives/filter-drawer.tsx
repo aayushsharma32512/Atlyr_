@@ -323,7 +323,7 @@ export function FilterDrawer({
                   <Badge
                     key={filterId}
                     variant="secondary"
-                    className="gap-1.5 px-2.5 py-1 text-xs border-hairline h-8 rounded-[3px] bg-card"
+                    className="gap-1.5 px-2.5 py-1 text-xs border-hairline h-8 rounded-control bg-card"
                   >
                     {getFilterLabel(filterId)}
                     <button
@@ -463,13 +463,13 @@ export function FilterDrawer({
           <Button
             variant="outline"
             onClick={handleClearAll}
-            className="flex-1 rounded-[3px] border-hairline bg-transparent text-foreground hover:bg-editorial/40"
+            className="flex-1 rounded-control border-hairline bg-transparent text-foreground hover:bg-editorial/40"
             disabled={displayedFilters.length === 0 && minPrice === "0" && maxPrice === "0"}
           >
             Clear All
           </Button>
           {/* Apply is the sheet's single filled terracotta action. */}
-          <Button onClick={handleApply} className="flex-1 rounded-[3px] bg-primary font-semibold text-primary-foreground hover:bg-primary/90">
+          <Button onClick={handleApply} className="flex-1 rounded-control bg-primary font-semibold text-primary-foreground hover:bg-primary/90">
             Apply
           </Button>
         </DrawerFooter>

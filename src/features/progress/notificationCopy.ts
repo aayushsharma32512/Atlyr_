@@ -1,28 +1,32 @@
-import { CheckCircle2, Sparkles } from "lucide-react"
+import { CheckCircle2, Globe, Sparkles } from "lucide-react"
 
 import type { Job } from "./providers/JobsContext"
 
-// Two job types only — JobType is "likeness" | "tryon". Wardrobe work is not
-// tracked as a job anywhere, so there is nothing to show for it yet.
+// Three job types: try-on, likeness, and an inspiration import while its
+// pieces are being detected (the "find items" flow).
 export const TYPE_LABEL: Record<Job["type"], string> = {
   tryon: "Try-on",
   likeness: "Likeness",
+  import: "Find items",
 }
 
 export const TYPE_ICON: Record<Job["type"], React.ComponentType<{ className?: string }>> = {
   tryon: Sparkles,
   likeness: CheckCircle2,
+  import: Globe,
 }
 
 export const READY_TITLE: Record<Job["type"], string> = {
   tryon: "Your look is ready",
   likeness: "Your likeness is saved",
+  import: "Pieces found for your inspiration",
 }
 
 // Names the work rather than counting it.
 export const PROCESSING_TITLE: Record<Job["type"], string> = {
   tryon: "Dressing your likeness…",
   likeness: "Building your likeness…",
+  import: "Finding pieces…",
 }
 
 /** Finished work — ready or failed, newest first. */
@@ -62,6 +66,7 @@ export function jobProgress(job: Job) {
  */
 export function jobStage(job: Job) {
   if (job.status !== "processing") return ""
+  if (job.type === "import") return "Finding pieces"
   const progress = jobProgress(job)
 
   if (job.type === "likeness") {

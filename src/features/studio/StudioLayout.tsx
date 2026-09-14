@@ -6,6 +6,7 @@ import { StudioContextProvider } from "./context/StudioContext"
 import { isStudioProductPath, rememberStudioLastPath } from "@/features/studio/constants"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { useStudioShareMode } from "@/features/studio/hooks/useStudioShareMode"
+import { useStudioFocus } from "@/features/studio/hooks/useStudioFocus"
 import { StudioTourProvider } from "./context/StudioTourContext"
 import { StudioTour } from "./components/StudioTour"
 
@@ -22,6 +23,8 @@ export function StudioLayout({ children }: StudioLayoutProps) {
   const location = useLocation()
   const { isViewOnly } = useStudioShareMode()
   const { gender } = useProfileContext()
+  // Focus zoom owns the whole frame too: no tab bar under a zoomed piece.
+  const { focus } = useStudioFocus()
 
   useEffect(() => {
     // A detail view reached from any tab — remembering it would make the Studio
@@ -35,7 +38,7 @@ export function StudioLayout({ children }: StudioLayoutProps) {
   return (
     <StudioTourProvider>
       <StudioContextProvider>
-        <AppShellLayout hideNav={isAlternatesPath(location.pathname)}>
+        <AppShellLayout hideNav={isAlternatesPath(location.pathname) || Boolean(focus)}>
           {children ?? <Outlet />}
           <StudioTour />
           {isViewOnly ? (

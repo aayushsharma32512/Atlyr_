@@ -1,6 +1,8 @@
 import { useInfiniteQuery } from "@tanstack/react-query"
 
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
+import { toPlacementTransform } from "@/features/studio/mappers/renderedItemMapper"
+import { isPlaceableOnMannequin } from "@/features/studio/utils/placementSupport"
 import { searchKeys } from "@/features/search/queryKeys"
 import {
   type ProductSearchFilters,
@@ -26,6 +28,10 @@ export function useSearchProductResults({ query, imageUrl, enabled, filters = {}
   // Only pass profile gender to the backend when no explicit gender filter is set.
   // When explicit genders are set they are already inside `filters.genders`.
   const effectiveGender = hasExplicitGender ? null : gender
+
+  // The body a result would be worn on, so search never offers a piece the
+  // mannequin silently skips — the same check the Studio rack makes.
+  const mannequin = gender === "male" ? "male" : "female"
 
   // Include gender in the cache key so results refresh when gender changes
   const baseKey = searchKeys.productResults({ query: trimmed, filters, gender })
@@ -54,6 +60,7 @@ export function useSearchProductResults({ query, imageUrl, enabled, filters = {}
         nextCursor: page.nextCursor,
         results: page.results
           .filter((result): result is ProductSearchResult => Boolean(result))
+          .filter((result) => isPlaceableOnMannequin({ placement: toPlacementTransform(result) }, mannequin))
           .filter((result) => {
             const g = result.gender
             if (hasExplicitGender) {

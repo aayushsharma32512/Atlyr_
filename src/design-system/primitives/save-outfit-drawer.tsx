@@ -277,7 +277,7 @@ export function SaveOutfitDrawer({
                     placeholder="E.g., Summer Casual Look"
                     value={outfitName}
                     onChange={(e) => setOutfitName(e.target.value)}
-                    className="h-8 rounded-[3px] border-hairline-4 bg-card text-[11px] text-foreground shadow-none placeholder:text-[11px] placeholder:text-muted-foreground"
+                    className="h-8 rounded-control border-hairline-4 bg-white text-[11px] text-foreground shadow-none placeholder:text-[11px] placeholder:text-muted-foreground"
                     ref={outfitNameRef}
                   />
                 </div>
@@ -286,7 +286,7 @@ export function SaveOutfitDrawer({
                 <div className="flex-1 space-y-1 min-w-0 overflow-hidden p-1">
                   <Label className="pl-0.5 text-[7.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Category</Label>
                   <Select value={categoryId} onValueChange={setCategoryId} disabled={categoriesLoading}>
-                    <SelectTrigger className="h-8 rounded-[3px] border-hairline-4 bg-card text-[11px] text-foreground shadow-none placeholder:text-[11px] placeholder:text-muted-foreground">
+                    <SelectTrigger className="h-8 rounded-control border-hairline-4 bg-white text-[11px] text-foreground shadow-none placeholder:text-[11px] placeholder:text-muted-foreground">
                       <SelectValue placeholder={categoriesLoading ? "Loading…" : "Select category"} />
                     </SelectTrigger>
                     <SelectContent>
@@ -306,7 +306,7 @@ export function SaveOutfitDrawer({
                 <div className="flex-1 p-1 space-y-1 min-w-0 overflow-hidden">
                   <Label className="pl-0.5 text-[7.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Occasion</Label>
                   <Select value={occasionId} onValueChange={setOccasionId} disabled={occasionsLoading}>
-                    <SelectTrigger className="h-8 rounded-[3px] border-hairline-4 bg-card text-[11px] text-foreground shadow-none placeholder:text-[11px] placeholder:text-muted-foreground">
+                    <SelectTrigger className="h-8 rounded-control border-hairline-4 bg-white text-[11px] text-foreground shadow-none placeholder:text-[11px] placeholder:text-muted-foreground">
                       <SelectValue placeholder={occasionsLoading ? "Loading…" : "Select occasion"} />
                     </SelectTrigger>
                     <SelectContent>
@@ -329,7 +329,7 @@ export function SaveOutfitDrawer({
                     placeholder="E.g., Chic, Casual, Bold"
                     value={vibe ?? ""}
                     onChange={(e) => setVibe(e.target.value)}
-                    className="h-8 rounded-[3px] border-hairline-4 bg-card text-[11px] text-foreground shadow-none placeholder:text-[11px] placeholder:text-muted-foreground"
+                    className="h-8 rounded-control border-hairline-4 bg-white text-[11px] text-foreground shadow-none placeholder:text-[11px] placeholder:text-muted-foreground"
                   />
                 </div>
               </div>
@@ -344,7 +344,7 @@ export function SaveOutfitDrawer({
                   placeholder="Summer, Casual, Streetstyle"
                   value={keywords ?? ""}
                   onChange={(e) => setKeywords(e.target.value)}
-                  className="h-8 rounded-[3px] border-hairline-4 bg-card text-[11px] text-foreground shadow-none placeholder:text-[11px] placeholder:text-muted-foreground"
+                  className="h-8 rounded-control border-hairline-4 bg-white text-[11px] text-foreground shadow-none placeholder:text-[11px] placeholder:text-muted-foreground"
                 />
               </div>
 
@@ -381,11 +381,11 @@ export function SaveOutfitDrawer({
                             }
                             disabled={isSubmitting}
                             className={cn(
-                              "inline-flex items-center gap-1 whitespace-nowrap rounded-[3px] border px-2.5 py-1.5",
+                              "inline-flex items-center gap-1 whitespace-nowrap rounded-control border px-2.5 py-1.5",
                               "text-[9.5px] font-medium transition-colors disabled:opacity-60",
                               isSelected
                                 ? "border-ink bg-ink text-on-ink-1"
-                                : "border-hairline-4 bg-card text-ink-body hover:border-ink-line",
+                                : "border-hairline-4 bg-white text-ink-body hover:border-ink-line",
                             )}
                           >
                             {moodboard.label}
@@ -402,7 +402,7 @@ export function SaveOutfitDrawer({
                           }}
                           disabled={isSubmitting}
                           className={cn(
-                            "inline-flex items-center gap-1 whitespace-nowrap rounded-[3px] border border-dashed px-2.5 py-1.5",
+                            "inline-flex items-center gap-1 whitespace-nowrap rounded-control border border-dashed px-2.5 py-1.5",
                             "text-[9.5px] font-medium transition-colors disabled:opacity-60",
                             isCreating
                               ? "border-terracotta text-terracotta"
@@ -437,7 +437,7 @@ export function SaveOutfitDrawer({
                       placeholder="Name your board"
                       autoFocus
                       disabled={isSubmitting}
-                      className="h-8 rounded-[3px] border-hairline-4 bg-card text-[10px] shadow-none placeholder:text-[10px] placeholder:text-muted-foreground"
+                      className="h-8 rounded-control border-hairline-4 bg-white text-[10px] shadow-none placeholder:text-[10px] placeholder:text-muted-foreground"
                     />
                     <Button
                       type="button"
@@ -445,7 +445,7 @@ export function SaveOutfitDrawer({
                       size="sm"
                       onClick={handleCreateNewMoodboard}
                       disabled={isSubmitting}
-                      className="h-8 shrink-0 rounded-[3px] border-hairline-4 px-3 text-[10px] shadow-none"
+                      className="h-8 shrink-0 rounded-control border-hairline-4 px-3 text-[10px] shadow-none"
                     >
                       Add
                     </Button>
@@ -503,7 +503,7 @@ export function SaveOutfitDrawer({
               {/* Center: Save — the screen's one filled terracotta. */}
               <Button
                 onClick={handleSave}
-                className="h-9 w-full min-w-0 gap-1.5 rounded-[3px] bg-primary px-3 text-[11px] font-bold text-primary-foreground hover:bg-primary/90"
+                className="h-9 w-full min-w-0 gap-1.5 rounded-control bg-primary px-3 text-[11px] font-bold text-primary-foreground hover:bg-primary/90"
                 disabled={!isValid || isSubmitting || categoriesLoading || occasionsLoading}
               >
                 <Bookmark className="size-3 shrink-0" aria-hidden="true" />

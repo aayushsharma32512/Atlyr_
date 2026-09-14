@@ -16,7 +16,7 @@ export interface ChipProps {
 }
 
 const BASE =
-  "inline-flex h-control-chip shrink-0 items-center gap-1.5 whitespace-nowrap rounded-control border px-2.5 text-chip font-medium tracking-[0.08em]"
+  "inline-flex h-control-chip shrink-0 items-center gap-1.5 whitespace-nowrap rounded-chip border px-2.5 text-chip font-medium tracking-[0.08em]"
 
 /** 26h chip. Outline at rest, ink fill when active. */
 export function Chip({ label, active = false, mark, icon, onClick, onRemove, className }: ChipProps) {

@@ -103,8 +103,8 @@ export function StudioSlotRows({
                 disabled={isReadOnly}
                 onClick={isReadOnly ? undefined : () => onOpenAlternates(slot)}
                 className={cn(
-                  "flex min-w-0 flex-1 items-center gap-2.5 rounded-[5px] border-[1.5px] border-dashed",
-                  "border-hairline-4 bg-card/40 px-[11px] py-1.5 text-left",
+                  "flex min-w-0 flex-1 items-center gap-2.5 rounded-control border-[1.5px] border-dashed",
+                  "border-hairline-4 bg-white/40 px-[11px] py-1.5 text-left",
                   "disabled:cursor-not-allowed disabled:opacity-60",
                 )}
               >
@@ -155,7 +155,7 @@ export function StudioSlotRows({
                 decorative span with no click of its own. */}
             <div
               className={cn(
-                "flex min-w-0 flex-1 items-center gap-2.5 rounded-[5px] border-[1.5px] border-hairline",
+                "flex min-w-0 flex-1 items-center gap-2.5 rounded-control border-[1.5px] border-hairline",
                 "bg-card pl-[11px] pr-1.5 transition-colors",
                 isReadOnly ? "opacity-60" : "hover:border-hairline-4",
               )}
@@ -196,7 +196,7 @@ export function StudioSlotRows({
                 aria-label={`Other ${label.toLowerCase()} options`}
                 title={`Other ${label.toLowerCase()} options`}
                 className={cn(
-                  "flex size-7 shrink-0 items-center justify-center rounded-[3px] text-terracotta",
+                  "flex size-7 shrink-0 items-center justify-center rounded-control text-terracotta",
                   "transition-colors disabled:cursor-not-allowed",
                   !isReadOnly && "hover:bg-terracotta/10",
                 )}

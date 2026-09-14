@@ -191,3 +191,6 @@ atlyr-app-design-system-creativity-focus/
 
 # Garment image download cache of scripts/outfit_embedding_update.py
 scripts/.cache/
+
+# Design export from Claude Design — reference only, not source
+Atlyr App Design System Creativity Focus/

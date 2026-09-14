@@ -68,14 +68,20 @@ export function OutfitCard({
           : undefined
       }
       className={cn(
-        "flex h-full w-full flex-col overflow-hidden rounded-lg border text-left",
-        dark ? "border-ink-line bg-ink-deep" : "border-hairline bg-card",
+        "flex h-full w-full flex-col gap-1.5 text-left",
         interactive && "cursor-pointer",
         tiltIndex != null && `pin-tilt-${(tiltIndex % 6) + 1}`,
         className,
       )}
     >
-      <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+      {/* V2: the hairline frames the figure only; the name sits below it on
+          the ground. No filled card, and no dark variant. */}
+      <div
+        className={cn(
+          "relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg border bg-background",
+          dark ? "border-ink-line" : "border-hairline",
+        )}
+      >
         <div className="h-full" style={{ aspectRatio: FIGURE_ASPECT }}>
           <OutfitInspirationTile
             preset="moodboardPreview"
@@ -95,7 +101,8 @@ export function OutfitCard({
             style={{ WebkitTouchCallout: "none", userSelect: "none" }}
             className={cn(
               "absolute right-0 top-0 flex h-8 w-8 items-center justify-center",
-              dark ? "text-background" : "text-ink",
+              // Selected hearts are violet everywhere.
+              saved ? "text-violet" : dark ? "text-background" : "text-ink",
             )}
           >
             <Icons.save className="h-4 w-4" fill={saved ? "currentColor" : "none"} aria-hidden="true" />
@@ -103,14 +110,9 @@ export function OutfitCard({
         ) : null}
       </div>
       {footer ? (
-        <div
-          className={cn(
-            "flex min-h-10 shrink-0 flex-col justify-center border-t px-2 py-1",
-            dark ? "border-ink-line" : "border-hairline",
-          )}
-        >
-          <p className={cn("truncate text-card font-semibold", dark ? "text-background" : "text-ink")}>{title}</p>
-          {by ? <p className={cn("truncate text-chip", dark ? "text-on-ink-1" : "text-taupe")}>{by}</p> : null}
+        <div className="flex shrink-0 flex-col justify-center px-0.5">
+          <p className="truncate text-card font-medium text-ink">{title}</p>
+          {by ? <p className="truncate text-chip text-taupe">{by}</p> : null}
         </div>
       ) : null}
     </div>

@@ -21,12 +21,12 @@ type FocusBand = {
 
 const FOCUS_BANDS: Record<StudioCanvasSlot, FocusBand> = {
   // Head stays in frame; the window grows downward.
-  top: { start: 0.08, end: 0.52, anchor: "start" },
-  // Sits low: the window's slack lands on the anchored edge, so anchoring at
-  // the ankle put every spare pixel on the top's hem. Ends just past the ankle
-  // and carries its own cap — the shared 2.2 made the window far taller than
-  // the band. Kept near 2.7 because wide-leg trousers clip sideways above that.
-  bottom: { start: 0.53, end: 0.9, anchor: "end", maxZoom: 2.7 },
+  // 20% under the shared 2.2 cap.
+  top: { start: 0.08, end: 0.52, anchor: "start", maxZoom: 1.76 },
+  // Frame opens above the waist (`start`) and runs to just past the ankle
+  // (`end`); the band's height sets the zoom, so raising `start` also zooms out.
+  // Wide-leg trousers clip sideways above 2.7; capped 20% under that.
+  bottom: { start: 0.4, end: 0.9, anchor: "start", maxZoom: 1.76 },
   // Sits in the middle of the frame, with ground beneath — the zone is too
   // short to fill the window, and pinning it to the feet left it in the
   // bottom third.
@@ -80,9 +80,9 @@ export interface StudioCanvasProps {
   className?: string
 }
 
+// Bare charcoal arrows, no disc (V2: "chevrons everywhere are bare arrows").
 const FOCUS_TOGGLE =
-  "absolute top-1/2 z-[2] flex h-9 w-9 -translate-y-1/2 items-center justify-center " +
-  "rounded-full border border-hairline bg-card/90 text-ink backdrop-blur-[2px]"
+  "absolute top-1/2 z-[2] flex h-11 w-11 -translate-y-1/2 items-center justify-center text-ink"
 
 /** The mannequin container: the figure, plus the two control stacks. */
 export function StudioCanvas({
@@ -98,12 +98,11 @@ export function StudioCanvas({
   return (
     <div
       className={cn(
-        "relative min-h-0 w-full flex-1 overflow-hidden bg-muted/40",
+        "relative min-h-0 w-full flex-1 overflow-hidden bg-background",
         highlight ? "z-[75]" : "z-0",
         className,
       )}
     >
-      <div className="bg-warp-grid pointer-events-none absolute inset-0" aria-hidden="true" />
 
       {/* The figure owns the whole container. The category icons moved to the
           header so they stop costing it width. */}
@@ -133,23 +132,21 @@ export function StudioCanvas({
         </>
       ) : null}
 
-      {/* Focus hands the container to the piece sheet — the controls hide. */}
-      {focus ? null : (
-        <>
-          {historyControls?.length ? (
-            <CanvasControlCluster
-              items={historyControls}
-              className={cn("absolute bottom-3", compact ? "left-1.5" : "left-3")}
-            />
-          ) : null}
-          {lookControls?.length ? (
-            <CanvasControlCluster
-              items={lookControls}
-              className={cn("absolute bottom-3", compact ? "right-1.5" : "right-3")}
-            />
-          ) : null}
-        </>
-      )}
+      {/* The controls stay through focus: undo/redo and reset/share still apply
+          to the zoomed piece, and the focus chevrons sit mid-height, clear of
+          both bottom corners. */}
+      {historyControls?.length ? (
+        <CanvasControlCluster
+          items={historyControls}
+          className={cn("absolute bottom-3", compact ? "left-1.5" : "left-3")}
+        />
+      ) : null}
+      {lookControls?.length ? (
+        <CanvasControlCluster
+          items={lookControls}
+          className={cn("absolute bottom-3", compact ? "right-1.5" : "right-3")}
+        />
+      ) : null}
     </div>
   )
 }

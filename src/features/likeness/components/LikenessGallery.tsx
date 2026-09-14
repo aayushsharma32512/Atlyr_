@@ -63,7 +63,7 @@ export function LikenessGallery({
     <div className={cn("flex min-h-0 flex-1 flex-col bg-ink-deepest", className)}>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-4">
         {active && isSolo ? (
-          <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[6px] border border-gold bg-ink-deep">
+          <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-control border border-gold bg-ink-deep">
             <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-ink">
               {active.imageUrl ? (
                 <img src={active.imageUrl} alt="" className="h-full w-full object-contain" />
@@ -71,7 +71,7 @@ export function LikenessGallery({
                 <span className="text-[8px] uppercase tracking-[0.1em] text-on-ink-3">render</span>
               )}
 
-              <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-[3px] bg-ink-deepest/75 px-1.5 py-1 text-[7.5px] font-bold uppercase tracking-[0.16em] text-gold">
+              <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-control bg-ink-deepest/75 px-1.5 py-1 text-[7.5px] font-bold uppercase tracking-[0.16em] text-gold">
                 <Sparkles className="size-2.5" aria-hidden="true" />
                 Active
               </span>
@@ -82,7 +82,7 @@ export function LikenessGallery({
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label="Open full view"
-                  className="absolute right-2 top-2 rounded-[3px] bg-ink-deepest/75 p-1.5 text-on-ink-2 hover:text-on-ink-1"
+                  className="absolute right-2 top-2 rounded-control bg-ink-deepest/75 p-1.5 text-on-ink-2 hover:text-on-ink-1"
                 >
                   <Maximize2 className="size-3" aria-hidden="true" />
                 </a>
@@ -97,7 +97,7 @@ export function LikenessGallery({
             </div>
           </section>
         ) : active ? (
-          <section className="shrink-0 rounded-[6px] border border-gold bg-ink-deep p-2.5">
+          <section className="shrink-0 rounded-control border border-gold bg-ink-deep p-2.5">
             <div className="flex gap-3">
               <div className="relative h-[92px] w-[74px] shrink-0 overflow-hidden rounded-[4px] bg-ink">
                 {active.imageUrl ? (
@@ -128,7 +128,7 @@ export function LikenessGallery({
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label="Open full view"
-                  className="h-fit shrink-0 rounded-[3px] p-1 text-on-ink-2 hover:text-on-ink-1"
+                  className="h-fit shrink-0 rounded-control p-1 text-on-ink-2 hover:text-on-ink-1"
                 >
                   <Maximize2 className="size-3" aria-hidden="true" />
                 </a>
@@ -136,7 +136,7 @@ export function LikenessGallery({
             </div>
           </section>
         ) : (
-          <section className="flex min-h-0 flex-1 flex-col items-center justify-center rounded-[6px] border border-dashed border-ink-line bg-ink-deep/60 px-6 text-center">
+          <section className="flex min-h-0 flex-1 flex-col items-center justify-center rounded-control border border-dashed border-ink-line bg-ink-deep/60 px-6 text-center">
             <p className="text-[11px] font-semibold text-on-ink-1">No likeness yet</p>
             <p className="mt-1.5 max-w-[220px] text-[9px] leading-relaxed text-on-ink-3">
               Generate one and it becomes your default for every try-on.
@@ -152,7 +152,7 @@ export function LikenessGallery({
             onClick={onGenerateNew}
             disabled={isBusy || !canGenerate}
             className={cn(
-              "mt-2.5 flex shrink-0 items-center gap-2.5 rounded-[5px] border border-dashed",
+              "mt-2.5 flex shrink-0 items-center gap-2.5 rounded-control border border-dashed",
               "border-ink-line px-3.5 py-3 text-left transition-colors",
               "hover:border-on-ink-3 disabled:opacity-40",
             )}
@@ -181,7 +181,7 @@ export function LikenessGallery({
                 disabled={isBusy}
                 onClick={() => onSetActive(pose.id)}
                 title="Set as active"
-                className="flex w-full flex-col overflow-hidden rounded-[5px] border border-ink-line bg-ink-deep text-left transition-colors hover:border-on-ink-3 disabled:opacity-60"
+                className="flex w-full flex-col overflow-hidden rounded-control border border-ink-line bg-ink-deep text-left transition-colors hover:border-on-ink-3 disabled:opacity-60"
               >
                 <span className="relative flex aspect-[3/4] w-full items-center justify-center overflow-hidden bg-ink">
                   {pose.imageUrl ? (
@@ -219,7 +219,7 @@ export function LikenessGallery({
             onClick={onGenerateNew}
             disabled={isBusy || !canGenerate}
             className={cn(
-              "flex aspect-[3/4] flex-col items-center justify-center gap-1 rounded-[5px] border border-dashed",
+              "flex aspect-[3/4] flex-col items-center justify-center gap-1 rounded-control border border-dashed",
               "border-ink-line text-on-ink-3 transition-colors hover:border-on-ink-3 disabled:opacity-40",
             )}
           >
@@ -238,7 +238,7 @@ export function LikenessGallery({
             type="button"
             onClick={() => active && onTryOn(active.id)}
             disabled={!active || isBusy}
-            className="flex h-11 w-full items-center justify-center rounded-[3px] bg-primary px-4 shadow-sm hover:bg-primary/90"
+            className="flex h-11 w-full items-center justify-center rounded-control bg-primary px-4 shadow-sm hover:bg-primary/90"
           >
             <span className="text-[12px] font-bold text-primary-foreground">
               Try on with active pose →

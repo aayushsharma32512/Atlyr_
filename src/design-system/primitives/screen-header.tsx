@@ -38,7 +38,9 @@ export function ScreenHeader({
             aria-label={ariaLabel}
             onClick={onAction}
             className={cn(
-              "h-10 w-10 items-center justify-center rounded-xl border border-border bg-card/70 text-foreground hover:bg-card",
+              // V2 draws header actions as a bare glyph — no box, no fill.
+              // Size is unchanged so nothing reflows.
+              "h-10 w-10 items-center justify-center rounded-control text-foreground hover:bg-muted/50",
               highlightAction ? "relative z-[60] ring-2 ring-primary ring-offset-2 ring-offset-card shadow-lg" : null,
               buttonClassName,
             )}

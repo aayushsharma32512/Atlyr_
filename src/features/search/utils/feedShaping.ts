@@ -2,7 +2,9 @@ import type { TrendingProduct } from "@/services/collections/collectionsService"
 import type { HomeOutfitEntry } from "@/services/home/homeService"
 import type { ProductSearchResult, SearchBrowseCollection } from "@/services/search/searchService"
 import type { StudioProductTraySlot } from "@/services/studio/studioService"
+import { toPlacementTransform } from "@/features/studio/mappers/renderedItemMapper"
 import type { StudioRenderedItem } from "@/features/studio/types"
+import { isPlaceableOnMannequin } from "@/features/studio/utils/placementSupport"
 import type { Outfit } from "@/types"
 
 type Gender = "male" | "female"
@@ -47,14 +49,26 @@ export function flattenBrowseLooks(collections: SearchBrowseCollection[] | undef
   return looks
 }
 
-/** The pieces worn in curated looks, for one slot. */
-export function piecesFromBrowseLooks(collections: SearchBrowseCollection[] | undefined, slot: StudioProductTraySlot): FeedPiece[] {
+/**
+ * Pieces the search feed may offer, for one slot.
+ *
+ * Filtered by placement on the body being drawn, exactly as the Studio rack is:
+ * the photoreal mannequin silently skips a garment with no transform for it, so
+ * a piece with none is a dead end — you tap it, the slot updates, the model does
+ * not change. See isPlaceableOnMannequin.
+ */
+export function piecesFromBrowseLooks(
+  collections: SearchBrowseCollection[] | undefined,
+  slot: StudioProductTraySlot,
+  mannequin: Gender,
+): FeedPiece[] {
   const seen = new Set<string>()
   const pieces: FeedPiece[] = []
   for (const collection of collections ?? []) {
     for (const entry of collection.outfits) {
       const item = entry.studioOutfit?.renderedItems?.find((rendered) => rendered.zone === slot)
       if (!item || seen.has(item.id)) continue
+      if (!isPlaceableOnMannequin(item, mannequin)) continue
       seen.add(item.id)
       pieces.push({ id: item.id, title: item.productName ?? "", imageSrc: item.thumbnailUrl ?? item.imageUrl ?? null, slot })
     }
@@ -72,15 +86,26 @@ export function looksFromHomeEntries(pages: HomeOutfitEntry[][] | undefined, fal
   }))
 }
 
-export function piecesFromTrending(rows: TrendingProduct[] | undefined, slot: StudioProductTraySlot): FeedPiece[] {
-  return (rows ?? []).map((row) => ({ id: row.id, title: row.productName ?? "", imageSrc: row.imageUrl, slot }))
+export function piecesFromTrending(
+  rows: TrendingProduct[] | undefined,
+  slot: StudioProductTraySlot,
+  mannequin: Gender,
+): FeedPiece[] {
+  return (rows ?? [])
+    .filter((row) => isPlaceableOnMannequin(row, mannequin))
+    .map((row) => ({ id: row.id, title: row.productName ?? "", imageSrc: row.imageUrl, slot }))
 }
 
 export function piecesFromSearchResults(
   pages: { results: ProductSearchResult[] }[] | undefined,
   slot: StudioProductTraySlot,
+  mannequin: Gender,
 ): FeedPiece[] {
-  return (pages ?? []).flatMap((page) => page.results).map((row) => ({ id: row.id, title: row.title, imageSrc: row.thumbnailSrc ?? row.imageSrc, slot }))
+  return (pages ?? [])
+    .flatMap((page) => page.results)
+    // A search result carries the raw per-mannequin map from the products row.
+    .filter((row) => isPlaceableOnMannequin({ placement: toPlacementTransform(row) }, mannequin))
+    .map((row) => ({ id: row.id, title: row.title, imageSrc: row.thumbnailSrc ?? row.imageSrc, slot }))
 }
 
 const mintSeed = () => Math.random().toString(36).slice(2, 10)

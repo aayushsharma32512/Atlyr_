@@ -14,7 +14,8 @@ export interface SearchBarProps {
   value: string
   onValueChange: (value: string) => void
   onSubmit: () => void
-  /** Results only: the X that clears the query. */
+  /** The ink × that replaces the search button once text or a photo is in.
+   *  Clears everything — query, photo and any filters (design: search bar · states). */
   onClear?: () => void
   placeholder?: string
   /** Results only: the Products · Outfits segment under the field. */
@@ -22,11 +23,10 @@ export interface SearchBarProps {
   onChipChange?: (chip: SearchBarChip) => void
   /** Reference photo riding inside the field as a chip. */
   thumbSrc?: string | null
+  /** Accepted for compatibility; V2 puts no × on the thumbnail. */
   onClearThumb?: () => void
   onPickImage?: (file: File) => void
   isUploading?: boolean
-  onFilter?: () => void
-  filterDisabled?: boolean
   onFindItems?: () => void
   onFocus?: () => void
   onBlur?: () => void
@@ -43,15 +43,12 @@ export function SearchBar({
   onValueChange,
   onSubmit,
   onClear,
-  placeholder = "",
+  placeholder = "search looks, tops, lowers, kicks",
   chip,
   onChipChange,
   thumbSrc,
-  onClearThumb,
   onPickImage,
   isUploading = false,
-  onFilter,
-  filterDisabled = false,
   onFindItems,
   onFocus,
   onBlur,
@@ -60,7 +57,8 @@ export function SearchBar({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { lock, unlock } = useViewportZoomLockController()
   const results = mode === "results"
-  const showClear = results && value.length > 0 && Boolean(onClear)
+  // Anything in the field flips the right-hand button from search to clear.
+  const hasContent = value.length > 0 || Boolean(thumbSrc)
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
@@ -76,25 +74,28 @@ export function SearchBar({
 
   return (
     <div className={cn("flex w-full flex-col gap-2", className)}>
-      <div className="flex h-control-field w-full items-center gap-1.5 rounded-control border border-hairline bg-card px-1">
-        {onFilter ? (
-          <button type="button" aria-label="Filters" onClick={onFilter} disabled={filterDisabled} className={ICON_BTN}>
-            <Icons.filter className={BAR_ICON} aria-hidden="true" />
-          </button>
-        ) : null}
-
+      <div className="flex h-control-field w-full items-center gap-1.5 rounded-control border border-hairline bg-white px-1">
+        {/* Left slot: the camera, or the reference photo once one is in. The
+            photo carries no × of its own — the ink × on the right clears it
+            along with everything else (design: search bar · states). */}
         {thumbSrc ? (
-          <span className="inline-flex h-control-chip shrink-0 items-center gap-1.5 rounded-control border border-hairline bg-background pl-0.5 pr-1.5">
-            <img src={thumbSrc} alt="Reference" className="h-5 w-5 rounded-badge object-cover" />
-            <button
-              type="button"
-              aria-label="Remove photo"
-              onClick={onClearThumb}
-              className="flex h-4 w-4 items-center justify-center text-ink"
-            >
-              <Icons.close className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
-            </button>
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center">
+            <img src={thumbSrc} alt="Reference photo" className="h-6 w-6 rounded-badge object-cover" />
           </span>
+        ) : onPickImage ? (
+          <button
+            type="button"
+            aria-label="Search with a photo"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading}
+            className={ICON_BTN}
+          >
+            {isUploading ? (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-ink border-t-transparent" aria-hidden="true" />
+            ) : (
+              <Icons.camera className={BAR_ICON} aria-hidden="true" />
+            )}
+          </button>
         ) : null}
 
         <input
@@ -116,42 +117,32 @@ export function SearchBar({
           className="min-w-0 flex-1 bg-transparent text-body text-ink outline-none placeholder:text-taupe [&::-webkit-search-cancel-button]:hidden"
         />
 
-        {showClear ? (
-          <button type="button" aria-label="Clear search" onClick={onClear} className={ICON_BTN}>
-            <Icons.close className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
-          </button>
-        ) : null}
-
-        {!thumbSrc && onPickImage ? (
-          <button
-            type="button"
-            aria-label="Search with a photo"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
-            className={ICON_BTN}
-          >
-            {isUploading ? (
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-ink border-t-transparent" aria-hidden="true" />
-            ) : (
-              <Icons.camera className={BAR_ICON} aria-hidden="true" />
-            )}
-          </button>
-        ) : null}
-
+        {/* Post-results, the globe (web search → import rack) sits left of the ×. */}
         {results && onFindItems ? (
           <button type="button" aria-label="Find items" onClick={onFindItems} className={ICON_BTN}>
             <Icons.findItems className={BAR_ICON} aria-hidden="true" />
           </button>
         ) : null}
 
-        <button
-          type="button"
-          aria-label="Search"
-          onClick={onSubmit}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-control bg-ink text-background"
-        >
-          <Icons.search className={BAR_ICON} aria-hidden="true" />
-        </button>
+        {hasContent && onClear ? (
+          <button
+            type="button"
+            aria-label="Clear search"
+            onClick={onClear}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-control bg-ink text-white"
+          >
+            <Icons.close className={BAR_ICON} strokeWidth={2} aria-hidden="true" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            aria-label="Search"
+            onClick={onSubmit}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-control bg-ink text-white"
+          >
+            <Icons.search className={BAR_ICON} aria-hidden="true" />
+          </button>
+        )}
 
         <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleFile} />
       </div>

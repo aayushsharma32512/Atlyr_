@@ -104,6 +104,12 @@ function getActiveNavId(pathname: string, search: string) {
     }
   }
 
+  // Find items is not a tab: it belongs to Search, or to Boards when opened
+  // from the wardrobe card (?intent=wardrobe).
+  if (pathname.startsWith("/inspiration-import")) {
+    return search.includes("intent=wardrobe") ? "collections" : "search"
+  }
+
   return matchNavId(pathname)
 }
 

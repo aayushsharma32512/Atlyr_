@@ -99,7 +99,7 @@ export function TastePage() {
           </p>
           <Button
             onClick={goToFigure}
-            className="h-auto w-full rounded-[3px] py-fluid-btn text-fluid-cta font-bold"
+            className="h-auto w-full rounded-control py-fluid-btn text-fluid-cta font-bold"
           >
             Next: the figure →
           </Button>

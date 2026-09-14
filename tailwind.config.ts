@@ -31,13 +31,18 @@ export default {
 				'serif': ['var(--font-serif)'],
 				'mono': ['var(--font-mono)'],
 				'display': ['var(--font-serif)'],
-				// Brand surfaces only (कलागृह wordmark, taglines). Never UI copy.
-				'deva': ['var(--font-deva)'],
+				// Fraunces italic. Used ONLY where something is running or has
+				// landed — the Wait line, the progress-hub headline, drop-zone
+				// prompts. Not a general-purpose serif; see design doc §2.
+				'voice': ['var(--font-voice)'],
+				// `deva` (Noto Serif Devanagari) is gone with the Sep 2026 rename:
+				// it existed solely for the कलागृह wordmark, which is now "Atlyr"
+				// set in the display serif. The font is off the index.html request.
 			},
 			fontSize: {
 				xxs: ["0.5rem", { lineHeight: "0.75rem" }],
 				xs2: ["0.625rem", { lineHeight: "0.875rem" }],
-				// ── Fluid ramp for the Kalagriha surfaces. Values live in
+				// ── Fluid ramp for the legacy brand surfaces. Values live in
 				// src/index.css; these are the names the components use.
 				// Deliberately bare strings rather than [size, { lineHeight }]
 				// tuples — the gate and first-run screens set their own
@@ -118,9 +123,10 @@ export default {
 					4: 'hsl(var(--chart-4))',
 					5: 'hsl(var(--chart-5))'
 				},
-				// ── Tantu brand ramp. These sit outside the shadcn semantics on
-				// purpose: `gold` in particular must never become --accent, or
-				// every dropdown hover in the app turns into a provenance cue.
+				// ── Atlyr V2 brand ramp. These sit outside the shadcn semantics
+				// on purpose: `violet` must never become --accent, or every
+				// dropdown hover in the app turns into a selection signal.
+				// (The same rule applied to `gold` under the old palette.)
 				ink: {
 					DEFAULT: 'hsl(var(--ink))',
 					deep: 'hsl(var(--ink-deep))',
@@ -129,6 +135,15 @@ export default {
 					line: 'hsl(var(--ink-line))',
 					body: 'hsl(var(--body-ink))'
 				},
+				// Punctuation only: active tab underline, selected heart,
+				// selected board chip, Studio nav icon, unread dot.
+				violet: {
+					DEFAULT: 'hsl(var(--violet))',
+					deep: 'hsl(var(--violet-deep))',
+					tint: 'hsl(var(--violet-tint))'
+				},
+				charcoal: 'hsl(var(--charcoal))',
+				disabled: 'hsl(var(--disabled))',
 				'on-ink': {
 					1: 'hsl(var(--on-ink-1))',
 					2: 'hsl(var(--on-ink-2))',
@@ -152,8 +167,9 @@ export default {
 					2: 'hsl(var(--hairline-2))',
 					3: 'hsl(var(--hairline-3))',
 					4: 'hsl(var(--hairline-4))',
-					dashed: 'hsl(var(--hairline-dashed))',
-					dashed: 'hsl(var(--border-dashed))'
+					// Was declared twice here; the second silently won and
+					// --hairline-dashed was dead. Both resolve to #DCDCDA in V2.
+					dashed: 'hsl(var(--hairline-dashed))'
 				},
 				warp: 'hsl(var(--warp))'
 			},
@@ -163,12 +179,14 @@ export default {
 				md: 'calc(var(--radius) - 2px)',
 				sm: 'calc(var(--radius) - 4px)',
 				'4xl': '2rem',
-				// Kalagriha shape scale: buttons/chips/search = 3px, frames = 6px,
-				// seals/badges = 2px. Cards stay on --radius (5px).
+				// V2 shape scale: 8px on buttons, tiles, inputs, frames and
+				// bands; 6px on chips. Cards ride --radius, which is also 8px.
 				frame: 'var(--radius-frame)',
 				badge: 'var(--radius-badge)',
-				// The 3px step — buttons, chips and fields.
-				control: 'var(--radius-control)'
+				// The 8px step — buttons, fields, tiles.
+				control: 'var(--radius-control)',
+				// The 6px step — chips only.
+				chip: 'var(--radius-chip)'
 			},
 			height: {
 				// Control heights from design.md. Mirrors CONTROL in src/design-system/tokens.

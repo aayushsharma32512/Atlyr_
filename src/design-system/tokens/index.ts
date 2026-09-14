@@ -16,12 +16,17 @@ export const CONTROL = {
   nav: 55,
 } as const;
 
-/** Corner radii, px. Nothing outside this set. */
+/** Corner radii, px. Nothing outside this set.
+ *  V2 (Sep 2026) inverted the old scale: chips used to be the roundest thing
+ *  on screen (a pill) and buttons the sharpest (3px). Now it is 8px on
+ *  buttons/tiles/inputs/bands and 6px on chips — measured across the V2
+ *  frames as 147x 8px, 67x 6px, and essentially nothing else. */
 export const RADIUS = {
-  control: 3, // buttons, chips, fields
-  card: 5,
-  frame: 6, // frames, Studio canvas
-  seal: 2,
+  control: 8, // buttons, fields, tiles
+  card: 8,
+  frame: 8, // frames, bands, Studio canvas
+  chip: 6,
+  seal: 2, // unused in V2; kept for the badge step
 } as const;
 
 /** Icon size by container, px. */
@@ -48,15 +53,15 @@ export const MOTION = {
   },
 } as const;
 
-/** What each type role resolves to at the 390px frame. 10.5 is the floor. */
+/** The type roles, in px. Pinned (not fluid) since the app renders in a fixed ~390px column; 10.5 is the floor. */
 export const TYPE_AT_FRAME = {
   titleLg: 34,
-  title: 26,
+  title: 22, // V2: header title is 22, down from 26
   moment: 22,
   label: 15,
   body: 14,
   card: 13,
-  chip: 11,
+  chip: 12, // V2: tabs, pills and chips are 12px, up from 11
   section: 10.5,
 } as const;
 
