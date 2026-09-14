@@ -499,7 +499,7 @@ export function UserDetailsPage({ forceFirstRunChrome = false }: UserDetailsPage
           <Button
             onClick={isOnboarding ? handleContinue : handleSave}
             disabled={isSaving || (!isOnboarding && !isFormValid)}
-            className="h-auto w-full rounded-control py-fluid-btn text-fluid-cta font-bold"
+            className="h-auto w-full rounded-control py-fluid-btn text-[length:var(--fluid-cta)] font-bold text-primary-foreground"
           >
             {isSaving ? "Saving…" : isOnboarding ? "Start exploring →" : "Save details"}
           </Button>
