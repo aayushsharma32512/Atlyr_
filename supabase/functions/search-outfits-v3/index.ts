@@ -204,6 +204,23 @@ async function embed(payload: { text: string } | { image_b64: string } | { image
   return data.vector ?? data.embedding ?? data
 }
 
+// One /embed/batch call, vectors in input order; a host without that route falls back to one call per text.
+async function embedTexts(texts: string[]): Promise<number[][]> {
+  if (texts.length <= 1) return Promise.all(texts.map((t) => embed({ text: t })))
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (EMBED_TOKEN) headers['X-Modal-Token'] = EMBED_TOKEN
+  try {
+    const resp = await fetch(`${EMBED_URL}/embed/batch`, { method: 'POST', headers, body: JSON.stringify({ texts }) })
+    if (resp.ok) {
+      const data = await resp.json()
+      if (Array.isArray(data?.vectors) && data.vectors.length === texts.length) return data.vectors
+    }
+  } catch (_e) {
+    // fall through to one request per text
+  }
+  return Promise.all(texts.map((t) => embed({ text: t })))
+}
+
 async function embedImageUrl(imageUrl: string): Promise<number[]> {
   if (!EMBED_TOKEN) return embed({ image_url: imageUrl })
   // Modal has no image_url branch -- download and re-send as image_b64.
@@ -377,7 +394,7 @@ async function handle(body: any, supabase: any, t0: number) {
   const embedStart = Date.now()
   let vectors: number[][]
   if (hasText) {
-    vectors = await Promise.all(descriptions.map((d) => embed({ text: d as string })))
+    vectors = await embedTexts(descriptions as string[])
   } else if (req.imageB64) {
     vectors = [await embed({ image_b64: req.imageB64 })]
   } else {
