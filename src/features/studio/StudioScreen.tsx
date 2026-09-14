@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useNavigate, useNavigationType, useSearchParams } from "react-router-dom"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQueryClient } from "@tanstack/react-query"
 import { ChevronLeft, Redo2, RotateCcw, Share, Undo2 } from "lucide-react"
 
 import { IconButton, OutfitInspirationTile } from "@/design-system/primitives"
@@ -31,7 +31,7 @@ import { prefetchStudioAlternatives } from "@/features/studio/hooks/useStudioAlt
 import { useStudioSwapActions } from "@/features/studio/hooks/useStudioSwapActions"
 import { prefetchStudioSearchResults } from "@/features/studio/hooks/useStudioSearchResults"
 import { useStudioResolvedSlots } from "@/features/studio/hooks/useStudioResolvedSlots"
-import { studioService, type StudioProductTrayItem, type StudioProductTraySlot } from "@/services/studio/studioService"
+import type { StudioProductTrayItem, StudioProductTraySlot } from "@/services/studio/studioService"
 import { buildStudioSearchParams, buildStudioUrl, parseStudioSearchParams, type SlotIdMap } from "@/features/studio/utils/studioUrlState"
 import { mapLegacyOutfitItemsToStudioItems, mapTrayItemToStudioRenderedItem } from "@/features/studio/mappers/renderedItemMapper"
 import type { StudioRenderedItem } from "@/features/studio/types"
@@ -61,25 +61,7 @@ import { useOptionalAdminGender } from "@/features/admin/providers/AdminGenderCo
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
 import { setPendingStudioComboChange, useStudioCombinationTracking } from "@/integrations/posthog/engagementTracking/studio/studioTracking"
 import { trackTryonFlowStarted } from "@/integrations/posthog/engagementTracking/tryon/tryonTracking"
-
-/** Product drawn on the canvas in place of a removed top/bottom. Missing entry = bare mannequin. */
-const PLACEHOLDER_PRODUCT_IDS: Record<"male" | "female", { top?: string; bottom?: string }> = {
-  // TODO: Aayush — swap in the grey placeholder product IDs (female top/bottom, male top/bottom)
-  female: { bottom: "bb1064983005bebc85a2258ca8a264890b07a87d" },
-  male: {},
-}
-
-function usePlaceholderProduct(productId: string | undefined) {
-  // Own cache key: studioKeys.product holds StudioProductDetail, a different shape.
-  return useQuery({
-    queryKey: [...studioKeys.all, "placeholder-product", productId ?? "none"],
-    queryFn: () => studioService.getProductById(productId as string),
-    enabled: Boolean(productId),
-    // Same for every user: fetch once per page load, never evict.
-    staleTime: Infinity,
-    gcTime: Infinity,
-  }).data ?? null
-}
+import { isDressTop, usePlaceholderItems } from "@/features/studio/hooks/usePlaceholderItems"
 
 const DEFAULT_AVATAR_HEAD = "/avatars/Default.png"
 
@@ -117,10 +99,7 @@ export function StudioScreenView() {
   const avatarHeadSrc = outfitData?.avatarHeadSrc ?? DEFAULT_AVATAR_HEAD
   const avatarGender = outfitData?.avatarGender ?? "female"
   const avatarHeightCm = outfitData?.avatarHeightCm ?? 170
-  // Shown on the canvas when a slot is ×'d, so the mannequin isn't bare. Canvas-only:
-  // tray, outfitItems, search and save never see it.
-  const placeholderTop = usePlaceholderProduct(PLACEHOLDER_PRODUCT_IDS[avatarGender]?.top)
-  const placeholderBottom = usePlaceholderProduct(PLACEHOLDER_PRODUCT_IDS[avatarGender]?.bottom)
+  const { top: placeholderTop, bottom: placeholderBottom } = usePlaceholderItems(avatarGender)
   const traySourceId = outfitData?.trayItems?.length
     ? null
     : (outfitId ?? selectedOutfitId ?? studioAvatar?.id ?? null)
@@ -576,11 +555,12 @@ export function StudioScreenView() {
     const trayByZone = new Map<StudioRenderedItem["zone"], StudioRenderedItem>()
     trayRendered.forEach((item) => trayByZone.set(item.zone, item))
 
+    const topIsDress = isDressTop(resolvedTrayItems, hiddenSlots.top)
+
     return zones
       .map((zone) => {
         if (hiddenSlots[zone]) {
-          const placeholder = zone === "top" ? placeholderTop : zone === "bottom" ? placeholderBottom : null
-          return mapTrayItemToStudioRenderedItem(placeholder)
+          return zone === "top" ? placeholderTop : zone === "bottom" && !topIsDress ? placeholderBottom : null
         }
         const trayItem = trayByZone.get(zone)
         const baseItem = baseByZone.get(zone)

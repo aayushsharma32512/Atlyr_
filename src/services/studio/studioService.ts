@@ -46,6 +46,8 @@ export interface StudioProductTrayItem {
   color?: string | null
   size?: string | null
   itemType?: Database["public"]["Enums"]["item_type"] | null
+  /** Free-form label, e.g. "midi dress" — tells a dress apart from other tops. */
+  typeCategory?: string | null
   metadataSource: "product" | "default"
   fitTags: string[]
   feelTags: string[]
@@ -92,6 +94,7 @@ export interface StudioAlternativeProduct {
   color?: string | null
   size?: string | null
   itemType: StudioProductTraySlot
+  typeCategory?: string | null
   gender?: Gender
   metadataSource: "product" | "default"
   bodyPartsVisible?: string[] | null
@@ -415,6 +418,7 @@ function toTrayItem(slot: StudioProductTraySlot, product: Database["public"]["Ta
     color: product.color ?? null,
     size: product.size ?? null,
     itemType: product.type ?? null,
+    typeCategory: product.type_category ?? null,
     metadataSource: placement.metadataSource,
     fitTags,
     feelTags,
@@ -471,6 +475,7 @@ function deriveTrayItemsFromOutfit(outfit: Outfit | null): StudioProductTrayItem
         color: product.color ?? null,
         size: product.size ?? null,
         itemType: slot,
+        typeCategory: product.type_category ?? null,
         metadataSource: placement.metadataSource,
         fitTags: parseTagList(product.fit),
         feelTags: parseTagList(product.feel),
@@ -749,6 +754,7 @@ function mapProductRowToAlternative(
       color: row.color ?? null,
       size: row.size ?? null,
       itemType,
+      typeCategory: row.type_category ?? null,
       gender,
       metadataSource: "default",
       bodyPartsVisible: (Array.isArray(row.body_parts_visible) ? row.body_parts_visible : null) as string[] | null,
@@ -771,6 +777,7 @@ function mapProductRowToAlternative(
     color: row.color ?? null,
     size: row.size ?? null,
     itemType,
+    typeCategory: row.type_category ?? null,
     gender,
     metadataSource: "product",
     bodyPartsVisible: (Array.isArray(row.body_parts_visible) ? row.body_parts_visible : null) as string[] | null,
@@ -816,6 +823,7 @@ function mapSearchResultToAlternative(
       color: result.color ?? null,
       size: result.size ?? null,
       itemType,
+      typeCategory: result.type_category ?? null,
       gender: (result.gender as Gender) ?? null,
       metadataSource: "default",
       bodyPartsVisible: result.bodyPartsVisible ?? null,
@@ -838,6 +846,7 @@ function mapSearchResultToAlternative(
     color: result.color ?? null,
     size: result.size ?? null,
     itemType,
+    typeCategory: result.type_category ?? null,
     gender: (result.gender as Gender) ?? null,
     metadataSource: "product",
     bodyPartsVisible: result.bodyPartsVisible ?? null,
@@ -865,6 +874,7 @@ export function mapTrayItemToAlternative(item: StudioProductTrayItem): StudioAlt
     color: item.color ?? null,
     size: item.size ?? null,
     itemType: item.slot,
+    typeCategory: item.typeCategory ?? null,
     metadataSource: item.metadataSource,
     bodyPartsVisible: item.bodyPartsVisible ?? null,
     placement: item.placement ?? null,
@@ -939,7 +949,7 @@ async function getAlternatives({ slot, gender, limit = 24, filters }: GetAlterna
   let query = supabase
     .from("products")
     .select(
-      "id, product_name, brand, price, image_url, thumbnail_url, product_url, gender, type, placement_x, placement_y, image_length, placement, size, currency, color, fit, feel, vibes, body_parts_visible",
+      "id, product_name, brand, price, image_url, thumbnail_url, product_url, gender, type, type_category, placement_x, placement_y, image_length, placement, size, currency, color, fit, feel, vibes, body_parts_visible",
     )
     .eq("type", itemType)
     .limit(limit)
@@ -1007,7 +1017,7 @@ async function getProductById(productId: string): Promise<StudioProductTrayItem 
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, product_name, brand, price, image_url, thumbnail_url, product_url, gender, type, placement_x, placement_y, image_length, placement, size, currency, color, fit, feel, vibes, body_parts_visible, care, material_type",
+      "id, product_name, brand, price, image_url, thumbnail_url, product_url, gender, type, type_category, placement_x, placement_y, image_length, placement, size, currency, color, fit, feel, vibes, body_parts_visible, care, material_type",
     )
     .eq("id", productId)
     .maybeSingle()
@@ -1042,6 +1052,7 @@ async function getProductById(productId: string): Promise<StudioProductTrayItem 
     color: data.color ?? null,
     size: data.size ?? null,
     itemType: data.type ?? null,
+    typeCategory: data.type_category ?? null,
     metadataSource: placement.metadataSource,
     fitTags: parseTagList(data.fit),
     feelTags: parseTagList(data.feel),
@@ -1297,7 +1308,7 @@ async function getComplementaryProductsByProductId({
   const query = supabase
     .from("products")
     .select(
-      "id, product_name, brand, price, image_url, thumbnail_url, product_url, gender, type, placement_x, placement_y, image_length, placement, size, currency, color, fit, feel, vibes, body_parts_visible",
+      "id, product_name, brand, price, image_url, thumbnail_url, product_url, gender, type, type_category, placement_x, placement_y, image_length, placement, size, currency, color, fit, feel, vibes, body_parts_visible",
     )
     .in("type", complementarySlots)
     .neq("id", productId)
