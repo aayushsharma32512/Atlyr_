@@ -45,7 +45,7 @@ export function NotificationTray({
   return (
     <div
       className={cn(
-        "w-[260px] overflow-hidden rounded-[6px] border border-hairline bg-card shadow-floating",
+        "w-[260px] overflow-hidden rounded-control border border-hairline bg-white shadow-floating",
         className,
       )}
       role="dialog"

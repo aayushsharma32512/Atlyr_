@@ -105,7 +105,7 @@ export function ReferenceImageDialog({
               </span>
             ) : (
               <span className="flex aspect-square w-full items-center justify-center">
-                <span className="flex h-11 w-11 items-center justify-center rounded-control border border-hairline bg-card text-ink">
+                <span className="flex h-11 w-11 items-center justify-center rounded-control border border-hairline bg-white text-ink">
                   {isUploading ? (
                     <span
                       className="h-5 w-5 animate-spin rounded-full border-2 border-ink border-t-transparent"

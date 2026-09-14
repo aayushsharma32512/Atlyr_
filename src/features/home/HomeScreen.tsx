@@ -1849,7 +1849,7 @@ export function HomeScreenView() {
                       type="button"
                       onClick={() => handleAllOutfitsSortChange("newly_added")}
                       className={cn(
-                        "rounded-[3px] border px-3 py-1 text-xs font-medium transition-colors",
+                        "rounded-control border px-3 py-1 text-xs font-medium transition-colors",
                         allOutfitsSort === "newly_added"
                           ? "border-foreground bg-foreground text-background"
                           : "border-hairline bg-card text-muted-foreground hover:border-hairline-3",
@@ -1861,7 +1861,7 @@ export function HomeScreenView() {
                       type="button"
                       onClick={() => handleAllOutfitsSortChange("relevance")}
                       className={cn(
-                        "rounded-[3px] border px-3 py-1 text-xs font-medium transition-colors",
+                        "rounded-control border px-3 py-1 text-xs font-medium transition-colors",
                         allOutfitsSort === "relevance"
                           ? "border-foreground bg-foreground text-background"
                           : "border-hairline bg-card text-muted-foreground hover:border-hairline-3",
@@ -2053,7 +2053,7 @@ export function HomeScreenView() {
             <button
               type="button"
               onClick={() => navigate("/search")}
-              className="flex-1 rounded-[3px] border border-hairline-dashed bg-card py-3 text-center text-[11.5px] font-semibold text-foreground transition-colors hover:bg-editorial/40"
+              className="flex-1 rounded-control border border-hairline-dashed bg-card py-3 text-center text-[11.5px] font-semibold text-foreground transition-colors hover:bg-editorial/40"
             >
               ＋ Add to board
             </button>
@@ -2061,7 +2061,7 @@ export function HomeScreenView() {
               type="button"
               onClick={() => boardStyleOutfit && launchStudio(boardStyleOutfit)}
               disabled={!boardStyleOutfit}
-              className="flex-[1.3] rounded-[3px] bg-primary py-3 text-center text-[11.5px] font-bold text-primary-foreground transition-opacity hover:bg-primary/90 disabled:opacity-50"
+              className="flex-[1.3] rounded-control bg-primary py-3 text-center text-[11.5px] font-bold text-primary-foreground transition-opacity hover:bg-primary/90 disabled:opacity-50"
             >
               Style this look →
             </button>

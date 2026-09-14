@@ -75,7 +75,7 @@ export function StudioSaveCard({
     <div className={cn("flex flex-1 flex-col justify-start gap-1.5", className)}>
       {isLook ? (
       <>
-      <label className="box-border flex h-[34px] flex-none items-center gap-1.5 rounded-control border border-hairline bg-card/60 pl-2.5 pr-1">
+      <label className="box-border flex h-[34px] flex-none items-center gap-1.5 rounded-control border border-hairline bg-white/60 pl-2.5 pr-1">
         <span className="sr-only">Look name</span>
         <input
           value={name}
@@ -100,13 +100,13 @@ export function StudioSaveCard({
               }
             }}
             placeholder="Tag"
-            className={cn(CHIP, "w-24 border border-hairline bg-card/60 text-ink outline-none")}
+            className={cn(CHIP, "w-24 border border-hairline bg-white/60 text-ink outline-none")}
           />
         ) : (
           <button
             type="button"
             onClick={() => setAddingTag(true)}
-            className={cn(CHIP, "w-[33%] border border-hairline bg-card/60 text-taupe")}
+            className={cn(CHIP, "w-[33%] border border-hairline bg-white/60 text-taupe")}
           >
             <Icons.add className="h-[11px] w-[11px] flex-none text-ink" strokeWidth={2} aria-hidden="true" />
             Add tag
@@ -115,7 +115,7 @@ export function StudioSaveCard({
         {/* The chip is a label, not a button — removing is the × alone, or a tap
             anywhere on it deleted the tag by accident. */}
         {tags.map((tag) => (
-          <span key={tag} className={cn(CHIP, "border border-hairline bg-card text-ink")}>
+          <span key={tag} className={cn(CHIP, "border border-hairline bg-white text-ink")}>
             {tag}
             <button
               type="button"
@@ -152,7 +152,7 @@ export function StudioSaveCard({
               onClick={() => toggleBoard(board.slug)}
               className={cn(
                 CHIP,
-                on ? "border border-ink bg-ink text-background" : "border border-hairline bg-card text-ink",
+                on ? "border border-ink bg-ink text-background" : "border border-hairline bg-white text-ink",
               )}
             >
               {board.label}
@@ -179,7 +179,7 @@ export function StudioSaveCard({
           onClick={onCancel}
           className={cn(
             "box-border flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control",
-            "border border-hairline bg-card/60 text-label font-semibold text-ink",
+            "border border-hairline bg-white/60 text-label font-semibold text-ink",
           )}
         >
           <Icons.close className="h-5 w-5" aria-hidden="true" />

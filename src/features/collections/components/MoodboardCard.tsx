@@ -150,7 +150,7 @@ const MoodboardCard = ({
             : undefined
         }
         className={cn(
-          "flex w-full flex-col overflow-hidden rounded-lg border border-hairline bg-card text-left",
+          "flex w-full flex-col overflow-hidden rounded-lg border border-hairline bg-white text-left",
           !isClickable && "cursor-default",
         )}
       >

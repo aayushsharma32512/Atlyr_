@@ -130,7 +130,7 @@ export function SearchFilterSheet({
 
               {isOpen ? (
                 <>
-                  <label className="flex h-9 items-center gap-1.5 rounded-control border border-hairline bg-card px-1">
+                  <label className="flex h-9 items-center gap-1.5 rounded-control border border-hairline bg-white px-1">
                     <span className="flex h-7 w-7 shrink-0 items-center justify-center text-ink">
                       <Icons.search className="h-4 w-4" aria-hidden="true" />
                     </span>

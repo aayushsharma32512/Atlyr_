@@ -156,7 +156,7 @@ export function BoardDetailHeader({
       )}
 
       {typeof itemCount === "number" ? (
-        <span className="flex-none text-section font-semibold uppercase tracking-[0.14em] text-faint">
+        <span className="flex-none text-section font-medium tracking-[0.06em] text-faint">
           {itemCount} {itemCount === 1 ? "save" : "saves"}
         </span>
       ) : null}

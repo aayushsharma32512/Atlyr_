@@ -473,7 +473,7 @@ export function OutfitInspirationCard({
         framed
           ? darkCard
             ? "gap-0 overflow-hidden rounded-frame border border-ink-line bg-ink-deep shadow-[0_1px_3px_rgba(0,0,0,0.05)]"
-            : "gap-0 overflow-hidden rounded-frame border border-hairline bg-card shadow-[0_1px_3px_rgba(0,0,0,0.05)]"
+            : "gap-0 overflow-hidden rounded-frame border border-hairline bg-white shadow-[0_1px_3px_rgba(0,0,0,0.05)]"
           : "gap-1",
         isFluid ? "h-full" : config.containerWidth,
         className,

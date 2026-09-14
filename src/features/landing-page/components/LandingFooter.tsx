@@ -147,7 +147,7 @@ export function LandingFooter() {
             weight={true}
             italic={true}
             textColor="#ffffff"
-            strokeColor="#ff0000"
+            strokeColor="#161616"
             minFontSize={36}
           />
         </div>

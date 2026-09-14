@@ -40,7 +40,7 @@ export function StudioActionBar({
         onClick={isReadOnly ? undefined : onSave}
         className={cn(
           "box-border flex h-control-secondary w-control-secondary flex-none items-center justify-center",
-          "rounded-control border border-hairline bg-card text-ink",
+          "rounded-control border border-hairline bg-white text-ink",
           "disabled:cursor-not-allowed disabled:opacity-60",
           highlightSave && RING,
         )}

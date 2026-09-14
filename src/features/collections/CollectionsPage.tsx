@@ -83,7 +83,7 @@ export function CollectionsPage() {
       // onSaveToBoards has already toasted; keep the card open to retry.
     }
   }
-  const { gender: profileGender, heightCm } = useProfileContext()
+  const { gender: profileGender, heightCm, profile } = useProfileContext()
 
   useEffect(() => {
     const tabParam = searchParams.get("tab")
@@ -212,6 +212,7 @@ export function CollectionsPage() {
     <AppShellLayout>
       {/* 1. Real Header - Fixed at top, Visible, Interactive */}
       <CollectionsHeader
+        ownerName={profile?.name ?? null}
         className="fixed top-0 left-0 right-0 z-50"
         activeTab={activeTab}
         onTabChange={handleTabChange}
@@ -220,6 +221,7 @@ export function CollectionsPage() {
       {/* 2. Ghost Header - Invisible, purely for spacing */}
       {/* It sits in the document flow and pushes content down by the EXACT height of the header */}
       <CollectionsHeader
+        ownerName={profile?.name ?? null}
         className="invisible pointer-events-none relative z-[-1]"
         activeTab={activeTab}
         onTabChange={() => {}}

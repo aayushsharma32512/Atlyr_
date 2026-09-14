@@ -32,7 +32,7 @@ export function AlternatesSearchButton({
       onClick={onOpen}
       className={cn(
         "absolute bottom-2 right-2 z-[4] flex h-control-field w-control-field items-center justify-center",
-        "rounded-control border border-hairline bg-card/75 text-ink backdrop-blur-[6px]",
+        "rounded-control border border-hairline bg-white/75 text-ink backdrop-blur-[6px]",
         "disabled:cursor-not-allowed disabled:opacity-40",
         className,
       )}
@@ -136,7 +136,7 @@ export function AlternatesSearchBar({
       className={cn("absolute inset-x-2 z-[7]", className)}
       style={{ bottom: RESTING_GAP, transform: lift ? `translateY(${-lift}px)` : undefined }}
     >
-      <div className="flex h-control-field w-full items-center gap-1.5 rounded-control border border-hairline bg-card px-1">
+      <div className="flex h-control-field w-full items-center gap-1.5 rounded-control border border-hairline bg-white px-1">
         {onFilter ? (
           <button
             type="button"

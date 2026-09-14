@@ -24,7 +24,7 @@ const getTypePillClasses = (kind: PillKind) => {
     case 'feel1':
       return 'bg-emerald-100 text-emerald-800'; // first feel
     case 'feel2':
-      return 'bg-purple-100 text-purple-800'; // second feel
+      return 'bg-violet-tint text-violet'; // second feel
     default:
       return 'bg-slate-100 text-slate-800';
   }

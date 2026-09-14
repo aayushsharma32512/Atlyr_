@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
-import { Pin, Redo2, RotateCcw, Undo2 } from "lucide-react"
+import { Redo2, RotateCcw, Undo2 } from "lucide-react"
+
+import { Icons } from "@/design-system/icons"
 import { useOutfitSnapshot } from "@/features/outfits/hooks/useOutfitSnapshot"
 
 import {
@@ -1122,7 +1124,7 @@ export function StudioAlternativesView() {
       // the same card Studio uses, in place of the piece card below.
       id: "save",
       label: "Save this look",
-      icon: Pin,
+      icon: Icons.save,
       disabled: isViewOnly,
       onClick: () => {
         setProductSaveId(null)

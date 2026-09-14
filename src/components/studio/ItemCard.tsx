@@ -67,7 +67,7 @@ export function ItemCard({ item, className, isSelected = false, onSelectionChang
     switch (kind) {
       case 'category': return `${baseClasses} bg-blue-50 text-blue-700 border border-blue-200`;
       case 'fit': return `${baseClasses} bg-green-50 text-green-700 border border-green-200`;
-      case 'feel1': return `${baseClasses} bg-purple-50 text-purple-700 border border-purple-200`;
+      case 'feel1': return `${baseClasses} bg-violet-tint text-violet border border-violet/30`;
       case 'feel2': return `${baseClasses} bg-orange-50 text-orange-700 border border-orange-200`;
       default: return `${baseClasses} bg-gray-50 text-gray-700 border border-gray-200`;
     }

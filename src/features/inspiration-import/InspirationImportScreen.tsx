@@ -79,7 +79,7 @@ function DetectionProgress({ sourceUrl, error, onBack }: DetectionProgressProps)
           {error ? "We couldn’t identify the outfits" : "Looking for outfits…"}
         </p>
         <div
-          className="relative mx-auto w-fit max-w-full overflow-hidden rounded-[8px] border border-hairline bg-card sm:w-full"
+          className="relative mx-auto w-fit max-w-full overflow-hidden rounded-[8px] border border-hairline bg-white sm:w-full"
           aria-busy={!error}
         >
           {sourceUrl ? (
@@ -519,7 +519,7 @@ export default function InspirationImportScreen() {
   if (isCommitted || isStaged) {
     return (
       <main className="min-h-screen bg-background px-5 py-10 text-foreground">
-        <section className="mx-auto max-w-lg rounded-frame border border-hairline bg-card p-7 text-center">
+        <section className="mx-auto max-w-lg rounded-frame border border-hairline bg-white p-7 text-center">
           <span className="mx-auto flex size-14 items-center justify-center rounded-full border border-gold text-gold">
             <Sparkles className="size-6" />
           </span>
@@ -600,9 +600,9 @@ export default function InspirationImportScreen() {
         ) : (
           <section>
             <div className="grid h-[clamp(18rem,50dvh,28rem)] grid-cols-2 gap-3 sm:h-auto sm:aspect-[3/2]">
-              <div className="relative overflow-hidden rounded-[7px] border border-hairline bg-card">
+              <div className="relative overflow-hidden rounded-[7px] border border-hairline bg-white">
                 {record.sourceUrl ? <img src={record.sourceUrl} alt="Uploaded inspiration reference" className="h-full w-full object-cover" /> : null}
-                <span className="absolute left-3 top-3 rounded-[3px] bg-foreground px-2 py-1 text-[8px] font-bold uppercase tracking-[0.12em] text-background">
+                <span className="absolute left-3 top-3 rounded-control bg-foreground px-2 py-1 text-[8px] font-bold uppercase tracking-[0.12em] text-background">
                   Ref
                 </span>
               </div>
@@ -629,7 +629,7 @@ export default function InspirationImportScreen() {
                         if (!candidate) return
                         showCandidateInventoryResults(candidate)
                       }}
-                      className={`flex size-11 items-center justify-center rounded-[6px] border transition-colors ${active ? "border-foreground bg-foreground text-background" : "border-hairline bg-card text-muted-foreground disabled:bg-muted disabled:text-muted-foreground/30"}`}
+                      className={`flex size-11 items-center justify-center rounded-control border transition-colors ${active ? "border-foreground bg-foreground text-background" : "border-hairline bg-card text-muted-foreground disabled:bg-muted disabled:text-muted-foreground/30"}`}
                     >
                       {category === "top" ? <Shirt className="size-4" /> : <BottomGarmentIcon />}
                     </button>
@@ -639,7 +639,7 @@ export default function InspirationImportScreen() {
               {resultsSource === "web" ? (
                 <button
                   type="button"
-                  className="flex h-9 items-center gap-1 rounded-[5px] border border-hairline bg-card px-3 text-[9px] font-semibold uppercase tracking-[0.13em] text-foreground"
+                  className="flex h-9 items-center gap-1 rounded-control border border-hairline bg-white px-3 text-[9px] font-semibold uppercase tracking-[0.13em] text-foreground"
                   onClick={showInventoryResults}
                 >
                   <ChevronLeft className="size-3" /> Inventory
@@ -647,7 +647,7 @@ export default function InspirationImportScreen() {
               ) : (
                 <button
                   type="button"
-                  className="flex h-9 items-center gap-1 rounded-[5px] border border-hairline bg-card px-3 text-[9px] font-semibold uppercase tracking-[0.13em] text-foreground disabled:cursor-wait disabled:text-muted-foreground"
+                  className="flex h-9 items-center gap-1 rounded-control border border-hairline bg-white px-3 text-[9px] font-semibold uppercase tracking-[0.13em] text-foreground disabled:cursor-wait disabled:text-muted-foreground"
                   onClick={() => void showWebResults()}
                   disabled={webQuery.isFetching}
                 >
@@ -667,12 +667,12 @@ export default function InspirationImportScreen() {
                     onSelect={selectWebResult}
                   />
                 ) : (
-                  <div className="flex min-h-52 items-center justify-center rounded-[7px] border border-hairline bg-card px-6 text-center text-xs text-muted-foreground">
+                  <div className="flex min-h-52 items-center justify-center rounded-[7px] border border-hairline bg-white px-6 text-center text-xs text-muted-foreground">
                     No online matches found for this piece.
                   </div>
                 )
               ) : activeCatalogueSearch?.isLoading ? (
-                <div className="flex min-h-52 items-center justify-center rounded-[7px] border border-hairline bg-card">
+                <div className="flex min-h-52 items-center justify-center rounded-[7px] border border-hairline bg-white">
                   <Loader2 className="size-5 animate-spin text-terracotta" />
                 </div>
               ) : (

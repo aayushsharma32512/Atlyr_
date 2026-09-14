@@ -147,7 +147,7 @@ function JobCard({
                       onRetry()
                     }
                   }}
-                  className="flex h-control-chip shrink-0 items-center rounded-control border border-hairline bg-card px-3 text-chip font-medium text-ink"
+                  className="flex h-control-chip shrink-0 items-center rounded-control border border-hairline bg-white px-3 text-chip font-medium text-ink"
                 >
                   Retry
                 </span>

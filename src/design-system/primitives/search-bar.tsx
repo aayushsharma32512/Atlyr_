@@ -76,7 +76,7 @@ export function SearchBar({
 
   return (
     <div className={cn("flex w-full flex-col gap-2", className)}>
-      <div className="flex h-control-field w-full items-center gap-1.5 rounded-control border border-hairline bg-card px-1">
+      <div className="flex h-control-field w-full items-center gap-1.5 rounded-control border border-hairline bg-white px-1">
         {onFilter ? (
           <button type="button" aria-label="Filters" onClick={onFilter} disabled={filterDisabled} className={ICON_BTN}>
             <Icons.filter className={BAR_ICON} aria-hidden="true" />
@@ -148,7 +148,7 @@ export function SearchBar({
           type="button"
           aria-label="Search"
           onClick={onSubmit}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-control bg-ink text-background"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-control bg-ink text-white"
         >
           <Icons.search className={BAR_ICON} aria-hidden="true" />
         </button>

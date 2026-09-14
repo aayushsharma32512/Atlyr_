@@ -9,14 +9,16 @@ import {
   ChevronRight,
   ChevronUp,
   Compass,
+  Eye,
   Folders,
   Globe,
+  Heart,
   Layers,
   LayoutGrid,
   Link,
   ListFilter,
   Maximize2,
-  Pin,
+  Minimize2,
   Plus,
   Redo2,
   RefreshCw,
@@ -37,11 +39,15 @@ import {
 import { BottomsGlyph, HangerGlyph, ShoeGlyph } from "./glyphs";
 
 export const Icons = {
-  // design.md's table says Bookmark, but DESIGN_NOTES #8 says pin and the
-  // bundle's OutfitCard/ProductCard both draw the Pin path. Filled = saved.
-  save: Pin,
+  // V2 (design doc, Sep 2026): the save/favourite icon is the HEART
+  // everywhere — it replaced the pin. Filled + violet = saved.
+  save: Heart,
 
   tryOn: SquareUserRound,
+  // Try-on button, states 2 and 3 (V2 "try on button · 3 states"):
+  // eye = show the render, person = go back to the avatar.
+  viewTryOn: Eye,
+  viewAvatar: UserRound,
   findItems: Globe, // replaces "Buy" everywhere
   share: Share,
 
@@ -61,7 +67,7 @@ export const Icons = {
   // A hanger, not Shirt: Shirt is the `top` slot, and the two segments sit one
   // above the other on Alternates — the same glyph twice read as a doubled rail.
   sourceWardrobe: HangerGlyph,
-  sourceSaves: Pin,
+  sourceSaves: Heart,
   sourceExplore: Compass, // Globe is taken by Find items — one icon per meaning
 
   addInspiration: Link,
@@ -80,6 +86,7 @@ export const Icons = {
   filter: ListFilter,
   remove: Trash2,
   expand: Maximize2,
+  collapse: Minimize2,
   openList: ArrowUpRight, // rail → its full page
   close: X,
   profile: UserRound,

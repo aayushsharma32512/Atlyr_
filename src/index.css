@@ -98,16 +98,24 @@ img {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Tantu / Kalagriha design system.
+   Atlyr V2 design system (Sep 2026 reskin).
+   Source: "Atlyr App Design System Creativity Focus/updated/" —
+   `09 Full View v2.dc.html` lines 21-826 and `10 Design Doc.dc.html` §2.
 
-   Colour law (handoff §2.1):
-     · terracotta #B3542E is THE ONLY filled action — max one per screen
-     · gold #C9A227 is provenance ONLY — Nama, seals, ✦ YOURS. Never a button,
-       never decoration. It is deliberately NOT wired to --accent, because
-       shadcn uses --accent for hover/focus surfaces in menus, dropdowns and
-       command palettes; that would spray gold across the whole app. Provenance
-       components read --gold / --gold-deep explicitly instead.
-     · radii 3–6px only, hairline borders only.
+   Colour law (design doc §2):
+     · ONE ground #F8F8F7. No filled cards — structure comes from 0.5px
+       hairlines. White is reserved for the render (figure) and for inputs /
+       secondary buttons.
+     · ink #161616 does the work: text, icons, primary buttons. #2B2B2B
+       charcoal for filled chips and callouts.
+     · violet #8E2FC2 is punctuation ONLY — active tab underline, selected
+       heart, selected board chip, Studio nav icon, unread dot. Exactly like
+       gold before it, it is deliberately NOT wired to --accent: shadcn uses
+       --accent for hover/focus surfaces in menus, dropdowns and command
+       palettes, and that would spray violet across the whole app. Components
+       read --violet / --violet-deep / --violet-tint explicitly instead.
+     · radii 8px (buttons, tiles, inputs, bands) and 6px (chips) only.
+       Hairline borders only.
 
    Ops surfaces (/admin, /hitl) opt out via :root[data-surface="ops"] below,
    which restores the previous stone theme verbatim. The attribute is set on
@@ -117,80 +125,120 @@ img {
    ───────────────────────────────────────────────────────────────────────────── */
 @layer base {
   :root {
-    --background: 39 45.45% 91.37%;
-    --foreground: 36 12.2% 16.08%;
-    --card: 0 0% 100%;
-    --card-foreground: 36 12.2% 16.08%;
+    /* ── V2 skin (Sep 2026). Source: "Atlyr App Design System Creativity Focus/
+       updated/09 Full View v2.dc.html" lines 21-826 + "10 Design Doc" §2.
+       One ground, one ink, one accent. Fourteen colours, no warm cast.
+       --accent stays neutral on purpose: violet is punctuation, not a hover. ── */
+    --background: 60 6.67% 97.06%;      /* #F8F8F7 ground */
+    --foreground: 0 0% 8.63%;           /* #161616 ink   */
+    /* "No filled cards" (design doc §2): a card is the ground plus a hairline,
+       not a white rectangle. White survives only on the render, inputs and
+       secondary buttons, which now say `bg-white` explicitly.
+       --popover stays white on purpose: floating overlays (dropdowns, command
+       palettes) are not in the V2 screens at all, and a menu that matches the
+       page it floats over has no edge to read. */
+    --card: 60 6.67% 97.06%;            /* ground, not white */
+    --card-foreground: 0 0% 8.63%;
     --popover: 0 0% 100%;
-    --popover-foreground: 36 12.2% 16.08%;
-    --primary: 17.1429 59.11% 44.12%;
-    --primary-foreground: 39 45.45% 91.37%;
-    --secondary: 41.25 47.06% 93.33%;
-    --secondary-foreground: 36 12.2% 16.08%;
-    --muted: 40.8 40.98% 88.04%;
-    --muted-foreground: 43.6364 8.66% 49.8%;
-    --accent: 40.8 40.98% 88.04%;
-    --accent-foreground: 36 12.2% 16.08%;
-    --destructive: 359.0323 79.4872% 15.2941%;
+    --popover-foreground: 0 0% 8.63%;
+    --primary: 0 0% 8.63%;              /* ink fill, white label */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 100%;             /* white fill + hairline */
+    --secondary-foreground: 0 0% 8.63%;
+    --muted: 60 5% 92.16%;              /* #ECECEA */
+    --muted-foreground: 60 1.27% 53.53%;/* #8A8A87 */
+    --accent: 60 5% 92.16%;             /* neutral — NOT violet */
+    --accent-foreground: 0 0% 8.63%;
+    --destructive: 359.0323 79.4872% 15.2941%;  /* unchanged: V2 defines none */
     --destructive-foreground: 0 85.7143% 97.2549%;
-    --border: 38.5714 34.15% 83.92%;
-    --input: 38.5714 34.15% 83.92%;
-    --ring: 17.1429 59.11% 44.12%;
-    --chart-1: 17.1429 59.11% 44.12%;
-    --chart-2: 39.3631 74.41% 41.37%;
-    --chart-3: 39.3103 14.15% 59.8%;
-    --chart-4: 36.6667 14.29% 24.71%;
-    --chart-5: 21.3223 66.12% 64.12%;
-    --sidebar: 39 45.45% 91.37%;
-    --sidebar-foreground: 43.6364 8.66% 49.8%;
-    --sidebar-primary: 36 12.2% 16.08%;
-    --sidebar-primary-foreground: 39 45.45% 91.37%;
-    --sidebar-accent: 40.8 40.98% 88.04%;
-    --sidebar-accent-foreground: 36 12.2% 16.08%;
-    --sidebar-border: 38.5714 34.15% 83.92%;
-    --sidebar-ring: 43.6364 8.66% 49.8%;
+    --border: 60 2.78% 85.88%;          /* #DCDCDA */
+    --input: 60 2.78% 85.88%;
+    --ring: 278.78 61% 47.25%;          /* violet — focus is punctuation */
+    --chart-1: 0 0% 8.63%;
+    --chart-2: 0 0% 16.86%;
+    --chart-3: 60 1.27% 53.53%;
+    --chart-4: 60 3.39% 76.86%;
+    --chart-5: 278.78 61% 47.25%;
+    --sidebar: 60 6.67% 97.06%;
+    --sidebar-foreground: 60 1.27% 53.53%;
+    --sidebar-primary: 0 0% 8.63%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 60 5% 92.16%;
+    --sidebar-accent-foreground: 0 0% 8.63%;
+    --sidebar-border: 60 2.78% 85.88%;
+    --sidebar-ring: 60 1.27% 53.53%;
 
-    /* Brand raw tokens — read directly, not through shadcn semantics */
-    --ink: 36 12.2% 16.08%;
-    --ink-deep: 36 16.13% 12.16%;
-    --ink-deepest: 34.2857 14.29% 9.61%;
-    --ink-soft: 36 14.02% 20.98%;
-    --ink-line: 36.6667 14.29% 24.71%;
-    --body-ink: 41.0526 14.29% 26.08%;
-    --on-ink-1: 40 15.79% 59.02%;
-    --on-ink-2: 40.8 20% 75.49%;
-    --on-ink-3: 40.9091 22.92% 81.18%;
-    --terracotta: 17.1429 59.11% 44.12%;
-    --terracotta-tint: 21.3223 66.12% 64.12%;
-    --gold: 45.5556 67.5% 47.06%;
-    --gold-deep: 39.3631 74.41% 41.37%;
-    --taupe: 39.3103 14.15% 59.8%;
-    --hairline: 38.5714 34.15% 83.92%;
-    --hairline-2: 39.2308 37.14% 86.27%;
-    --hairline-3: 39.3103 32.58% 82.55%;
-    --hairline-4: 40 28.3% 79.22%;
-    /* #C9C0AD — dashed borders on empty slots and outline actions */
-    --hairline-dashed: 40.7143 20.59% 73.33%;
-    --warp: 39.2308 46.43% 89.02%;
-    --placeholder-grid: 39.3103 44.62% 87.25%;
+    /* Brand raw tokens — read directly, not through shadcn semantics.
+       V2 collapses the warm ramp: one ink, one grey pair, one hairline.
+       The old names are kept as aliases so this stays a token swap rather than
+       a 200-file rename; they now resolve to their V2 equivalent. */
+    --ink: 0 0% 8.63%;                  /* #161616 */
+    --charcoal: 0 0% 16.86%;            /* #2B2B2B — filled chips, callouts, voice */
+    --ink-deep: 0 0% 8.63%;
+    --ink-deepest: 0 0% 8.63%;
+    --ink-soft: 0 0% 16.86%;
+    --ink-line: 0 0% 16.86%;
+    --body-ink: 60 0.94% 41.57%;        /* #6B6B69 secondary copy */
+    --disabled: 60 3.39% 76.86%;        /* #C6C6C2 dimmed nav, inactive undo/redo */
+    --on-ink-1: 60 1.27% 53.53%;
+    --on-ink-2: 60 3.39% 76.86%;
+    --on-ink-3: 60 5% 92.16%;
 
-    /* ── Kalagriha screen-reskin additions (P0). Surfaces & provenance the
+    /* Violet is punctuation ONLY: active tab underline, selected heart,
+       selected board chip, Studio nav icon, unread dot. Like --gold before it,
+       it must never become --accent, or every hover turns into a signal. */
+    /* ONE purple, everywhere. The design frames carry two (#B94FE8 and the
+       deeper #8E2FC2); #B94FE8 read washed out on the nav at icon size, so the
+       app standardises on the deeper one. --violet-deep is kept pointing at the
+       same value so nothing has to change, and so no second purple can creep
+       back in through it. Anything purple in this app resolves here. */
+    --violet: 278.78 61% 47.25%;        /* #8E2FC2 */
+    --violet-deep: 278.78 61% 47.25%;   /* #8E2FC2 — same hex on purpose */
+    --violet-tint: 278.82 68% 95.1%;    /* #F5EAFB — the light wash only */
+
+    /* Retired warm accents. Aliased to neutrals so existing call sites go quiet
+       instead of breaking; violet gets applied deliberately, per the spec. */
+    --terracotta: 0 0% 8.63%;
+    --terracotta-tint: 60 5% 92.16%;
+    --gold: 0 0% 16.86%;
+    --gold-deep: 0 0% 16.86%;
+    --taupe: 60 1.27% 53.53%;           /* #8A8A87 meta, counters, empty slots */
+
+    /* One hairline, drawn at 0.5px. The 2/3/4 ladder collapses into it. */
+    --hairline: 60 2.78% 85.88%;        /* #DCDCDA */
+    --hairline-2: 60 2.78% 85.88%;
+    --hairline-3: 60 2.78% 85.88%;
+    --hairline-4: 60 2.78% 85.88%;
+    --hairline-dashed: 60 2.78% 85.88%;
+    --warp: 60 3.85% 89.8%;             /* #E6E6E4 */
+    --placeholder-grid: 60 3.33% 88.24%;/* #E2E2E0 */
+
+    /* ── Screen-reskin additions (P0). Surfaces & provenance the
        buyer-journey screens (6a 6b 6d 6e 6f 6g 6i) need beyond the base ramp.
        Purely additive — nothing above is retuned, so the existing primitives
        and ops surfaces are untouched. ── */
-    --editorial: 40 40% 86.3%;      /* #EAE1CE — moodboard / editorial pin tint */
-    --skeleton: 41 37.3% 90%;       /* #EFE9DC — shimmer base */
-    --faint: 46 14.8% 56.3%;        /* #A0987F — placeholder labels, hints, chevrons */
-    --gold-muted: 42 24.3% 43.5%;   /* #8A7A54 — ✦ YOURS text, gold-chip label (provenance) */
-    --border-dashed: 41 20% 73%;    /* #C9C0AD — dashed slots, ghost-button outline */
-    --radius-frame: 6px;            /* canvas frames, panels, editorial tiles */
-    --radius-badge: 2px;            /* provenance seals, WEARING badges */
+    --editorial: 60 5% 92.16%;      /* #ECECEA — was a warm pin tint */
+    --skeleton: 60 5% 92.16%;       /* #ECECEA — shimmer base */
+    --faint: 60 1.27% 53.53%;       /* #8A8A87 — placeholder labels, hints, chevrons */
+    --gold-muted: 60 1.27% 53.53%;  /* retired: provenance is no longer a colour */
+    --border-dashed: 60 2.78% 85.88%; /* #DCDCDA — dashed slots, ghost-button outline */
 
-    --font-sans: "Hanken Grotesk", ui-sans-serif, sans-serif, system-ui;
-    --font-serif: "Bodoni Moda", ui-serif, Georgia, serif;
-    --font-deva: "Noto Serif Devanagari", ui-serif, serif;
+    /* Shape scale. V2 inverts the old one: 8px on buttons/tiles/inputs/bands,
+       6px on chips. Measured across the V2 frames: 147x 8px, 67x 6px, nothing
+       else. Chips were a 9999px pill here and are now a 6px rect. */
+    --radius: 0.5rem;               /* 8px — cards, the base step */
+    --radius-control: 8px;          /* buttons, chips-as-controls, fields */
+    --radius-frame: 8px;            /* canvas frames, panels, bands */
+    --radius-badge: 2px;            /* unused in V2; left for the seal step */
+
+    /* Type. DM Serif Display is the h1 face and lives only in the 52px header
+       row. Fraunces italic is the "voice" — used only where something is
+       running or has landed (Wait line, progress-hub headline, drop-zone prompts).
+       It ships defined-but-unapplied: nothing in the app has that role yet. */
+    --font-sans: Inter, ui-sans-serif, sans-serif, system-ui;
+    --font-serif: "DM Serif Display", ui-serif, Georgia, serif;
+    --font-voice: Fraunces, ui-serif, Georgia, serif;
     --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-    --radius: 0.3125rem;
     --shadow-x: 0;
     --shadow-y: 1px;
     --shadow-blur: 3px;
@@ -212,9 +260,9 @@ img {
     --text-secondary-2: var(--muted-foreground);
     --radius-card: var(--radius);
     --radius-sheet: calc(var(--radius) + 0.125rem);
-    --radius-chip: 9999px;
+    --radius-chip: 6px;             /* V2: chips are a 6px rect, no longer a pill */
 
-    /* ── Fluid scale (Kalagriha surfaces: gate, login, first run).
+    /* ── Fluid scale (legacy brand surfaces: gate, login, first run).
        The handoff only ever existed as a 390px frame, so those screens were
        built from one set of literal pixel values and then rendered that phone
        comp at every width — 11.5px body copy and a 330px column on a 1920px
@@ -261,13 +309,9 @@ img {
     --type-chip:     clamp(0.688rem, 0.18vw + 0.644rem, 0.825rem); /* 11   → 13.2  · eyebrow, chip */
     --type-section:  clamp(0.656rem, 0.17vw + 0.615rem, 0.787rem); /* 10.5 → 12.6  · section label — THE FLOOR */
 
-    /* The 3px step of the shape scale — the one that had no token, hence
-       `rounded-[3px]` 57× across src/. Note --radius-chip is still a pill;
-       design.md puts chips at 3px, but that move belongs in their screen's PR. */
-    --radius-control: 3px;
   }
 
-  /* ── Ops surfaces (/admin/*, /hitl): the pre-Kalagriha stone theme, verbatim.
+  /* ── Ops surfaces (/admin/*, /hitl): the legacy stone theme, verbatim.
      Set by useSurfaceTheme() on <html> so portalled dialogs inherit it too.
      Do not "harmonise" these values with the brand palette — the point is that
      the ingestion, HITL and placement dashboards are visually untouched. ── */
@@ -370,6 +414,18 @@ img {
 /* Premium Typography hierarchy */
 @layer utilities {
 
+  /* ── 0.5px hairlines (V2 §2: "structure comes from 0.5px hairlines").
+     Tailwind has no sub-pixel border step, so these are the named utilities.
+     On a 1x display the browser rounds to 1px; on 2x+ it draws a true half
+     pixel, which is the whole point of the rule. ── */
+  .hairline { border: 0.5px solid hsl(var(--hairline)); }
+  .hairline-t { border-top: 0.5px solid hsl(var(--hairline)); }
+  .hairline-b { border-bottom: 0.5px solid hsl(var(--hairline)); }
+  .hairline-l { border-left: 0.5px solid hsl(var(--hairline)); }
+  .hairline-r { border-right: 0.5px solid hsl(var(--hairline)); }
+  .hairline-x { border-left: 0.5px solid hsl(var(--hairline)); border-right: 0.5px solid hsl(var(--hairline)); }
+  .hairline-y { border-top: 0.5px solid hsl(var(--hairline)); border-bottom: 0.5px solid hsl(var(--hairline)); }
+
   /* Chip tokens */
   .chip {
     display: inline-flex;
@@ -379,7 +435,7 @@ img {
     font-size: 11px;
     line-height: 1;
     padding: 6px 8px;
-    border: 1px solid hsl(var(--border));
+    border: 0.5px solid hsl(var(--border));
     white-space: nowrap;
   }
 
@@ -838,7 +894,7 @@ img {
   animation: subtle-bounce 0.15s ease-in-out;
 }
 
-/* Kalagriha motion — shimmer (skeletons), popIn (save toast), floaty (caret). */
+/* Atlyr motion — shimmer (skeletons), popIn (save toast), floaty (caret). */
 @keyframes shimmer {
   from { background-position: -300px 0; }
   to { background-position: 300px 0; }
@@ -877,7 +933,7 @@ img {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
-   KALAGRIHA — the defining textures & motion
+   ATLYR — the defining textures & motion
    warp/weft grid (avatar canvases, editorial tiles, product frames),
    scrapbook pin-tilt (feed & boards only — fixed values so cards don't
    re-tilt on re-mount), and the save-toast / seal keyframes.

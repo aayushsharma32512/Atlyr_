@@ -84,7 +84,7 @@ export function TabBar({
               className={cn(
                 "flex h-9 min-w-0 items-center justify-center whitespace-nowrap border-b-2 text-chip font-medium tracking-[0.08em] text-ink",
                 scroll ? "px-0" : "flex-1",
-                isActive ? "border-ink" : "border-transparent",
+                isActive ? "border-violet" : "border-transparent",
               )}
             >
               {item.label}

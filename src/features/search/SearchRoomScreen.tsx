@@ -198,7 +198,7 @@ export function SearchRoom() {
             <button
               type="button"
               onClick={goToResults}
-              className="flex w-full items-center justify-center gap-3 rounded-[3px] bg-primary py-3.5 text-[14px] font-bold text-primary-foreground shadow-[0_8px_22px_rgba(23,20,16,0.4)] transition-opacity hover:bg-primary/90"
+              className="flex w-full items-center justify-center gap-3 rounded-control bg-primary py-3.5 text-[14px] font-bold text-primary-foreground shadow-[0_8px_22px_rgba(23,20,16,0.4)] transition-opacity hover:bg-primary/90"
             >
               {totalFilters > 0 ? "Show pieces" : "Explore the catalogue"} →
               {totalFilters > 0 ? (

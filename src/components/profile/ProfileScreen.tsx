@@ -552,8 +552,8 @@ export function ProfileScreen() {
             </div>
 
             <div className="profile-menu-item" onClick={() => console.log('notifications')}>
-              <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center">
-                <Bell className="w-4 h-4 text-purple-600" />
+              <div className="w-8 h-8 rounded-lg bg-violet/10 flex items-center justify-center">
+                <Bell className="w-4 h-4 text-violet" />
               </div>
               <div className="flex-1">
                 <p className="text-sm font-medium text-foreground">Notifications</p>

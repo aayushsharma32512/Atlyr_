@@ -67,9 +67,9 @@ export function CategoryFilterBar({
               aria-label={category.label}
               onClick={() => onCategoryChange?.(category.id)}
               className={cn(
-                "h-9 w-9 border-b border-transparent text-muted-foreground",
+                "h-9 w-9 border-b-2 border-transparent text-muted-foreground",
                 "hover:bg-muted/40 hover:text-foreground",
-                isActive && "border-sidebar-border text-primary",
+                isActive && "border-violet text-ink",
               )}
             >
               <Icon className="size-5" aria-hidden="true" />

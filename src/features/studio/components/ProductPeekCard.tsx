@@ -84,7 +84,7 @@ export function ProductPeekCard({
           In your studio{item.slotLabel ? ` · ${item.slotLabel}` : ""}
         </p>
 
-        <div className="bg-warp-grid relative mt-2.5 flex h-[168px] items-center justify-center overflow-hidden rounded-md border border-hairline bg-card">
+        <div className="bg-warp-grid relative mt-2.5 flex h-[168px] items-center justify-center overflow-hidden rounded-md border border-hairline bg-white">
           {item.imageUrl ? (
             <img
               src={item.imageUrl}
@@ -121,7 +121,7 @@ export function ProductPeekCard({
             {item.specs.map((spec) => (
               <span
                 key={spec}
-                className="rounded-[3px] border border-hairline-4 px-2.5 py-1 text-[8.5px] font-medium uppercase text-ink-body"
+                className="rounded-control border border-hairline-4 px-2.5 py-1 text-[8.5px] font-medium uppercase text-ink-body"
               >
                 {spec}
               </span>
@@ -137,7 +137,7 @@ export function ProductPeekCard({
               onClick={() => onSave(item)}
               aria-label="Save this piece"
               className={cn(
-                "flex shrink-0 items-center gap-1.5 rounded-[3px] border border-gold px-3.5 py-3",
+                "flex shrink-0 items-center gap-1.5 rounded-control border border-gold px-3.5 py-3",
                 "text-[11px] font-semibold text-gold-deep transition-colors hover:bg-gold/5",
                 "disabled:cursor-not-allowed disabled:opacity-60",
               )}
@@ -151,7 +151,7 @@ export function ProductPeekCard({
             disabled={isReadOnly && !isWorn}
             onClick={() => (isWorn ? onDetails(item) : onWear(item))}
             className={cn(
-              "flex-1 rounded-[3px] bg-primary py-3 text-[12px] font-bold text-primary-foreground",
+              "flex-1 rounded-control bg-primary py-3 text-[12px] font-bold text-primary-foreground",
               "shadow-sm transition-shadow hover:shadow-md",
               "disabled:cursor-not-allowed disabled:opacity-60",
             )}

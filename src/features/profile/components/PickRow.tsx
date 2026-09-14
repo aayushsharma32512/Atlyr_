@@ -180,7 +180,7 @@ export function PickRow({
               onClick={() => onToggle(option.id)}
               style={angle ? { transform: `rotate(${angle}deg)` } : undefined}
               className={cn(
-                "relative shrink-0 rounded-[5px] border bg-card text-left transition-all",
+                "relative shrink-0 rounded-control border bg-card text-left transition-all",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                 variant === "photo" && "w-[var(--tile-w)] p-1",
                 variant === "swatch" && "w-[var(--tile-w)] p-1",
@@ -272,7 +272,7 @@ function TileFace({
   if (variant === "swatch") {
     return (
       <span
-        className="block aspect-[52/44] rounded-[3px]"
+        className="block aspect-[52/44] rounded-control"
         style={{ backgroundColor: option.color }}
         aria-hidden="true"
       />
@@ -296,7 +296,7 @@ function TileFace({
       return (
         <span
           className={cn(
-            "relative block overflow-hidden rounded-[3px] bg-background",
+            "relative block overflow-hidden rounded-control bg-background",
             PHOTO_FACE_ASPECT,
           )}
         >
@@ -319,7 +319,7 @@ function TileFace({
     return (
       <span
         className={cn(
-          "flex items-center justify-center rounded-[3px] bg-background",
+          "flex items-center justify-center rounded-control bg-background",
           PHOTO_FACE_ASPECT,
         )}
       >
@@ -340,7 +340,7 @@ function TileFace({
   return (
     <span
       className={cn(
-        "bg-placeholder-grid flex items-end justify-center rounded-[3px] bg-background pb-1",
+        "bg-placeholder-grid flex items-end justify-center rounded-control bg-background pb-1",
         PHOTO_FACE_ASPECT,
       )}
     >

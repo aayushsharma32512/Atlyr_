@@ -159,7 +159,7 @@ export function SharedLookScreen() {
 
         <main className="min-w-0 lg:mt-4 lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1.08fr)_minmax(20rem,0.92fr)] lg:gap-6">
           <section
-            className="mt-4 min-w-0 overflow-hidden rounded-lg border border-hairline bg-card shadow-xs lg:mt-0 lg:h-full lg:min-h-0"
+            className="mt-4 min-w-0 overflow-hidden rounded-lg border border-hairline bg-white shadow-xs lg:mt-0 lg:h-full lg:min-h-0"
             aria-label="Shared outfit preview"
           >
             <div className="relative aspect-[4/5] max-h-[31rem] w-full overflow-hidden bg-muted/20 lg:h-full lg:max-h-none lg:aspect-auto">
@@ -198,7 +198,7 @@ export function SharedLookScreen() {
 
             {visibleItems.length > 0 ? (
               <section
-                className="mt-4 min-w-0 overflow-hidden rounded-lg border border-hairline bg-card shadow-xs"
+                className="mt-4 min-w-0 overflow-hidden rounded-lg border border-hairline bg-white shadow-xs"
                 aria-label="Pieces in this look"
               >
                 {visibleItems.map((item) => (
@@ -217,7 +217,7 @@ export function SharedLookScreen() {
               </section>
             ) : null}
 
-            <section className="mt-4 min-w-0 rounded-lg border border-hairline bg-card p-4 shadow-xs sm:p-5 lg:p-4">
+            <section className="mt-4 min-w-0 rounded-lg border border-hairline bg-white p-4 shadow-xs sm:p-5 lg:p-4">
               <h2 className="text-lg font-semibold text-foreground">Make it yours</h2>
               <p className="mt-1 text-sm leading-5 text-muted-foreground">
                 {isAuthenticated

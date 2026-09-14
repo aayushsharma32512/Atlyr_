@@ -44,6 +44,12 @@ export function CreationsTab() {
   const [currentSlide, setCurrentSlide] = useState(0)
   const [isExpanded, setIsExpanded] = useState(false)
   const [isTryOnOpen, setIsTryOnOpen] = useState(false)
+  /**
+   * Full screen only: the render is showing in place of the avatar. This is
+   * what gives the tray button its third state ("view avatar") — an overlay
+   * cannot have one, because it covers the tray that would carry it.
+   */
+  const [isRenderShowing, setIsRenderShowing] = useState(false)
   const trackRef = useRef<HTMLDivElement>(null)
   const fullscreenTrackRef = useRef<HTMLDivElement>(null)
 
@@ -105,7 +111,17 @@ export function CreationsTab() {
 
   useEffect(() => {
     setIsTryOnOpen(false)
+    // The render belongs to the look you were on. Swiping to the next one
+    // must drop back to the avatar, or the tray offers "view avatar" for a
+    // look whose try-on does not exist.
+    setIsRenderShowing(false)
   }, [activeCreation?.id])
+
+  // Reopening full screen always starts on the avatar, never on a render
+  // the user left showing minutes ago.
+  useEffect(() => {
+    if (!isExpanded) setIsRenderShowing(false)
+  }, [isExpanded])
 
   // The overlay mounts at scrollLeft 0, which would read as slide 0 and snap the
   // carousel back. Jump it to the active look before it can be measured.
@@ -322,7 +338,7 @@ export function CreationsTab() {
           type="button"
           onClick={() => setIsExpanded(true)}
           aria-label="Expand look"
-          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full border border-hairline bg-card text-ink"
+          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full border border-hairline bg-white text-ink"
         >
           <Icons.expand className="h-4 w-4" aria-hidden="true" />
         </button>
@@ -337,7 +353,7 @@ export function CreationsTab() {
               onClick={() => goTo(currentSlide - 1)}
               disabled={currentSlide === 0}
               aria-label="Previous look"
-              className="absolute left-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-hairline bg-card/85 text-ink backdrop-blur disabled:opacity-40"
+              className="absolute left-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-hairline bg-white/85 text-ink backdrop-blur disabled:opacity-40"
             >
               <Icons.carouselPrev className="h-4 w-4" aria-hidden="true" />
             </button>
@@ -346,7 +362,7 @@ export function CreationsTab() {
               onClick={() => goTo(currentSlide + 1)}
               disabled={currentSlide === totalSlides - 1}
               aria-label="Next look"
-              className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-hairline bg-card/85 text-ink backdrop-blur disabled:opacity-40"
+              className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-hairline bg-white/85 text-ink backdrop-blur disabled:opacity-40"
             >
               <Icons.carouselNext className="h-4 w-4" aria-hidden="true" />
             </button>
@@ -378,7 +394,7 @@ export function CreationsTab() {
             <button
               type="button"
               onClick={handleOpenStudio}
-              className="flex h-control-secondary flex-1 items-center justify-center gap-2 rounded-control border border-hairline bg-card text-label font-semibold text-ink"
+              className="flex h-control-secondary flex-1 items-center justify-center gap-2 rounded-control border border-hairline bg-white text-label font-semibold text-ink"
             >
               <Icons.navStudio className="h-5 w-5" aria-hidden="true" />
               Studio
@@ -453,7 +469,13 @@ export function CreationsTab() {
                 className="h-full w-full flex-none snap-center snap-always"
                 aria-hidden={index !== currentSlide}
               >
-                {Math.abs(index - currentSlide) <= 1 ? (
+                {isRenderShowing && index === currentSlide && creation.vtoImageUrl ? (
+                  <img
+                    src={creation.vtoImageUrl}
+                    alt={`Try-on of ${creation.name}`}
+                    className="h-full w-full object-contain"
+                  />
+                ) : Math.abs(index - currentSlide) <= 1 ? (
                   <OutfitInspirationTile
                     preset="heroCanonical"
                     outfitId={creation.outfitId}
@@ -480,7 +502,7 @@ export function CreationsTab() {
                 onClick={() => goTo(currentSlide - 1)}
                 disabled={currentSlide === 0}
                 aria-label="Previous look"
-                className="absolute left-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-hairline bg-card/85 text-ink backdrop-blur disabled:opacity-40"
+                className="absolute left-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-hairline bg-white/85 text-ink backdrop-blur disabled:opacity-40"
               >
                 <Icons.carouselPrev className="h-4 w-4" aria-hidden="true" />
               </button>
@@ -489,7 +511,7 @@ export function CreationsTab() {
                 onClick={() => goTo(currentSlide + 1)}
                 disabled={currentSlide === totalSlides - 1}
                 aria-label="Next look"
-                className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-hairline bg-card/85 text-ink backdrop-blur disabled:opacity-40"
+                className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-hairline bg-white/85 text-ink backdrop-blur disabled:opacity-40"
               >
                 <Icons.carouselNext className="h-4 w-4" aria-hidden="true" />
               </button>
@@ -504,21 +526,16 @@ export function CreationsTab() {
           <button
             type="button"
             onClick={handleOpenStudio}
-            className="flex h-control-secondary flex-1 items-center justify-center gap-2 rounded-control border border-hairline bg-card text-label font-semibold text-ink"
+            className="flex h-control-secondary flex-1 items-center justify-center gap-2 rounded-control border border-hairline bg-white text-label font-semibold text-ink"
           >
             <Icons.navStudio className="h-5 w-5" aria-hidden="true" />
             Studio
           </button>
-          {existingTryOn ? (
-            <button
-              type="button"
-              onClick={() => setIsTryOnOpen(true)}
-              className="flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control bg-primary text-label font-semibold text-primary-foreground"
-            >
-              <Icons.tryOn className="h-5 w-5" aria-hidden="true" />
-              View try-on
-            </button>
-          ) : (
+          {/* Three states (V2 "try on button · 3 states"):
+              1 · no try-on yet         → ink   · "try on"      · runs one
+              2 · try-on exists, avatar → ink   · "view try on" · shows the render
+              3 · render showing        → white · "view avatar" · back to the avatar */}
+          {!existingTryOn ? (
             <button
               type="button"
               onClick={handleTryOn}
@@ -526,7 +543,25 @@ export function CreationsTab() {
               className="flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control bg-primary text-label font-semibold text-primary-foreground disabled:opacity-60"
             >
               <Icons.tryOn className="h-5 w-5" aria-hidden="true" />
-              {isTryOnRunning ? "Try-on running…" : "Try on"}
+              {isTryOnRunning ? "Try-on running…" : "try on"}
+            </button>
+          ) : isRenderShowing ? (
+            <button
+              type="button"
+              onClick={() => setIsRenderShowing(false)}
+              className="flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control border border-hairline bg-white text-label font-semibold text-ink"
+            >
+              <Icons.viewAvatar className="h-5 w-5" aria-hidden="true" />
+              view avatar
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsRenderShowing(true)}
+              className="flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control bg-primary text-label font-semibold text-primary-foreground"
+            >
+              <Icons.viewTryOn className="h-5 w-5" aria-hidden="true" />
+              view try on
             </button>
           )}
         </div>

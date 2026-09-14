@@ -96,7 +96,7 @@ export function InspirationSourceInput({ file, isPending, error, onFile, onSubmi
       <button
         type="button"
         disabled
-        className="mt-3 flex min-h-12 w-full cursor-not-allowed items-center gap-3 rounded-[6px] border border-hairline bg-card px-4 text-left sm:mt-5 sm:min-h-14"
+        className="mt-3 flex min-h-12 w-full cursor-not-allowed items-center gap-3 rounded-control border border-hairline bg-white px-4 text-left sm:mt-5 sm:min-h-14"
       >
         <Link2 className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">paste a link — pin, reel, article</span>

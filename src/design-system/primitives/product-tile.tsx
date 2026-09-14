@@ -126,7 +126,12 @@ export function ProductTile({
             onTouchEnd={cancelLongPress}
             onTouchCancel={cancelLongPress}
             style={{ WebkitTouchCallout: "none", userSelect: "none" }}
-            className="absolute right-0 top-0 flex h-8 w-8 items-center justify-center text-ink"
+            className={cn(
+              "absolute right-0 top-0 flex h-8 w-8 items-center justify-center",
+              // "Selected hearts are violet everywhere" — fill and stroke both,
+              // so the saved state reads at tile size. Unsaved stays ink.
+              saved ? "text-violet" : "text-ink",
+            )}
           >
             <Icons.save className="h-4 w-4" fill={saved ? "currentColor" : "none"} aria-hidden="true" />
           </button>

@@ -82,7 +82,7 @@ export function LoginPage() {
         {error && (
           <p
             role="alert"
-            className="mt-5 rounded-[3px] bg-destructive/15 px-3 py-2 text-center text-fluid-md text-destructive-foreground"
+            className="mt-5 rounded-control bg-destructive/15 px-3 py-2 text-center text-fluid-md text-destructive-foreground"
           >
             {error}
           </p>
@@ -92,7 +92,7 @@ export function LoginPage() {
           type="button"
           onClick={handleGoogleSignIn}
           disabled={loading}
-          className="mt-7 h-auto w-full rounded-[3px] bg-secondary py-fluid-btn text-fluid-cta font-bold text-foreground hover:bg-secondary/90"
+          className="mt-7 h-auto w-full rounded-control bg-secondary py-fluid-btn text-fluid-cta font-bold text-foreground hover:bg-secondary/90"
         >
           {loading ? (
             <Loader2 className="mr-2 h-5 w-5 animate-spin" />

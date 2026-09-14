@@ -65,7 +65,7 @@ const ACTION =
 
 const CAROUSEL_TOGGLE =
   "absolute top-1/2 z-[1] flex h-7 w-7 -translate-y-1/2 items-center justify-center " +
-  "rounded-full bg-ink/40 text-background backdrop-blur-[2px]"
+  "rounded-full bg-ink/40 text-white backdrop-blur-[2px]"
 
 /**
  * The piece sheet — brief §3.2. `sheet` is horizontal: a square carousel on one
@@ -148,7 +148,7 @@ export function ProductSheet({
       style={{ WebkitTouchCallout: "none", userSelect: "none" }}
       className={cn(
         ACTION,
-        outlined ? "border border-ink bg-transparent text-ink" : "border border-hairline bg-card text-ink",
+        outlined ? "border border-ink bg-transparent text-ink" : "border border-hairline bg-white text-ink",
       )}
     >
       <Icons.save className="h-5 w-5" fill={saved ? "currentColor" : "none"} aria-hidden="true" />
@@ -164,7 +164,7 @@ export function ProductSheet({
       className={cn(
         ACTION,
         tall && "h-control-primary",
-        filled ? "bg-terracotta text-background" : "border border-hairline bg-card text-ink",
+        filled ? "bg-terracotta text-white" : "border border-hairline bg-white text-ink",
       )}
     >
       <Icons.tryOn className="h-5 w-5" aria-hidden="true" />
@@ -179,7 +179,7 @@ export function ProductSheet({
       onClick={onFindItems}
       className={cn(
         ACTION,
-        filled ? "border border-terracotta bg-terracotta text-background" : "border border-hairline bg-card text-ink",
+        filled ? "border border-terracotta bg-terracotta text-white" : "border border-hairline bg-white text-ink",
       )}
     >
       <Icons.findItems className="h-5 w-5" aria-hidden="true" />
@@ -287,7 +287,7 @@ export function ProductSheet({
           {attributes.map((label) => (
             <span
               key={label}
-              className="box-border inline-flex h-control-chip items-center whitespace-nowrap rounded-control border border-hairline bg-card px-2.5 text-chip font-medium tracking-[0.08em] text-ink"
+              className="box-border inline-flex h-control-chip items-center whitespace-nowrap rounded-control border border-hairline bg-white px-2.5 text-chip font-medium tracking-[0.08em] text-ink"
             >
               {label}
             </span>
@@ -329,7 +329,7 @@ export function ProductSheet({
                   onTouchEnd={cancelLongPress}
                   onTouchCancel={cancelLongPress}
                   style={{ WebkitTouchCallout: "none", userSelect: "none" }}
-                  className="inline-flex h-control-secondary w-10 flex-none items-center justify-center rounded-control border border-hairline bg-card text-ink"
+                  className="inline-flex h-control-secondary w-10 flex-none items-center justify-center rounded-control border border-hairline bg-white text-ink"
                 >
                   <Icons.save className="h-5 w-5" fill={saved ? "currentColor" : "none"} aria-hidden="true" />
                 </button>

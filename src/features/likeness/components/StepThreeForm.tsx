@@ -170,7 +170,7 @@ export function StepThreeForm({
                     key={pose.id}
                     type="button"
                     onClick={() => handleSelectAvatar(pose)}
-                    className={`flex w-[92px] shrink-0 flex-col overflow-hidden rounded-[5px] border bg-card text-left transition-colors ${
+                    className={`flex w-[92px] shrink-0 flex-col overflow-hidden rounded-control border bg-card text-left transition-colors ${
                       isSelected ? "border-gold" : "border-hairline hover:border-hairline-4"
                     }`}
                   >
@@ -197,7 +197,7 @@ export function StepThreeForm({
               <button
                 type="button"
                 onClick={onGenerateNew}
-                className="flex w-[92px] shrink-0 flex-col items-center justify-center gap-1 rounded-[5px] border border-dashed border-hairline-4 bg-card/40 text-muted-foreground hover:border-ink-line"
+                className="flex w-[92px] shrink-0 flex-col items-center justify-center gap-1 rounded-control border border-dashed border-hairline-4 bg-white/40 text-muted-foreground hover:border-ink-line"
               >
                 <Plus className="size-3.5" aria-hidden="true" />
                 <span className="text-[8px] font-medium">New likeness</span>
@@ -208,7 +208,7 @@ export function StepThreeForm({
               <Button
                 type="button"
                 onClick={handleUseAvatar}
-                className="flex h-11 w-full items-center justify-center gap-1.5 rounded-[3px] bg-primary px-4 shadow-sm hover:bg-primary/90"
+                className="flex h-11 w-full items-center justify-center gap-1.5 rounded-control bg-primary px-4 shadow-sm hover:bg-primary/90"
                 disabled={!selectedAvatar || isSettingActive || isGeneratingTryOn}
               >
                 <Sparkles className="size-3.5 text-primary-foreground" aria-hidden="true" />

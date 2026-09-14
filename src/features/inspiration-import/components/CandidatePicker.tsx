@@ -19,7 +19,7 @@ export function CandidatePicker({ sourceUrl, candidates, selectedIds, onSelect }
 
   return (
     <div className="space-y-3 sm:space-y-4">
-      <div className="relative mx-auto w-fit max-w-full overflow-hidden rounded-[8px] border border-hairline bg-card sm:w-full">
+      <div className="relative mx-auto w-fit max-w-full overflow-hidden rounded-[8px] border border-hairline bg-white sm:w-full">
         <img
           src={sourceUrl}
           alt="Uploaded inspiration"
@@ -36,7 +36,7 @@ export function CandidatePicker({ sourceUrl, candidates, selectedIds, onSelect }
               aria-pressed={active}
               onClick={() => onSelect(candidate.id)}
               className={cn(
-                "absolute cursor-pointer overflow-hidden rounded-[6px] border-2 border-white/95 backdrop-blur-[1px] transition-[background-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2",
+                "absolute cursor-pointer overflow-hidden rounded-control border-2 border-white/95 backdrop-blur-[1px] transition-[background-color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2",
                 active
                   ? "z-10 bg-white/10 shadow-[0_1px_6px_rgba(0,0,0,0.28)]"
                   : "border-dashed bg-white/5 shadow-[0_1px_4px_rgba(0,0,0,0.2)] hover:bg-white/10",
@@ -49,7 +49,7 @@ export function CandidatePicker({ sourceUrl, candidates, selectedIds, onSelect }
               }}
             >
               <span className={cn(
-                "absolute bottom-1.5 left-1.5 rounded-[3px] px-1.5 py-1 text-[8px] font-bold uppercase tracking-[0.12em] shadow-sm",
+                "absolute bottom-1.5 left-1.5 rounded-control px-1.5 py-1 text-[8px] font-bold uppercase tracking-[0.12em] shadow-sm",
                 active ? "bg-terracotta text-white" : "bg-background/90 text-foreground",
               )}>
                 {candidate.category === "top" ? "Top" : "Bottom"}

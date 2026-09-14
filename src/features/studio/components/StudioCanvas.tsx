@@ -82,7 +82,7 @@ export interface StudioCanvasProps {
 
 const FOCUS_TOGGLE =
   "absolute top-1/2 z-[2] flex h-9 w-9 -translate-y-1/2 items-center justify-center " +
-  "rounded-full border border-hairline bg-card/90 text-ink backdrop-blur-[2px]"
+  "rounded-full border border-hairline bg-white/90 text-ink backdrop-blur-[2px]"
 
 /** The mannequin container: the figure, plus the two control stacks. */
 export function StudioCanvas({
