@@ -540,18 +540,21 @@ export function SearchScreenView() {
   }, [committedSearchTerm])
 
   // --- QUERIES ---
+  // The tab state updates one render before the URL scope; fetching in between runs the search twice.
+  const tabMatchesUrl = scopeToMode(scope) === activeFilter
+
   const outfitResultsQuery = useSearchOutfitResults({
     query: committedSearchTerm,
     imageUrl: appliedImageUrl,
     filters: outfitFilters,
-    enabled: explicitSearchTriggered && isResultsMode && activeFilter === "outfits",
+    enabled: explicitSearchTriggered && isResultsMode && activeFilter === "outfits" && tabMatchesUrl,
   })
 
   // Hook uses uploadedImageUrl state
   const productResultsQuery = useSearchProductResults({
     query: committedSearchTerm,
     imageUrl: appliedImageUrl,
-    enabled: explicitSearchTriggered && isResultsMode && activeFilter === "products",
+    enabled: explicitSearchTriggered && isResultsMode && activeFilter === "products" && tabMatchesUrl,
     filters: mergedProductFilters,
   })
 
