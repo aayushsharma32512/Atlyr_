@@ -40,6 +40,7 @@ export function toTrayItem(slot: StudioProductTraySlot, product: StudioAlternati
     color: product.color ?? null,
     size: product.size ?? null,
     itemType: product.itemType ?? slot,
+    typeCategory: product.typeCategory ?? null,
     metadataSource: product.metadataSource ?? "default",
     fitTags: [],
     feelTags: [],
