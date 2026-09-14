@@ -192,9 +192,93 @@ async function seedCandidate(context: Awaited<ReturnType<typeof requireUser>>, b
   return { importId, candidateId: candidateIds[0], candidateIds, status: "candidate_selected" }
 }
 
+// Detector candidate shape and crop upload, mirrored from
+// inspiration-import-detector-callback/index.ts. That function stays in place
+// but is now unused: the detector below answers in the same request, so there
+// is no callback leg left to receive.
+type DetectorCandidate = {
+  category: "top" | "bottom"
+  label: string | null
+  confidence: number
+  bbox: { l: number; t: number; w: number; h: number }
+  boxSource: "fashn_union_dino" | "fashn_only" | "dino_only"
+  retrievalCropBase64: string
+  metrics: Record<string, unknown>
+}
+
+function base64Bytes(value: string): Uint8Array {
+  const encoded = value.includes(",") ? value.slice(value.indexOf(",") + 1) : value
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)) throw new HttpError(400, "invalid_crop", "Detector crop is invalid")
+  let binary: string
+  try { binary = atob(encoded) } catch { throw new HttpError(400, "invalid_crop", "Detector crop is invalid") }
+  if (!binary.length || binary.length > 500 * 1024) {
+    throw new HttpError(400, "invalid_crop", "Detector crop exceeds 500 KB")
+  }
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+  return bytes
+}
+
+function detectorCandidate(value: unknown): DetectorCandidate {
+  const body = asObject(value)
+  const category = body.category
+  const boxSource = body.boxSource
+  const bbox = asObject(body.bbox)
+  const confidence = Number(body.confidence)
+  if (category !== "top" && category !== "bottom") throw new HttpError(400, "invalid_candidate", "Invalid category")
+  if (!["fashn_union_dino", "fashn_only", "dino_only"].includes(String(boxSource))) {
+    throw new HttpError(400, "invalid_candidate", "Invalid box source")
+  }
+  const normalized = { l: Number(bbox.l), t: Number(bbox.t), w: Number(bbox.w), h: Number(bbox.h) }
+  if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1
+    || Object.values(normalized).some((entry) => !Number.isFinite(entry))
+    || normalized.l < 0 || normalized.t < 0 || normalized.w <= 0 || normalized.h <= 0
+    || normalized.l + normalized.w > 1.001 || normalized.t + normalized.h > 1.001) {
+    throw new HttpError(400, "invalid_candidate", "Invalid candidate geometry")
+  }
+  return {
+    category, label: typeof body.label === "string" ? body.label.slice(0, 160) : null,
+    confidence, bbox: normalized, boxSource: boxSource as DetectorCandidate["boxSource"],
+    retrievalCropBase64: requiredString(body, "retrievalCropBase64"),
+    metrics: body.metrics && typeof body.metrics === "object" && !Array.isArray(body.metrics)
+      ? body.metrics as Record<string, unknown> : {},
+  }
+}
+
+// The box is a single CPU host, not an auto-scaled fleet: a transient failure
+// (network blip, one slow request queued behind another) is worth one retry.
+// Detection is a pure read of the source image, so retrying never duplicates
+// stored data.
+const DETECT_MAX_ATTEMPTS = 3
+const DETECT_RETRY_DELAY_MS = 1_000
+
+async function callDetector(sourceUrl: string): Promise<unknown[]> {
+  let lastError: unknown
+  for (let attempt = 1; attempt <= DETECT_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(`${env("INSPIRATION_DETECT_URL").replace(/\/$/, "")}/detect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Modal-Token": env("INSPIRATION_DETECT_TOKEN") },
+        body: JSON.stringify({ image_url: sourceUrl }),
+        signal: AbortSignal.timeout(30_000),
+      })
+      const responseBody = await response.json().catch(() => ({})) as Record<string, unknown>
+      if (!response.ok || !Array.isArray(responseBody.candidates)) {
+        throw new Error("Detector did not return candidates")
+      }
+      return responseBody.candidates
+    } catch (error) {
+      lastError = error
+      if (attempt < DETECT_MAX_ATTEMPTS) await new Promise((resolve) => setTimeout(resolve, DETECT_RETRY_DELAY_MS))
+    }
+  }
+  throw lastError
+}
+
 async function startDetection(context: Awaited<ReturnType<typeof requireUser>>, body: Record<string, unknown>) {
   const importId = requiredString(body, "importId")
   await ownedImport(context.admin, context.userId, importId)
+  const uploaded: string[] = []
   try {
     const { data, error } = await context.client.rpc("begin_inspiration_detection", {
       p_import_id: importId,
@@ -208,27 +292,39 @@ async function startDetection(context: Awaited<ReturnType<typeof requireUser>>, 
     const sourceUrl = await signedUrl(
       context.admin, attempt.source_path, Number(Deno.env.get("INSPIRATION_SIGNED_URL_TTL_S") ?? "600"),
     )
-    const callbackUrl = Deno.env.get("INSPIRATION_CALLBACK_URL")?.trim()
-      || `${env("SUPABASE_URL")}/functions/v1/inspiration-import-detector-callback`
-    const response = await fetch(`${env("INSPIRATION_MODAL_URL").replace(/\/$/, "")}/detect-jobs`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Inspiration-Token": env("INSPIRATION_MODAL_TOKEN") },
-      body: JSON.stringify({
-        importId, detectionAttemptId: attempt.attempt_id,
-        sourceUrl, callbackUrl,
-      }),
-      signal: AbortSignal.timeout(15_000),
-    })
-    const responseBody = await response.json().catch(() => ({})) as Record<string, unknown>
-    if (!response.ok || typeof responseBody.detectorJobId !== "string") {
-      throw new Error("Detector did not accept the job")
+    if (!sourceUrl) throw new Error("Import has no source image")
+
+    const rawCandidates = await callDetector(sourceUrl)
+    if (rawCandidates.length > 12) throw new HttpError(400, "invalid_candidates", "Detector returned too many candidates")
+    const candidates = rawCandidates.map(detectorCandidate)
+
+    const persisted: Record<string, unknown>[] = []
+    for (const item of candidates) {
+      const id = crypto.randomUUID()
+      const retrievalCropPath = `${context.userId}/${importId}/candidates/${id}/retrieval.webp`
+      const { error: uploadError } = await context.admin.storage.from(INSPIRATION_BUCKET).upload(
+        retrievalCropPath, base64Bytes(item.retrievalCropBase64), { contentType: "image/webp", upsert: false },
+      )
+      if (uploadError) throw new Error(`Unable to store candidate crop: ${uploadError.message}`)
+      uploaded.push(retrievalCropPath)
+      persisted.push({
+        id, category: item.category, label: item.label, confidence: item.confidence,
+        bbox: item.bbox, boxSource: item.boxSource, retrievalCropPath, metrics: item.metrics,
+      })
     }
-    const { error: jobError } = await context.client.rpc("set_inspiration_detector_job", {
-      p_import_id: importId, p_attempt_id: attempt.attempt_id, p_job_id: responseBody.detectorJobId,
+
+    const noCandidates = persisted.length === 0
+    const { data: finalized, error: finalizeError } = await context.admin.rpc("finalize_inspiration_detection", {
+      p_import_id: importId, p_attempt_id: attempt.attempt_id,
+      p_candidates: persisted,
+      p_error_code: noCandidates ? "no_garments_found" : null,
+      p_error_message: noCandidates ? "No top or bottom was found. Try a clearer photo." : null,
     })
-    queryError(jobError, "Unable to record detector job")
-    return { importId, status: "detecting", accepted: true }
+    queryError(finalizeError, "Unable to record garment detection")
+    if (!finalized && uploaded.length) await context.admin.storage.from(INSPIRATION_BUCKET).remove(uploaded)
+    return { importId, status: "detecting", accepted: true, stale: !finalized }
   } catch (error) {
+    if (uploaded.length) await context.admin.storage.from(INSPIRATION_BUCKET).remove(uploaded)
     await context.admin.from("inspiration_imports").update({
       status: "failed", error_code: "detector_unavailable", error_message: "Garment detection is temporarily unavailable",
     }).eq("id", importId).eq("user_id", context.userId).eq("status", "detecting")
