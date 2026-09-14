@@ -1,3 +1,4 @@
+import { useCallback, useRef } from "react"
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
 import { inspirationImportKeys } from "@/features/inspiration-import/queryKeys"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
@@ -11,15 +12,41 @@ import type {
 
 const DETECTION_POLL_INTERVAL_MS = 3_000
 
+type PreflightEntry = { file: File; promise: Promise<{ importId: string }>; failed: boolean }
+
 export function useStartInspirationImport() {
   const { addJob } = useJobs()
-  return useMutation({
-    mutationFn: inspirationImportService.startImageImport,
+  const preflightRef = useRef<PreflightEntry | null>(null)
+
+  // Runs the create/upload/source-ready/detect chain as soon as a photo is
+  // picked, not on "Find items" — by the time the user confirms, it has often
+  // already finished. Calling this again with the same File reuses that run;
+  // a different File (the user swapped photos) or a failed run starts fresh.
+  // The cache lives only in this ref, so it is gone the moment this screen
+  // unmounts.
+  const preflight = useCallback((file: File) => {
+    const cached = preflightRef.current
+    if (cached && cached.file === file && !cached.failed) return cached.promise
+
+    let failed = false
+    const promise = inspirationImportService.startImageImport(file).catch((error) => {
+      failed = true
+      throw error
+    })
+    promise.catch(() => {}) // prevents an unhandled-rejection warning if the user never clicks "Find items"
+    preflightRef.current = { file, promise, get failed() { return failed } }
+    return promise
+  }, [])
+
+  const mutation = useMutation({
+    mutationFn: preflight,
     // The detect step runs in the background; tracking it as a job is what
     // lets the hub and Notifications say "pieces found" after you leave.
     onSuccess: ({ importId }) =>
       addJob({ id: "import-" + importId, type: "import", status: "processing", progress: 0, metadata: { importId } }),
   })
+
+  return { ...mutation, preflight }
 }
 
 export function useInspirationImport(importId: string | null) {
