@@ -60,7 +60,7 @@ export function AlternatesRack({
         </div>
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2 scrollbar-hide">
         {isLoading ? (
           <div className="grid grid-cols-2 content-start gap-1.5">
             {Array.from({ length: 6 }).map((_, index) => (
