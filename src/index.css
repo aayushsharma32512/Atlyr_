@@ -6,6 +6,21 @@
 @tailwind components;
 @tailwind utilities;
 
+/* No scrollbar is ever drawn. Every surface still scrolls — the bar itself is
+   what goes, on the page and inside every rail, rack, sheet and grid. The
+   .scrollbar-hide class below stays because call sites still name it. */
+* {
+  -ms-overflow-style: none;
+  /* Internet Explorer 10+ */
+  scrollbar-width: none;
+  /* Firefox */
+}
+
+*::-webkit-scrollbar {
+  display: none;
+  /* Safari and Chrome */
+}
+
 /* Scrollbar hiding utilities for clean horizontal scrolling */
 .scrollbar-hide {
   -ms-overflow-style: none;
