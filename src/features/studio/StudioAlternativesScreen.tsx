@@ -34,6 +34,7 @@ import type { StudioAlternativeProduct, StudioProductTraySlot } from "@/services
 import { useStudioResolvedSlots } from "@/features/studio/hooks/useStudioResolvedSlots"
 import { isPlaceableOnMannequin, shouldFilterSlotByPlacement } from "@/features/studio/utils/placementSupport"
 import { mapTrayItemToStudioRenderedItem } from "@/features/studio/mappers/renderedItemMapper"
+import { isDressTop, usePlaceholderItems } from "@/features/studio/hooks/usePlaceholderItems"
 import { mapTrayItemToProductDetail } from "@/services/studio/studioService"
 import { useSaveOutfit } from "@/features/outfits/hooks/useSaveOutfit"
 import { useCreateDraftOutfit } from "@/features/outfits/hooks/useCreateDraftOutfit"
@@ -471,6 +472,7 @@ export function StudioAlternativesView() {
   }, [hiddenSlots, outfitData?.outfit, resolvedTrayItems])
 
   const heroAvatar = outfitData?.outfit ? { ...outfitData.outfit, items: heroAvatarItems ?? outfitData.outfit.items } : null
+  const { top: placeholderTop, bottom: placeholderBottom } = usePlaceholderItems(outfitData?.avatarGender ?? "female")
   const heroRenderedItems = useMemo<StudioRenderedItem[] | null>(() => {
     const baseRendered = outfitData?.studioOutfit?.renderedItems ?? null
     const trayRendered = resolvedTrayItems
@@ -486,11 +488,12 @@ export function StudioAlternativesView() {
     baseRendered?.forEach((item) => baseByZone.set(item.zone, item))
     const trayByZone = new Map<StudioRenderedItem["zone"], StudioRenderedItem>()
     trayRendered.forEach((item) => trayByZone.set(item.zone, item))
+    const topIsDress = isDressTop(resolvedTrayItems, hiddenSlots.top)
 
     return zones
       .map((zone) => {
         if (hiddenSlots[zone]) {
-          return null
+          return zone === "top" ? placeholderTop : zone === "bottom" && !topIsDress ? placeholderBottom : null
         }
         const trayItem = trayByZone.get(zone)
         const baseItem = baseByZone.get(zone)
@@ -506,7 +509,7 @@ export function StudioAlternativesView() {
         return baseItem ?? null
       })
       .filter((item): item is StudioRenderedItem => Boolean(item))
-  }, [hiddenSlots, outfitData?.studioOutfit?.renderedItems, resolvedTrayItems])
+  }, [hiddenSlots, outfitData?.studioOutfit?.renderedItems, placeholderBottom, placeholderTop, resolvedTrayItems])
   
   // A removed slot has nothing to show. Gating the id is not enough: with no
   // id the hero hook falls back to the outfit's own piece for the slot, which
