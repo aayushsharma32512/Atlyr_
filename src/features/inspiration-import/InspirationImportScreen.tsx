@@ -402,9 +402,6 @@ export default function InspirationImportScreen() {
       return
     }
     setSourceFile(file)
-    // Start the import chain now, while the user is still deciding whether to
-    // tap "Find items" — the click below only needs to pick up the result.
-    startImport.preflight(file)
   }
 
   const submitSource = () => {
