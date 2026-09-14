@@ -576,10 +576,17 @@ export function StudioScreenView() {
     const trayByZone = new Map<StudioRenderedItem["zone"], StudioRenderedItem>()
     trayRendered.forEach((item) => trayByZone.set(item.zone, item))
 
+    // A dress already covers the bottom zone; a placeholder bottom would paint over it.
+    // Same free-form match as resolveCategory in tryon-generate-summary.
+    const topIsDress =
+      !hiddenSlots.top &&
+      /dress|gown|one piece/i.test(resolvedTrayItems.find((item) => item.slot === "top")?.typeCategory ?? "")
+
     return zones
       .map((zone) => {
         if (hiddenSlots[zone]) {
-          const placeholder = zone === "top" ? placeholderTop : zone === "bottom" ? placeholderBottom : null
+          const placeholder =
+            zone === "top" ? placeholderTop : zone === "bottom" && !topIsDress ? placeholderBottom : null
           return mapTrayItemToStudioRenderedItem(placeholder)
         }
         const trayItem = trayByZone.get(zone)
