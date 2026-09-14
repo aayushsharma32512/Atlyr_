@@ -5,6 +5,7 @@ import { toast as sonnerToast } from "sonner"
 import { openLikenessDrawer } from "@/features/likeness/openLikenessDrawer"
 import { likenessKeys } from "@/features/likeness/queryKeys"
 import { tryOnKeys } from "@/features/tryon/queryKeys"
+import { inspirationImportService } from "@/services/inspirationImport/inspirationImportService"
 import { generateTryOn, type TryOnGeneratePayload } from "@/services/tryon/tryonService"
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
 import { trackTryonGenerationStarted } from "@/integrations/posthog/engagementTracking/tryon/tryonTracking"
@@ -21,6 +22,22 @@ export function useRetryJob() {
   return useCallback(
     async (job: Job) => {
       if (job.status !== "failed") return
+
+      // An import retries by re-running detection on the same upload.
+      if (job.type === "import") {
+        const importId = typeof job.metadata?.importId === "string" ? job.metadata.importId : null
+        if (!importId) {
+          sonnerToast.error("Retry unavailable", { description: "Missing import details for retry." })
+          return
+        }
+        updateJob(job.id, { status: "processing", progress: 0 })
+        try {
+          await inspirationImportService.detectCandidates(importId)
+        } catch {
+          updateJob(job.id, { status: "failed" })
+        }
+        return
+      }
 
       if (job.type === "tryon") {
         const payload = job.metadata?.tryonPayload as TryOnGeneratePayload | undefined

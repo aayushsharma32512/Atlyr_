@@ -12,8 +12,12 @@ import {
 const outfit = (id: string, gender: string | null = "male") =>
   ({ id, gender, created_by: null } as unknown as import("@/types").Outfit)
 
-const rendered = (id: string, zone: "top" | "bottom" | "shoes", name = id) =>
-  ({ id, zone, productName: name, imageUrl: `https://img/${id}.png`, thumbnailUrl: null } as unknown as import("@/features/studio/types").StudioRenderedItem)
+const placed = { male: { scale: 1, tx: 0, ty: 0, rotationDeg: 0, warp: [], mannequin: "male" } } as unknown as
+  import("@/features/studio/types").StudioPlacementByMannequin
+
+// `placement` is what the photoreal mannequin needs; an item without one is dropped.
+const rendered = (id: string, zone: "top" | "bottom" | "shoes", name = id, placement: unknown = placed) =>
+  ({ id, zone, productName: name, imageUrl: `https://img/${id}.png`, thumbnailUrl: null, placement } as unknown as import("@/features/studio/types").StudioRenderedItem)
 
 const browse = [
   {
@@ -21,7 +25,7 @@ const browse = [
     title: "Office",
     outfits: [
       { id: "e1", title: "Look A", chips: [], outfit: outfit("o1"), studioOutfit: { renderedItems: [rendered("p1", "top"), rendered("p2", "bottom")] } },
-      { id: "e2", title: "Look B", chips: [], outfit: outfit("o2", null), studioOutfit: { renderedItems: [rendered("p1", "top"), rendered("p3", "shoes")] } },
+      { id: "e2", title: "Look B", chips: [], outfit: outfit("o2", null), studioOutfit: { renderedItems: [rendered("p1", "top"), rendered("p3", "shoes"), rendered("p4", "bottom", "p4", null)] } },
     ],
   },
   {
@@ -43,8 +47,8 @@ describe("flattenBrowseLooks", () => {
 
 describe("piecesFromBrowseLooks", () => {
   it("picks the slot's item from each curated look, deduped, first-seen order", () => {
-    expect(piecesFromBrowseLooks(browse, "top").map((p) => p.id)).toEqual(["p1"])
-    expect(piecesFromBrowseLooks(browse, "shoes")).toEqual([
+    expect(piecesFromBrowseLooks(browse, "top", "male").map((p) => p.id)).toEqual(["p1"])
+    expect(piecesFromBrowseLooks(browse, "shoes", "male")).toEqual([
       { id: "p3", title: "p3", imageSrc: "https://img/p3.png", slot: "shoes" },
     ])
   })
@@ -64,16 +68,32 @@ describe("looksFromHomeEntries", () => {
 
 describe("piecesFromTrending", () => {
   it("maps trending rows to pieces", () => {
-    const rows = [{ id: "t1", type: "top", productName: null, imageUrl: "u", looks: 3 }] as import("@/services/collections/collectionsService").TrendingProduct[]
-    expect(piecesFromTrending(rows, "top")).toEqual([{ id: "t1", title: "", imageSrc: "u", slot: "top" }])
-    expect(piecesFromTrending(undefined, "top")).toEqual([])
+    const rows = [{ id: "t1", type: "top", productName: null, imageUrl: "u", looks: 3, placement: placed }] as import("@/services/collections/collectionsService").TrendingProduct[]
+    expect(piecesFromTrending(rows, "top", "male")).toEqual([{ id: "t1", title: "", imageSrc: "u", slot: "top" }])
+    expect(piecesFromTrending(undefined, "top", "male")).toEqual([])
+  })
+
+  it("drops a piece the mannequin on screen cannot wear", () => {
+    const rows = [
+      { id: "t1", type: "top", productName: null, imageUrl: "u", looks: 3, placement: placed },
+      { id: "t2", type: "top", productName: null, imageUrl: "u", looks: 9, placement: null },
+    ] as import("@/services/collections/collectionsService").TrendingProduct[]
+    // t1 is placed on the male body only, so the female mannequin gets nothing.
+    expect(piecesFromTrending(rows, "top", "male").map((p) => p.id)).toEqual(["t1"])
+    expect(piecesFromTrending(rows, "top", "female")).toEqual([])
   })
 })
 
 describe("piecesFromSearchResults", () => {
   it("flattens result pages into pieces", () => {
-    const pages = [{ nextCursor: 24, results: [{ id: "s1", title: "Shirt", imageSrc: "i", thumbnailSrc: "i" }] }] as unknown as { results: import("@/services/search/searchService").ProductSearchResult[] }[]
-    expect(piecesFromSearchResults(pages, "top")).toEqual([{ id: "s1", title: "Shirt", imageSrc: "i", slot: "top" }])
+    // Search results carry the raw products.placement map, keyed "<body>:bodytype1".
+    const rawPlacement = { "male:bodytype1": { scale: 1, tx: 0, ty: 0, rotationDeg: 0, warp: [] } }
+    const pages = [{ nextCursor: 24, results: [
+      { id: "s1", title: "Shirt", imageSrc: "i", thumbnailSrc: "i", placement: rawPlacement },
+      { id: "s2", title: "Unplaced", imageSrc: "i", thumbnailSrc: "i", placement: null },
+    ] }] as unknown as { results: import("@/services/search/searchService").ProductSearchResult[] }[]
+    expect(piecesFromSearchResults(pages, "top", "male")).toEqual([{ id: "s1", title: "Shirt", imageSrc: "i", slot: "top" }])
+    expect(piecesFromSearchResults(pages, "top", "female")).toEqual([])
   })
 })
 

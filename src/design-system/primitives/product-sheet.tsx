@@ -63,9 +63,9 @@ const CORNER_LABELS = {
 const ACTION =
   "box-border flex h-control-secondary min-w-0 flex-1 items-center justify-center gap-2 rounded-control text-label font-semibold"
 
+// Bare charcoal arrows at the image sides, no disc — dots sit under them.
 const CAROUSEL_TOGGLE =
-  "absolute top-1/2 z-[1] flex h-7 w-7 -translate-y-1/2 items-center justify-center " +
-  "rounded-full bg-ink/40 text-white backdrop-blur-[2px]"
+  "absolute top-1/2 z-[1] flex h-8 w-8 -translate-y-1/2 items-center justify-center text-ink"
 
 /**
  * The piece sheet — brief §3.2. `sheet` is horizontal: a square carousel on one
@@ -148,7 +148,8 @@ export function ProductSheet({
       style={{ WebkitTouchCallout: "none", userSelect: "none" }}
       className={cn(
         ACTION,
-        outlined ? "border border-ink bg-transparent text-ink" : "border border-hairline bg-white text-ink",
+        outlined ? "border border-ink bg-transparent" : "border border-hairline bg-white",
+        saved ? "text-violet" : "text-ink",
       )}
     >
       <Icons.save className="h-5 w-5" fill={saved ? "currentColor" : "none"} aria-hidden="true" />
@@ -218,7 +219,7 @@ export function ProductSheet({
       >
         <div
           className={cn(
-            "relative w-full overflow-hidden rounded-lg border border-hairline bg-muted",
+            "relative w-full overflow-hidden rounded-lg bg-background",
             panel ? "aspect-square" : "min-h-0 flex-1",
           )}
         >
@@ -256,6 +257,16 @@ export function ProductSheet({
             </>
           ) : null}
         </div>
+        {frames.length > 1 ? (
+          <div className="mt-1.5 flex flex-none items-center justify-center gap-1" aria-hidden="true">
+            {frames.map((_, index) => (
+              <span
+                key={index}
+                className={cn("h-1.5 w-1.5 rounded-full", index === active ? "bg-ink" : "bg-taupe/40")}
+              />
+            ))}
+          </div>
+        ) : null}
       </div>
 
       <div
@@ -268,7 +279,7 @@ export function ProductSheet({
       >
         <p
           className={cn(
-            "m-0 line-clamp-2 min-h-[39px] flex-none text-label font-semibold leading-[1.3] text-ink",
+            "m-0 line-clamp-2 min-h-[39px] flex-none text-label font-medium leading-[1.3] text-ink",
             !panel && corner !== "none" && "pr-7",
           )}
         >
@@ -279,7 +290,7 @@ export function ProductSheet({
             row entirely, and the card cannot grow past its slot. */}
         <div className="flex min-h-0 flex-[0_1_auto] flex-wrap content-start gap-1.5 overflow-y-auto overscroll-contain scrollbar-hide">
           {showSlot && slot && SlotIcon ? (
-            <span className="box-border inline-flex h-control-chip items-center gap-[5px] whitespace-nowrap rounded-control border border-hairline bg-muted px-2.5 text-chip font-medium tracking-[0.08em] text-ink">
+            <span className="box-border inline-flex h-control-chip items-center gap-[5px] whitespace-nowrap rounded-control border border-hairline bg-white px-2.5 text-chip font-medium tracking-normal text-ink">
               <SlotIcon className="h-3.5 w-3.5" strokeWidth={1.7} aria-hidden="true" />
               {SLOT_LABELS[slot]}
             </span>
@@ -287,7 +298,7 @@ export function ProductSheet({
           {attributes.map((label) => (
             <span
               key={label}
-              className="box-border inline-flex h-control-chip items-center whitespace-nowrap rounded-control border border-hairline bg-white px-2.5 text-chip font-medium tracking-[0.08em] text-ink"
+              className="box-border inline-flex h-control-chip items-center whitespace-nowrap rounded-chip border border-hairline bg-white px-2.5 text-chip font-medium tracking-normal text-ink"
             >
               {label}
             </span>
@@ -329,7 +340,10 @@ export function ProductSheet({
                   onTouchEnd={cancelLongPress}
                   onTouchCancel={cancelLongPress}
                   style={{ WebkitTouchCallout: "none", userSelect: "none" }}
-                  className="inline-flex h-control-secondary w-10 flex-none items-center justify-center rounded-control border border-hairline bg-white text-ink"
+                  className={cn(
+                    "inline-flex h-control-secondary w-10 flex-none items-center justify-center rounded-control border border-hairline bg-white",
+                    saved ? "text-violet" : "text-ink",
+                  )}
                 >
                   <Icons.save className="h-5 w-5" fill={saved ? "currentColor" : "none"} aria-hidden="true" />
                 </button>

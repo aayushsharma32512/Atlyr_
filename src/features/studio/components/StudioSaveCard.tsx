@@ -9,11 +9,18 @@ export interface StudioSaveBoard {
 }
 
 export interface StudioSaveCardProps {
-  /** Omit for a product save — the card is then boards only, no name or tags. */
+  /**
+   * What is being saved. Decides the callout and the save label; defaults to
+   * "look" when a name is given (the older contract) and "piece" otherwise.
+   */
+  kind?: "look" | "piece"
+  /** Omit to hide the name and tag rows. */
   defaultName?: string
   /** Suggested tags, drawn from the worn pieces. */
   defaultTags?: string[]
   boards: StudioSaveBoard[]
+  /** Look saves: how many pieces are worn, for the "save look · N pieces" callout. */
+  pieceCount?: number
   defaultBoardSlugs?: string[]
   isSaving?: boolean
   onSave: (data: { name: string; tags: string[]; boardSlugs: string[] }) => void
@@ -23,7 +30,7 @@ export interface StudioSaveCardProps {
 }
 
 const CHIP =
-  "box-border inline-flex h-control-chip flex-none items-center gap-1 whitespace-nowrap rounded-control px-2 text-chip tracking-[0.06em]"
+  "box-border inline-flex h-control-chip flex-none items-center gap-1 whitespace-nowrap rounded-chip px-2 text-chip tracking-normal"
 /** The rails bleed to the frame edge, so a chip can scroll off rather than clip. */
 const RAIL = "-mx-4 flex flex-none items-center gap-1.5 overflow-x-auto px-4 scrollbar-hide"
 
@@ -32,9 +39,11 @@ const RAIL = "-mx-4 flex flex-none items-center gap-1.5 overflow-x-auto px-4 scr
  * Replaces the drawer on this screen; the artboard puts it inside the 170h card.
  */
 export function StudioSaveCard({
+  kind,
   defaultName,
   defaultTags = [],
   boards,
+  pieceCount,
   defaultBoardSlugs = [],
   isSaving = false,
   onSave,
@@ -42,7 +51,8 @@ export function StudioSaveCard({
   onCreateBoard,
   className,
 }: StudioSaveCardProps) {
-  const isLook = defaultName !== undefined
+  const isLook = (kind ?? (defaultName !== undefined ? "look" : "piece")) === "look"
+  const hasDetails = defaultName !== undefined
   const [name, setName] = useState(defaultName ?? "")
   const [tags, setTags] = useState<string[]>(defaultTags)
   const [boardSlugs, setBoardSlugs] = useState<string[]>(defaultBoardSlugs)
@@ -73,15 +83,23 @@ export function StudioSaveCard({
 
   return (
     <div className={cn("flex flex-1 flex-col justify-start gap-1.5", className)}>
-      {isLook ? (
+      {/* Callout row: what is being saved. */}
+      <p className="text-chip text-taupe">
+        {isLook
+          ? typeof pieceCount === "number"
+            ? `save look · ${pieceCount} ${pieceCount === 1 ? "piece" : "pieces"}`
+            : "save look"
+          : "save item"}
+      </p>
+      {hasDetails ? (
       <>
-      <label className="box-border flex h-[34px] flex-none items-center gap-1.5 rounded-control border border-hairline bg-white/60 pl-2.5 pr-1">
+      <label className="box-border flex h-11 flex-none items-center gap-1.5 rounded-control border border-hairline bg-white pl-2.5 pr-1">
         <span className="sr-only">Look name</span>
         <input
           value={name}
           onChange={(event) => setName(event.target.value)}
           placeholder="Name this look"
-          className="min-w-0 flex-1 truncate bg-transparent text-body text-ink outline-none placeholder:text-taupe"
+          className="min-w-0 flex-1 truncate bg-transparent text-label font-medium text-ink outline-none placeholder:text-taupe"
         />
       </label>
 
@@ -100,16 +118,16 @@ export function StudioSaveCard({
               }
             }}
             placeholder="Tag"
-            className={cn(CHIP, "w-24 border border-hairline bg-white/60 text-ink outline-none")}
+            className={cn(CHIP, "w-24 border border-hairline bg-white text-ink outline-none")}
           />
         ) : (
           <button
             type="button"
             onClick={() => setAddingTag(true)}
-            className={cn(CHIP, "w-[33%] border border-hairline bg-white/60 text-taupe")}
+            className={cn(CHIP, "border border-dashed border-hairline-dashed bg-white text-ink")}
           >
             <Icons.add className="h-[11px] w-[11px] flex-none text-ink" strokeWidth={2} aria-hidden="true" />
-            Add tag
+            add tag
           </button>
         )}
         {/* The chip is a label, not a button — removing is the × alone, or a tap
@@ -136,10 +154,10 @@ export function StudioSaveCard({
           <button
             type="button"
             onClick={() => void createBoard()}
-            className={cn(CHIP, "border border-dashed border-hairline-dashed bg-card/45 text-ink")}
+            className={cn(CHIP, "border border-dashed border-hairline-dashed bg-white text-ink")}
           >
             <Icons.add className="h-[11px] w-[11px]" strokeWidth={2} aria-hidden="true" />
-            New
+            new
           </button>
         ) : null}
         {boards.map((board) => {
@@ -152,7 +170,8 @@ export function StudioSaveCard({
               onClick={() => toggleBoard(board.slug)}
               className={cn(
                 CHIP,
-                on ? "border border-ink bg-ink text-background" : "border border-hairline bg-white text-ink",
+                // V2: active board = 1.5px violet border and violet text, no fill.
+                on ? "border-[1.5px] border-violet bg-white text-violet" : "border border-hairline bg-white text-ink",
               )}
             >
               {board.label}
@@ -161,29 +180,30 @@ export function StudioSaveCard({
         })}
       </div>
 
+      {/* V2 order: cancel (white) · save (ink). */}
       <div className="mt-auto flex flex-none items-center gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className={cn(
+            "box-border flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control",
+            "border border-hairline bg-white text-label font-semibold text-ink",
+          )}
+        >
+          <Icons.close className="h-5 w-5" aria-hidden="true" />
+          cancel
+        </button>
         <button
           type="button"
           disabled={isSaving}
           onClick={() => onSave({ name: name.trim() || (defaultName ?? ""), tags, boardSlugs })}
           className={cn(
             "box-border flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control",
-            "bg-terracotta text-label font-semibold text-background disabled:opacity-60",
+            "bg-primary text-label font-semibold text-primary-foreground disabled:opacity-60",
           )}
         >
           <Icons.save className="h-5 w-5" aria-hidden="true" />
-          {isSaving ? "Saving…" : "Save"}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className={cn(
-            "box-border flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control",
-            "border border-hairline bg-white/60 text-label font-semibold text-ink",
-          )}
-        >
-          <Icons.close className="h-5 w-5" aria-hidden="true" />
-          Cancel
+          {isSaving ? "saving…" : isLook ? "save" : "save item"}
         </button>
       </div>
     </div>

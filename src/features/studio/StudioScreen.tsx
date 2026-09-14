@@ -60,7 +60,6 @@ import { useOutfitSnapshot } from "@/features/outfits/hooks/useOutfitSnapshot"
 import { useOptionalAdminGender } from "@/features/admin/providers/AdminGenderContext"
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
 import { setPendingStudioComboChange, useStudioCombinationTracking } from "@/integrations/posthog/engagementTracking/studio/studioTracking"
-import { trackProductBuyClicked } from "@/integrations/posthog/engagementTracking/entityEvents"
 import { trackTryonFlowStarted } from "@/integrations/posthog/engagementTracking/tryon/tryonTracking"
 
 const DEFAULT_AVATAR_HEAD = "/avatars/Default.png"
@@ -919,16 +918,23 @@ export function StudioScreenView() {
   )
 
   /** The piece card's globe: the retailer listing when the piece has one. */
-  const handleOpenListing = useCallback(
-    (productUrl: string | null | undefined, productId: string) => {
-      if (!productUrl) {
+  /**
+   * Product-level Find items: the import is seeded with this piece's cutout,
+   * so the catalogue and web searches run on a clean garment rather than a
+   * crop of a photo. Kicks are not a detector category, so they take the
+   * blank import.
+   */
+  const handleFindItemsFor = useCallback(
+    (slot: StudioCanvasSlot, item: StudioProductTrayItem) => {
+      const traySlot = toTraySlot(slot)
+      const image = item.imageUrl ?? item.thumbnailUrl
+      if (traySlot === "shoes" || !image) {
         handleFindItems()
         return
       }
-      trackProductBuyClicked(analytics, { entity_id: productId })
-      window.open(productUrl, "_blank", "noopener,noreferrer")
+      navigate(`/inspiration-import?source=${encodeURIComponent(image)}&slot=${traySlot}`)
     },
-    [analytics, handleFindItems],
+    [handleFindItems, navigate],
   )
 
   const { share: shareLook } = useShareLook()
@@ -951,10 +957,14 @@ export function StudioScreenView() {
   const itemBySlot = useMemo(() => {
     const map: Partial<Record<StudioCanvasSlot, StudioProductTrayItem | null>> = {}
     CANVAS_SLOTS.forEach((slot) => {
-      map[slot] = resolvedTrayItems.find((item) => item.slot === toTraySlot(slot)) ?? null
+      // A removed slot is empty: focus, the save count and the rows all read
+      // this map, and the figure already leaves that piece off.
+      map[slot] = hiddenSlots[toTraySlot(slot)]
+        ? null
+        : (resolvedTrayItems.find((item) => item.slot === toTraySlot(slot)) ?? null)
     })
     return map
-  }, [resolvedTrayItems])
+  }, [hiddenSlots, resolvedTrayItems])
 
   /** Two tags per worn piece, deduped — the prototype's seed for the save card. */
   const suggestedTags = useMemo(() => {
@@ -1031,7 +1041,18 @@ export function StudioScreenView() {
     goBack()
   }, [closeFocus, focus, goBack])
 
+  // Design order for the left column: redo on top, undo below.
   const historyControls = [
+    {
+      id: "redo",
+      label: "Redo",
+      icon: Redo2,
+      disabled: isViewOnly || !canRedo,
+      onClick: () => {
+        setPendingStudioComboChange({ change_type: "redo" })
+        redo()
+      },
+    },
     {
       id: "undo",
       label: "Undo",
@@ -1041,16 +1062,6 @@ export function StudioScreenView() {
       onClick: () => {
         setPendingStudioComboChange({ change_type: "undo" })
         undo()
-      },
-    },
-    {
-      id: "redo",
-      label: "Redo",
-      icon: Redo2,
-      disabled: isViewOnly || !canRedo,
-      onClick: () => {
-        setPendingStudioComboChange({ change_type: "redo" })
-        redo()
       },
     },
   ]
@@ -1086,13 +1097,14 @@ export function StudioScreenView() {
   return (
     <div
       className="flex justify-center overflow-hidden bg-background"
-      style={{ height: "calc(100dvh - 55px)" }}
+      // Same signal the layout uses to drop the nav, so the two never disagree.
+      style={{ height: focus ? "100dvh" : "calc(100dvh - 55px)" }}
     >
       <div className="relative my-auto flex h-full max-h-[844px] w-full max-w-sm flex-col overflow-hidden">
-        {/* 52h. Back on the left, nothing on the right.
-            The design draws an Import pill here — deliberately not built. */}
-        <header className="flex h-[52px] shrink-0 items-center justify-between px-2">
-          <div className="flex items-center gap-2">
+        {/* 52h: back, then the screen names itself here and nowhere else.
+            The design draws an Import pill on the right — deliberately not built. */}
+        <header className="flex h-[52px] shrink-0 items-center justify-between border-b border-hairline px-2">
+          <div className="flex min-w-0 items-center gap-1">
             <IconButton
               tone="ghost"
               size="xs"
@@ -1101,6 +1113,7 @@ export function StudioScreenView() {
             >
               <ChevronLeft className="size-5" aria-hidden="true" />
             </IconButton>
+            <h1 className="min-w-0 truncate font-display text-title font-medium text-ink">Studio</h1>
           </div>
           {/* No exit-focus button: the back chevron already leaves the zoom. */}
           <span className="size-8 shrink-0" aria-hidden="true" />
@@ -1157,7 +1170,7 @@ export function StudioScreenView() {
             isReadOnly={isViewOnly}
             onSave={() => setIsSaveDrawerOpen(true)}
             onTryOn={handleTryOn}
-            onFindItems={() => handleOpenListing(focusItem.productUrl, focusItem.productId)}
+            onFindItems={() => handleFindItemsFor(focus as StudioCanvasSlot, focusItem)}
             onOpenAlternatives={() => handleOpenAlternates(focus as StudioCanvasSlot)}
             onStep={handleStepFocus}
           />
@@ -1175,6 +1188,7 @@ export function StudioScreenView() {
                 defaultBoardSlugs={
                   currentOutfitMoodboardSlugs.length ? currentOutfitMoodboardSlugs : ["favorites"]
                 }
+                pieceCount={slotOrder.filter((s) => !hiddenSlots[s] && itemBySlot[s]).length}
                 onSave={(data) => void handleSaveFromCard(data)}
                 onCancel={() => setIsSaveDrawerOpen(false)}
                 onCreateBoard={(name) =>

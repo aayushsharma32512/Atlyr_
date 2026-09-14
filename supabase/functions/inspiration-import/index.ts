@@ -112,6 +112,70 @@ async function sourceReady(context: Awaited<ReturnType<typeof requireUser>>, bod
   return { importId, status: "source_ready" }
 }
 
+/**
+ * Seed a selected candidate from the uploaded source itself — for product-level
+ * Find items, where the client already holds a segmented garment. Detection
+ * exists to find a garment in a photo; here there is nothing to find, so the
+ * source file doubles as the retrieval crop.
+ *
+ * The candidates table grants the service role SELECT only: every write goes
+ * through the SECURITY DEFINER RPCs. So this drives the real state machine with
+ * a synthetic detector result — begin → finalize(one candidate) → select — and
+ * ends in `candidate_selected`, exactly where a detected import ends. Catalogue
+ * and web search then run unchanged.
+ */
+async function seedCandidate(context: Awaited<ReturnType<typeof requireUser>>, body: Record<string, unknown>) {
+  const importId = requiredString(body, "importId")
+  const category = requiredString(body, "category")
+  if (category !== "top" && category !== "bottom") throw new HttpError(400, "invalid_category", "Category must be top or bottom")
+  const importRow = await ownedImport(context.admin, context.userId, importId)
+  // Same gate as begin_inspiration_detection; a stale "detecting" lease is retried by the RPC.
+  if (!["source_ready", "failed", "detecting"].includes(importRow.status as string)) {
+    throw new HttpError(409, "import_not_seedable", "Confirm the uploaded image first")
+  }
+  // The web search posts this exact file to Lens, which caps uploads at 500 KB.
+  const sourcePath = importRow.source_path as string
+  const split = sourcePath.lastIndexOf("/")
+  const { data: listed, error: listError } = await context.admin.storage.from(INSPIRATION_BUCKET)
+    .list(sourcePath.slice(0, split), { search: sourcePath.slice(split + 1), limit: 10 })
+  queryError(listError, "Unable to verify source upload")
+  const object = (listed ?? []).find((entry) => entry.name === sourcePath.slice(split + 1))
+  if (!object) throw new HttpError(409, "source_missing", "Uploaded source image was not found")
+  const size = Number((object.metadata as Record<string, unknown> | null)?.size ?? body.sizeBytes)
+  if (!Number.isFinite(size) || size <= 0 || size > 500 * 1024) {
+    throw new HttpError(400, "invalid_image_size", "Garment crop must be smaller than 500 KB")
+  }
+
+  // 1 · begin: claims a detection attempt (authenticated RPC, like startDetection).
+  const { data: beginData, error: beginError } = await context.client.rpc("begin_inspiration_detection", {
+    p_import_id: importId, p_lease_seconds: 60,
+  })
+  queryError(beginError, "Unable to begin seeding")
+  const attempt = Array.isArray(beginData) ? beginData[0] : beginData
+  if (!attempt?.started || !attempt.attempt_id) throw new HttpError(409, "import_busy", "This import is busy; try again")
+
+  // 2 · finalize: the one candidate, the source file as its crop (service-role RPC).
+  const candidateId = crypto.randomUUID()
+  const { data: finalized, error: finalizeError } = await context.admin.rpc("finalize_inspiration_detection", {
+    p_import_id: importId, p_attempt_id: attempt.attempt_id,
+    p_candidates: [{
+      id: candidateId, category, label: null, confidence: 1,
+      bbox: { l: 0, t: 0, w: 1, h: 1 }, boxSource: "dino_only",
+      retrievalCropPath: sourcePath, metrics: { seeded: "product" },
+    }],
+    p_error_code: null, p_error_message: null,
+  })
+  queryError(finalizeError, "Unable to seed candidate")
+  if (!finalized) throw new HttpError(409, "seed_stale", "The import changed while seeding; try again")
+
+  // 3 · select it (authenticated RPC, like selectCandidate).
+  const { error: selectError } = await context.client.rpc("select_inspiration_candidates", {
+    p_import_id: importId, p_candidate_ids: [candidateId],
+  })
+  if (selectError) throw new HttpError(409, "candidate_unavailable", "Seeded candidate could not be selected")
+  return { importId, candidateId, status: "candidate_selected" }
+}
+
 async function startDetection(context: Awaited<ReturnType<typeof requireUser>>, body: Record<string, unknown>) {
   const importId = requiredString(body, "importId")
   await ownedImport(context.admin, context.userId, importId)
@@ -451,6 +515,7 @@ serve(async (req) => {
       create: () => createImport(context, body),
       "source-ready": () => sourceReady(context, body),
       detect: () => startDetection(context, body),
+      "seed-candidate": () => seedCandidate(context, body),
       get: () => getImport(context, body),
       "select-candidate": () => selectCandidate(context, body),
       "web-search": () => webSearch(context, body),

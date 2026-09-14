@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client"
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
 import { getRememberedTryonComboKey, trackTryonGenerationCompleted } from "@/integrations/posthog/engagementTracking/tryon/tryonTracking"
 import { boardPath } from "@/features/collections/boardUrl"
+import { inspirationImportService } from "@/services/inspirationImport/inspirationImportService"
 
 const STORAGE_KEY = "jobs_tracker_state"
 const POLL_INTERVAL = 4000 // 4 seconds
@@ -17,7 +18,7 @@ const TRYON_STUCK_THRESHOLD = 8 * 60 * 1000 // 8 minutes - match try-on backend 
 const LIKENESS_STUCK_THRESHOLD = 5 * 60 * 1000 // 5 minutes - likeness can take longer
 const MAX_COMPLETED_JOBS = 5 // Keep only last 5 completed jobs in storage
 
-type JobType = "likeness" | "tryon"
+type JobType = "likeness" | "tryon" | "import"
 type JobStatus = "processing" | "ready" | "failed"
 
 export type Job = {
@@ -94,6 +95,30 @@ function saveJobsToStorage(jobs: Job[]) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs))
   } catch (error) {
     console.error("[JobsContext] Failed to save to storage:", error)
+  }
+}
+
+// Fetch inspiration-import status. Detection is the only stage that runs in
+// the background; once it ends with candidates the job is ready and carries
+// the per-slot counts for the notification line.
+async function fetchImportStatus(
+  importId: string,
+): Promise<{ status: JobStatus; thumbnail?: string; progress?: number; errorType?: string; metadata?: Record<string, unknown> }> {
+  try {
+    const record = await inspirationImportService.getImport(importId)
+    const status = record.import.status
+    if (status === "failed") return { status: "failed", progress: 0, errorType: record.import.errorCode ?? "import_failed" }
+    if (status === "detecting" || status === "source_ready") return { status: "processing", progress: 40 }
+    const candidates = record.candidates ?? []
+    if (candidates.length === 0) return { status: "processing", progress: 60 }
+    const matches = {
+      top: candidates.filter((candidate) => candidate.category === "top").length,
+      bottom: candidates.filter((candidate) => candidate.category === "bottom").length,
+    }
+    return { status: "ready", thumbnail: candidates[0]?.retrievalCropUrl, progress: 100, metadata: { matches } }
+  } catch (error) {
+    console.error("[JobsContext] import fetch failed:", error)
+    return { status: "processing", progress: 40 }
   }
 }
 
@@ -361,13 +386,15 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
           return null
         }
         
-        let result: { status: JobStatus; thumbnail?: string; progress?: number; errorType?: string }
+        let result: { status: JobStatus; thumbnail?: string; progress?: number; errorType?: string; metadata?: Record<string, unknown> }
 
         if (job.type === "likeness" && job.metadata?.batchId) {
           const expectedCount = job.metadata.expectedCount ?? 2
           result = await fetchLikenessBatchStatus(job.metadata.batchId, expectedCount)
         } else if (job.type === "tryon" && job.metadata?.generationId) {
           result = await fetchTryonStatus(job.metadata.generationId)
+        } else if (job.type === "import" && typeof job.metadata?.importId === "string") {
+          result = await fetchImportStatus(job.metadata.importId)
         } else {
           return null
         }
@@ -379,7 +406,7 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
     // Apply updates and trigger notifications
     updates.forEach((settled) => {
       if (settled.status === "fulfilled" && settled.value) {
-        const { jobId, status, thumbnail, progress, errorType } = settled.value
+        const { jobId, status, thumbnail, progress, errorType, metadata } = settled.value
         const job = jobs.find((j) => j.id === jobId)
 
         if (!job) return
@@ -448,7 +475,9 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
           const message =
             job.type === "likeness"
               ? "Your likeness is ready"
-              : "Your outfit is ready"
+              : job.type === "import"
+                ? "Pieces found for your inspiration"
+                : "Your outfit is ready"
 
           toast.success(message, {
             duration: 5000,
@@ -463,6 +492,8 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
                 // Navigate only when user clicks "View"
                 if (job.type === "tryon") {
                   window.location.href = boardPath("try-ons")
+                } else if (job.type === "import" && typeof job.metadata?.importId === "string") {
+                  window.location.href = "/inspiration-import/" + job.metadata.importId
                 } else if (job.type === "likeness" && job.metadata?.batchId) {
                   const outfitParams = job.metadata.outfitParams as Record<string, string | null> | undefined
                   const outfitItems = outfitParams
@@ -542,7 +573,8 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
                     status,
                     ...(thumbnail && { thumbnail }),
                     ...(progress !== undefined && { progress }),
-                    ...(j.type === "tryon" && didEmitCompletion ? { metadata: { ...(j.metadata ?? {}), completionCaptured: true } } : {}),
+                    ...(metadata ? { metadata: { ...(j.metadata ?? {}), ...metadata } } : {}),
+                    ...(j.type === "tryon" && didEmitCompletion ? { metadata: { ...(j.metadata ?? {}), ...(metadata ?? {}), completionCaptured: true } } : {}),
                   }
                 : j,
             ),

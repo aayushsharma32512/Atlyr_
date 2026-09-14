@@ -12,7 +12,6 @@ import { useEngagementAnalytics } from "@/integrations/posthog/engagementTrackin
 import { trackTryonFlowStarted } from "@/integrations/posthog/engagementTracking/tryon/tryonTracking"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
-import { TryOnPreviewOverlay } from "@/features/home/components/TryOnPreviewOverlay"
 import type { Creation, TryOn } from "@/services/collections/collectionsService"
 import type { StudioProductTraySlot } from "@/services/studio/studioService"
 
@@ -43,7 +42,6 @@ export function CreationsTab() {
 
   const [currentSlide, setCurrentSlide] = useState(0)
   const [isExpanded, setIsExpanded] = useState(false)
-  const [isTryOnOpen, setIsTryOnOpen] = useState(false)
   /**
    * Full screen only: the render is showing in place of the avatar. This is
    * what gives the tray button its third state ("view avatar") — an overlay
@@ -110,7 +108,6 @@ export function CreationsTab() {
   }, [fetchNextCreationsPage, shouldLoadMore])
 
   useEffect(() => {
-    setIsTryOnOpen(false)
     // The render belongs to the look you were on. Swiping to the next one
     // must drop back to the avatar, or the tray offers "view avatar" for a
     // look whose try-on does not exist.
@@ -302,7 +299,7 @@ export function CreationsTab() {
     <>
     <div className={frameClass}>
       {/* Container — edge to edge, takes whatever the card leaves. */}
-      <div className="relative min-h-0 flex-1 overflow-hidden border-y border-hairline bg-skeleton">
+      <div className="relative min-h-0 flex-1 overflow-hidden border-y border-hairline bg-background">
         <div
           ref={trackRef}
           className="flex h-full w-full snap-x snap-mandatory overflow-x-auto overflow-y-hidden scrollbar-hide"
@@ -313,7 +310,13 @@ export function CreationsTab() {
               className="relative h-full w-full flex-none snap-center snap-always"
               aria-hidden={index !== currentSlide}
             >
-              {Math.abs(index - currentSlide) <= 1 ? (
+              {isRenderShowing && index === currentSlide && creation.vtoImageUrl ? (
+                <img
+                  src={creation.vtoImageUrl}
+                  alt={`Try-on of ${creation.name}`}
+                  className="h-full w-full object-contain"
+                />
+              ) : Math.abs(index - currentSlide) <= 1 ? (
                 <OutfitInspirationTile
                   preset="heroCanonical"
                   outfitId={creation.outfitId}
@@ -327,7 +330,7 @@ export function CreationsTab() {
                   disableAvatarSwipe
                 />
               ) : (
-                <div className="h-full w-full bg-skeleton" />
+                <div className="h-full w-full bg-background" />
               )}
             </div>
           ))}
@@ -396,19 +399,10 @@ export function CreationsTab() {
               onClick={handleOpenStudio}
               className="flex h-control-secondary flex-1 items-center justify-center gap-2 rounded-control border border-hairline bg-white text-label font-semibold text-ink"
             >
-              <Icons.navStudio className="h-5 w-5" aria-hidden="true" />
-              Studio
+              <Icons.studio className="h-5 w-5" aria-hidden="true" />
+              studio
             </button>
-            {existingTryOn ? (
-              <button
-                type="button"
-                onClick={() => setIsTryOnOpen(true)}
-                className="flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control bg-primary text-label font-semibold text-primary-foreground"
-              >
-                <Icons.tryOn className="h-5 w-5" aria-hidden="true" />
-                View try-on
-              </button>
-            ) : (
+            {!existingTryOn ? (
               <button
                 type="button"
                 onClick={handleTryOn}
@@ -416,7 +410,25 @@ export function CreationsTab() {
                 className="flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control bg-primary text-label font-semibold text-primary-foreground disabled:opacity-60"
               >
                 <Icons.tryOn className="h-5 w-5" aria-hidden="true" />
-                {isTryOnRunning ? "Try-on running…" : "Try on"}
+                {isTryOnRunning ? "try-on running…" : "try on"}
+              </button>
+            ) : isRenderShowing ? (
+              <button
+                type="button"
+                onClick={() => setIsRenderShowing(false)}
+                className="flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control border border-hairline bg-white text-label font-semibold text-ink"
+              >
+                <Icons.viewAvatar className="h-5 w-5" aria-hidden="true" />
+                view avatar
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsRenderShowing(true)}
+                className="flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control bg-primary text-label font-semibold text-primary-foreground"
+              >
+                <Icons.viewTryOn className="h-5 w-5" aria-hidden="true" />
+                view try on
               </button>
             )}
           </div>
@@ -431,29 +443,15 @@ export function CreationsTab() {
         escape. */}
     {isExpanded && activeCreation ? (
       <div className="fixed inset-0 z-[60] flex flex-col bg-background">
+        {/* The look names itself in the 52px header row and nowhere else.
+            V2 gives this row no button — collapse rides on the figure. */}
         <div
-          className="flex h-control-header-title flex-none items-center justify-between px-2"
+          className="flex h-control-header-title flex-none items-center border-b border-hairline px-4"
           style={{ paddingTop: "env(safe-area-inset-top,0px)" }}
         >
-          <button
-            type="button"
-            onClick={() => setIsExpanded(false)}
-            aria-label="Back"
-            className="flex h-10 w-10 items-center justify-center text-ink"
-          >
-            <Icons.carouselPrev className="h-5 w-5" aria-hidden="true" />
-          </button>
-          <p className="min-w-0 flex-1 truncate px-2 text-center text-label font-semibold text-ink">
+          <h1 className="min-w-0 flex-1 truncate font-display text-title font-medium text-ink">
             {activeCreation.name}
-          </p>
-          <button
-            type="button"
-            onClick={() => setIsExpanded(false)}
-            aria-label="Close"
-            className="flex h-10 w-10 items-center justify-center text-ink"
-          >
-            <Icons.close className="h-5 w-5" aria-hidden="true" />
-          </button>
+          </h1>
         </div>
 
         {/* Its own track, driven by the same currentSlide. Swiping here moves the
@@ -489,7 +487,7 @@ export function CreationsTab() {
                     disableAvatarSwipe
                   />
                 ) : (
-                  <div className="h-full w-full bg-skeleton" />
+                  <div className="h-full w-full bg-background" />
                 )}
               </div>
             ))}
@@ -497,26 +495,39 @@ export function CreationsTab() {
 
           {totalSlides > 1 ? (
             <>
+              {/* Bare charcoal arrows — no disc. */}
               <button
                 type="button"
                 onClick={() => goTo(currentSlide - 1)}
                 disabled={currentSlide === 0}
                 aria-label="Previous look"
-                className="absolute left-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-hairline bg-white/85 text-ink backdrop-blur disabled:opacity-40"
+                className="absolute left-4 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center text-ink disabled:opacity-30"
               >
-                <Icons.carouselPrev className="h-4 w-4" aria-hidden="true" />
+                <Icons.carouselPrev className="h-6 w-6" aria-hidden="true" />
               </button>
               <button
                 type="button"
                 onClick={() => goTo(currentSlide + 1)}
                 disabled={currentSlide === totalSlides - 1}
                 aria-label="Next look"
-                className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-hairline bg-white/85 text-ink backdrop-blur disabled:opacity-40"
+                className="absolute right-4 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center text-ink disabled:opacity-30"
               >
-                <Icons.carouselNext className="h-4 w-4" aria-hidden="true" />
+                <Icons.carouselNext className="h-6 w-6" aria-hidden="true" />
               </button>
+
             </>
           ) : null}
+
+          {/* Collapse — white disc, top right on the figure, the same spot
+              the Creations card puts its expand control. */}
+          <button
+            type="button"
+            onClick={() => setIsExpanded(false)}
+            aria-label="Collapse look"
+            className="absolute right-5 top-5 flex h-9 w-9 items-center justify-center rounded-full border border-hairline bg-white text-ink"
+          >
+            <Icons.collapse className="h-4 w-4" aria-hidden="true" />
+          </button>
         </div>
 
         <div
@@ -528,8 +539,8 @@ export function CreationsTab() {
             onClick={handleOpenStudio}
             className="flex h-control-secondary flex-1 items-center justify-center gap-2 rounded-control border border-hairline bg-white text-label font-semibold text-ink"
           >
-            <Icons.navStudio className="h-5 w-5" aria-hidden="true" />
-            Studio
+            <Icons.studio className="h-5 w-5" aria-hidden="true" />
+            studio
           </button>
           {/* Three states (V2 "try on button · 3 states"):
               1 · no try-on yet         → ink   · "try on"      · runs one
@@ -543,7 +554,7 @@ export function CreationsTab() {
               className="flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control bg-primary text-label font-semibold text-primary-foreground disabled:opacity-60"
             >
               <Icons.tryOn className="h-5 w-5" aria-hidden="true" />
-              {isTryOnRunning ? "Try-on running…" : "try on"}
+              {isTryOnRunning ? "try-on running…" : "try on"}
             </button>
           ) : isRenderShowing ? (
             <button

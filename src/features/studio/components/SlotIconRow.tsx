@@ -46,7 +46,7 @@ export function SlotIconRow({ slots, active, onSelect, isReadOnly = false, class
             className={cn(
               "box-border flex h-control-chip min-w-0 flex-1 items-center justify-center text-ink",
               "disabled:cursor-not-allowed disabled:opacity-40",
-              isActive ? "border-b-2 border-ink" : "rounded-control",
+              isActive ? "border-b-2 border-violet" : "rounded-control",
             )}
           >
             <Glyph className="h-4 w-4" />

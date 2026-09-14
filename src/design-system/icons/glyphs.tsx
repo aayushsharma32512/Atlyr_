@@ -43,3 +43,17 @@ export function ShoeGlyph({ size = 24, strokeWidth = 1.7, ...props }: GlyphProps
     </svg>
   );
 }
+
+/** The V2 "studio" mark — a 4-point star with a tick at each compass point.
+ *  Path from 09 Full View v2.dc.html; lucide's Sparkle lacks the ticks. */
+export function StudioGlyph({ size = 24, strokeWidth = 1.7, ...props }: GlyphProps) {
+  return (
+    <svg {...base} width={size} height={size} strokeWidth={strokeWidth} strokeLinecap="round" {...props}>
+      <path d="M12 3v3" />
+      <path d="M12 18v3" />
+      <path d="M3 12h3" />
+      <path d="M18 12h3" />
+      <path d="m12 8 1.2 2.8L16 12l-2.8 1.2L12 16l-1.2-2.8L8 12l2.8-1.2z" />
+    </svg>
+  );
+}

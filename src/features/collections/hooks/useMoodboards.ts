@@ -33,6 +33,7 @@ import {
   saveProductToCollection,
 } from "@/services/collections/collectionsService"
 import { fetchProductsByIds } from "@/services/search/searchService"
+import { addNotice } from "@/features/notifications/notices"
 
 export function useCollectionsOverview() {
   const { user } = useAuth()
@@ -168,13 +169,22 @@ export function useSaveToCollection() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationKey: collectionsKeys.saveToCollection(),
-    mutationFn: (params: { outfitId: string; slug: string; label?: string }) => {
+    // `entityTitle` is only for the notification line; the service never sees it.
+    mutationFn: (params: { outfitId: string; slug: string; label?: string; entityTitle?: string }) => {
       if (!user?.id) {
         throw new Error("Please sign in to save outfits")
       }
-      return saveToCollection({ ...params, userId: user.id })
+      return saveToCollection({ outfitId: params.outfitId, slug: params.slug, label: params.label, userId: user.id })
     },
-    onSuccess: () => {
+    onSuccess: (_result, params) => {
+      addNotice({
+        id: "save:outfit:" + params.outfitId + ":" + params.slug + ":" + Date.now(),
+        kind: "save",
+        title: "Saved to " + (params.label ?? params.slug),
+        line: (params.entityTitle ?? "Look") + " added",
+        at: Date.now(),
+        payload: { outfitId: params.outfitId, slug: params.slug },
+      })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.overview() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.moodboards() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.favorites() })

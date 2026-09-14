@@ -65,7 +65,9 @@ export function FloatingProgressHub() {
     if (activeJobs.length > 1) return `${activeJobs.length} things in progress…`
     return activeJobs[0].type === "likeness"
       ? "Building your likeness…"
-      : "Dressing your likeness…"
+      : activeJobs[0].type === "import"
+        ? "Finding pieces…"
+        : "Dressing your likeness…"
   })()
 
   // Collapse the tray whenever the hub itself closes, so reopening the hub

@@ -63,15 +63,11 @@ export function TabBar({
         className,
       )}
     >
-      {items.map((item, i) => {
+      {items.map((item) => {
         const isActive = item.id === activeId
 
         return (
           <div key={item.id} className={cn("flex", scroll ? "flex-none" : "min-w-0 flex-1")}>
-            {/* Hairline divider between equal-width tabs, as in the artboard. */}
-            {!scroll && i > 0 ? (
-              <span aria-hidden className="h-4 w-px flex-none self-center bg-hairline" />
-            ) : null}
             <button
               type="button"
               role="tab"
@@ -82,9 +78,9 @@ export function TabBar({
               }}
               onClick={onChange ? () => onChange(item.id) : undefined}
               className={cn(
-                "flex h-9 min-w-0 items-center justify-center whitespace-nowrap border-b-2 text-chip font-medium tracking-[0.08em] text-ink",
+                "flex h-9 min-w-0 items-center justify-center whitespace-nowrap border-b-2 text-chip font-medium tracking-normal transition-colors",
                 scroll ? "px-0" : "flex-1",
-                isActive ? "border-violet" : "border-transparent",
+                isActive ? "border-violet text-ink" : "border-transparent text-taupe",
               )}
             >
               {item.label}

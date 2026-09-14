@@ -108,9 +108,9 @@ export function CollectionsPage() {
     setSearchParams(nextParams, { replace: true })
   }
 
-  // The grid's first four cells are fixed: + New, Try-Ons, Favorites, then the
-  // board created most recently. Everything after that scrolls, sorted by
-  // recency. Wardrobe lives on the Products tab, so it is not a board here.
+  // The grid's first five cells are fixed: + New, Try-Ons, Favorites, Wardrobe,
+  // then the board created most recently. Everything after that scrolls, sorted
+  // by recency.
   const orderedMoodboards = useMemo(() => {
     const time = (value?: string | null) => (value ? new Date(value).getTime() : 0)
     const byRecency = (a: Moodboard, b: Moodboard) => {
@@ -118,8 +118,8 @@ export function CollectionsPage() {
       return diff !== 0 ? diff : a.label.localeCompare(b.label)
     }
 
-    const pinnedSlugs = ["try-ons", "favorites"]
-    const hidden = ["wardrobe", "for-you", "all-outfits"]
+    const pinnedSlugs = ["try-ons", "favorites", "wardrobe"]
+    const hidden = ["for-you", "all-outfits"]
 
     const pinned = pinnedSlugs
       .map((slug) => moodboards.find((m) => m.slug === slug))

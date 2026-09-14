@@ -1,18 +1,40 @@
-import { ImagePlus, Link2, Plus, ScanLine } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
-import { Button } from "@/components/ui/button"
+
+import { Icons } from "@/design-system/icons"
+import { cn } from "@/lib/utils"
+
+export type InspirationIntent = "inspiration" | "wardrobe"
 
 type Props = {
   file: File | null
   isPending: boolean
   error: string | null
+  /** Which flow this is: the copy in the drop zone changes, nothing else. */
+  intent?: InspirationIntent
   onFile: (file: File) => void
-  onSubmit: () => void
 }
 
-export function InspirationSourceInput({ file, isPending, error, onFile, onSubmit }: Props) {
+const COPY: Record<InspirationIntent, { prompt: [string, string]; hint: string }> = {
+  inspiration: {
+    prompt: ["drop a look you liked", "and customise it for yourself"],
+    hint: "screenshots · photos · saved posts",
+  },
+  wardrobe: {
+    prompt: ["drop your favorite fit check photos", "and we will add those pieces"],
+    hint: "one piece per photo · flat lay or on you",
+  },
+}
+
+/**
+ * V2 Import inspiration / Add to wardrobe: a full-height dashed drop zone.
+ * A 48px white well with the image glyph, the prompt in the voice face, a
+ * hint line. Once a photo is in, it fills the zone. The tray ("identify
+ * items") belongs to the screen, so this is only the zone.
+ */
+export function InspirationSourceInput({ file, isPending, error, intent = "inspiration", onFile }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const copy = COPY[intent]
 
   useEffect(() => {
     if (!file) {
@@ -24,55 +46,54 @@ export function InspirationSourceInput({ file, isPending, error, onFile, onSubmi
     return () => URL.revokeObjectURL(nextUrl)
   }, [file])
 
-  const openFilePicker = () => inputRef.current?.click()
-
   return (
-    <section className="mx-auto flex h-[calc(100dvh-4rem)] min-h-0 w-full max-w-2xl flex-col overflow-y-auto px-5 pb-4 pt-2 sm:px-8 sm:pb-7 sm:pt-3">
-      <div className="text-center">
-        <h1 className="font-display text-[30px] font-medium leading-none text-foreground sm:text-[38px]">
-          Bring an inspiration
-        </h1>
-        <p className="mt-2 text-[12px] font-medium text-muted-foreground sm:text-sm">
-          a screenshot, a saved pin, a photo — we find the pieces in it
-        </p>
-      </div>
-
+    <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 py-3">
       <button
         type="button"
-        aria-label={file ? "Replace inspiration photo" : "Choose an inspiration photo"}
+        aria-label={file ? "Replace photo" : "Choose a photo"}
         aria-busy={isPending}
-        className={`${file ? "bg-card" : "warp-weft bg-card"} group relative mt-5 flex h-[clamp(13rem,40dvh,26rem)] min-h-0 w-full shrink-0 items-center justify-center overflow-hidden rounded-[8px] border-2 border-dashed border-hairline-4 transition-colors hover:border-terracotta focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta sm:mt-8`}
-        onClick={openFilePicker}
         disabled={isPending}
+        onClick={() => inputRef.current?.click()}
+        className={cn(
+          "relative flex min-h-0 flex-1 flex-col items-center justify-center gap-3 overflow-hidden rounded-control p-6 text-center",
+          // 1px dashed ink, per the design — not the hairline colour, so the zone reads as an invitation.
+          "border border-dashed border-charcoal bg-background",
+          "disabled:cursor-wait",
+        )}
       >
         {previewUrl ? (
-          <img src={previewUrl} alt="Selected inspiration" className="size-full object-contain" />
+          <img src={previewUrl} alt="Chosen photo" className="absolute inset-0 h-full w-full object-contain" />
         ) : (
-          <span className="flex flex-col items-center px-8 text-center">
-            <span className="flex size-14 items-center justify-center rounded-full border border-hairline bg-background text-terracotta">
-              <ImagePlus className="size-6" />
+          <>
+            <span className="flex h-12 w-12 items-center justify-center rounded-control border border-hairline bg-white text-violet">
+              <Icons.image className="h-[22px] w-[22px]" aria-hidden="true" />
             </span>
-            <span className="mt-5 font-display text-2xl text-foreground">Choose a photo</span>
-            <span className="mt-2 text-xs leading-5 text-muted-foreground">JPEG, PNG or WebP · up to 10 MB</span>
-          </span>
+            <span className="font-voice text-body italic leading-snug text-charcoal">
+              {copy.prompt[0]}
+              <br />
+              {copy.prompt[1]}
+            </span>
+            <span className="text-chip text-taupe">{copy.hint}</span>
+          </>
         )}
-        {previewUrl ? (
-          <span className="absolute bottom-3 right-3 rounded-frame bg-foreground/80 px-2.5 py-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-background opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-            Replace photo
-          </span>
-        ) : null}
         {previewUrl && isPending ? (
-          <span className="pointer-events-none absolute inset-0 bg-foreground/5">
-            <span
-              aria-hidden="true"
-              className="inspiration-scan-line absolute inset-x-0 z-10 h-0.5 bg-gradient-to-r from-transparent via-terracotta to-transparent"
-            />
-            <span className="absolute inset-x-0 bottom-3 text-center text-[10px] font-semibold uppercase tracking-[0.15em] text-terracotta">
-              Identifying pieces
-            </span>
+          <span className="pointer-events-none absolute inset-0" aria-hidden="true">
+            <span className="inspiration-scan-line absolute inset-x-0 z-10 h-0.5 bg-gradient-to-r from-transparent via-violet to-transparent" />
           </span>
         ) : null}
       </button>
+
+      {/* The camera: on a phone this opens the camera directly, elsewhere the picker. */}
+      <button
+        type="button"
+        disabled={isPending}
+        onClick={() => inputRef.current?.click()}
+        className="flex h-11 flex-none items-center justify-center gap-2 rounded-control border border-hairline bg-white text-card font-medium text-ink disabled:opacity-50"
+      >
+        <Icons.camera className="h-[18px] w-[18px]" aria-hidden="true" />
+        camera
+      </button>
+
       <input
         ref={inputRef}
         className="sr-only"
@@ -85,34 +106,11 @@ export function InspirationSourceInput({ file, isPending, error, onFile, onSubmi
         }}
       />
 
-      {error ? <p className="mt-3 text-sm text-destructive" role="alert">{error}</p> : null}
-
-      <div className="mt-3 flex items-center gap-4 sm:mt-5" aria-hidden="true">
-        <span className="h-px flex-1 bg-hairline" />
-        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">or</span>
-        <span className="h-px flex-1 bg-hairline" />
-      </div>
-
-      <button
-        type="button"
-        disabled
-        className="mt-3 flex min-h-12 w-full cursor-not-allowed items-center gap-3 rounded-control border border-hairline bg-white px-4 text-left sm:mt-5 sm:min-h-14"
-      >
-        <Link2 className="size-4 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">paste a link — pin, reel, article</span>
-        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-terracotta/60">Add ›</span>
-      </button>
-
-      <div className="mt-auto pt-4 sm:pt-10">
-        <Button
-          className="h-14 w-full rounded-[4px] bg-terracotta text-base font-semibold text-white hover:bg-terracotta/90 sm:h-16"
-          disabled={!file || isPending}
-          onClick={onSubmit}
-        >
-          {isPending ? <ScanLine className="size-5 animate-pulse" /> : <Plus className="size-5" />}
-          {isPending ? "Finding the pieces…" : "Find the pieces"}
-        </Button>
-      </div>
-    </section>
+      {error ? (
+        <p className="text-chip text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
   )
 }

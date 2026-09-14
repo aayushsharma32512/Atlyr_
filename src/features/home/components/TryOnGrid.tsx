@@ -78,7 +78,7 @@ export function TryOnGrid({ items, onSelect, onOpenStudio, overlay = true, getIt
                 <TrayActionButton
                   tone="plain"
                   iconEnd={ArrowUpRight}
-                  label="Studio"
+                  label="studio"
                   className="pointer-events-auto h-fit w-fit rounded-xl bg-transparent px-0.5 py-0 text-[10px] font-medium text-foreground hover:bg-background"
                   onClick={() => onOpenStudio(item)}
                 />

@@ -84,6 +84,32 @@ async function startImageImport(file: File): Promise<{ importId: string }> {
   }
 }
 
+/**
+ * Product-level import: the cutout the client already holds becomes the
+ * selected candidate directly. No detection round trip — the server seeds the
+ * candidate from the uploaded file, so the import opens on the rack.
+ */
+async function startProductImport(file: File, category: "top" | "bottom"): Promise<{ importId: string }> {
+  console.log("[find-items] 3/5 creating import", { category, bytes: file.size, type: file.type })
+  const created = await createImport(file)
+  console.log("[find-items] 3/5 import created", created)
+  try {
+    await uploadSource(created.uploadPath, file)
+    console.log("[find-items] 4/5 crop uploaded", { path: created.uploadPath })
+    await markSourceReady(created.importId, file)
+    const seeded = await invokeImport<{ importId: string; candidateId: string; status: string }>({
+      action: "seed-candidate", importId: created.importId, category, mimeType: file.type, sizeBytes: file.size,
+    })
+    console.log("[find-items] 5/5 candidate seeded", seeded)
+    return { importId: created.importId }
+  } catch (error) {
+    console.error("[find-items] FAILED after create", { importId: created.importId, error })
+    throw Object.assign(error instanceof Error ? error : new Error("Import failed"), {
+      importId: created.importId,
+    })
+  }
+}
+
 async function getImport(importId: string): Promise<InspirationImport> {
   const record = await invokeImport<InspirationImport>({ action: "get", importId })
   return { ...record, webResults: filterValidWebResults(record.webResults) }
@@ -149,6 +175,7 @@ async function openInStudio(importId: string, input: InspirationOpenStudioInput)
 
 export const inspirationImportService = {
   startImageImport,
+  startProductImport,
   getImport,
   detectCandidates,
   selectCandidates,

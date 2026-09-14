@@ -22,8 +22,10 @@ export function SectionHeader({
   return (
     <div className={cn("flex w-full items-start justify-between px-1", className)}>
       <div className="flex flex-col gap-0.5">
-        {/* Section label: 10.5px caps, tracked, taupe (docs/redesign/design.md). */}
-        <h2 className="text-section font-semibold uppercase tracking-[0.14em] text-taupe">
+        {/* Section label. V2 casing rule: lowercase, normal tracking — it was
+           tracked caps under Kalagriha. Normalised here rather than at the ten
+           call sites, none of which pass a proper noun. */}
+        <h2 className="text-chip font-medium lowercase tracking-normal text-taupe">
           {title}
         </h2>
         {subtitle ? <p className="text-xs font-normal text-taupe">{subtitle}</p> : null}

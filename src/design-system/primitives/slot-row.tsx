@@ -5,11 +5,12 @@ import { cn } from "@/lib/utils"
 
 export type SlotRowSlot = "top" | "bottom" | "shoes" | "layer"
 
+// V2 slot words: tops · lowers · kicks, lowercase in UI copy. Keys stay top/bottom/shoes.
 const SLOT_NAME: Record<SlotRowSlot, string> = {
-  top: "Top",
-  bottom: "Bottom",
-  shoes: "Shoes",
-  layer: "Layer over top",
+  top: "tops",
+  bottom: "lowers",
+  shoes: "kicks",
+  layer: "layer over top",
 }
 
 const SLOT_GLYPH: Record<SlotRowSlot, React.ComponentType<{ className?: string }>> = {
@@ -84,7 +85,7 @@ export function SlotRow({
           <span className="flex h-5 w-5 flex-none items-center justify-center text-ink">
             <Icons.add className="h-4 w-4" aria-hidden="true" />
           </span>
-          <span className="min-w-0 flex-1 text-card font-semibold text-ink">{slotName}</span>
+          <span className="min-w-0 flex-1 text-card font-medium text-ink">{slotName}</span>
         </button>
       </div>
     )
@@ -102,22 +103,11 @@ export function SlotRow({
       {/* A div, not a button: the row can hold two targets (the name and the
           alternates button), and a button inside a button is invalid HTML. */}
       <div className="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-control border border-hairline bg-white px-1">
-        {removable ? (
-          <button
-            type="button"
-            onClick={onRemove}
-            aria-label={`Remove ${slotName.toLowerCase()}`}
-            className="flex h-6 w-6 flex-none items-center justify-center text-taupe"
-          >
-            <Icons.close className="h-4 w-4" aria-hidden="true" />
-          </button>
-        ) : null}
-
         <button
           type="button"
           onClick={onSelect}
           disabled={!onSelect}
-          className="min-w-0 flex-1 truncate text-left text-card font-semibold text-ink disabled:cursor-default"
+          className="min-w-0 flex-1 truncate px-1.5 text-left text-card font-medium text-ink disabled:cursor-default"
         >
           {label?.trim() || slotName}
         </button>
@@ -144,6 +134,18 @@ export function SlotRow({
           </button>
         ) : null}
       </div>
+
+      {/* V2: the × is a bare 24px glyph outside the field, on the right — like the slot glyph. */}
+      {removable ? (
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={`Remove ${slotName}`}
+          className="flex h-6 w-6 flex-none items-center justify-center text-ink"
+        >
+          <Icons.close className="h-4 w-4" aria-hidden="true" />
+        </button>
+      ) : null}
     </div>
   )
 }

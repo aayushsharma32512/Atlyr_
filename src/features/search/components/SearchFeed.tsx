@@ -4,16 +4,20 @@ import { SectionHeader } from "@/design-system/primitives"
 import type { FeedSections } from "@/features/search/hooks/useSearchFeed"
 import { SearchRail, type FeedHandlers, type FeedList } from "@/features/search/components/SearchRail"
 import { FeedGrid, FeedGridSkeleton } from "@/features/search/components/FeedGrid"
+import { CurationBoards } from "@/features/search/components/CurationBoards"
+import { PersonaliseBanner } from "@/features/search/components/PersonaliseBanner"
 
 interface SearchFeedProps {
   sections: FeedSections
   heightCm: number
   onOpenList: (list: FeedList) => void
+  /** The banner between the curations and For You → Import inspiration. */
+  onPersonalise: () => void
   handlers: FeedHandlers
 }
 
 /** Hot Styles · Atlyr Curations · For You, for the active scope. */
-export function SearchFeed({ sections, heightCm, onOpenList, handlers }: SearchFeedProps) {
+export function SearchFeed({ sections, heightCm, onOpenList, onPersonalise, handlers }: SearchFeedProps) {
   const { forYou } = sections
   const sentinelRef = useRef<HTMLDivElement | null>(null)
   const { fetchNextPage, hasNextPage, isFetchingNextPage } = forYou
@@ -31,19 +35,30 @@ export function SearchFeed({ sections, heightCm, onOpenList, handlers }: SearchF
   const rails =
     sections.kind === "looks" ? (
       <>
-        <SearchRail kind="looks" title="Hot Styles" section={sections.hot} heightCm={heightCm} onOpenList={() => onOpenList("hot")} handlers={handlers} />
-        <SearchRail kind="looks" title="Atlyr Curations" section={sections.curations} heightCm={heightCm} onOpenList={() => onOpenList("curations")} handlers={handlers} />
+        <SearchRail kind="looks" title="Hot styles" section={sections.hot} heightCm={heightCm} onOpenList={() => onOpenList("hot")} handlers={handlers} />
+        {/* Curations are boards here, not loose looks. Tapping a board opens
+            the curations list; the per-curation deep-dive page is parked. */}
+        <CurationBoards
+          title="Atlyr curations"
+          boards={sections.boards}
+          isLoading={sections.boardsLoading}
+          gender={sections.gender}
+          heightCm={heightCm}
+          onOpenList={() => onOpenList("curations")}
+          onOpenBoard={() => onOpenList("curations")}
+        />
       </>
     ) : (
       <>
-        <SearchRail kind="pieces" title="Hot Styles" section={sections.hot} heightCm={heightCm} onOpenList={() => onOpenList("hot")} handlers={handlers} />
-        <SearchRail kind="pieces" title="Atlyr Curations" section={sections.curations} heightCm={heightCm} onOpenList={() => onOpenList("curations")} handlers={handlers} />
+        <SearchRail kind="pieces" title="Hot styles" section={sections.hot} heightCm={heightCm} onOpenList={() => onOpenList("hot")} handlers={handlers} />
+        <SearchRail kind="pieces" title="Atlyr curations" section={sections.curations} heightCm={heightCm} onOpenList={() => onOpenList("curations")} handlers={handlers} />
       </>
     )
 
   return (
     <div className="flex flex-col gap-5">
       {rails}
+      <PersonaliseBanner onClick={onPersonalise} />
       <section className="flex flex-col gap-2.5">
         <SectionHeader title="For You" className="border-t border-hairline pt-2" />
         {sections.kind === "looks" ? (

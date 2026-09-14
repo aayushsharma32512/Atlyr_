@@ -3,7 +3,8 @@ import type { Database, Json } from "@/integrations/supabase/types"
 import { mapDbOutfitToOutfit } from "@/services/shared/transformers/outfitTransformers"
 import { mapDbOutfitToStudioOutfit } from "@/features/studio/mappers/renderedItemMapper"
 import { parseBodyPartsVisible } from "@/features/studio/mappers/renderedItemMapper"
-import type { StudioRenderedItem } from "@/features/studio/types"
+import { toPlacementTransform } from "@/features/studio/mappers/renderedItemMapper"
+import type { StudioPlacementByMannequin, StudioRenderedItem } from "@/features/studio/types"
 import type { HomeOutfitEntry } from "@/services/home/homeService"
 import type { Outfit } from "@/types"
 import { getOutfitChips } from "@/utils/outfitChips"
@@ -699,6 +700,8 @@ export type SavedProduct = {
   createdAt: string
   imageUrl: string | null
   type: ProductSlot | null
+  /** Mannequins this piece can be drawn on — null when it has never been placed. */
+  placement: StudioPlacementByMannequin | null
   brand: string | null
   price: number | null
   currency: string | null
@@ -760,6 +763,7 @@ export async function fetchSavedProducts(userId: string | null): Promise<SavedPr
       price: product?.price ?? null,
       currency: product?.currency ?? null,
       productName: product?.product_name ?? null,
+      placement: toPlacementTransform(product ?? {}),
     })
   }
 
@@ -1609,6 +1613,8 @@ export type TrendingProduct = {
   type: ProductSlot
   productName: string | null
   imageUrl: string | null
+  /** Mannequins this piece can be drawn on — null when it has never been placed. */
+  placement: StudioPlacementByMannequin | null
   /** Public feed outfits this piece is styled in — the rank signal. */
   looks: number
 }
@@ -1670,7 +1676,7 @@ export async function fetchTrendingProducts(params: {
 
   const { data: products, error: productsError } = await supabase
     .from("products")
-    .select("id, product_name, image_url, thumbnail_url, type")
+    .select("id, product_name, image_url, thumbnail_url, type, placement, gender")
     .in("id", ids)
 
   if (productsError) {
@@ -1689,6 +1695,7 @@ export async function fetchTrendingProducts(params: {
           type: slot,
           productName: row.product_name ?? null,
           imageUrl: productDisplayImage(row.thumbnail_url, row.image_url),
+          placement: toPlacementTransform(row),
           looks,
         } satisfies TrendingProduct
       })

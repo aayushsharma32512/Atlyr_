@@ -1,6 +1,7 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
 import { inspirationImportKeys } from "@/features/inspiration-import/queryKeys"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
+import { useJobs } from "@/features/progress/providers/JobsContext"
 import { inspirationImportService } from "@/services/inspirationImport/inspirationImportService"
 import type {
   InspirationImport,
@@ -11,7 +12,14 @@ import type {
 const DETECTION_POLL_INTERVAL_MS = 3_000
 
 export function useStartInspirationImport() {
-  return useMutation({ mutationFn: inspirationImportService.startImageImport })
+  const { addJob } = useJobs()
+  return useMutation({
+    mutationFn: inspirationImportService.startImageImport,
+    // The detect step runs in the background; tracking it as a job is what
+    // lets the hub and Notifications say "pieces found" after you leave.
+    onSuccess: ({ importId }) =>
+      addJob({ id: "import-" + importId, type: "import", status: "processing", progress: 0, metadata: { importId } }),
+  })
 }
 
 export function useInspirationImport(importId: string | null) {

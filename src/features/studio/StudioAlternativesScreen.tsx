@@ -67,7 +67,6 @@ import { useStudioShareMode } from "@/features/studio/hooks/useStudioShareMode"
 import { mergeOutfitItemsWithTray } from "@/features/studio/utils/mergeOutfitItemsWithTray"
 import { useOptionalAdminGender } from "@/features/admin/providers/AdminGenderContext"
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
-import { trackProductBuyClicked } from "@/integrations/posthog/engagementTracking/entityEvents"
 import { canonicalizeProductSearchFilters } from "@/integrations/posthog/engagementTracking/searchCanonical"
 import { setPendingStudioComboChange, useStudioCombinationTracking } from "@/integrations/posthog/engagementTracking/studio/studioTracking"
 import { trackTryonFlowStarted } from "@/integrations/posthog/engagementTracking/tryon/tryonTracking"
@@ -177,7 +176,9 @@ export function StudioAlternativesView() {
 
   const { swapSlot } = useStudioSwapActions(resolvedOutfitId)
   const { data: outfitData, isLoading: isOutfitLoading } = useStudioOutfit(resolvedOutfitId)
-  const heroProductId = parsedParams.productId ?? slotProductIds[slot] ?? null
+  // A removed slot has no worn piece: the detail card must not keep showing
+  // the one that was taken off. The figure and the rows already honour this.
+  const heroProductId = hiddenSlots[slot] ? null : (parsedParams.productId ?? slotProductIds[slot] ?? null)
   const heroProductQuery = useStudioHeroProduct(resolvedOutfitId, slot, heroProductId)
   
   // The rack's default source: the whole catalogue for this slot.
@@ -507,7 +508,10 @@ export function StudioAlternativesView() {
       .filter((item): item is StudioRenderedItem => Boolean(item))
   }, [hiddenSlots, outfitData?.studioOutfit?.renderedItems, resolvedTrayItems])
   
-  const heroProduct = heroProductQuery.data ?? null
+  // A removed slot has nothing to show. Gating the id is not enough: with no
+  // id the hero hook falls back to the outfit's own piece for the slot, which
+  // is exactly the one that was taken off.
+  const heroProduct = hiddenSlots[slot] ? null : (heroProductQuery.data ?? null)
   const heroImagesQuery = useStudioProductImages(heroProduct?.productId ?? null)
   
   const outfitItems = useMemo(
@@ -646,15 +650,6 @@ export function StudioAlternativesView() {
     openStudio()
   }, [openStudio])
 
-  const handleBuyClick = useCallback(() => {
-    if (isViewOnly) {
-      return
-    }
-    if (heroProduct?.productUrl) {
-      trackProductBuyClicked(analytics, { entity_id: heroProduct.productId })
-      window.open(heroProduct.productUrl, "_blank", "noopener,noreferrer")
-    }
-  }, [analytics, heroProduct?.productId, heroProduct?.productUrl, isViewOnly])
 
   /* -------------------------------------------------------------------------
    * Snapshot Hook
@@ -885,7 +880,8 @@ export function StudioAlternativesView() {
             slotIds: nextSlotIds,
             productId: product.id,
             share: parsedParams.share,
-            hiddenSlots: parsedParams.hiddenSlots,
+            // Wearing a piece un-hides its slot, as the normal branch does below.
+            hiddenSlots: { ...parsedParams.hiddenSlots, [slot]: false },
             source,
           })
           setSearchParams(params, { replace: true })
@@ -1071,7 +1067,23 @@ export function StudioAlternativesView() {
     search.handleForceSearch(imageUrl)
   }, [currentSlotImageUrl, currentSlotProductId, isViewOnly, search])
 
-  const handleFindItems = useCallback(() => navigate("/inspiration-import"), [navigate])
+  /**
+   * Product-level Find items, seeded with the worn piece's cutout. The rack's
+   * web-search row asks for web results directly. Kicks are not a detector
+   * category, so they take the blank import.
+   */
+  const findItemsUrl = useCallback(
+    (results: "inventory" | "web") => {
+      const image = heroProduct?.imageUrl ?? heroProduct?.thumbnailUrl
+      if (slot === "shoes" || !image) return "/inspiration-import"
+      const params = new URLSearchParams({ source: image, slot })
+      if (results === "web") params.set("results", "web")
+      return `/inspiration-import?${params.toString()}`
+    },
+    [heroProduct?.imageUrl, heroProduct?.thumbnailUrl, slot],
+  )
+  const handleFindItems = useCallback(() => navigate(findItemsUrl("inventory")), [findItemsUrl, navigate])
+  const handleWebSearch = useCallback(() => navigate(findItemsUrl("web")), [findItemsUrl, navigate])
 
   /** The query line's × — back to the whole slot. */
   const handleClearQuery = useCallback(() => {
@@ -1133,7 +1145,9 @@ export function StudioAlternativesView() {
     },
   ]
 
-  const heroTitle = heroProduct?.title ?? focusedItem?.product_name ?? focusedItem?.brand ?? "Selected piece"
+  const heroTitle = hiddenSlots[slot]
+    ? "Nothing worn here"
+    : (heroProduct?.title ?? focusedItem?.product_name ?? focusedItem?.brand ?? "Selected piece")
   const heroPrice = heroProduct?.price ?? focusedItem?.price ?? 0
 
   /** fit · feel · vibe · colour · material. No brand, no price. */
@@ -1149,8 +1163,11 @@ export function StudioAlternativesView() {
   }, [heroProduct])
 
   const heroImages = useMemo(
-    () => toDisplayImages(heroImagesQuery.data, heroProduct?.imageUrl ?? heroProduct?.thumbnailUrl),
-    [heroImagesQuery.data, heroProduct?.imageUrl, heroProduct?.thumbnailUrl],
+    () =>
+      hiddenSlots[slot]
+        ? []
+        : toDisplayImages(heroImagesQuery.data, heroProduct?.imageUrl ?? heroProduct?.thumbnailUrl),
+    [heroImagesQuery.data, heroProduct?.imageUrl, heroProduct?.thumbnailUrl, hiddenSlots, slot],
   )
 
   const queryLine = useMemo(() => {
@@ -1264,11 +1281,12 @@ export function StudioAlternativesView() {
               <AlternatesRack
                 products={rackProducts}
                 isLoading={isLoading}
-                wornProductId={activeSlotIds[slot] ?? null}
+                wornProductId={hiddenSlots[slot] ? null : activeSlotIds[slot] ?? null}
                 queryLine={queryLine}
                 onClearQuery={handleClearQuery}
                 emptyLabel={emptyLabel}
                 showWebSearch={source === "explore"}
+                onWebSearch={handleWebSearch}
                 onSelect={isViewOnly ? undefined : (product) => void handleAlternativeSelect(product)}
                 isProductSaved={productSaveActions.isSaved}
                 onToggleSave={isViewOnly ? undefined : openProductSave}
@@ -1313,6 +1331,7 @@ export function StudioAlternativesView() {
                 defaultBoardSlugs={
                   currentOutfitMoodboardSlugs.length ? currentOutfitMoodboardSlugs : ["favorites"]
                 }
+                pieceCount={Object.values(activeSlotIds).filter(Boolean).length}
                 onSave={(data) => void handleSaveFromCard(data)}
                 onCancel={() => setIsSaveDrawerOpen(false)}
                 onCreateBoard={(name) =>
@@ -1322,6 +1341,9 @@ export function StudioAlternativesView() {
             ) : productSaveId ? (
               <StudioSaveCard
                 key={productSaveId}
+                kind="piece"
+                defaultName={heroTitle}
+                defaultTags={heroAttributes}
                 boards={selectableMoodboards.map((m) => ({ slug: m.slug, label: m.label }))}
                 defaultBoardSlugs={
                   productSaveActions.getProductBoardSlugs(productSaveId).length
@@ -1350,7 +1372,7 @@ export function StudioAlternativesView() {
               saved={heroProduct ? productSaveActions.isSaved(heroProduct.productId) : false}
               onSave={heroProduct ? () => openProductSave(heroProduct.productId) : undefined}
               onTryOn={handleTryOn}
-              onFindItems={heroProduct?.productUrl ? handleBuyClick : handleFindItems}
+              onFindItems={handleFindItems}
               isLoading={heroProductQuery.isLoading}
               className="h-[240px]"
             />

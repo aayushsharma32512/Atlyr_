@@ -94,14 +94,16 @@ export function ProductTile({
             }
           : undefined
       }
-      className={cn(
-        "flex w-full flex-col overflow-hidden rounded-lg bg-card text-left",
-        worn ? "border border-ink shadow-[inset_0_0_0_1px_hsl(var(--ink))]" : "border border-hairline",
-        interactive && "cursor-pointer",
-        className,
-      )}
+      className={cn("flex w-full flex-col gap-1.5 text-left", interactive && "cursor-pointer", className)}
     >
-      <div className="relative aspect-square w-full overflow-hidden bg-muted">
+      {/* V2: the hairline frames the image only; the name sits below it on the
+          ground, not inside a card. The worn tile takes the violet border. */}
+      <div
+        className={cn(
+          "relative aspect-square w-full overflow-hidden rounded-lg bg-background",
+          worn ? "border-[1.5px] border-violet" : "border border-hairline",
+        )}
+      >
         {imageSrc ? (
           <GarmentImage
             src={imageSrc}
@@ -138,8 +140,8 @@ export function ProductTile({
         ) : null}
       </div>
       {!small ? (
-        <div className="flex h-10 items-center gap-2 border-t border-hairline px-2">
-          <p className="min-w-0 flex-1 truncate text-card font-semibold text-ink">{title}</p>
+        <div className="flex items-center gap-2 px-0.5">
+          <p className="min-w-0 flex-1 truncate text-card font-medium text-ink">{title}</p>
           {price ? <span className="shrink-0 text-chip text-taupe">{price}</span> : null}
           {!price && brand ? <span className="shrink-0 truncate text-chip text-taupe">{brand}</span> : null}
         </div>

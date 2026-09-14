@@ -66,6 +66,11 @@ export function useOpenJobResult(entrySource: EntrySource = "fromProgressHub") {
         return
       }
 
+      if (job.type === "import" && typeof job.metadata?.importId === "string") {
+        navigate("/inspiration-import/" + job.metadata.importId)
+        return
+      }
+
       if (job.type === "tryon") {
         // Try-ons still live on the Home board view. Re-point at the Collections
         // Try-ons board once Collections owns board detail.

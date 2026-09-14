@@ -53,15 +53,15 @@ export const MOTION = {
   },
 } as const;
 
-/** What each type role resolves to at the 390px frame. 10.5 is the floor. */
+/** The type roles, in px. Pinned (not fluid) since the app renders in a fixed ~390px column; 10.5 is the floor. */
 export const TYPE_AT_FRAME = {
   titleLg: 34,
-  title: 26,
+  title: 22, // V2: header title is 22, down from 26
   moment: 22,
   label: 15,
   body: 14,
   card: 13,
-  chip: 11,
+  chip: 12, // V2: tabs, pills and chips are 12px, up from 11
   section: 10.5,
 } as const;
 

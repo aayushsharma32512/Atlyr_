@@ -40,7 +40,8 @@ export function StudioActionBar({
         onClick={isReadOnly ? undefined : onSave}
         className={cn(
           "box-border flex h-control-secondary w-control-secondary flex-none items-center justify-center",
-          "rounded-control border border-hairline bg-white text-ink",
+          "rounded-control border border-hairline bg-white",
+          saved ? "text-violet" : "text-ink",
           "disabled:cursor-not-allowed disabled:opacity-60",
           highlightSave && RING,
         )}
@@ -54,13 +55,13 @@ export function StudioActionBar({
         onClick={isReadOnly ? undefined : onTryOn}
         className={cn(
           "box-border flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control",
-          "bg-terracotta text-label font-semibold text-background",
+          "bg-primary text-label font-semibold text-primary-foreground",
           "disabled:cursor-not-allowed disabled:opacity-60",
           highlightTryOn && RING,
         )}
       >
         <Icons.tryOn className="h-5 w-5" aria-hidden="true" />
-        Try on
+        try on
       </button>
 
       <button
@@ -69,13 +70,13 @@ export function StudioActionBar({
         onClick={isReadOnly ? undefined : onFindItems}
         className={cn(
           "box-border flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control",
-          "border border-dashed border-hairline-dashed bg-card/50 text-label font-semibold text-ink",
+          "border border-hairline bg-white text-label font-semibold text-ink",
           "disabled:cursor-not-allowed disabled:opacity-60",
           highlightFindItems && RING,
         )}
       >
         <Icons.findItems className="h-5 w-5" aria-hidden="true" />
-        Find items
+        find items
       </button>
     </div>
   )

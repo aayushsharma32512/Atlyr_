@@ -295,19 +295,21 @@ img {
     --fluid-gap-lg: clamp(2.25rem, 1.28vw + 1.938rem, 3.25rem);   /* 36 → 52 */
     --fluid-btn-y: clamp(0.938rem, 0.48vw + 0.821rem, 1.313rem);  /* 15 → 21 */
 
-    /* ── Type roles (docs/redesign/design.md). App surfaces use only these;
-       --fluid-* above stays for the gate / first-run screens and the wordmarks.
-       Each role hits its exact design.md px at 390px and grows ~1.2× by 1640px.
-       Min == the 390px value, so nothing ever drops below the 10.5px floor.
+    /* ── Type roles. Pinned, not fluid.
+       They used to be vw-based clamp()s that grew ~1.2x by 1640px. But the app
+       renders inside a fixed ~392px column (max-w-[24.5rem]) at every viewport,
+       so text scaled with the monitor while its container did not: a 22px
+       design title rendered at 26px on a 1440px screen, inside the same 390px
+       frame. The V2 spec is a fixed 390 frame, so these are its px, verbatim.
        Retune here, never at a call site. ── */
-    --type-title-lg: clamp(2.125rem, 0.54vw + 1.993rem, 2.55rem);  /* 34   → 40.75 · page-top title */
-    --type-title:    clamp(1.625rem, 0.42vw + 1.523rem, 1.95rem);  /* 26   → 31.2  · in-header title */
-    --type-moment:   clamp(1.375rem, 0.35vw + 1.29rem, 1.65rem);   /* 22   → 26.4  · Bodoni moment line */
-    --type-label:    clamp(0.938rem, 0.24vw + 0.879rem, 1.125rem); /* 15   → 18    · row label, button */
-    --type-body:     clamp(0.875rem, 0.22vw + 0.821rem, 1.05rem);  /* 14   → 16.75 · body, row value */
-    --type-card:     clamp(0.813rem, 0.21vw + 0.761rem, 0.975rem); /* 13   → 15.6  · card name */
-    --type-chip:     clamp(0.688rem, 0.18vw + 0.644rem, 0.825rem); /* 11   → 13.2  · eyebrow, chip */
-    --type-section:  clamp(0.656rem, 0.17vw + 0.615rem, 0.787rem); /* 10.5 → 12.6  · section label — THE FLOOR */
+    --type-title-lg: 2.125rem;   /* 34   · page-top title */
+    --type-title:    1.375rem;   /* 22   · in-header title (DM Serif Display) */
+    --type-moment:   1.375rem;   /* 22   · voice / moment line */
+    --type-label:    0.9375rem;  /* 15   · row label, button */
+    --type-body:     0.875rem;   /* 14   · body, row value */
+    --type-card:     0.8125rem;  /* 13   · card name, slot-row name, tag chip */
+    --type-chip:     0.75rem;    /* 12   · tab, pill, chip, button label */
+    --type-section:  0.65625rem; /* 10.5 · section label — THE FLOOR */
 
   }
 

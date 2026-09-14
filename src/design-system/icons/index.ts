@@ -13,6 +13,7 @@ import {
   Folders,
   Globe,
   Heart,
+  Image as ImageIcon,
   Layers,
   LayoutGrid,
   Link,
@@ -21,7 +22,7 @@ import {
   Minimize2,
   Plus,
   Redo2,
-  RefreshCw,
+  ScanSearch,
   RotateCcw,
   Search,
   Share,
@@ -36,12 +37,17 @@ import {
   X,
 } from "lucide-react";
 
-import { BottomsGlyph, HangerGlyph, ShoeGlyph } from "./glyphs";
+import { BottomsGlyph, HangerGlyph, ShoeGlyph, StudioGlyph } from "./glyphs";
 
 export const Icons = {
   // V2 (design doc, Sep 2026): the save/favourite icon is the HEART
   // everywhere — it replaced the pin. Filled + violet = saved.
   save: Heart,
+
+  // "studio" buttons across the app. Deliberately not navStudio: the nav
+  // mark is lucide's multi-sparkle and stays violet, while buttons take the
+  // V2 frames' own glyph — a 4-point star with compass ticks.
+  studio: StudioGlyph,
 
   tryOn: SquareUserRound,
   // Try-on button, states 2 and 3 (V2 "try on button · 3 states"):
@@ -54,7 +60,7 @@ export const Icons = {
   undo: Undo2,
   redo: Redo2,
   restore: RotateCcw,
-  similar: RefreshCw, // "more like this piece" — image-similarity search
+  similar: ScanSearch, // "more like this piece" — the V2 photo-search glyph
   swap: ArrowUpDown, // layer row: which of the two tops is on top
   alternatives: LayoutGrid,
 
@@ -83,6 +89,7 @@ export const Icons = {
   addWardrobe: Shirt,
 
   camera: Camera,
+  image: ImageIcon,
   filter: ListFilter,
   remove: Trash2,
   expand: Maximize2,

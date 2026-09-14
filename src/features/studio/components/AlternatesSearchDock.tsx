@@ -31,8 +31,10 @@ export function AlternatesSearchButton({
       disabled={isReadOnly}
       onClick={onOpen}
       className={cn(
-        "absolute bottom-2 right-2 z-[4] flex h-control-field w-control-field items-center justify-center",
-        "rounded-control border border-hairline bg-white/75 text-ink backdrop-blur-[6px]",
+        // In the column's flow, not floating over the tiles: the rack shrinks to
+        // make room, so the last row of tiles is never under the lens.
+        "mb-2 ml-auto mr-2 mt-1.5 flex h-control-field w-control-field flex-none items-center justify-center",
+        "rounded-control border border-hairline bg-white text-ink",
         "disabled:cursor-not-allowed disabled:opacity-40",
         className,
       )}

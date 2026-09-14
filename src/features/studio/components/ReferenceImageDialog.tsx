@@ -74,7 +74,7 @@ export function ReferenceImageDialog({
             onClick={() => setChoice("worn")}
             className={cn(tile, "bg-card", choice === "worn" ? selected : "border border-hairline")}
           >
-            <span className="relative block aspect-square w-full overflow-hidden bg-muted">
+            <span className="relative block aspect-square w-full overflow-hidden bg-background">
               {wornImageUrl ? (
                 <img src={wornImageUrl} alt="" className="h-full w-full object-contain p-2" />
               ) : null}
@@ -100,7 +100,7 @@ export function ReferenceImageDialog({
             )}
           >
             {attachedImageUrl ? (
-              <span className="relative block aspect-square w-full overflow-hidden bg-muted">
+              <span className="relative block aspect-square w-full overflow-hidden bg-background">
                 <img src={attachedImageUrl} alt="" className="h-full w-full object-contain p-2" />
               </span>
             ) : (
