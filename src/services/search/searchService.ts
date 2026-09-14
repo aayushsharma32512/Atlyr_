@@ -14,6 +14,7 @@ interface CategoryMetadata {
   id: string
   title: string
   subtitle?: string
+  createdAt?: string
 }
 
 export interface SearchBrowseOutfit {
@@ -31,6 +32,8 @@ export interface SearchBrowseCollection {
   categoryId: string
   title: string
   subtitle?: string
+  /** When the category was created — what makes a curation "new". */
+  createdAt?: string
   outfits: SearchBrowseOutfit[]
 }
 
@@ -191,7 +194,7 @@ interface SearchFunctionResponse<T> {
 }
 
 async function getFeaturedCategories(): Promise<CategoryMetadata[]> {
-  const { data, error } = await supabase.from("categories").select("id,name,slug").order("name", { ascending: true })
+  const { data, error } = await supabase.from("categories").select("id,name,slug,created_at").order("name", { ascending: true })
 
   if (error) {
     throw new Error(error.message)
@@ -201,6 +204,7 @@ async function getFeaturedCategories(): Promise<CategoryMetadata[]> {
     id: category.id,
     title: category.name,
     subtitle: category.slug.replace(/-/g, " "),
+    createdAt: category.created_at ?? undefined,
   }))
 }
 
@@ -358,6 +362,7 @@ export async function getBrowseCollections({
         categoryId: category.id,
         title: category.title,
         subtitle: category.subtitle,
+        createdAt: category.createdAt,
         outfits: mapped,
       } satisfies SearchBrowseCollection
     }),
@@ -925,6 +930,10 @@ export async function browseProducts({ slot, gender, cursor }: BrowseProductsInp
     .select(PRODUCT_COLUMNS)
     .eq("type", slot)
     .not("image_url", "is", null)
+    // Never placed on any mannequin — the studio cannot draw it. The exact
+    // per-mannequin check is the feed's (isPlaceableOnMannequin); this only
+    // keeps a page from filling with rows that will all be dropped.
+    .not("placement", "is", null)
   if (gender === "male" || gender === "female") {
     query = query.or(`${buildGenderFilter(gender)},gender.is.null`)
   }

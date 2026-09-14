@@ -65,7 +65,7 @@ export function ImportMannequinPreview({ choices, activeCategory, resultsSource 
   } : undefined
 
   return (
-    <div className="warp-weft relative h-full min-h-0 overflow-hidden rounded-[7px] border border-hairline bg-card">
+    <div className="relative h-full min-h-0 overflow-hidden rounded-control bg-white">
       {webResult ? (
         <div className="h-full w-full bg-white">
           <img
@@ -90,9 +90,6 @@ export function ImportMannequinPreview({ choices, activeCategory, resultsSource 
           />
         </div>
       )}
-      <span className="absolute left-3 top-3 rounded-[3px] border border-hairline bg-background/90 px-2 py-1 text-[8px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-        {webResult ? "Online pick" : "On you"}
-      </span>
     </div>
   )
 }

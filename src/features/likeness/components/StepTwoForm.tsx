@@ -131,7 +131,7 @@ export function StepTwoForm({
                       type="button"
                       onClick={() => setSelectedIndex(candidate.index)}
                       onDoubleClick={() => openPreviewAt(candidate.index)}
-                      className={`relative flex aspect-[3/4] w-full items-center justify-center overflow-hidden rounded-[5px] border bg-ink-deep transition-colors ${
+                      className={`relative flex aspect-[3/4] w-full items-center justify-center overflow-hidden rounded-control border bg-ink-deep transition-colors ${
                         isPicked ? 'border-on-ink-1' : 'border-ink-line hover:border-on-ink-3'
                       }`}
                     >
@@ -254,7 +254,7 @@ export function StepTwoForm({
             <Button
               type="button"
               onClick={handleSave}
-              className="flex h-11 w-full items-center justify-center rounded-[3px] bg-primary px-4 shadow-sm hover:bg-primary/90"
+              className="flex h-11 w-full items-center justify-center rounded-control bg-primary px-4 shadow-sm hover:bg-primary/90"
               disabled={!canContinue || isSaving}
             >
               <span className="text-[12px] font-bold text-primary-foreground">

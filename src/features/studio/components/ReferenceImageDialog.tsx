@@ -74,7 +74,7 @@ export function ReferenceImageDialog({
             onClick={() => setChoice("worn")}
             className={cn(tile, "bg-card", choice === "worn" ? selected : "border border-hairline")}
           >
-            <span className="relative block aspect-square w-full overflow-hidden bg-muted">
+            <span className="relative block aspect-square w-full overflow-hidden bg-background">
               {wornImageUrl ? (
                 <img src={wornImageUrl} alt="" className="h-full w-full object-contain p-2" />
               ) : null}
@@ -100,12 +100,12 @@ export function ReferenceImageDialog({
             )}
           >
             {attachedImageUrl ? (
-              <span className="relative block aspect-square w-full overflow-hidden bg-muted">
+              <span className="relative block aspect-square w-full overflow-hidden bg-background">
                 <img src={attachedImageUrl} alt="" className="h-full w-full object-contain p-2" />
               </span>
             ) : (
               <span className="flex aspect-square w-full items-center justify-center">
-                <span className="flex h-11 w-11 items-center justify-center rounded-control border border-hairline bg-card text-ink">
+                <span className="flex h-11 w-11 items-center justify-center rounded-control border border-hairline bg-white text-ink">
                   {isUploading ? (
                     <span
                       className="h-5 w-5 animate-spin rounded-full border-2 border-ink border-t-transparent"

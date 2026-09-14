@@ -12,6 +12,7 @@ import {
   useSaveProductToCollection,
 } from "@/features/collections/hooks/useMoodboards"
 import type { Moodboard } from "@/services/collections/collectionsService"
+import { addNotice, saveLine } from "@/features/notifications/notices"
 
 // Slugs excluded from the moodboard picker (managed by tap, not Move Moodboard)
 const SYSTEM_SLUGS = new Set(["favorites", "try-ons", "generations"])
@@ -69,6 +70,7 @@ export function useProductSaveActions() {
       try {
         if (nextSaved) {
           await saveMutation.mutateAsync({ productId, slug: "favorites", label: "Favorites" })
+          addNotice({ id: "save:product:" + productId + ":favorites:" + Date.now(), kind: "save", title: "Saved to Favourites", line: saveLine(uiContext.section), at: Date.now(), payload: { productId, slug: "favorites" } })
           trackSaveToggled(analytics, { entity_type: "product", entity_id: productId, collection_slug: "favorites", new_state: true, save_method: "click", ...uiContext })
           trackSavedToCollection(analytics, { entity_type: "product", entity_id: productId, collection_slug: "favorites", save_method: "click", ...uiContext })
         } else {
@@ -89,6 +91,7 @@ export function useProductSaveActions() {
       try {
         if (nextSaved) {
           await saveMutation.mutateAsync({ productId, slug: "wardrobe", label: "Wardrobe" })
+          addNotice({ id: "save:product:" + productId + ":wardrobe:" + Date.now(), kind: "save", title: "Added to Wardrobe", line: saveLine(uiContext.section), at: Date.now(), payload: { productId, slug: "wardrobe" } })
           trackSaveToggled(analytics, { entity_type: "product", entity_id: productId, collection_slug: "wardrobe", new_state: true, save_method: "click", ...uiContext })
           trackSavedToCollection(analytics, { entity_type: "product", entity_id: productId, collection_slug: "wardrobe", save_method: "click", ...uiContext })
         } else {
@@ -111,6 +114,7 @@ export function useProductSaveActions() {
         if (!alreadySaved) {
           // Save to favorites first if not yet saved
           await saveMutation.mutateAsync({ productId, slug: "favorites", label: "Favorites" })
+          addNotice({ id: "save:product:" + productId + ":favorites:" + Date.now(), kind: "save", title: "Saved to Favourites", line: saveLine(uiContext.section), at: Date.now(), payload: { productId, slug: "favorites" } })
           trackSaveToggled(analytics, { entity_type: "product", entity_id: productId, collection_slug: "favorites", new_state: true, save_method: "long_press", ...uiContext })
           trackSavedToCollection(analytics, { entity_type: "product", entity_id: productId, collection_slug: "favorites", save_method: "long_press", ...uiContext })
         }

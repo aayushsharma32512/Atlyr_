@@ -42,7 +42,7 @@ export function WearingCard({
   return (
     <div
       className={cn(
-        "rounded-[5px] border border-hairline bg-card px-3 py-2.5 md:px-4 md:py-3.5",
+        "rounded-control border border-hairline bg-white px-3 py-2.5 md:px-4 md:py-3.5",
         className,
       )}
     >
@@ -75,7 +75,7 @@ export function WearingCard({
           disabled={isReadOnly || !onTryOn}
           onClick={onTryOn}
           className={cn(
-            "flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[3px] bg-primary py-2 md:py-2.5",
+            "flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-control bg-primary py-2 md:py-2.5",
             "text-[10px] font-bold text-primary-foreground transition-shadow hover:shadow-md md:text-[12px]",
             "disabled:cursor-not-allowed disabled:opacity-60",
           )}
@@ -90,7 +90,7 @@ export function WearingCard({
             onClick={onSave}
             aria-label="Save this look"
             className={cn(
-              "flex size-[30px] shrink-0 items-center justify-center rounded-[3px] border border-gold md:size-[38px]",
+              "flex size-[30px] shrink-0 items-center justify-center rounded-control border border-gold md:size-[38px]",
               "text-gold-deep transition-colors hover:bg-gold/5 disabled:opacity-60",
             )}
           >

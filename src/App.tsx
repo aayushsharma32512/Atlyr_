@@ -9,6 +9,7 @@ import { ProfileProvider, useProfileContext } from "@/features/profile/providers
 import { CollectionsPrefetcher } from "@/features/collections/providers/CollectionsPrefetcher";
 import { boardPath } from "@/features/collections/boardUrl";
 import { JobsProvider } from "@/features/progress/providers/JobsContext";
+import { NotificationsWatcher } from "@/features/notifications/NotificationsWatcher";
 import { LikenessDrawerHost } from "@/features/likeness/LikenessDrawerHost";
 import { PostHogIdentitySync } from "@/integrations/posthog/PostHogIdentitySync";
 import { PostHogRouteSync } from "@/integrations/posthog/PostHogRouteSync";
@@ -156,6 +157,7 @@ const App = () => (
               <EngagementAnalyticsProvider>
                 <JobsProvider>
                   <SurfaceTheme />
+                  <NotificationsWatcher />
                   <CollectionsPrefetcher />
                   <PostHogIdentitySync />
                   <LikenessDrawerHost />

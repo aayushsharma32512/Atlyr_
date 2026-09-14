@@ -246,7 +246,7 @@ export function FilterSearchBar({
   const filterChips = hasFilters ? (
     <div className={cn("flex gap-2", alignPreviewTop ? "items-start" : "items-end")}>
       <div className="overflow-x-auto whitespace-nowrap scrollbar-hide">
-        <div className="inline-flex h-6 rounded-[3px] border border-hairline bg-card p-0.5">
+        <div className="inline-flex h-6 rounded-control border border-hairline bg-white p-0.5">
           {filters!.map((chip) => (
             <button
               key={chip.id}
@@ -255,8 +255,8 @@ export function FilterSearchBar({
               onClick={chip.onActivate}
               disabled={chip.isActive}
               className={cn(
-                "relative rounded-[2px] px-2 text-[11px] font-medium transition-all duration-200",
-                chip.isActive ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+                "relative rounded-chip px-2 text-[11px] font-medium transition-all duration-200",
+                chip.isActive ? "bg-foreground text-white" : "text-muted-foreground hover:text-foreground"
               )}
               aria-pressed={chip.isActive}
               aria-label={`Switch to ${chip.label}`}
@@ -392,7 +392,7 @@ export function FilterSearchBar({
       {hasFilters && pillPosition === "top" ? filterChips : null}
 
       {/* Kalagriha §Component_Specs SearchBar: white ground, 3px radius, hairline border. */}
-      <div className="flex h-10 w-full items-stretch rounded-[3px] border border-hairline bg-card">
+      <div className="flex h-10 w-full items-stretch rounded-control border border-hairline bg-white">
         
         {leadingActions === undefined ? (
           <div className="flex h-full">

@@ -80,9 +80,9 @@ export interface StudioCanvasProps {
   className?: string
 }
 
+// Bare charcoal arrows, no disc (V2: "chevrons everywhere are bare arrows").
 const FOCUS_TOGGLE =
-  "absolute top-1/2 z-[2] flex h-9 w-9 -translate-y-1/2 items-center justify-center " +
-  "rounded-full border border-hairline bg-card/90 text-ink backdrop-blur-[2px]"
+  "absolute top-1/2 z-[2] flex h-11 w-11 -translate-y-1/2 items-center justify-center text-ink"
 
 /** The mannequin container: the figure, plus the two control stacks. */
 export function StudioCanvas({
@@ -98,12 +98,11 @@ export function StudioCanvas({
   return (
     <div
       className={cn(
-        "relative min-h-0 w-full flex-1 overflow-hidden bg-muted/40",
+        "relative min-h-0 w-full flex-1 overflow-hidden bg-background",
         highlight ? "z-[75]" : "z-0",
         className,
       )}
     >
-      <div className="bg-warp-grid pointer-events-none absolute inset-0" aria-hidden="true" />
 
       {/* The figure owns the whole container. The category icons moved to the
           header so they stop costing it width. */}
@@ -133,23 +132,21 @@ export function StudioCanvas({
         </>
       ) : null}
 
-      {/* Focus hands the container to the piece sheet — the controls hide. */}
-      {focus ? null : (
-        <>
-          {historyControls?.length ? (
-            <CanvasControlCluster
-              items={historyControls}
-              className={cn("absolute bottom-3", compact ? "left-1.5" : "left-3")}
-            />
-          ) : null}
-          {lookControls?.length ? (
-            <CanvasControlCluster
-              items={lookControls}
-              className={cn("absolute bottom-3", compact ? "right-1.5" : "right-3")}
-            />
-          ) : null}
-        </>
-      )}
+      {/* The controls stay through focus: undo/redo and reset/share still apply
+          to the zoomed piece, and the focus chevrons sit mid-height, clear of
+          both bottom corners. */}
+      {historyControls?.length ? (
+        <CanvasControlCluster
+          items={historyControls}
+          className={cn("absolute bottom-3", compact ? "left-1.5" : "left-3")}
+        />
+      ) : null}
+      {lookControls?.length ? (
+        <CanvasControlCluster
+          items={lookControls}
+          className={cn("absolute bottom-3", compact ? "right-1.5" : "right-3")}
+        />
+      ) : null}
     </div>
   )
 }

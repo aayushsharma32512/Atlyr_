@@ -57,7 +57,7 @@ export function LandingGate({
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           onClick={isAuthenticated ? onEnterApp : onWaitlistScroll}
-          className="mt-fluid-lg w-full rounded-[3px] bg-primary py-fluid-btn text-fluid-cta font-bold text-primary-foreground shadow-sm transition-shadow hover:shadow-md"
+          className="mt-fluid-lg w-full rounded-control bg-primary py-fluid-btn text-fluid-cta font-bold text-primary-foreground shadow-sm transition-shadow hover:shadow-md"
         >
           {isAuthenticated ? "Enter the studio →" : "Join the waitlist →"}
         </motion.button>

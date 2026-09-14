@@ -190,7 +190,7 @@ export function TraySheet({
 
         <div className="min-h-0 flex-1 overflow-y-auto pt-3">
           {mode === "yours" ? (
-            <div className="flex flex-col items-center justify-center gap-1.5 rounded-[5px] border-[1.5px] border-dashed border-hairline-4 bg-card/40 px-6 py-8 text-center">
+            <div className="flex flex-col items-center justify-center gap-1.5 rounded-control border-[1.5px] border-dashed border-hairline-4 bg-white/40 px-6 py-8 text-center">
               <Layers className="size-4 text-taupe" aria-hidden="true" />
               <p className="text-[9.5px] font-semibold text-foreground">Your own pieces</p>
               <p className="text-[8px] text-muted-foreground">

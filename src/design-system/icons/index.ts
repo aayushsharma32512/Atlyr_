@@ -9,17 +9,20 @@ import {
   ChevronRight,
   ChevronUp,
   Compass,
+  Eye,
   Folders,
   Globe,
+  Heart,
+  Image as ImageIcon,
   Layers,
   LayoutGrid,
   Link,
   ListFilter,
   Maximize2,
-  Pin,
+  Minimize2,
   Plus,
   Redo2,
-  RefreshCw,
+  ScanSearch,
   RotateCcw,
   Search,
   Share,
@@ -34,21 +37,30 @@ import {
   X,
 } from "lucide-react";
 
-import { BottomsGlyph, HangerGlyph, ShoeGlyph } from "./glyphs";
+import { BottomsGlyph, HangerGlyph, ShoeGlyph, StudioGlyph } from "./glyphs";
 
 export const Icons = {
-  // design.md's table says Bookmark, but DESIGN_NOTES #8 says pin and the
-  // bundle's OutfitCard/ProductCard both draw the Pin path. Filled = saved.
-  save: Pin,
+  // V2 (design doc, Sep 2026): the save/favourite icon is the HEART
+  // everywhere — it replaced the pin. Filled + violet = saved.
+  save: Heart,
+
+  // "studio" buttons across the app. Deliberately not navStudio: the nav
+  // mark is lucide's multi-sparkle and stays violet, while buttons take the
+  // V2 frames' own glyph — a 4-point star with compass ticks.
+  studio: StudioGlyph,
 
   tryOn: SquareUserRound,
+  // Try-on button, states 2 and 3 (V2 "try on button · 3 states"):
+  // eye = show the render, person = go back to the avatar.
+  viewTryOn: Eye,
+  viewAvatar: UserRound,
   findItems: Globe, // replaces "Buy" everywhere
   share: Share,
 
   undo: Undo2,
   redo: Redo2,
   restore: RotateCcw,
-  similar: RefreshCw, // "more like this piece" — image-similarity search
+  similar: ScanSearch, // "more like this piece" — the V2 photo-search glyph
   swap: ArrowUpDown, // layer row: which of the two tops is on top
   alternatives: LayoutGrid,
 
@@ -61,7 +73,7 @@ export const Icons = {
   // A hanger, not Shirt: Shirt is the `top` slot, and the two segments sit one
   // above the other on Alternates — the same glyph twice read as a doubled rail.
   sourceWardrobe: HangerGlyph,
-  sourceSaves: Pin,
+  sourceSaves: Heart,
   sourceExplore: Compass, // Globe is taken by Find items — one icon per meaning
 
   addInspiration: Link,
@@ -77,9 +89,11 @@ export const Icons = {
   addWardrobe: Shirt,
 
   camera: Camera,
+  image: ImageIcon,
   filter: ListFilter,
   remove: Trash2,
   expand: Maximize2,
+  collapse: Minimize2,
   openList: ArrowUpRight, // rail → its full page
   close: X,
   profile: UserRound,

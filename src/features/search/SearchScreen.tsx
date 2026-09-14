@@ -1519,7 +1519,7 @@ export function SearchScreenView() {
     )
   }, [navigate, setSearchParams])
 
-  const listTitle = openList === "hot" ? "Hot Styles" : "Atlyr Curations"
+  const listTitle = openList === "hot" ? "Hot styles" : "Atlyr curations"
 
   return (
     <div className="flex flex-1 flex-col">
@@ -1565,7 +1565,7 @@ export function SearchScreenView() {
             />
           )
         ) : (
-          <SearchFeed sections={feed} heightCm={heightCm ?? 170} onOpenList={handleOpenList} handlers={feedHandlers} />
+          <SearchFeed sections={feed} heightCm={heightCm ?? 170} onOpenList={handleOpenList} onPersonalise={handleFindItems} handlers={feedHandlers} />
         )}
       </div>
 
@@ -1583,7 +1583,6 @@ export function SearchScreenView() {
           onClearThumb={handleClearImage}
           onPickImage={handleImageUpload}
           isUploading={isUploading}
-          onFilter={() => setIsFilterOpen(true)}
           onFindItems={handleFindItems}
         />
       </SearchDock>

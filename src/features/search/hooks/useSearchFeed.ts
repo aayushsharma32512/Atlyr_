@@ -4,6 +4,7 @@ import { useTrendingProducts } from "@/features/collections/hooks/useMoodboards"
 import { useHomeAllOutfits } from "@/features/home/hooks/useHomeAllOutfits"
 import { useHomeCuratedOutfits } from "@/features/home/hooks/useHomeCuratedOutfits"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
+import type { SearchBrowseCollection } from "@/services/search/searchService"
 import { useSearchBrowseCollections } from "@/features/search/hooks/useSearchBrowseCollections"
 import { useSearchBrowseProducts } from "@/features/search/hooks/useSearchBrowseProducts"
 import {
@@ -29,7 +30,16 @@ export interface FeedSection<T> {
 }
 
 export type FeedSections =
-  | { kind: "looks"; hot: FeedSection<FeedLook>; curations: FeedSection<FeedLook>; forYou: FeedSection<FeedLook> }
+  | {
+      kind: "looks"
+      hot: FeedSection<FeedLook>
+      curations: FeedSection<FeedLook>
+      /** The curations as collections, for the board-collage rail. `curations` above is the same data flattened to looks. */
+      boards: SearchBrowseCollection[]
+      boardsLoading: boolean
+      gender: "male" | "female"
+      forYou: FeedSection<FeedLook>
+    }
   | { kind: "pieces"; slot: StudioProductTraySlot; hot: FeedSection<FeedPiece>; curations: FeedSection<FeedPiece>; forYou: FeedSection<FeedPiece> }
 
 const HOT_PAGE = 24
@@ -71,6 +81,9 @@ export function useSearchFeed(scope: SearchScope, enabled: boolean): FeedSection
           fetchNextPage: () => void hotLooks.fetchNextPage(),
         },
         curations: finite(flattenBrowseLooks(browse.data, fallbackGender), browse.isLoading, browse.isError),
+        boards: (browse.data ?? []).filter((collection) => collection.outfits.length > 0),
+        boardsLoading: browse.isLoading,
+        gender: fallbackGender,
         forYou: {
           items: looksFromHomeEntries(forYouLooks.data?.pages, fallbackGender),
           isLoading: forYouLooks.isLoading,
@@ -84,10 +97,10 @@ export function useSearchFeed(scope: SearchScope, enabled: boolean): FeedSection
     return {
       kind: "pieces",
       slot,
-      hot: finite(piecesFromTrending(trending.data?.[slot], slot), trending.isLoading, trending.isError),
-      curations: finite(piecesFromBrowseLooks(browse.data, slot), browse.isLoading, browse.isError),
+      hot: finite(piecesFromTrending(trending.data?.[slot], slot, fallbackGender), trending.isLoading, trending.isError),
+      curations: finite(piecesFromBrowseLooks(browse.data, slot, fallbackGender), browse.isLoading, browse.isError),
       forYou: {
-        items: piecesFromSearchResults(forYouPieces.data?.pages, slot),
+        items: piecesFromSearchResults(forYouPieces.data?.pages, slot, fallbackGender),
         isLoading: forYouPieces.isLoading,
         isError: forYouPieces.isError,
         hasNextPage: Boolean(forYouPieces.hasNextPage),

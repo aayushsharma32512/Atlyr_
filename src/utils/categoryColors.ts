@@ -1,9 +1,9 @@
 // Category color mapping for consistent chip styling across outfit cards
 export const CATEGORY_COLORS = {
   'for-you': {
-    bg: 'bg-gradient-to-r from-purple-100 to-pink-100',
-    text: 'text-purple-800',
-    border: 'border-purple-200'
+    bg: 'bg-gradient-to-r from-violet-tint to-pink-100',
+    text: 'text-violet',
+    border: 'border-violet/30'
   },
   'casual-outing': {
     bg: 'bg-gradient-to-r from-blue-100 to-cyan-100',
@@ -41,7 +41,7 @@ export const CATEGORY_COLORS = {
     border: 'border-orange-200'
   },
   'athleisure': {
-    bg: 'bg-gradient-to-r from-indigo-100 to-purple-100',
+    bg: 'bg-gradient-to-r from-indigo-100 to-violet-tint',
     text: 'text-indigo-800',
     border: 'border-indigo-200'
   },

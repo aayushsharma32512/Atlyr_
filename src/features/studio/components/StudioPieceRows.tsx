@@ -109,7 +109,8 @@ export function StudioPieceRows({
             label={item?.title ?? null}
             empty={!item}
             removable={!isReadOnly && Boolean(item)}
-            alternatives
+            // V2 Studio rows carry no 4-square: tapping the row already opens Alternates.
+            alternatives={false}
             style={rowStyle(index)}
             className={cn(lifted && "relative z-10 drop-shadow-md")}
             glyphProps={

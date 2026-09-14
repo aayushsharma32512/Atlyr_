@@ -200,7 +200,7 @@ export function ProductFiltersPanel({ items, draft, setDraft, onClearAll, onAppl
           </span>
         ))}
         {Array.from(draft.colorGroups).map((val) => (
-          <span key={`pcolor-${val}`} className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs border bg-purple-50 text-slate-800 border-purple-100">
+          <span key={`pcolor-${val}`} className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs border bg-violet-tint text-slate-800 border-violet/20">
             {toTitleCaseSlug(val)}
             <button onClick={() => removeValue('colorGroups', val)} className="opacity-70 hover:opacity-100">×</button>
           </span>
@@ -468,7 +468,7 @@ export function ProductFiltersPanel({ items, draft, setDraft, onClearAll, onAppl
                         checked={checked}
                         onCheckedChange={() => !disabled && toggle('colorGroups', opt)}
                         disabled={disabled}
-                        className={`h-4 w-4 border-purple-200 data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600 data-[state=checked]:text-white`}
+                        className={`h-4 w-4 border-violet/30 data-[state=checked]:bg-violet data-[state=checked]:border-violet data-[state=checked]:text-white`}
                       />
                       <span className="text-sm">{toTitleCaseSlug(opt)}</span>
                     </div>

@@ -34,7 +34,7 @@ export function BottomNavBar({ activeId, onNavigate, className }: BottomNavBarPr
     <nav
       className={cn(
         "flex h-control-nav items-center justify-around gap-2 px-8",
-        "border-t border-hairline bg-card/95 backdrop-blur",
+        "border-t border-hairline bg-background/95 backdrop-blur",
         "pb-[calc(env(safe-area-inset-bottom,0px)/2)]",
         className,
       )}
@@ -53,7 +53,15 @@ export function BottomNavBar({ activeId, onNavigate, className }: BottomNavBarPr
             className={cn(
               "flex h-control-secondary w-control-secondary items-center justify-center",
               "rounded-control bg-transparent transition-colors",
-              isActive ? "text-ink" : "text-taupe",
+              // Studio is the exception in the bar: its icon is always violet
+              // (design doc §3), solid in both states. Any alpha over the
+              // #F8F8F7 ground washes it to a lavender that reads as disabled.
+              // The other four stay ink/grey so violet keeps meaning selection.
+              id === "studio"
+                ? "text-violet"
+                : isActive
+                  ? "text-ink"
+                  : "text-taupe",
             )}
           >
             <Icon className="h-5 w-5" aria-hidden="true" />

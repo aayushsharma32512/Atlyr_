@@ -30,7 +30,7 @@ export interface CanvasControlClusterProps {
 
 export function CanvasControlCluster({ items, className }: CanvasControlClusterProps) {
   return (
-    <div className={cn("flex flex-col gap-1.5", className)}>
+    <div className={cn("flex flex-col", className)}>
       {items.map((item) => {
         const Icon = item.icon
         return (
@@ -42,16 +42,16 @@ export function CanvasControlCluster({ items, className }: CanvasControlClusterP
             aria-pressed={item.active}
             disabled={item.disabled}
             onClick={item.onClick}
+            // V2: bare charcoal glyphs on the figure, no disc. 40px targets;
+            // disabled reads as the grey the design draws for redo.
             className={cn(
-              "flex size-7 items-center justify-center rounded-full border border-hairline",
-              "bg-card/90 backdrop-blur-[2px] transition-colors",
-              "disabled:cursor-not-allowed disabled:opacity-40",
-              item.tone === "terracotta" ? "text-terracotta" : "text-foreground",
-              item.active && "border-foreground bg-foreground text-background",
-              item.highlight && "relative z-[75] ring-2 ring-primary ring-offset-2 ring-offset-card",
+              "flex size-10 items-center justify-center rounded-control transition-colors",
+              "disabled:cursor-not-allowed disabled:text-disabled",
+              item.active ? "text-violet" : "text-ink",
+              item.highlight && "relative z-[75] ring-2 ring-primary ring-offset-2 ring-offset-background",
             )}
           >
-            <Icon className="size-3.5" />
+            <Icon className="size-4" />
           </button>
         )
       })}

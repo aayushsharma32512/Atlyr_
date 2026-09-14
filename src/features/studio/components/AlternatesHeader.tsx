@@ -26,7 +26,7 @@ export function AlternatesHeader({
 }: AlternatesHeaderProps) {
   return (
     <div className={cn("box-border flex h-[52px] flex-none items-stretch border-b border-hairline pl-4", className)}>
-      <div className="flex flex-1 items-center">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         <button
           type="button"
           aria-label="Back"
@@ -35,6 +35,8 @@ export function AlternatesHeader({
         >
           <Icons.carouselPrev className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
         </button>
+        {/* The screen names itself in the header row, like every screen. */}
+        <h1 className="min-w-0 truncate font-display text-title font-medium text-ink">Alternates</h1>
       </div>
 
       <div
@@ -56,7 +58,7 @@ export function AlternatesHeader({
               className={cn(
                 "box-border flex h-control-chip min-w-0 flex-1 items-center justify-center text-ink",
                 "disabled:cursor-not-allowed disabled:opacity-40",
-                isActive ? "border-b-2 border-ink" : "rounded-control",
+                isActive ? "border-b-2 border-violet" : "rounded-control",
               )}
             >
               <Icon className="h-4 w-4" />

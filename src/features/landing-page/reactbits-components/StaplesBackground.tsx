@@ -27,7 +27,7 @@ export function StaplesBackground({ staplesSequence }: StaplesBackgroundProps) {
               return (
                 <motion.div
                   key={`${src}-${index}`}
-                  className="relative flex items-center justify-center overflow-hidden bg-[#15100d]"
+                  className="relative flex items-center justify-center overflow-hidden bg-ink"
                   animate={{
                     x: [0, animation.offsetX, 0],
                     y: [0, animation.offsetY, 0],
@@ -51,7 +51,7 @@ export function StaplesBackground({ staplesSequence }: StaplesBackgroundProps) {
               );
             })}
           </div>
-          <div className="absolute inset-0 bg-gradient-to-b from-[#0f0a08]/45 via-[#0f0a08]/55 to-[#0f0a08]/80 mix-blend-multiply" />
+          <div className="absolute inset-0 bg-gradient-to-b from-ink/45 via-ink/55 to-ink/80 mix-blend-multiply" />
           <div
             className="absolute inset-0 opacity-40 mix-blend-soft-light"
             style={{
@@ -64,8 +64,8 @@ export function StaplesBackground({ staplesSequence }: StaplesBackgroundProps) {
       </div>
 
       <div className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute -top-52 left-1/2 h-[540px] w-[540px] -translate-x-1/2 rounded-full bg-[#3a2214]/40 blur-[200px]" />
-        <div className="absolute bottom-0 left-1/2 h-[640px] w-[760px] -translate-x-1/2 rounded-full bg-[#2a1a12]/50 blur-[250px]" />
+        <div className="absolute -top-52 left-1/2 h-[540px] w-[540px] -translate-x-1/2 rounded-full bg-charcoal/40 blur-[200px]" />
+        <div className="absolute bottom-0 left-1/2 h-[640px] w-[760px] -translate-x-1/2 rounded-full bg-charcoal/50 blur-[250px]" />
         <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/60 via-transparent to-transparent" />
       </div>
     </>

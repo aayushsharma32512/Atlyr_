@@ -77,6 +77,8 @@ const BRAND_ATTRIBUTIONS = new Set(["atlyr", "kalagriha", "कलागृह"])
 
 // Deterministic per-card variety (canvas 6d/6f scrapbook): some pins get the red
 // thumbtack, some flip to a dark charcoal ground. Fixed by id so nothing changes on scroll.
+const DARK_CARDS_ENABLED = false
+
 function variantHash(s: string): number {
   let h = 0
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
@@ -145,7 +147,9 @@ export function OutfitInspirationCard({
     : false
   const variantSeed = variety ? variantHash(outfitId ?? title ?? "x") : 0
   const showPin = false // pins removed everywhere per request
-  const darkCard = variety && framed && variantSeed % 5 === 1
+  // V2 has no filled cards, so the scrapbook dark variant is switched off.
+  // The seed still drives the pin/tilt variety.
+  const darkCard = DARK_CARDS_ENABLED && variety && framed && variantSeed % 5 === 1
   const articleRef = useRef<HTMLElement>(null)
   const mountTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -450,7 +454,8 @@ export function OutfitInspirationCard({
     // Framed feed tile: the avatar sits on the woven warp/weft ground; the card
     // frame owns the corner radius, so the well itself is square-cornered. Some
     // cards flip to the dark charcoal grid (canvas mix).
-    framed ? (darkCard ? "warp-weft-dark rounded-none" : "warp-weft rounded-none") : "rounded-xl",
+    // Plain ground: the woven warp/weft texture went with the Kalagriha palette.
+    framed ? (darkCard ? "bg-ink-deep rounded-none" : "bg-background rounded-none") : "rounded-xl",
     isFluid && fluidLayout === "card" && "h-full",
   )
 
@@ -473,7 +478,7 @@ export function OutfitInspirationCard({
         framed
           ? darkCard
             ? "gap-0 overflow-hidden rounded-frame border border-ink-line bg-ink-deep shadow-[0_1px_3px_rgba(0,0,0,0.05)]"
-            : "gap-0 overflow-hidden rounded-frame border border-hairline bg-card shadow-[0_1px_3px_rgba(0,0,0,0.05)]"
+            : "gap-0 overflow-hidden rounded-frame border border-hairline bg-background"
           : "gap-1",
         isFluid ? "h-full" : config.containerWidth,
         className,
@@ -610,11 +615,11 @@ export function OutfitInspirationCard({
             style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none", userSelect: "none" }}
             className={cn(
               "absolute right-1 top-1 size-6 items-center justify-center rounded-md text-muted-foreground/80 select-none",
-              isSaved && "text-primary"
+              isSaved && "text-violet"
             )}
           >
             <Heart
-              className={cn("h-3 w-3", isSaved ? "fill-current text-primary" : "text-muted-foreground/80")}
+              className={cn("h-3 w-3", isSaved ? "fill-current text-violet" : "text-muted-foreground/80")}
               aria-hidden="true"
             />
           </IconButton>

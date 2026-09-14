@@ -106,7 +106,7 @@ function ProfilePageView() {
         <button
           type="button"
           onClick={() => navigate("/profile/avatar")}
-          className="group mt-7 flex min-h-36 w-full items-center gap-5 rounded-lg border border-hairline bg-card p-4 text-left shadow-xs hover:border-hairline-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-5"
+          className="group mt-7 flex min-h-36 w-full items-center gap-5 rounded-lg border border-hairline bg-white p-4 text-left shadow-xs hover:border-hairline-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-5"
         >
           <div className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-md border border-hairline bg-muted/30 sm:size-28">
             {gender ? (
@@ -141,7 +141,7 @@ function ProfilePageView() {
         </button>
 
         <section
-          className="mt-5 overflow-hidden rounded-lg border border-hairline bg-card shadow-xs"
+          className="mt-5 overflow-hidden rounded-lg border border-hairline bg-white shadow-xs"
           aria-label="Profile details"
         >
           <ProfileRow

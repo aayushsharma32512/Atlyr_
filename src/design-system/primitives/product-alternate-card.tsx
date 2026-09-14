@@ -182,7 +182,7 @@ export function ProductAlternateCard({
             style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none", userSelect: "none" }}
             className={cn(
               "flex size-6 items-center justify-center rounded-md bg-transparent text-muted-foreground/80 transition-colors hover:bg-muted/60 hover:text-primary select-none",
-              resolvedSaved && "text-primary hover:text-primary" // saved = terracotta (was off-palette red-500)
+              resolvedSaved && "text-violet hover:text-violet" // saved = violet, like every heart
             )}
           >
             <Heart

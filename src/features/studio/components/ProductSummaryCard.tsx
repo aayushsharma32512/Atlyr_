@@ -218,7 +218,7 @@ export const ProductSummaryCard = forwardRef<HTMLElement, ProductSummaryCardProp
                         style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none", userSelect: "none" }}
                       >
                         <Heart
-                          className="h-4 w-4"
+                          className={cn("h-4 w-4", typeof isSaved === "boolean" && isSaved && "text-violet")}
                           aria-hidden="true"
                           fill={typeof isSaved === "boolean" && isSaved ? "currentColor" : "none"}
                         />

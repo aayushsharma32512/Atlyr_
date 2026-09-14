@@ -34,7 +34,7 @@ export function NoResultsCard({ query, onFindItems }: { query: string; onFindIte
 /** The request failed: a restore icon alone offers the retry. */
 export function ErrorCard({ onRetry }: { onRetry: () => void }) {
   return (
-    <div className="flex items-center justify-center rounded-lg border border-hairline bg-muted px-4 py-6">
+    <div className="flex items-center justify-center rounded-lg border border-hairline bg-background px-4 py-6">
       <button
         type="button"
         aria-label="Try again"

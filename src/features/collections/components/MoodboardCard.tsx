@@ -32,7 +32,8 @@ type PreviewCell =
 // Square cover, 2x2 = four row-units. An outfit takes a long cell (both rows),
 // a product a short one. Empty units are flat cream blocks.
 const COVER_UNITS = 4
-const FILLER_TONE = ["bg-editorial", "bg-skeleton", "bg-muted", "bg-warp"]
+// Empty cells are the ground, like everything else: no grey blocks.
+const FILLER_TONE = ["bg-background", "bg-background", "bg-background", "bg-background"]
 export const FIGURE_FRAME_ASPECT = `${CANONICAL_HERO_RENDER_BOX.width} / ${CANONICAL_HERO_RENDER_BOX.height}`
 
 const MoodboardCard = ({
@@ -82,7 +83,7 @@ const MoodboardCard = ({
   const renderCover = () => {
     if (cells.length === 0) {
       return (
-        <div className="flex aspect-square w-full items-center justify-center bg-skeleton">
+        <div className="flex aspect-square w-full items-center justify-center bg-background">
           <Icons.add className="h-5 w-5 text-taupe" aria-hidden="true" />
         </div>
       )
@@ -94,12 +95,13 @@ const MoodboardCard = ({
     // The square is enforced by the wrapper; the grid is pinned inside it.
     return (
       <div className="relative aspect-square w-full">
-        <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-[2px] bg-hairline">
+        {/* No gridlines between cells — the outer hairline is the only rule. */}
+        <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 bg-background">
           {cells.map((cellData, i) => (
             <div
               key={i}
               className={cn(
-                "relative flex min-h-0 min-w-0 items-center justify-center overflow-hidden bg-skeleton",
+                "relative flex min-h-0 min-w-0 items-center justify-center overflow-hidden bg-background",
                 cellData.kind === "outfit" && "row-span-2",
               )}
             >
@@ -149,14 +151,13 @@ const MoodboardCard = ({
               }
             : undefined
         }
-        className={cn(
-          "flex w-full flex-col overflow-hidden rounded-lg border border-hairline bg-card text-left",
-          !isClickable && "cursor-default",
-        )}
+        className={cn("flex w-full flex-col gap-1.5 text-left", !isClickable && "cursor-default")}
       >
-        {renderCover()}
-        <div className="flex h-10 items-center border-t border-hairline px-2">
-          <p className="min-w-0 truncate text-card font-semibold text-ink">{name}</p>
+        {/* The hairline frames the cover only; name and count sit below it. */}
+        <div className="overflow-hidden rounded-lg border border-hairline bg-background">{renderCover()}</div>
+        <div className="flex items-baseline gap-2 px-0.5">
+          <p className="min-w-0 flex-1 truncate text-card font-medium text-ink">{name}</p>
+          {itemCount > 0 ? <span className="shrink-0 text-chip text-taupe">{itemCount}</span> : null}
         </div>
       </div>
     </div>

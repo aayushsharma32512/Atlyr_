@@ -18,6 +18,8 @@ export interface AlternatesRackProps {
   emptyLabel?: string
   /** Only the catalogue rack ends with it — see the note by the button. */
   showWebSearch?: boolean
+  /** The row's action: Find items in web mode for this slot. */
+  onWebSearch?: () => void
   className?: string
 }
 
@@ -37,6 +39,7 @@ export function AlternatesRack({
   onLongPressSave,
   emptyLabel = "Nothing in this slot yet",
   showWebSearch = false,
+  onWebSearch,
   className,
 }: AlternatesRackProps) {
   return (
@@ -94,17 +97,18 @@ export function AlternatesRack({
         {showWebSearch && !isLoading ? (
           <button
             type="button"
-            disabled
+            disabled={!onWebSearch}
+            onClick={onWebSearch}
             aria-label="Web search"
-            title="Web search is not available yet"
+            title="Search the web for this slot"
             className={cn(
               "mt-1.5 box-border flex h-11 w-full items-center justify-center gap-2 rounded-control",
-              "border border-dashed border-hairline-dashed bg-card/45 text-label font-semibold text-ink",
+              "border border-hairline bg-white text-label font-semibold text-ink",
               "disabled:cursor-not-allowed disabled:opacity-50",
             )}
           >
             <Icons.findItems className="h-5 w-5" aria-hidden="true" />
-            Web Search
+            web search
           </button>
         ) : null}
       </div>

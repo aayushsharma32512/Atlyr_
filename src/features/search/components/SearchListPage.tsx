@@ -10,7 +10,7 @@ type SearchListPageProps =
   | { kind: "looks"; section: FeedSection<FeedLook>; title: string; heightCm: number; onBack: () => void; handlers: FeedHandlers }
   | { kind: "pieces"; section: FeedSection<FeedPiece>; title: string; heightCm: number; onBack: () => void; handlers: FeedHandlers }
 
-/** A rail, opened: 32h header then the whole list in two columns. */
+/** A rail, opened: 52h header row then the whole list in two columns. */
 export function SearchListPage(props: SearchListPageProps) {
   const { title, section, heightCm, onBack, handlers } = props
   const sentinelRef = useRef<HTMLDivElement | null>(null)
@@ -28,11 +28,12 @@ export function SearchListPage(props: SearchListPageProps) {
 
   return (
     <div className="flex flex-col gap-2.5">
-      <header className="flex h-8 items-center gap-2">
-        <button type="button" aria-label="Back" onClick={onBack} className="flex h-8 w-8 items-center justify-center text-ink">
+      {/* The 52px header row, as every screen names itself: bare back chevron, then the title. */}
+      <header className="-mx-4 flex h-control-header-title items-center gap-1 border-b border-hairline px-2">
+        <button type="button" aria-label="Back" onClick={onBack} className="flex h-10 w-10 items-center justify-center text-ink">
           <Icons.carouselPrev className="h-5 w-5" aria-hidden="true" />
         </button>
-        <h1 className="font-display text-title font-medium text-ink">{title}</h1>
+        <h1 className="min-w-0 flex-1 truncate font-display text-title font-medium text-ink">{title}</h1>
       </header>
       {props.kind === "looks" ? (
         <FeedGrid kind="looks" section={props.section} heightCm={heightCm} handlers={handlers} skeletonCount={6} />
