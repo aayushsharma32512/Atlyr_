@@ -16,30 +16,18 @@ describe("inspiration result selection transitions", () => {
   test("an inventory click selects an empty category and a second click deselects it", () => {
     const selected = toggleInventoryChoice(null, inventoryResult)
 
-    expect(selected).toEqual({ source: "inventory", result: inventoryResult })
+    expect(selected).toEqual(inventoryResult)
     expect(toggleInventoryChoice(selected, inventoryResult)).toBeNull()
   })
 
   test("clicking another inventory item replaces the selected item", () => {
     const selected = toggleInventoryChoice(null, inventoryResult)
 
-    expect(toggleInventoryChoice(selected, otherInventoryResult)).toEqual({
-      source: "inventory",
-      result: otherInventoryResult,
-    })
+    expect(toggleInventoryChoice(selected, otherInventoryResult)).toEqual(otherInventoryResult)
   })
 
-  test("inventory and web clicks replace the other source", () => {
-    const selectedWeb = toggleWebChoice(null, webResult)
-
-    expect(toggleInventoryChoice(selectedWeb, inventoryResult)).toEqual({
-      source: "inventory",
-      result: inventoryResult,
-    })
-    expect(toggleWebChoice({ source: "inventory", result: inventoryResult }, webResult)).toEqual({
-      source: "web",
-      result: webResult,
-    })
+  test("a web click selects an empty category", () => {
+    expect(toggleWebChoice(null, webResult)).toEqual(webResult)
   })
 
   test("a second web click deselects it", () => {
