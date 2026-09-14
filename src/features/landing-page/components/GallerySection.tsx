@@ -83,10 +83,10 @@ export function GallerySection() {
       <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-12">
         <div className="flex flex-col items-center gap-6 sm:gap-8 lg:gap-12">
           <div className="text-center px-2 sm:px-4">
-            <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl">
+            <h2 className="font-display text-3xl font-medium tracking-tight text-foreground sm:text-4xl lg:text-5xl">
               Discover Your Style
             </h2>
-            <p className="mt-2 text-sm text-muted-foreground sm:mt-3 sm:text-base md:text-lg lg:text-xl">
+            <p className="mt-2 text-base text-muted-foreground sm:text-lg sm:mt-3">
               Explore curated collections that match your unique aesthetic
             </p>
           </div>

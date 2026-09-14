@@ -361,7 +361,7 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
           <Card className="w-full overflow-hidden rounded-none border-0 shadow-none sm:border-l-1 sm:border-border">
             <CardContent className="p-2 sm:p-3 lg:p-4">
               <div className="space-y-2">
-                <h3 className="text-2xl font-semibold uppercase text-foreground">Join the waitlist</h3>
+                <h3 className="font-display text-2xl font-medium text-foreground sm:text-3xl">Join the waitlist</h3>
                 <p className="text-sm text-muted-foreground">Be the first to know when we launch</p>
               </div>
 

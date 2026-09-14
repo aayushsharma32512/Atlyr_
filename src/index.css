@@ -302,7 +302,9 @@ img {
     --fluid-h2: clamp(1.188rem, 0.64vw + 1.032rem, 1.688rem);    /* 19   → 27   */
     --fluid-h1: clamp(1.625rem, 0.96vw + 1.391rem, 2.375rem);    /* 26   → 38   */
     --fluid-mark-firstrun: clamp(1.688rem, 1.04vw + 1.434rem, 2.5rem); /* 27 → 40 */
-    --fluid-mark-landing: clamp(2.5rem, 2.56vw + 1.876rem, 4.5rem);    /* 40 → 72 */
+    /* The gate has no headline — the mark is it. Sized like one now that the
+       letterspaced caption under it is gone: 56px on a phone, 96px capped. */
+    --fluid-mark-landing: clamp(3.5rem, 3.2vw + 2.72rem, 6rem);       /* 56 → 96 */
 
     /* Rhythm tracks the type, or the copy grows while the gaps stay phone-sized
        and the composition closes up on itself. */
@@ -472,15 +474,6 @@ img {
     box-shadow: none !important;
   }
 
-  /* Warp/weft grid — the woven ground behind garment frames (canvas 7a, 7e, 8a).
-     22px on white surfaces. */
-  .bg-warp-grid {
-    background-image:
-      linear-gradient(hsl(var(--warp)) 1px, transparent 1px),
-      linear-gradient(90deg, hsl(var(--warp)) 1px, transparent 1px);
-    background-size: 22px 22px;
-  }
-
   /* Tighter 11px weave used inside honest placeholder tiles — the PHOTO /
      FIGURE cards in 6c2 that stand in until real art lands. */
   .bg-placeholder-grid {
@@ -489,20 +482,6 @@ img {
       linear-gradient(90deg, hsl(var(--placeholder-grid)) 1px, transparent 1px);
     background-size: 11px 11px;
   }
-
-  /* Woven ground on DARK rooms — the sign-in door (6b) and the search room
-     (6g). Uses the dark hairline so the weave reads without glowing. */
-  .bg-warp-grid-dark {
-    background-image:
-      linear-gradient(hsl(var(--ink-line)) 1px, transparent 1px),
-      linear-gradient(90deg, hsl(var(--ink-line)) 1px, transparent 1px);
-    background-size: 22px 22px;
-  }
-
-  /* .pin-tilt-1..6 live further down, outside @layer utilities — see the
-     block near .bg-warp-grid-dark. They were defined in both places with
-     different angles; the later, unlayered copy always won, so this one was
-     dead and has been removed. */
 
   /* Loading shimmer tuned to the cream ground (replaces the grey skeleton). */
   .skeleton-shimmer {

@@ -4,8 +4,9 @@ import { cn } from "@/lib/utils"
  * Atlyr — the house wordmark.
  *
  * Locked decisions (brand handoff §2.3):
- *  · The mark is the Latin wordmark. On the landing lockup it repeats as the
- *    letterspaced whisper caption under the thread — never in a screen header.
+ *  · The mark is the Latin wordmark, set in the display serif like every
+ *    title. It appears once: the letterspaced caption that used to repeat it
+ *    under the thread was the Devanagari-era pairing and read as the name twice.
  *  · The lockup thread renders **taupe** in-app. The canvas art for 6c/6c2 draws
  *    that rule in gold, but that art predates the rebrand; the handoff's gold law
  *    is later and stricter — gold is provenance only (Nama, seals, ✦ YOURS), so a
@@ -18,7 +19,7 @@ export interface WordmarkLockupProps {
   /**
    * `header` — inline screen header mark.
    * `firstRun` — centred mark over a short thread, used by onboarding (6c/6c2).
-   * `landing` — full lockup: mark, thread, Latin whisper.
+   * `landing` — full lockup: mark over the long thread.
    * `micro` — smallest mark, for dense chrome.
    */
   size?: WordmarkSize
@@ -48,7 +49,6 @@ export function WordmarkLockup({
   className,
 }: WordmarkLockupProps) {
   const showThread = size === "firstRun" || size === "landing"
-  const showWhisper = size === "landing"
 
   return (
     <div
@@ -60,7 +60,7 @@ export function WordmarkLockup({
     >
       <span
         className={cn(
-          "font-medium leading-none tracking-[0.04em]",
+          "font-display font-medium leading-none",
           MARK_SIZE[size],
           onDark ? "text-background" : "text-foreground",
         )}
@@ -83,17 +83,6 @@ export function WordmarkLockup({
         />
       )}
 
-      {showWhisper && (
-        <span
-          aria-hidden="true"
-          className={cn(
-            "mt-[10px] text-fluid-xs2 uppercase tracking-[0.4em]",
-            onDark ? "text-on-ink-1" : "text-muted-foreground",
-          )}
-        >
-          Atlyr
-        </span>
-      )}
     </div>
   )
 }

@@ -71,7 +71,7 @@ export function AboutSection() {
                 baseRotation={2}
                 blurStrength={2}
                 containerClassName="w-full flex justify-center"
-                textClassName="text-3xl sm:text-4xl lg:text-5xl font-bold text-foreground tracking-tight leading-tight"
+                textClassName="font-display text-3xl font-medium tracking-tight text-foreground sm:text-4xl lg:text-5xl leading-tight"
                 rotationEnd="center center"
                 wordAnimationEnd="center center"
               >
@@ -84,7 +84,7 @@ export function AboutSection() {
               baseRotation={2}
               blurStrength={2}
               containerClassName="w-full"
-              textClassName="text-lg sm:text-xl text-foreground font-normal tracking-tight leading-[1.3] "
+              textClassName="text-base text-muted-foreground sm:text-lg font-normal tracking-tight leading-[1.3]"
               rotationEnd="center center"
               wordAnimationEnd="center center"
             >

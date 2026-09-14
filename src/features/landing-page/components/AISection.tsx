@@ -75,11 +75,11 @@ export function AISection() {
               Powered by AI
             </div>
             
-            <h2 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl lg:text-6xl">
+            <h2 className="font-display text-3xl font-medium tracking-tight text-foreground sm:text-4xl lg:text-5xl">
               Your personal style assistant
             </h2>
             
-            <p className="text-lg text-muted-foreground sm:text-xl">
+            <p className="text-base text-muted-foreground sm:text-lg">
               Atlyr AI understands your unique style preferences and curates outfits that match your vibe, occasion, and mood—all powered by advanced machine learning.
             </p>
             

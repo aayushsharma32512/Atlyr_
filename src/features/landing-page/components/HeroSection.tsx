@@ -16,7 +16,7 @@ export function HeroSection() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8, delay: 0.2 }}
-        className="max-w-xl text-md text-muted-foreground sm:text-md lg:text-lg mt-8"
+        className="mt-8 max-w-xl text-lg sm:text-xl lg:text-2xl text-muted-foreground"
       >
         {/* Emphasis is the gate's tagline treatment — Bodoni italic in
             terracotta — so these lines read as the same system as the lockup

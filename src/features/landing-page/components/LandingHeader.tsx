@@ -54,7 +54,7 @@ export function LandingHeader({ isAuthenticated, onWaitlistScroll, onSignInClick
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.97 }}
             onClick={isAuthenticated ? () => navigate('/app') : onSignInClick}
-            className="rounded-control border border-foreground px-6 py-2.5 text-[clamp(0.625rem,0.24vw+0.567rem,0.813rem)] font-bold uppercase tracking-[0.14em] text-foreground transition-colors hover:bg-foreground hover:text-background"
+            className="rounded-control border border-foreground px-6 py-2.5 text-[clamp(0.625rem,0.24vw+0.567rem,0.813rem)] font-medium lowercase text-foreground transition-colors hover:bg-foreground hover:text-background"
           >
             {isAuthenticated ? "Enter app" : "Log in"}
           </motion.button>

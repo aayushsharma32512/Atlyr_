@@ -31,8 +31,6 @@ export function LandingGate({
 }: LandingGateProps) {
   return (
     <div className="relative flex min-h-[100dvh] flex-col items-center justify-center px-8 text-center">
-      <div className="bg-warp-grid pointer-events-none absolute inset-0 opacity-70" aria-hidden="true" />
-
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}

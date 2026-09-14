@@ -88,7 +88,7 @@ export function ShowcaseSection() {
                             whileInView={{ opacity: 1, y: 0 }}
                             viewport={{ once: true }}
                             transition={{ duration: 0.6, delay: 0.2 }}
-                            className="relative max-w-auto mx-auto lg:max-w-none md:text-left text-center text-muted-foreground"
+                            className="relative max-w-auto mx-auto text-lg sm:text-xl lg:text-2xl lg:max-w-none md:text-left text-center text-muted-foreground"
                         >
                             {/* Bodoni italic terracotta — see the note in HeroSection. */}
                             <span className="px-1 font-display italic text-terracotta">try-on outfit</span> using your avatar <br />

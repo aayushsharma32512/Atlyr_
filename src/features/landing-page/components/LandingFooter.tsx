@@ -33,7 +33,7 @@ export function LandingFooter() {
 
             {/* Support Section */}
             {/* <div className="space-y-6">
-              <h3 className="text-sm font-medium tracking-wider text-white/60 uppercase">
+              <h3 className="text-sm font-medium lowercase text-white/60">
                 Support
               </h3>
               <nav className="flex flex-col space-y-4">
