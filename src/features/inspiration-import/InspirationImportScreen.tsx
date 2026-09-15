@@ -19,7 +19,6 @@ import { inspirationImportService } from "@/services/inspirationImport/inspirati
 import {
   toggleInventoryChoice,
   toggleWebChoice,
-  type InspirationResultChoice,
 } from "@/features/inspiration-import/selectionTransitions"
 import {
   useDetectImportCandidates,
@@ -43,9 +42,13 @@ import type {
 const ACCEPTED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"])
 const PROCESSING_IMPORT_ID = "processing"
 
+// Inventory and Web are two fully independent picks per category, not one shared slot. Inventory
+// alone drives the mannequin; Web alone drives the "Online pick" card. Switching between the two
+// rails, or selecting/deselecting a Web result, never touches the other pick.
 type CategoryChoiceState = Partial<Record<InspirationCategory, {
   candidateId: string
-  choice: InspirationResultChoice | null
+  inventoryChoice: InspirationCatalogueResult | null
+  webChoice: InspirationWebResult | null
 }>>
 
 const PRIMARY =
@@ -269,20 +272,26 @@ export default function InspirationImportScreen() {
     }
     return [...resultsByProviderId.values()].sort((left, right) => left.rank - right.rank)
   }, [record?.webResults, selectedCandidate, webQuery.data])
-  const choices = useMemo(() => selectedCandidates.reduce<Partial<Record<InspirationCategory, InspirationResultChoice | null>>>((result, candidate) => {
+  const inventoryChoices = useMemo(() => selectedCandidates.reduce<Partial<Record<InspirationCategory, InspirationCatalogueResult | null>>>((result, candidate) => {
     const state = categoryChoices[candidate.category]
-    result[candidate.category] = state?.candidateId === candidate.id ? state.choice : null
+    result[candidate.category] = state?.candidateId === candidate.id ? state.inventoryChoice ?? null : null
     return result
   }, {}), [categoryChoices, selectedCandidates])
-  const activeChoice = selectedCandidate ? choices[selectedCandidate.category] ?? null : null
-  const activePreviewId = activeChoice?.source === "inventory" ? activeChoice.result.id : null
-  const activeWebProviderResultId = activeChoice?.source === "web"
-    ? activeChoice.result.providerResultId
+  const webChoices = useMemo(() => selectedCandidates.reduce<Partial<Record<InspirationCategory, InspirationWebResult | null>>>((result, candidate) => {
+    const state = categoryChoices[candidate.category]
+    result[candidate.category] = state?.candidateId === candidate.id ? state.webChoice ?? null : null
+    return result
+  }, {}), [categoryChoices, selectedCandidates])
+  const activePreviewId = selectedCandidate ? inventoryChoices[selectedCandidate.category]?.id ?? null : null
+  const activeWebProviderResultId = selectedCandidate
+    ? webChoices[selectedCandidate.category]?.providerResultId ?? null
     : null
-  const selectedTopId = choices.top?.source === "inventory" ? choices.top.result.id : null
-  const selectedBottomId = choices.bottom?.source === "inventory" ? choices.bottom.result.id : null
+  // A Web pick is the final selection for a category whenever one exists — it overrides the
+  // Inventory pick for saving/Studio purposes only, never for what the mannequin shows.
+  const selectedTopId = webChoices.top ? null : inventoryChoices.top?.id ?? null
+  const selectedBottomId = webChoices.bottom ? null : inventoryChoices.bottom?.id ?? null
   const selectedInventoryTotal = Number(Boolean(selectedTopId)) + Number(Boolean(selectedBottomId))
-  const selectedWebTotal = Number(choices.top?.source === "web") + Number(choices.bottom?.source === "web")
+  const selectedWebTotal = Number(Boolean(webChoices.top)) + Number(Boolean(webChoices.bottom))
   const selectedTotal = selectedInventoryTotal + selectedWebTotal
 
   useEffect(() => {
@@ -352,14 +361,8 @@ export default function InspirationImportScreen() {
         const persistedInventory = search.results.find((result) => (
           record.selections.catalogueProductIds.includes(result.id)
         ))
-        const choice: InspirationResultChoice | null = persistedWeb
-          ? { source: "web", result: persistedWeb }
-          : persistedInventory
-            ? { source: "inventory", result: persistedInventory }
-            : search.results[0]
-              ? { source: "inventory", result: search.results[0] }
-              : null
-        next[category] = { candidateId: candidate.id, choice }
+        const inventoryChoice = persistedInventory ?? search.results[0] ?? null
+        next[category] = { candidateId: candidate.id, inventoryChoice, webChoice: persistedWeb ?? null }
         changed = true
       }
       return changed ? next : current
@@ -443,14 +446,38 @@ export default function InspirationImportScreen() {
   }
 
 
-  const setCandidateChoice = (
+  const setCandidateInventoryChoice = (
     candidate: { id: string; category: InspirationCategory },
-    choice: InspirationResultChoice | null,
+    inventoryChoice: InspirationCatalogueResult | null,
   ) => {
-    setCategoryChoices((current) => ({
-      ...current,
-      [candidate.category]: { candidateId: candidate.id, choice },
-    }))
+    setCategoryChoices((current) => {
+      const state = current[candidate.category]
+      return {
+        ...current,
+        [candidate.category]: {
+          candidateId: candidate.id,
+          inventoryChoice,
+          webChoice: state?.candidateId === candidate.id ? state.webChoice ?? null : null,
+        },
+      }
+    })
+  }
+
+  const setCandidateWebChoice = (
+    candidate: { id: string; category: InspirationCategory },
+    webChoice: InspirationWebResult | null,
+  ) => {
+    setCategoryChoices((current) => {
+      const state = current[candidate.category]
+      return {
+        ...current,
+        [candidate.category]: {
+          candidateId: candidate.id,
+          inventoryChoice: state?.candidateId === candidate.id ? state.inventoryChoice ?? null : null,
+          webChoice,
+        },
+      }
+    })
   }
 
   const selectInventoryResult = (result: InspirationCatalogueResult) => {
@@ -458,26 +485,25 @@ export default function InspirationImportScreen() {
     const candidate = selectedCandidate
     if (!catalogueResults.some((item) => item.id === result.id)) return
     setValidationError(null)
-    setCandidateChoice(candidate, toggleInventoryChoice(activeChoice, result))
+    const current = inventoryChoices[candidate.category] ?? null
+    setCandidateInventoryChoice(candidate, toggleInventoryChoice(current, result))
   }
 
   const selectWebResult = (result: InspirationWebResult) => {
     if (!selectedCandidate) return
     const candidate = selectedCandidate
     setValidationError(null)
-    setCandidateChoice(candidate, toggleWebChoice(activeChoice, result))
+    const current = webChoices[candidate.category] ?? null
+    setCandidateWebChoice(candidate, toggleWebChoice(current, result))
   }
 
+  // Only switches which rail (Inventory vs Web) and which category tab is showing. Neither pick
+  // is read or written here — the mannequin never needs to change because of this.
   const showCandidateInventoryResults = (
     candidate: { id: string; category: InspirationCategory },
   ) => {
     setActiveCandidateId(candidate.id)
     setResultsSource("inventory")
-    const previousChoice = choices[candidate.category] ?? null
-    if (previousChoice?.source !== "web") return
-    // Returning to Inventory clears the online choice. The category stays empty until the user
-    // explicitly selects an inventory card, so that first click cannot be mistaken for a deselect.
-    setCandidateChoice(candidate, null)
   }
 
   const showInventoryResults = () => {
@@ -494,14 +520,16 @@ export default function InspirationImportScreen() {
     try {
       if (selectedWebTotal) {
         const webSelections = selectedCandidates.flatMap((candidate) => {
-          const choice = choices[candidate.category]
-          if (choice?.source !== "web" || !choice.result.selectionToken) return []
-          return [{ candidateId: candidate.id, selectionToken: choice.result.selectionToken }]
+          const webChoice = webChoices[candidate.category]
+          if (!webChoice?.selectionToken) return []
+          return [{ candidateId: candidate.id, selectionToken: webChoice.selectionToken }]
         })
         const catalogueSelections = selectedCandidates.flatMap((candidate) => {
-          const choice = choices[candidate.category]
-          if (choice?.source !== "inventory") return []
-          return [{ candidateId: candidate.id, productId: choice.result.id }]
+          // A Web pick, when present, is the final choice for the category (see selectedTopId).
+          if (webChoices[candidate.category]) return []
+          const inventoryChoice = inventoryChoices[candidate.category]
+          if (!inventoryChoice) return []
+          return [{ candidateId: candidate.id, productId: inventoryChoice.id }]
         })
         if (webSelections.length !== selectedWebTotal) {
           throw new Error("An online result expired. Search online again and reselect it.")
@@ -699,8 +727,9 @@ export default function InspirationImportScreen() {
                 ) : null}
               </div>
               <ImportMannequinPreview
-                choices={choices}
+                inventoryChoices={inventoryChoices}
                 activeCategory={selectedCandidate.category}
+                activeWebChoice={webChoices[selectedCandidate.category] ?? null}
                 resultsSource={resultsSource}
               />
             </div>

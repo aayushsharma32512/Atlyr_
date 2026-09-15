@@ -44,6 +44,7 @@ const Profile = lazy(() => import("./pages/Profile.tsx"));
 const AdminInvites = lazy(() => import("./pages/AdminInvites.tsx"));
 const AdminStudioRoutes = lazy(() => import("./pages/admin/studio/index.tsx"));
 const EnrichmentReviewDashboard = lazy(() => import("./pages/admin/EnrichmentReviewDashboard.tsx"));
+const OutfitScreenerDashboard = lazy(() => import("./pages/admin/OutfitScreenerDashboard.tsx"));
 const IngestionV2Dashboard = lazy(() => import("./pages/admin/IngestionV2Dashboard.tsx"));
 const IngestionAutomatedDashboard = lazy(() => import("./pages/admin/IngestionAutomatedDashboard.tsx"));
 const PlacementDashboard = lazy(() => import("./pages/admin/PlacementDashboard.tsx"));
@@ -296,6 +297,14 @@ const App = () => (
                       element={
                         <AdminAccessGuard>
                           <EnrichmentReviewDashboard />
+                        </AdminAccessGuard>
+                      }
+                    />
+                    <Route
+                      path="/admin/outfit-screener"
+                      element={
+                        <AdminAccessGuard>
+                          <OutfitScreenerDashboard />
                         </AdminAccessGuard>
                       }
                     />

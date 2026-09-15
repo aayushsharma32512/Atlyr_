@@ -81,6 +81,7 @@ const GROUPS: Group[] = [
     entries: [
       { label: "Invites", to: "/admin/invites", blurb: "Issue and track waitlist invites." },
       { label: "Enrichment", to: "/admin/enrichment", blurb: "Review enriched product data." },
+      { label: "Outfit screener", to: "/admin/outfit-screener", blurb: "Accept or reject generated outfit pairs, theme by theme." },
       { label: "Ingestion v2", to: "/admin/ingestion-v2", blurb: "The v2 ingestion dashboard." },
       {
         label: "Ingestion automated",

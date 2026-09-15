@@ -4,39 +4,43 @@ import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { getImportAvatarPlacementMode } from "@/features/inspiration-import/previewPlacementMode"
 import { getGarmentPreviewCrop } from "@/features/inspiration-import/previewCrop"
 import { resolvePreviewCategory } from "@/features/inspiration-import/previewFocus"
-import type { InspirationResultChoice } from "@/features/inspiration-import/selectionTransitions"
 import type { AvatarItemBoundsFrame } from "@/features/studio/types"
 import { mapImportResultToStudioItem } from "@/services/inspirationImport/mappers"
 import type {
+  InspirationCatalogueResult,
   InspirationCategory,
+  InspirationWebResult,
 } from "@/services/inspirationImport/types"
 
 type Props = {
-  choices: Partial<Record<InspirationCategory, InspirationResultChoice | null>>
+  // Drives the mannequin. Only an Inventory pick (selectInventoryResult in the screen) changes
+  // this. Web search never writes to it, so leaving Web search always returns to this same render.
+  inventoryChoices: Partial<Record<InspirationCategory, InspirationCatalogueResult | null>>
   activeCategory: InspirationCategory
+  // The Web pick for the category currently open, if any. Only changes what the top card shows.
+  activeWebChoice: InspirationWebResult | null
   resultsSource: "inventory" | "web"
 }
 
-export function ImportMannequinPreview({ choices, activeCategory, resultsSource }: Props) {
+export function ImportMannequinPreview({ inventoryChoices, activeCategory, activeWebChoice, resultsSource }: Props) {
   const { gender, heightCm } = useProfileContext()
   const viewerGender = gender ?? "female"
-  const bothInventory = choices.top?.source === "inventory" && choices.bottom?.source === "inventory"
-  const focusedCategory = resolvePreviewCategory(activeCategory, choices)
-  const focusedChoice = choices[focusedCategory] ?? null
-  const focusedInventory = focusedChoice?.source === "inventory" ? focusedChoice : null
+  const bothInventory = Boolean(inventoryChoices.top) && Boolean(inventoryChoices.bottom)
+  const focusedCategory = resolvePreviewCategory(activeCategory, inventoryChoices)
+  const focusedInventory = inventoryChoices[focusedCategory] ?? null
   const renderedItems = useMemo(() => {
     const visibleInventory = bothInventory
-      ? choices
+      ? inventoryChoices
       : focusedInventory
         ? { [focusedCategory]: focusedInventory }
         : {}
     return (["top", "bottom"] as const)
       .map((category) => {
-        const choice = visibleInventory[category]
-        return choice?.source === "inventory" ? mapImportResultToStudioItem(choice.result, category) : null
+        const result = visibleInventory[category]
+        return result ? mapImportResultToStudioItem(result, category) : null
       })
       .filter((item) => item !== null)
-  }, [bothInventory, choices, focusedCategory, focusedInventory])
+  }, [bothInventory, inventoryChoices, focusedCategory, focusedInventory])
   const avatarPlacementMode = getImportAvatarPlacementMode(renderedItems, viewerGender)
   const renderedItemSignature = renderedItems.map((item) => `${item.id}:${item.imageUrl}`).join("|")
   const [itemBoundsFrame, setItemBoundsFrame] = useState<AvatarItemBoundsFrame | null>(null)
@@ -44,18 +48,17 @@ export function ImportMannequinPreview({ choices, activeCategory, resultsSource 
   const handleItemBoundsChange = useCallback((frame: AvatarItemBoundsFrame) => {
     setItemBoundsFrame(frame)
   }, [])
-  // A web choice is only allowed to replace the mannequin while the Web search rail is visible.
-  // This also makes the optimistic Inventory transition immune to a delayed persistence response.
-  const webResult = resultsSource === "web" && !bothInventory && focusedChoice?.source === "web"
-    ? focusedChoice.result
-    : null
+  // The Web search rail shows its own pick as a full photo over the mannequin. Nothing about
+  // renderedItems above changes because of it, so closing Web search always uncovers the same
+  // mannequin render that was there before.
+  const webResult = resultsSource === "web" ? activeWebChoice : null
   const mannequinCropClass = bothInventory || !focusedInventory
     ? "inset-0"
     : focusedCategory === "top"
       ? "-inset-x-[28%] -bottom-[62%] top-[-8%]"
       : "-inset-x-[28%] -top-[58%] bottom-[-12%]"
   const dynamicCrop = !bothInventory && focusedInventory
-    ? getGarmentPreviewCrop(itemBoundsFrame, focusedInventory.result.id, focusedCategory)
+    ? getGarmentPreviewCrop(itemBoundsFrame, focusedInventory.id, focusedCategory)
     : null
   const mannequinCropStyle: CSSProperties | undefined = dynamicCrop ? {
     top: `${dynamicCrop.topPercent}%`,
