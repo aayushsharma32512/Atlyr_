@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Application, Assets, Container, MeshPlane, Rectangle, Sprite, Texture } from "pixi.js"
+import { Application, Assets, Container, ImageSource, MeshPlane, Rectangle, Sprite, Texture } from "pixi.js"
 import type {
   AvatarItemBounds,
   AvatarItemBoundsFrame,
@@ -240,6 +240,58 @@ function loadImage(url: string): Promise<HTMLImageElement> {
 }
 
 /**
+ * Full-res garment textures, cancellable.
+ *
+ * These used to go through `Assets.load`, which cannot be aborted and runs every image through a
+ * worker pool capped at `navigator.hardwareConcurrency` — a worker stays busy for the whole 1-2.5MB
+ * download. Flicking through alternatives left one orphaned PNG per switch holding a worker, so the
+ * next garment's 20KB thumbnail queued behind them and the switch felt stuck on the old PNG.
+ *
+ * Shared per URL and ref-counted across avatars; a load nobody wants any more is aborted. Release
+ * is deferred a tick because a rebuild releases the old outfit BEFORE it acquires the new one, and
+ * a garment present in both must keep its download.
+ */
+type FullResLoad = { tex: Promise<Texture>; abort: AbortController; users: number; done: boolean }
+const fullResLoads = new Map<string, FullResLoad>()
+
+function acquireFullRes(url: string): Promise<Texture> {
+  let entry = fullResLoads.get(url)
+  if (!entry) {
+    const abort = new AbortController()
+    const tex = fetch(url, { mode: "cors", signal: abort.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error(`full-res load failed: ${res.status}`)
+        return res.blob()
+      })
+      .then((blob) => createImageBitmap(blob))
+      // Same source settings `Assets.load` used, so the swap looks identical.
+      .then((bitmap) => new Texture({
+        source: new ImageSource({ resource: bitmap, alphaMode: "premultiply-alpha-on-upload", label: url }),
+      }))
+    const created: FullResLoad = { tex, abort, users: 0, done: false }
+    tex.then(
+      () => { created.done = true },
+      () => { if (fullResLoads.get(url) === created) fullResLoads.delete(url) },
+    )
+    fullResLoads.set(url, created)
+    entry = created
+  }
+  entry.users++
+  return entry.tex
+}
+
+function releaseFullRes(url: string) {
+  const entry = fullResLoads.get(url)
+  if (!entry) return
+  entry.users--
+  setTimeout(() => {
+    if (entry.users > 0 || entry.done || fullResLoads.get(url) !== entry) return
+    fullResLoads.delete(url)
+    entry.abort.abort()
+  }, 0)
+}
+
+/**
  * The first of two loads to succeed; rejects only once both have failed.
  *
  * `Promise.race` is the wrong primitive here — it settles on the first REJECTION too, so a missing
@@ -402,6 +454,20 @@ export function PlacementAvatarRenderer({
     // which is the case for every card in the feed — see the snapshot step at the end of the build.
     const interactive = Boolean(onItemSelectRef.current)
 
+    // Under 'thumbnail' quality the webp IS the final texture: it takes the full-res slot and
+    // the item reports isFull, so the upgrade pass further down leaves it alone. Nothing else
+    // in the pipeline needs to know the mode.
+    const thumbOnly = textureQuality === "thumbnail"
+    const finalUrls = placed.map((it) => {
+      const thumb = it.thumbnailUrl?.trim()
+      return thumbOnly && thumb ? thumb : it.imageUrl
+    })
+    // Acquired synchronously, not after the awaits below: this is what keeps an unchanged
+    // garment's in-flight download alive across the rebuild (see releaseFullRes).
+    const fullTex = finalUrls.map(acquireFullRes)
+    // A full-res failure (or abort) must not surface as an unhandled rejection.
+    fullTex.forEach((p) => { p.catch(() => {}) })
+
     ;(async () => {
       try {
         await app.init({
@@ -500,22 +566,10 @@ export function PlacementAvatarRenderer({
         // rounding only — order 0.1% of the world frame, well under a pixel once scaled into the
         // container. Recomputing would mean rebuilding every garment AND the world transform, and
         // the visible result would be the frame shifting under the user as the images land.
-        // Under 'thumbnail' quality the webp IS the final texture: it takes the full-res slot and
-        // the item reports isFull, so the upgrade pass further down leaves it alone. Nothing else
-        // in the pipeline needs to know the mode.
-        const thumbOnly = textureQuality === "thumbnail"
-        const finalUrl = (it: StudioRenderedItem) => {
-          const thumb = it.thumbnailUrl?.trim()
-          return thumbOnly && thumb ? thumb : it.imageUrl
-        }
-        const fullTex = placed.map((it) => Assets.load(finalUrl(it)) as Promise<Texture>)
-        // A full-res failure must not surface as an unhandled rejection while the thumbnail renders.
-        fullTex.forEach((p) => { p.catch(() => {}) })
-
         const loaded = await Promise.all(
           placed.map(async (it, i) => {
             const thumbUrl = it.thumbnailUrl?.trim()
-            const full = finalUrl(it)
+            const full = finalUrls[i]
             if (!thumbUrl || thumbUrl === full) {
               return { url: full, tex: await fullTex[i], isFull: true }
             }
@@ -759,6 +813,8 @@ export function PlacementAvatarRenderer({
     return () => {
       disposed = true
       appRef.current = null
+      // Outfit changed or unmounted: stop downloading full-res textures this build no longer needs.
+      finalUrls.forEach(releaseFullRes)
       if (released) return
       const destroy = () => {
         try { app.destroy(true, { children: true }) } catch { /* already torn down */ }
