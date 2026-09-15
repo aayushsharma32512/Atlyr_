@@ -14,10 +14,12 @@ export default function OutfitScreenerDashboard() {
     return (
         <AppShellLayout hideNav>
             <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-6">
-                <div>
-                    <h1 className="font-display text-2xl font-medium text-foreground">Outfit Screener</h1>
-                    <p className="text-sm text-muted-foreground">
-                        Trust your eye — swipe right to <span className="text-violet">keep</span>, left to pass.
+                <div className="text-center">
+                    <h1 className="font-display text-2xl font-bold italic text-foreground">
+                        <span className="text-violet">Outfit</span> Screener
+                    </h1>
+                    <p className="text-sm italic text-muted-foreground">
+                        Trust your <span className="text-violet">baddiesense</span>.
                     </p>
                 </div>
 
