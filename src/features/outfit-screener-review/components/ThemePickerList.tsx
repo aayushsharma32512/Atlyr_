@@ -51,7 +51,14 @@ export function ThemePickerList({ onSelectTheme }: ThemePickerListProps) {
                                 className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50"
                             >
                                 <span className="text-sm font-medium text-foreground">{theme.theme_name}</span>
-                                <Badge variant={theme.pendingCount > 0 ? "secondary" : "outline"}>
+                                <Badge
+                                    variant={theme.pendingCount > 0 ? "secondary" : "outline"}
+                                    className={
+                                        theme.pendingCount > 0
+                                            ? "text-violet"
+                                            : "border-violet text-foreground"
+                                    }
+                                >
                                     {theme.pendingCount} pending
                                 </Badge>
                             </button>
