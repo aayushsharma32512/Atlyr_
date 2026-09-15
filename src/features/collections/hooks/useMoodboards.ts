@@ -35,11 +35,20 @@ import {
 import { fetchProductsByIds } from "@/services/search/searchService"
 import { addNotice } from "@/features/notifications/notices"
 
+/**
+ * Every query below is the signed-in user's own data, so each one keys on the
+ * user id and waits for auth. Both halves matter: without the guard a query
+ * that mounts before auth resolves fetches with a null user and caches the
+ * empty fallback (the overview holds it for 30 minutes), and without the id in
+ * the key the next user on the device reads the previous one's cache.
+ * Invalidation is unaffected — it matches on the key prefix.
+ */
 export function useCollectionsOverview() {
   const { user } = useAuth()
   return useQuery({
-    queryKey: collectionsKeys.overview(),
+    queryKey: [...collectionsKeys.overview(), user?.id ?? null],
     queryFn: () => fetchCollectionsWithPreviews(user?.id ?? null),
+    enabled: Boolean(user?.id),
     staleTime: 30 * 60 * 1000,
   })
 }
@@ -47,8 +56,9 @@ export function useCollectionsOverview() {
 export function useMoodboards() {
   const { user } = useAuth()
   return useQuery({
-    queryKey: collectionsKeys.moodboards(),
+    queryKey: [...collectionsKeys.moodboards(), user?.id ?? null],
     queryFn: () => fetchMoodboards(user?.id ?? null),
+    enabled: Boolean(user?.id),
     staleTime: 5 * 60 * 1000,
   })
 }
@@ -56,8 +66,9 @@ export function useMoodboards() {
 export function useFavorites() {
   const { user } = useAuth()
   return useQuery({
-    queryKey: collectionsKeys.favorites(),
+    queryKey: [...collectionsKeys.favorites(), user?.id ?? null],
     queryFn: () => fetchFavorites(user?.id ?? null),
+    enabled: Boolean(user?.id),
     staleTime: 2 * 60 * 1000,
   })
 }
@@ -65,8 +76,9 @@ export function useFavorites() {
 export function useFavoriteProducts() {
   const { user } = useAuth()
   return useQuery({
-    queryKey: collectionsKeys.productFavorites(),
+    queryKey: [...collectionsKeys.productFavorites(), user?.id ?? null],
     queryFn: () => fetchFavoriteProducts(user?.id ?? null),
+    enabled: Boolean(user?.id),
     staleTime: 2 * 60 * 1000,
   })
 }
@@ -74,8 +86,9 @@ export function useFavoriteProducts() {
 export function useSavedProducts() {
   const { user } = useAuth()
   return useQuery({
-    queryKey: collectionsKeys.products(),
+    queryKey: [...collectionsKeys.products(), user?.id ?? null],
     queryFn: () => fetchSavedProducts(user?.id ?? null),
+    enabled: Boolean(user?.id),
     staleTime: 2 * 60 * 1000,
   })
 }
@@ -506,7 +519,7 @@ export function useMoodboardPreviews(slugs: string[]) {
 export function useProductCollectionMembership() {
   const { user } = useAuth()
   return useQuery({
-    queryKey: collectionsKeys.productCollectionMembership(),
+    queryKey: [...collectionsKeys.productCollectionMembership(), user?.id ?? null],
     queryFn: async () => {
       const raw = await fetchProductCollectionMembership(user?.id ?? null)
       const result: Record<string, Set<string>> = {}
@@ -527,7 +540,7 @@ export function useProductCollectionMembership() {
 export function useOutfitCollectionMembership() {
   const { user } = useAuth()
   return useQuery({
-    queryKey: [...collectionsKeys.favorites(), "outfit-membership"],
+    queryKey: [...collectionsKeys.favorites(), "outfit-membership", user?.id ?? null],
     queryFn: async () => {
       const raw = await fetchOutfitCollectionMembership(user?.id ?? null)
       const result: Record<string, Set<string>> = {}

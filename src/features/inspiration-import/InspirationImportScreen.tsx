@@ -6,6 +6,7 @@ import { AppShellLayout } from "@/layouts/AppShellLayout"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/AuthContext"
 import { useProductSaveActions } from "@/features/collections/hooks/useProductSaveActions"
+import { useSaveTray } from "@/features/collections/providers/SaveTrayProvider"
 import { CandidatePicker } from "@/features/inspiration-import/components/CandidatePicker"
 import {
   ImportMannequinPreview,
@@ -149,6 +150,7 @@ export default function InspirationImportScreen() {
   const { user } = useAuth()
   const { profile, gender } = useProfileContext()
   const productSaveActions = useProductSaveActions()
+  const { openPieceSave } = useSaveTray()
   const startImport = useStartInspirationImport()
   const importQuery = useInspirationImport(importId)
   const detectMutation = useDetectImportCandidates(importId ?? "")
@@ -773,7 +775,7 @@ export default function InspirationImportScreen() {
                   isSaving={productSaveActions.isSaving}
                   onSelect={selectInventoryResult}
                   onToggleFavorite={(id, nextSaved, position) =>
-                    void productSaveActions.onToggleSave(id, nextSaved, { layout: "vertical_grid", position })
+                    openPieceSave(id, { layout: "vertical_grid", position })
                   }
                 />
               )}

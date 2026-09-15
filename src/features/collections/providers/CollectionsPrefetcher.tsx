@@ -24,7 +24,8 @@ export function CollectionsPrefetcher() {
     lastPrefetchedUserId.current = userId
 
     queryClient.prefetchQuery({
-      queryKey: collectionsKeys.overview(),
+      // Same key useCollectionsOverview reads — it is scoped to the user.
+      queryKey: [...collectionsKeys.overview(), userId],
       queryFn: () => fetchCollectionsWithPreviews(userId),
       staleTime: 30 * 60 * 1000,
     })

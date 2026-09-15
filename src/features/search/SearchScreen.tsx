@@ -31,6 +31,7 @@ import { ErrorCard, NoResultsCard, ResultsSkeleton } from "@/features/search/com
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { useScrollRestoration } from "@/shared/hooks/useScrollRestoration"
 import { useProductSaveActions } from "@/features/collections/hooks/useProductSaveActions"
+import { useSaveTray } from "@/features/collections/providers/SaveTrayProvider"
 import {
   useCreateMoodboard,
   useFavorites,
@@ -175,6 +176,7 @@ export function SearchScreenView() {
   const searchImageUpload = useSearchImageUpload()
   const { gender: profileGender, heightCm } = useProfileContext()
   const productSaveActions = useProductSaveActions()
+  const { openLookSave, openPieceSave } = useSaveTray()
   const favoritesQuery = useFavorites()
   const favoriteIds = useMemo(() => favoritesQuery.data ?? [], [favoritesQuery.data])
   const saveToCollectionMutation = useSaveToCollection()
@@ -952,76 +954,26 @@ export function SearchScreenView() {
 
   const pendingOutfitContextRef = useRef<EntityUiContext | null>(null)
 
+  // Every heart opens the save tray — Studio's card in a bottom sheet — instead
+  // of toggling favourites in place. The tray persists boards and tracks the save.
   const handleToggleOutfitById = useCallback(
-    async (outfitId: string, nextSaved: boolean, uiContext: EntityUiContext, saveMethod: "click" | "long_press") => {
-      try {
-        if (nextSaved) {
-          await saveToCollectionMutation.mutateAsync({ outfitId, slug: "favorites", label: "Favorites" })
-          trackSaveToggled(analytics, {
-            entity_type: "outfit",
-            entity_id: outfitId,
-            new_state: true,
-            save_method: saveMethod,
-            ...uiContext,
-          })
-          trackSavedToCollection(analytics, {
-            entity_type: "outfit",
-            entity_id: outfitId,
-            collection_slug: "favorites",
-            save_method: saveMethod,
-            ...uiContext,
-          })
-        } else {
-          await removeOutfitFromLibraryMutation.mutateAsync({ outfitId })
-          trackSaveToggled(analytics, {
-            entity_type: "outfit",
-            entity_id: outfitId,
-            new_state: false,
-            save_method: saveMethod,
-            ...uiContext,
-          })
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Unable to update favorite"
-        toast({ title: "Save failed", description: message, variant: "destructive" })
-        favoritesQuery.refetch()
-      }
-    },
-    [analytics, favoritesQuery, removeOutfitFromLibraryMutation, saveToCollectionMutation, toast],
+    (outfitId: string, uiContext: EntityUiContext) => openLookSave(outfitId, uiContext),
+    [openLookSave],
   )
 
   const handleLongPressOutfitById = useCallback(
-    async (outfitId: string, uiContext: EntityUiContext) => {
-      const alreadySaved = favoriteIds.includes(outfitId)
-      try {
-        if (!alreadySaved) {
-          await saveToCollectionMutation.mutateAsync({ outfitId, slug: "favorites", label: "Favorites" })
-          trackSaveToggled(analytics, { entity_type: "outfit", entity_id: outfitId, new_state: true, save_method: "long_press", ...uiContext })
-          trackSavedToCollection(analytics, { entity_type: "outfit", entity_id: outfitId, collection_slug: "favorites", save_method: "long_press", ...uiContext })
-        }
-        // Pre-populate current custom moodboard slugs for diff-sync
-        const membership = outfitMembershipQuery.data ?? {}
-        const currentSlugs = Object.entries(membership)
-          .filter(([slug, ids]) => !["favorites", "try-ons", "generations"].includes(slug) && ids.has(outfitId))
-          .map(([slug]) => slug)
-        pendingOutfitContextRef.current = uiContext
-        setPendingOutfitId(outfitId)
-        setPendingOutfitCurrentSlugs(currentSlugs)
-        setIsOutfitPickerOpen(true)
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Unable to save outfit"
-        toast({ title: "Save failed", description: message, variant: "destructive" })
-      }
-    },
-    [analytics, favoriteIds, outfitMembershipQuery.data, saveToCollectionMutation, toast],
+    (outfitId: string, uiContext: EntityUiContext) => openLookSave(outfitId, uiContext),
+    [openLookSave],
   )
+
+
 
   const handleToggleFavorite = useCallback(
     (item: InspirationItem, nextSaved: boolean) => {
       const outfitId = item.outfitId ?? item.outfit?.id ?? null
       if (!outfitId) return
       const position = outfitPositionById.get(outfitId)
-      handleToggleOutfitById(outfitId, nextSaved, { layout: "vertical_grid", position }, "click")
+      handleToggleOutfitById(outfitId, { layout: "vertical_grid", position })
     },
     [handleToggleOutfitById, outfitPositionById],
   )
@@ -1452,14 +1404,6 @@ export function SearchScreenView() {
   )
 
   const isOutfitSaved = useCallback((outfitId: string) => favoriteIds.includes(outfitId), [favoriteIds])
-  const toggleOutfitSave = useCallback(
-    (outfitId: string, next: boolean) => handleToggleOutfitById(outfitId, next, { layout: "vertical_grid" }, "click"),
-    [handleToggleOutfitById],
-  )
-  const longPressOutfitSave = useCallback(
-    (outfitId: string) => handleLongPressOutfitById(outfitId, { layout: "vertical_grid" }),
-    [handleLongPressOutfitById],
-  )
 
   const feedHandlers = useMemo<FeedHandlers>(
     () => ({
@@ -1472,20 +1416,20 @@ export function SearchScreenView() {
         handleProductSelect(piece.id, piece.slot)
       },
       isLookSaved: isOutfitSaved,
-      onToggleLookSave: toggleOutfitSave,
-      onLongPressLookSave: longPressOutfitSave,
+      onToggleLookSave: (look) => openLookSave(look.outfit.id, { layout: "vertical_grid" }),
+      onLongPressLookSave: (look) => openLookSave(look.outfit.id, { layout: "vertical_grid" }),
       isPieceSaved: (id: string) => productSaveActions.isSaved(id),
-      onTogglePieceSave: (id: string, next: boolean) => productSaveActions.onToggleSave(id, next, { layout: "vertical_grid" }),
-      onLongPressPieceSave: (id: string) => productSaveActions.onLongPressSave(id, { layout: "vertical_grid" }),
+      onTogglePieceSave: (id: string) => openPieceSave(id, { layout: "vertical_grid" }),
+      onLongPressPieceSave: (id: string) => openPieceSave(id, { layout: "vertical_grid" }),
     }),
     [
       analytics,
       handleProductSelect,
       isOutfitSaved,
       launchStudio,
-      longPressOutfitSave,
+      openLookSave,
+      openPieceSave,
       productSaveActions,
-      toggleOutfitSave,
     ],
   )
 

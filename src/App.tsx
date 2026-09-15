@@ -9,6 +9,7 @@ import { ProfileProvider, useProfileContext } from "@/features/profile/providers
 import { CollectionsPrefetcher } from "@/features/collections/providers/CollectionsPrefetcher";
 import { boardPath } from "@/features/collections/boardUrl";
 import { JobsProvider } from "@/features/progress/providers/JobsContext";
+import { SaveTrayProvider } from "@/features/collections/providers/SaveTrayProvider";
 import { NotificationsWatcher } from "@/features/notifications/NotificationsWatcher";
 import { LikenessDrawerHost } from "@/features/likeness/LikenessDrawerHost";
 import { PostHogIdentitySync } from "@/integrations/posthog/PostHogIdentitySync";
@@ -156,6 +157,7 @@ const App = () => (
             <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
               <EngagementAnalyticsProvider>
                 <JobsProvider>
+                <SaveTrayProvider>
                   <SurfaceTheme />
                   <NotificationsWatcher />
                   <CollectionsPrefetcher />
@@ -442,6 +444,7 @@ const App = () => (
                       </Routes>
                     </Suspense>
                   </ErrorBoundary>
+                </SaveTrayProvider>
                 </JobsProvider>
               </EngagementAnalyticsProvider>
             </BrowserRouter>

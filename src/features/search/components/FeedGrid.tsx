@@ -43,8 +43,8 @@ export function FeedGrid(props: FeedGridProps) {
                 saved={saved}
                 tiltIndex={index}
                 onSelect={() => handlers.onOpenLook(look, "vertical_grid", index)}
-                onToggleSave={() => handlers.onToggleLookSave(look.outfit.id, !saved)}
-                onLongPressSave={() => handlers.onLongPressLookSave(look.outfit.id)}
+                onToggleSave={() => handlers.onToggleLookSave(look)}
+                onLongPressSave={() => handlers.onLongPressLookSave(look)}
               />
             </div>
           )
@@ -65,7 +65,7 @@ export function FeedGrid(props: FeedGridProps) {
             saved={saved}
             cropToContent
             onSelect={() => handlers.onOpenPiece(piece, "vertical_grid", index)}
-            onToggleSave={() => handlers.onTogglePieceSave(piece.id, !saved)}
+            onToggleSave={() => handlers.onTogglePieceSave(piece.id)}
             onLongPressSave={() => handlers.onLongPressPieceSave(piece.id)}
           />
         )

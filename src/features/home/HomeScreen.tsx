@@ -49,6 +49,7 @@ import {
 } from "@/features/collections/hooks/useMoodboards"
 import { useUpdateOutfit } from "@/features/outfits/hooks/useUpdateOutfit"
 import { useProductSaveActions } from "@/features/collections/hooks/useProductSaveActions"
+import { useSaveTray } from "@/features/collections/providers/SaveTrayProvider"
 import { collectionsKeys } from "@/features/collections/queryKeys"
 import { TryOnGrid } from "@/features/home/components/TryOnGrid"
 import { TryOnPreviewOverlay } from "@/features/home/components/TryOnPreviewOverlay"
@@ -131,6 +132,7 @@ export function HomeScreenView() {
   const analytics = useEngagementAnalytics()
   const queryClient = useQueryClient()
   const productSaveActions = useProductSaveActions()
+  const { openLookSave, openPieceSave } = useSaveTray()
   const { user } = useAuth()
 
   const buildInspirationFromEntry = useCallback(
@@ -709,72 +711,19 @@ export function HomeScreenView() {
 
   const pendingOutfitContextRef = useRef<EntityUiContext | null>(null)
 
+  // Every heart opens the save tray — Studio's card in a bottom sheet — instead
+  // of toggling favourites in place. The tray persists boards and tracks the save.
   const handleToggleOutfitById = useCallback(
-    async (outfitId: string, nextSaved: boolean, uiContext: EntityUiContext, saveMethod: "click" | "long_press") => {
-      try {
-        if (nextSaved) {
-          await saveToCollectionMutation.mutateAsync({ outfitId, slug: "favorites", label: "Favorites" })
-          trackSaveToggled(analytics, {
-            entity_type: "outfit",
-            entity_id: outfitId,
-            new_state: true,
-            save_method: saveMethod,
-            ...uiContext,
-          })
-          trackSavedToCollection(analytics, {
-            entity_type: "outfit",
-            entity_id: outfitId,
-            collection_slug: "favorites",
-            save_method: saveMethod,
-            ...uiContext,
-          })
-        } else {
-          await removeOutfitFromLibraryMutation.mutateAsync({ outfitId })
-          trackSaveToggled(analytics, {
-            entity_type: "outfit",
-            entity_id: outfitId,
-            new_state: false,
-            save_method: saveMethod,
-            ...uiContext,
-          })
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Unable to update favorite"
-        toast({ title: "Save failed", description: message, variant: "destructive" })
-        favoritesQuery.refetch()
-      }
-    },
-    [analytics, favoritesQuery, removeOutfitFromLibraryMutation, saveToCollectionMutation, toast],
+    (outfitId: string, uiContext: EntityUiContext) => openLookSave(outfitId, uiContext),
+    [openLookSave],
   )
 
   const handleLongPressOutfitById = useCallback(
-    async (outfitId: string, uiContext: EntityUiContext) => {
-      try {
-        await saveToCollectionMutation.mutateAsync({ outfitId, slug: "favorites", label: "Favorites" })
-        trackSaveToggled(analytics, {
-          entity_type: "outfit",
-          entity_id: outfitId,
-          new_state: true,
-          save_method: "long_press",
-          ...uiContext,
-        })
-        trackSavedToCollection(analytics, {
-          entity_type: "outfit",
-          entity_id: outfitId,
-          collection_slug: "favorites",
-          save_method: "long_press",
-          ...uiContext,
-        })
-        pendingOutfitContextRef.current = uiContext
-        setPendingOutfitId(outfitId)
-        setIsMoodboardPickerOpen(true)
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Unable to save outfit"
-        toast({ title: "Save failed", description: message, variant: "destructive" })
-      }
-    },
-    [analytics, saveToCollectionMutation, toast],
+    (outfitId: string, uiContext: EntityUiContext) => openLookSave(outfitId, uiContext),
+    [openLookSave],
   )
+
+
 
   // Kebab handlers
   const handleKebabEditOutfit = useCallback((item: Extract<MoodboardItem, { itemType: "outfit" }>) => {
@@ -1320,7 +1269,7 @@ export function HomeScreenView() {
           const outfitId = item.outfitId ?? item.outfit?.id ?? null
           if (!outfitId) return
           const position = outfitResultsPositionById.get(outfitId)
-          handleToggleOutfitById(outfitId, nextSaved, { layout: "vertical_grid", position }, "click")
+          handleToggleOutfitById(outfitId, { layout: "vertical_grid", position })
         }}
         onLongPressSave={(item) => {
           const outfitId = item.outfitId ?? item.outfit?.id ?? null
@@ -1392,17 +1341,12 @@ export function HomeScreenView() {
           const outfitId = item.outfitId ?? item.outfit?.id ?? null
           if (!outfitId) return
           const position = filteredRecentItems.findIndex((entry) => (entry.outfitId ?? entry.outfit?.id) === outfitId)
-          handleToggleOutfitById(
-            outfitId,
-            nextSaved,
-            {
+          handleToggleOutfitById(outfitId, {
               layout: "horizontal_rail",
               section: "recent",
               rail_id: recentRailId,
               position: position >= 0 ? position : undefined,
-            },
-            "click",
-          )
+            })
         }}
         onLongPressSave={(item) => {
           const outfitId = item.outfitId ?? item.outfit?.id ?? null
@@ -1474,7 +1418,7 @@ export function HomeScreenView() {
           const outfitId = item.outfitId ?? item.outfit?.id ?? null
           if (!outfitId) return
           const position = allOutfitsPositionById.get(outfitId)
-          handleToggleOutfitById(outfitId, nextSaved, { layout: "vertical_grid", section: "all_outfits", position }, "click")
+          handleToggleOutfitById(outfitId, { layout: "vertical_grid", section: "all_outfits", position })
         }}
         onLongPressSave={(item) => {
           const outfitId = item.outfitId ?? item.outfit?.id ?? null
@@ -1533,12 +1477,7 @@ export function HomeScreenView() {
           const outfitId = item.outfitId ?? item.outfit?.id ?? null
           if (!outfitId) return
           const position = curatedPositionById.get(outfitId)
-          handleToggleOutfitById(
-            outfitId,
-            nextSaved,
-            { layout: "vertical_grid", section: "curated", position },
-            "click",
-          )
+          handleToggleOutfitById(outfitId, { layout: "vertical_grid", section: "curated", position })
         }}
         onLongPressSave={(item) => {
           const outfitId = item.outfitId ?? item.outfit?.id ?? null
@@ -1893,7 +1832,7 @@ export function HomeScreenView() {
                         onCardSelect={(item) => item.outfit && launchStudio(item.outfit)}
                         onToggleSave={(item, nextSaved) => {
                           const outfitId = item.outfitId ?? item.outfit?.id ?? null
-                          if (outfitId) handleToggleOutfitById(outfitId, nextSaved, { section: "board_discovery" }, "click")
+                          if (outfitId) handleToggleOutfitById(outfitId, { section: "board_discovery" })
                         }}
                       />
                     </div>

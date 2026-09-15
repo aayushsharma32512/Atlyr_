@@ -9,13 +9,12 @@ import { ProductsTab } from "./components/ProductsTab"
 
 import { MoodboardPickerDrawer, OutfitInspirationTile, SectionHeader } from "@/design-system/primitives"
 import { Icons } from "@/design-system/icons"
-import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer"
-import { StudioSaveCard } from "@/features/studio/components/StudioSaveCard"
 import { buildStudioUrl } from "@/features/studio/utils/studioUrlState"
 import { cn } from "@/lib/utils"
 
 import { useCollectionsOverview, useCreateMoodboard, useMoodboardItems, useProductsByIds } from "./hooks/useMoodboards"
 import { useProductSaveActions } from "@/features/collections/hooks/useProductSaveActions"
+import { useSaveTray } from "@/features/collections/providers/SaveTrayProvider"
 import { productDisplayImage } from "@/services/collections/collectionsService"
 import { boardPath } from "./boardUrl"
 import type { Moodboard } from "@/services/collections/collectionsService"
@@ -79,23 +78,8 @@ export function CollectionsPage() {
     [recentSavesQuery.data],
   )
 
-  // Product pins open the Studio save card (boards only) in a drawer.
-  const [productSaveId, setProductSaveId] = useState<string | null>(null)
-  const saveBoards = useMemo(
-    () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites").map((m) => ({ slug: m.slug, label: m.label })),
-    [moodboards],
-  )
-  const productBoardSlugs = productSaveId ? productSaveActions.getProductBoardSlugs(productSaveId) : []
-  const handleSaveProduct = async (boardSlugs: string[]) => {
-    if (!productSaveId) return
-    try {
-      await productSaveActions.onSaveToBoards(productSaveId, boardSlugs)
-      setProductSaveId(null)
-      toast({ title: boardSlugs.length ? "Saved" : "Removed from boards" })
-    } catch {
-      // onSaveToBoards has already toasted; keep the card open to retry.
-    }
-  }
+  // Product pins open the shared save tray.
+  const { openPieceSave } = useSaveTray()
   const { gender: profileGender, heightCm, profile } = useProfileContext()
 
   useEffect(() => {
@@ -244,7 +228,7 @@ export function CollectionsPage() {
       case "moodboards":
         return renderMoodboards(orderedMoodboards)
       case "products":
-        return <ProductsTab saveActions={productSaveActions} onSave={setProductSaveId} />
+        return <ProductsTab saveActions={productSaveActions} onSave={(id) => openPieceSave(id)} />
       default:
         return null
     }
@@ -302,28 +286,6 @@ export function CollectionsPage() {
         title="Create or select a moodboard"
       />
 
-      <Drawer open={productSaveId !== null} onOpenChange={(open) => !open && setProductSaveId(null)}>
-        {/* Studio's column width, so the card and its buttons match the studio card. */}
-        <DrawerContent className="mx-auto w-full max-w-sm">
-          <DrawerTitle className="sr-only">Save to boards</DrawerTitle>
-          <DrawerDescription className="sr-only">Pick the boards this piece is saved to.</DrawerDescription>
-          {/* Block, not flex — a flex row let the card grow to the chip rail's
-              full width and pushed Cancel off screen. Matches Studio's container. */}
-          {productSaveId ? (
-            <div className="px-4 pb-6 pt-4">
-              <StudioSaveCard
-                key={productSaveId}
-                boards={saveBoards}
-                defaultBoardSlugs={productBoardSlugs.length ? productBoardSlugs : ["favorites"]}
-                isSaving={productSaveActions.isSaving}
-                onSave={(data) => void handleSaveProduct(data.boardSlugs)}
-                onCancel={() => setProductSaveId(null)}
-                onCreateBoard={(name) => createMoodboardMutation.mutateAsync(name).then((res) => res.slug)}
-              />
-            </div>
-          ) : null}
-        </DrawerContent>
-      </Drawer>
     </AppShellLayout>
   )
 }

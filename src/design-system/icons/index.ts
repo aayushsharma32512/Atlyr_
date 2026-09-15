@@ -37,17 +37,14 @@ import {
   X,
 } from "lucide-react";
 
-import { BottomsGlyph, HangerGlyph, ShoeGlyph, StudioGlyph } from "./glyphs";
+import { BottomsGlyph, HangerGlyph, ShoeGlyph } from "./glyphs";
 
 export const Icons = {
   // V2 (design doc, Sep 2026): the save/favourite icon is the HEART
   // everywhere — it replaced the pin. Filled + violet = saved.
   save: Heart,
-
-  // "studio" buttons across the app. Deliberately not navStudio: the nav
-  // mark is lucide's multi-sparkle and stays violet, while buttons take the
-  // V2 frames' own glyph — a 4-point star with compass ticks.
-  studio: StudioGlyph,
+  // "studio" buttons across the app — the same sparkles as the nav tab.
+  studio: Sparkles,
 
   tryOn: SquareUserRound,
   // Try-on button, states 2 and 3 (V2 "try on button · 3 states"):

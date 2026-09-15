@@ -12,10 +12,11 @@ export interface FeedHandlers {
   onOpenLook: (look: FeedLook, layout: FeedLayout, position: number) => void
   onOpenPiece: (piece: FeedPiece, layout: FeedLayout, position: number) => void
   isLookSaved: (outfitId: string) => boolean
-  onToggleLookSave: (outfitId: string, next: boolean) => void
-  onLongPressLookSave: (outfitId: string) => void
+  /** Both open the save tray; the heart no longer toggles in place. */
+  onToggleLookSave: (look: FeedLook) => void
+  onLongPressLookSave: (look: FeedLook) => void
   isPieceSaved: (productId: string) => boolean
-  onTogglePieceSave: (productId: string, next: boolean) => void
+  onTogglePieceSave: (productId: string) => void
   onLongPressPieceSave: (productId: string) => void
 }
 
@@ -53,8 +54,8 @@ export function SearchRail(props: SearchRailProps) {
             heightCm={heightCm}
             saved={saved}
             onSelect={() => handlers.onOpenLook(look, "horizontal_rail", index)}
-            onToggleSave={() => handlers.onToggleLookSave(look.outfit.id, !saved)}
-            onLongPressSave={() => handlers.onLongPressLookSave(look.outfit.id)}
+            onToggleSave={() => handlers.onToggleLookSave(look)}
+            onLongPressSave={() => handlers.onLongPressLookSave(look)}
           />
         </div>
       )
@@ -72,7 +73,7 @@ export function SearchRail(props: SearchRailProps) {
             saved={saved}
             cropToContent
             onSelect={() => handlers.onOpenPiece(piece, "horizontal_rail", index)}
-            onToggleSave={() => handlers.onTogglePieceSave(piece.id, !saved)}
+            onToggleSave={() => handlers.onTogglePieceSave(piece.id)}
             onLongPressSave={() => handlers.onLongPressPieceSave(piece.id)}
           />
         </div>

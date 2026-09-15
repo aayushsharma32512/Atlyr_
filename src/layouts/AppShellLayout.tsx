@@ -12,6 +12,7 @@ import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { useAuth } from "@/contexts/AuthContext"
 import { useGuest } from "@/contexts/GuestContext"
 import { useStudioShareMode } from "@/features/studio/hooks/useStudioShareMode"
+import { useSaveTray } from "@/features/collections/providers/SaveTrayProvider"
 import { readReturnTo } from "@/utils/returnTo"
 
 interface AppShellLayoutProps {
@@ -27,6 +28,7 @@ export function AppShellLayout({ children, hideNav = false }: AppShellLayoutProp
   const { user } = useAuth()
   const { guestState } = useGuest()
   const { isViewOnly } = useStudioShareMode()
+  const { isOpen: isSaveTrayOpen } = useSaveTray()
 
   const activeId = getActiveNavId(location.pathname, location.search)
 
@@ -70,7 +72,8 @@ export function AppShellLayout({ children, hideNav = false }: AppShellLayoutProp
   }
 
   // The padding only exists to clear the bar, so it goes when the bar does.
-  const showNav = !isViewOnly && !hideNav
+  // The save tray owns the bottom of the screen while it is up, as on Studio.
+  const showNav = !isViewOnly && !hideNav && !isSaveTrayOpen
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
