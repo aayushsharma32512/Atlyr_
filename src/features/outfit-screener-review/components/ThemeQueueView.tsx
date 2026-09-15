@@ -228,7 +228,7 @@ export function ThemeQueueView({ themeId, onBack }: ThemeQueueViewProps) {
                             <Button
                                 size="lg"
                                 variant="outline"
-                                className="border-2 border-violet text-foreground"
+                                className="border-2 border-violet bg-white text-foreground hover:bg-white active:bg-violet/10"
                                 disabled={isExiting}
                                 onClick={() => currentPair && commitDecision("rejected", currentPair, "tap")}
                             >
@@ -238,7 +238,7 @@ export function ThemeQueueView({ themeId, onBack }: ThemeQueueViewProps) {
                             <Button
                                 size="lg"
                                 variant="outline"
-                                className="border-2 border-ink text-foreground"
+                                className="border-2 border-ink bg-white text-foreground hover:bg-white active:bg-ink/10"
                                 disabled={isExiting}
                                 onClick={() => currentPair && commitDecision("accepted", currentPair, "tap")}
                             >
