@@ -12,12 +12,12 @@ export default function OutfitScreenerDashboard() {
     const [selectedThemeId, setSelectedThemeId] = useState<string | null>(null)
 
     return (
-        <AppShellLayout>
+        <AppShellLayout hideNav>
             <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-6">
                 <div>
-                    <h1 className="text-2xl font-semibold text-foreground">Outfit Screener</h1>
+                    <h1 className="font-display text-2xl font-medium text-foreground">Outfit Screener</h1>
                     <p className="text-sm text-muted-foreground">
-                        Review generated top/bottom pairings, theme by theme. Accept or reject one at a time.
+                        Trust your eye — swipe right to <span className="text-violet">keep</span>, left to pass.
                     </p>
                 </div>
 

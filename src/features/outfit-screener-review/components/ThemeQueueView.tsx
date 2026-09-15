@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
+import { motion, animate, useMotionValue, type PanInfo } from "framer-motion"
 import { ChevronLeft, CheckCircle, XCircle } from "lucide-react"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
@@ -28,11 +30,21 @@ function effectiveShoesFor(pair: OutfitCandidatePair, themeChosenShoesId: string
     return themeChosenShoesId ?? null
 }
 
+// Drag past this offset (px) or flick past this velocity (px/s) commits the
+// swipe; short of both, the card springs back to center.
+const SWIPE_OFFSET_THRESHOLD = 120
+const SWIPE_VELOCITY_THRESHOLD = 600
+// Clears the card's own max-w-sm frame with room to spare on any phone.
+const EXIT_DISTANCE = 480
+const EXIT_TRANSITION = { duration: 0.25, ease: "easeOut" } as const
+const RETURN_TRANSITION = { type: "spring", stiffness: 420, damping: 34 } as const
+
 /**
  * One theme's review queue. Shows the best-remaining pair as a live
- * composite with two big buttons; accepting or rejecting advances to the
- * next pair immediately — the RPC call and the queue refresh happen in the
- * background so the tap-through loop never waits on the network.
+ * composite; a swipe or a button tap decides it, the card animates off in
+ * that direction, and the next pair takes its place. The RPC call and the
+ * queue refresh happen in the background so the tap-through loop never
+ * waits on the network.
  */
 export function ThemeQueueView({ themeId, onBack }: ThemeQueueViewProps) {
     const queryClient = useQueryClient()
@@ -42,16 +54,22 @@ export function ThemeQueueView({ themeId, onBack }: ThemeQueueViewProps) {
     const overrideMutation = useSetPairShoesOverride(themeId)
 
     // Pairs the reviewer has already decided in this session, removed from the
-    // queue on tap rather than waiting for the server round trip.
+    // queue once the exit animation finishes rather than waiting on the server.
     const [removedIds, setRemovedIds] = useState<Set<string>>(new Set())
-    // Guards against a double-tap firing decide_outfit_candidate twice for the
-    // same pair before the next render swaps in a new "current" pair.
+    // Guards against a double-tap/double-swipe firing decide_outfit_candidate
+    // twice for the same pair before its exit animation clears it from the queue.
     const submittedIdsRef = useRef<Set<string>>(new Set())
+    // Horizontal position of the current composite card; driven by drag and,
+    // for a button tap, by the imperative exit animation below.
+    const cardX = useMotionValue(0)
+    const [isExiting, setIsExiting] = useState(false)
 
     useEffect(() => {
         setRemovedIds(new Set())
         submittedIdsRef.current = new Set()
-    }, [themeId])
+        cardX.set(0)
+        setIsExiting(false)
+    }, [themeId, cardX])
 
     const remainingPairs = useMemo(
         () => (pairs ?? []).filter((pair) => !removedIds.has(pair.id)),
@@ -83,12 +101,19 @@ export function ThemeQueueView({ themeId, onBack }: ThemeQueueViewProps) {
         })
     }, [nextPair, theme?.chosen_shoes_id, queryClient])
 
-    const handleDecide = (decision: CandidateDecision) => {
-        if (!currentPair) return
-        const candidateId = currentPair.id
+    // Single path for both a button tap and a swipe: persists the decision in
+    // the background, then plays the same off-screen exit before the queue
+    // actually advances. A tap also gets a toast — a swipe's own motion is
+    // feedback enough.
+    const commitDecision = (
+        decision: CandidateDecision,
+        pair: OutfitCandidatePair,
+        source: "tap" | "swipe",
+    ) => {
+        const candidateId = pair.id
         if (submittedIdsRef.current.has(candidateId)) return
         submittedIdsRef.current.add(candidateId)
-        setRemovedIds((prev) => new Set(prev).add(candidateId))
+
         decideMutation.mutate(
             { candidateId, decision },
             {
@@ -102,6 +127,29 @@ export function ThemeQueueView({ themeId, onBack }: ThemeQueueViewProps) {
                 },
             },
         )
+
+        if (source === "tap") {
+            toast.success(decision === "accepted" ? "Accepted" : "Rejected")
+        }
+
+        setIsExiting(true)
+        const exitTarget = decision === "accepted" ? EXIT_DISTANCE : -EXIT_DISTANCE
+        animate(cardX, exitTarget, EXIT_TRANSITION).then(() => {
+            setRemovedIds((prev) => new Set(prev).add(candidateId))
+            cardX.set(0)
+            setIsExiting(false)
+        })
+    }
+
+    const handleDragEnd = (_event: PointerEvent | MouseEvent | TouchEvent, info: PanInfo) => {
+        if (!currentPair || isExiting) return
+        const pastOffset = Math.abs(info.offset.x) > SWIPE_OFFSET_THRESHOLD
+        const pastVelocity = Math.abs(info.velocity.x) > SWIPE_VELOCITY_THRESHOLD
+        if (pastOffset || pastVelocity) {
+            commitDecision(info.offset.x > 0 ? "accepted" : "rejected", currentPair, "swipe")
+        } else {
+            animate(cardX, 0, RETURN_TRANSITION)
+        }
     }
 
     const handleOverride = (shoesId: string | null) => {
@@ -110,7 +158,7 @@ export function ThemeQueueView({ themeId, onBack }: ThemeQueueViewProps) {
     }
 
     return (
-        <div className="flex flex-1 flex-col gap-4">
+        <div className="flex flex-1 flex-col gap-4 pb-[calc(6rem+env(safe-area-inset-bottom,0px))]">
             <div className="flex items-center justify-between">
                 <Button variant="ghost" size="sm" onClick={onBack}>
                     <ChevronLeft className="mr-1 h-4 w-4" />
@@ -140,7 +188,12 @@ export function ThemeQueueView({ themeId, onBack }: ThemeQueueViewProps) {
                 </div>
             ) : (
                 <>
-                    <div className="mx-auto aspect-[3/4] w-full max-w-sm overflow-hidden rounded-lg border border-border bg-muted/10">
+                    <motion.div
+                        className="mx-auto aspect-[3/4] w-full max-w-sm touch-pan-y overflow-hidden rounded-lg border border-border bg-muted/10"
+                        style={{ x: cardX }}
+                        drag={isExiting ? false : "x"}
+                        onDragEnd={handleDragEnd}
+                    >
                         {composite.isLoading ? (
                             <div className="flex h-full w-full items-center justify-center">
                                 <LoadingSpinner />
@@ -159,7 +212,7 @@ export function ThemeQueueView({ themeId, onBack }: ThemeQueueViewProps) {
                                 cardClassName="h-full w-full"
                             />
                         )}
-                    </div>
+                    </motion.div>
 
                     <PairShoeOverride
                         pair={currentPair}
@@ -168,19 +221,31 @@ export function ThemeQueueView({ themeId, onBack }: ThemeQueueViewProps) {
                         onOverride={handleOverride}
                     />
 
-                    <div className="grid grid-cols-2 gap-3">
-                        <Button size="lg" variant="destructive" onClick={() => handleDecide("rejected")}>
-                            <XCircle className="mr-2 h-5 w-5" />
-                            Reject
-                        </Button>
-                        <Button
-                            size="lg"
-                            className="bg-green-600 text-white hover:bg-green-700"
-                            onClick={() => handleDecide("accepted")}
-                        >
-                            <CheckCircle className="mr-2 h-5 w-5" />
-                            Accept
-                        </Button>
+                    {/* Sits where the app's tab bar normally does — this page hides it via
+                        hideNav so the whole bottom edge belongs to the decision itself. */}
+                    <div className="fixed inset-x-0 bottom-0 z-20 border-t border-hairline bg-background/95 px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-3 backdrop-blur">
+                        <div className="mx-auto grid max-w-sm grid-cols-2 gap-3">
+                            <Button
+                                size="lg"
+                                variant="outline"
+                                className="border-2 border-violet text-foreground"
+                                disabled={isExiting}
+                                onClick={() => currentPair && commitDecision("rejected", currentPair, "tap")}
+                            >
+                                <XCircle className="mr-2 h-5 w-5" />
+                                Reject
+                            </Button>
+                            <Button
+                                size="lg"
+                                variant="outline"
+                                className="border-2 border-ink text-foreground"
+                                disabled={isExiting}
+                                onClick={() => currentPair && commitDecision("accepted", currentPair, "tap")}
+                            >
+                                <CheckCircle className="mr-2 h-5 w-5" />
+                                Accept
+                            </Button>
+                        </div>
                     </div>
                 </>
             )}
