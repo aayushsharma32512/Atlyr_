@@ -12,9 +12,6 @@ export interface AlternatesRackProps {
   queryLine?: string | null
   onClearQuery?: () => void
   onSelect?: (product: StudioAlternativeProduct) => void
-  isProductSaved?: (productId: string) => boolean
-  onToggleSave?: (productId: string, nextSaved: boolean) => void
-  onLongPressSave?: (productId: string) => void
   emptyLabel?: string
   /** Only the catalogue rack ends with it — see the note by the button. */
   showWebSearch?: boolean
@@ -34,9 +31,6 @@ export function AlternatesRack({
   queryLine = null,
   onClearQuery,
   onSelect,
-  isProductSaved,
-  onToggleSave,
-  onLongPressSave,
   emptyLabel = "Nothing in this slot yet",
   showWebSearch = false,
   onWebSearch,
@@ -80,14 +74,10 @@ export function AlternatesRack({
                 title={product.title}
                 imageSrc={product.imageSrc ?? product.imageUrl ?? null}
                 worn={product.id === wornProductId}
-                saved={isProductSaved?.(product.id) ?? false}
+                // The save card that opens on tap already covers saving; a second
+                // heart per tile was redundant.
+                mark={false}
                 onSelect={onSelect ? () => onSelect(product) : undefined}
-                onToggleSave={
-                  onToggleSave
-                    ? () => onToggleSave(product.id, !(isProductSaved?.(product.id) ?? false))
-                    : undefined
-                }
-                onLongPressSave={onLongPressSave ? () => onLongPressSave(product.id) : undefined}
               />
             ))}
           </div>

@@ -1388,8 +1388,6 @@ export function StudioAlternativesView() {
                 showWebSearch={source === "explore"}
                 onWebSearch={handleWebSearch}
                 onSelect={isViewOnly ? undefined : (product) => void handleAlternativeSelect(product)}
-                isProductSaved={productSaveActions.isSaved}
-                onToggleSave={isViewOnly ? undefined : openProductSave}
               />
 
               {isSearchOpen ? null : (
