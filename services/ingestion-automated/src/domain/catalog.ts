@@ -248,7 +248,8 @@ export function buildCatalogRow(
     // Fall back to the enrichment color_group when the scrape found no color (was 'NA' before).
     color: (c.color as string) || str(e.color_group) || 'NA',
     gender: job.product_gender_type,
-    product_name: (c.product_name as string) ?? null,
+    // Prefer the AI-cleaned name (3-5 words) over the retailer's raw scraped title.
+    product_name: str(e.product_name_suggestion) || (c.product_name as string) || null,
     // Prefer the enrichment's specific type_category (e.g. "Oversized T-shirt") over the raw sub_type.
     type_category: str(e.type_category) || job.product_sub_type || null,
     product_url: job.product_url,
