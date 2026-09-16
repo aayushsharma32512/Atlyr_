@@ -230,7 +230,16 @@ export function OutfitInspirationCard({
   // omits placement, so trusting that array left the card with an unplaceable
   // outfit. Treating it as incomplete lets the card fetch the real product rows,
   // which do carry placement and the webp thumbnail.
-  const hasExplicitRenderedItems = renderedItems != null && renderedItems.some((it) => it.placement)
+  //
+  // A caller that has genuinely cleared every slot passes an EMPTY array on
+  // purpose, and `.some()` on an empty array is always false — indistinguishable,
+  // by this check alone, from "nothing usable was passed, go fetch the saved
+  // outfit instead." Without the allowEmptyMannequin escape hatch, clearing every
+  // slot silently re-fetched and re-rendered the outfit exactly as saved in the
+  // DB, ignoring the caller's empty array entirely.
+  const hasExplicitRenderedItems =
+    renderedItems != null &&
+    (renderedItems.some((it) => it.placement) || (allowEmptyMannequin && renderedItems.length === 0))
   const shouldFetchOutfitProducts = Boolean(outfitId) && !hasExplicitRenderedItems
 
   const outfitProducts = useOutfitProducts({
