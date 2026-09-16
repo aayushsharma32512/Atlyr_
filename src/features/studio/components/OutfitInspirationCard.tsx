@@ -260,7 +260,7 @@ export function OutfitInspirationCard({
     return []
   }, [hasExplicitRenderedItems, hookDerivedItems, renderedItems])
   // AvatarRenderer normally decides from placement data. Dedicated preview surfaces can override
-  // that choice (for example, the import flow shows the current 3D mannequin while it is empty).
+  // that choice via allowEmptyMannequin (Studio's base-items toggle is the current user of this).
   const visibleSegments = useMemo(() => {
     if (hookDerivedItems.length) {
       return computeOutfitVisibleSegments(hookDerivedItems)

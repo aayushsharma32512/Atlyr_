@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react"
+import { Icons } from "@/design-system/icons"
 import { OutfitInspirationTile } from "@/design-system/primitives/outfit-inspiration-tile"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { getImportAvatarPlacementMode } from "@/features/inspiration-import/previewPlacementMode"
@@ -77,6 +78,14 @@ export function ImportMannequinPreview({ inventoryChoices, activeCategory, activ
             className="h-full w-full object-cover object-center"
           />
         </div>
+      ) : renderedItems.length === 0 ? (
+        // Nothing to preview yet (no pick, or the focused category has zero
+        // catalogue matches) — a bare or base-item mannequin here looked like
+        // a rendering glitch, since nothing was actually chosen.
+        <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-taupe">
+          <Icons.image className="h-6 w-6" aria-hidden="true" />
+          <span className="text-chip">no match yet</span>
+        </div>
       ) : (
         <div className={`absolute transition-[inset] duration-200 ${mannequinCropClass}`} style={mannequinCropStyle}>
           <OutfitInspirationTile
@@ -85,7 +94,7 @@ export function ImportMannequinPreview({ inventoryChoices, activeCategory, activ
             title="Garment preview"
             avatarGender={viewerGender}
             avatarHeightCm={heightCm ?? undefined}
-            allowEmptyMannequin
+            allowEmptyMannequin={false}
             avatarPlacementMode={avatarPlacementMode}
             onItemBoundsChange={handleItemBoundsChange}
             wrapperClassName="h-full w-full"
