@@ -1766,40 +1766,7 @@ export function HomeScreenView() {
                 ) : null}
               </>
             ) : isItemMoodboardActive ? (
-              <>
-                {renderMoodboardItemsContent()}
-                {/* Discovery tail — pins keyed to this board's taste (canvas 6f).
-                    Seeded from the For-you feed for now. */}
-                {moodboardItems.length > 0 && filteredCuratedItems.length > 0 ? (
-                  <>
-                    <div className="flex items-center gap-2 px-2 pt-2">
-                      <span className="h-px flex-1 bg-hairline" />
-                      <span className="text-[7.5px] font-semibold uppercase tracking-[0.16em] text-taupe">
-                        More like this board
-                      </span>
-                      <span className="h-px flex-1 bg-hairline" />
-                    </div>
-                    <div className="px-1 pb-2">
-                      <OutfitInspirationGrid
-                        items={filteredCuratedItems.slice(0, 8)}
-                        columns={feedColumns}
-                        layoutMode="balanced"
-                        cardTotalHeight={320}
-                        cardPreset="homeCurated"
-                        stagger
-                        onCardSelect={(item) => item.outfit && launchStudio(item.outfit)}
-                        onToggleSave={(item, nextSaved) => {
-                          const outfitId = item.outfitId ?? item.outfit?.id ?? null
-                          // Direct call, not handleToggleOutfitById: this rail only ever
-                          // renders on a board's own page, so the board is always the
-                          // right default pick for a look with no saves yet.
-                          if (outfitId) openLookSave(outfitId, { section: "board_discovery" }, activeMoodboardId)
-                        }}
-                      />
-                    </div>
-                  </>
-                ) : null}
-              </>
+              renderMoodboardItemsContent()
             ) : (
               <>
                 {filteredCuratedItems.length >= 2 ? (
