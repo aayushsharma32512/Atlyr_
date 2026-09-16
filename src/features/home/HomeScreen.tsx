@@ -431,6 +431,72 @@ export function HomeScreenView() {
     [activeMoodboardId, moodboardTabs],
   )
 
+  // Sits in the header's title row in place of "<name>'s boards" — back · name ·
+  // save count — so the sticky bar carries board identity, not just its tabs.
+  // "for-you" has no board identity of its own, so the header falls back to the
+  // owner title there, same as it always has.
+  const boardDetailTitleContent = useMemo(() => {
+    const onBack = () => navigate("/collection")
+    const onDeleted = () => navigate("/collection")
+    if (activeMoodboardId === "try-ons") {
+      return (
+        <BoardDetailHeader
+          slug="try-ons"
+          label="try-ons"
+          itemCount={tryOnItems.length}
+          canManage={false}
+          onBack={onBack}
+          onDeleted={onDeleted}
+        />
+      )
+    }
+    if (activeMoodboardId === "favorites") {
+      return (
+        <BoardDetailHeader
+          slug="favorites"
+          label="favorites"
+          itemCount={favoritesItems.length}
+          canManage={false}
+          onBack={onBack}
+          onDeleted={onDeleted}
+        />
+      )
+    }
+    if (activeMoodboardId === "all-outfits") {
+      return (
+        <BoardDetailHeader
+          slug="all-outfits"
+          label="all outfits"
+          canManage={false}
+          onBack={onBack}
+          onDeleted={onDeleted}
+        />
+      )
+    }
+    if (isItemMoodboardActive) {
+      return (
+        <BoardDetailHeader
+          slug={activeMoodboardId}
+          label={activeMoodboardLabel}
+          itemCount={moodboardItems.length}
+          canManage={isUserMoodboardActive}
+          onBack={onBack}
+          onDeleted={onDeleted}
+        />
+      )
+    }
+    return undefined
+  }, [
+    activeMoodboardId,
+    activeMoodboardLabel,
+    favoritesItems.length,
+    isItemMoodboardActive,
+    isUserMoodboardActive,
+    moodboardItems.length,
+    navigate,
+    tryOnItems.length,
+  ])
+
   const scrollHomeToTop = useCallback(() => {
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTo({ top: 0, behavior: "auto" })
@@ -1495,19 +1561,6 @@ export function HomeScreenView() {
             })
             handleProductSelect(productId)
           }}
-          isProductSaved={productSaveActions.isSaved}
-          onToggleProductSave={(productId, nextSaved) =>
-            productSaveActions.onToggleSave(productId, nextSaved, {
-              layout: "vertical_grid",
-              position: moodboardItemPositionByKey.get(`product:${productId}`),
-            })
-          }
-          onLongPressProductSave={(productId) =>
-            productSaveActions.onLongPressSave(productId, {
-              layout: "vertical_grid",
-              position: moodboardItemPositionByKey.get(`product:${productId}`),
-            })
-          }
           onRemoveProductFromCurrentMoodboard={handleRemoveProductFromMoodboard}
           onRemoveProductFromAll={handleRemoveProductFromAll}
         />
@@ -1587,19 +1640,6 @@ export function HomeScreenView() {
             })
             handleProductSelect(productId)
           }}
-          isProductSaved={productSaveActions.isSaved}
-          onToggleProductSave={(productId, nextSaved) =>
-            productSaveActions.onToggleSave(productId, nextSaved, {
-              layout: "vertical_grid",
-              position: favoritesItemPositionByKey.get(`product:${productId}`),
-            })
-          }
-          onLongPressProductSave={(productId) =>
-            productSaveActions.onLongPressSave(productId, {
-              layout: "vertical_grid",
-              position: favoritesItemPositionByKey.get(`product:${productId}`),
-            })
-          }
           onRemoveProductFromCurrentMoodboard={handleRemoveProductFromMoodboard}
           onRemoveProductFromAll={handleRemoveProductFromAll}
         />
@@ -1649,6 +1689,7 @@ export function HomeScreenView() {
                 purely to reserve its height (see CollectionsPage). */}
             <CollectionsHeader
               ownerName={profile?.name ?? null}
+              titleContent={boardDetailTitleContent}
               activeTab={activeMoodboardId}
               onTabChange={handleMoodboardSelect}
               tabs={moodboardTabs}
@@ -1658,6 +1699,7 @@ export function HomeScreenView() {
             />
             <CollectionsHeader
               ownerName={profile?.name ?? null}
+              titleContent={boardDetailTitleContent}
               activeTab={activeMoodboardId}
               onTabChange={() => {}}
               tabs={moodboardTabs}
@@ -1670,38 +1712,11 @@ export function HomeScreenView() {
               className="flex flex-1 min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-24"
             >
             {activeMoodboardId === "try-ons" ? (
-              <>
-                <BoardDetailHeader
-                  slug="try-ons"
-                  label="try-ons"
-                  itemCount={tryOnItems.length}
-                  canManage={false}
-                  onBack={() => navigate("/collection")}
-                  onDeleted={() => navigate("/collection")}
-                />
-                {renderTryOnsContent()}
-              </>
+              renderTryOnsContent()
             ) : activeMoodboardId === "favorites" ? (
-              <>
-                <BoardDetailHeader
-                  slug="favorites"
-                  label="favorites"
-                  itemCount={favoritesItems.length}
-                  canManage={false}
-                  onBack={() => navigate("/collection")}
-                  onDeleted={() => navigate("/collection")}
-                />
-                {renderFavoritesItemsContent()}
-              </>
+              renderFavoritesItemsContent()
             ) : activeMoodboardId === "all-outfits" ? (
               <>
-                <BoardDetailHeader
-                  slug="all-outfits"
-                  label="all outfits"
-                  canManage={false}
-                  onBack={() => navigate("/collection")}
-                  onDeleted={() => navigate("/collection")}
-                />
                 <div className="flex items-center justify-between">
                   <SectionHeader title="Sort" />
                   <div className="flex gap-1 pb-1">
@@ -1743,14 +1758,6 @@ export function HomeScreenView() {
               </>
             ) : isItemMoodboardActive ? (
               <>
-                <BoardDetailHeader
-                  slug={activeMoodboardId}
-                  label={activeMoodboardLabel}
-                  itemCount={moodboardItems.length}
-                  canManage={isUserMoodboardActive}
-                  onBack={() => navigate("/collection")}
-                  onDeleted={() => navigate("/collection")}
-                />
                 {renderMoodboardItemsContent()}
                 {/* Discovery tail — pins keyed to this board's taste (canvas 6f).
                     Seeded from the For-you feed for now. */}

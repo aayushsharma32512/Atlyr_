@@ -26,9 +26,6 @@ type MixedMasonryGridProps = {
   onRemoveFromCurrentMoodboard?: (outfitId: string) => void
   onRemoveFromAll?: (outfitId: string) => void
   onProductSelect?: (productId: string) => void
-  isProductSaved?: (productId: string) => boolean
-  onToggleProductSave?: (productId: string, nextSaved: boolean) => void
-  onLongPressProductSave?: (productId: string) => void
   onRemoveProductFromCurrentMoodboard?: (productId: string) => void
   onRemoveProductFromAll?: (productId: string) => void
   getOutfitWrapperRef?: (outfitId: string) => RefCallback<HTMLDivElement> | undefined
@@ -48,9 +45,6 @@ export function MixedMasonryGrid({
   onRemoveFromCurrentMoodboard,
   onRemoveFromAll,
   onProductSelect,
-  isProductSaved,
-  onToggleProductSave,
-  onLongPressProductSave,
   onRemoveProductFromCurrentMoodboard,
   onRemoveProductFromAll,
   getOutfitWrapperRef,
@@ -93,7 +87,6 @@ export function MixedMasonryGrid({
       )
     }
 
-    const saved = isProductSaved ? isProductSaved(item.id) : false
     return (
       <div
         key={`${item.itemType}-${item.id}-${item.createdAt}`}
@@ -101,11 +94,8 @@ export function MixedMasonryGrid({
       >
         <ProductMasonryCard
           item={item}
-          saved={saved}
           collectionLabel={collectionLabel}
           onProductSelect={onProductSelect}
-          onToggleProductSave={onToggleProductSave}
-          onLongPressProductSave={onLongPressProductSave}
           onRemoveFromCurrentMoodboard={
             onRemoveProductFromCurrentMoodboard ? () => onRemoveProductFromCurrentMoodboard(item.id) : undefined
           }
@@ -216,24 +206,19 @@ function OutfitMasonryCard({
 
 type ProductMasonryCardProps = {
   item: Extract<MoodboardItem, { itemType: "product" }>
-  saved: boolean
   collectionLabel?: string
   onProductSelect?: (productId: string) => void
-  onToggleProductSave?: (productId: string, nextSaved: boolean) => void
-  onLongPressProductSave?: (productId: string) => void
   onRemoveFromCurrentMoodboard?: () => void
   onRemoveFromAll?: () => void
   getProductWrapperRef?: (productId: string) => RefCallback<HTMLDivElement> | undefined
 }
 
-/** Same card, same bottom-left dustbin as an outfit tile — just no three-dot: a product has no name/tags/occasion to edit. */
+/** Same card, same bottom-left dustbin as an outfit tile — no pin either: the
+ *  dustbin and the product page (behind onSelect) already cover saving. */
 function ProductMasonryCard({
   item,
-  saved,
   collectionLabel,
   onProductSelect,
-  onToggleProductSave,
-  onLongPressProductSave,
   onRemoveFromCurrentMoodboard,
   onRemoveFromAll,
   getProductWrapperRef,
@@ -246,24 +231,19 @@ function ProductMasonryCard({
       <ProductTile
         title={item.productName ?? "Piece"}
         imageSrc={item.imageUrl ?? null}
-        saved={saved}
+        mark={false}
         cropToContent
         onSelect={onProductSelect ? () => onProductSelect(item.id) : undefined}
-        onToggleSave={() => onToggleProductSave?.(item.id, !saved)}
-        onLongPressSave={() => onLongPressProductSave?.(item.id)}
       />
 
-      {/* Top-left, opening downward: unlike OutfitCard, ProductTile's name/price
-          sit outside the image as a real footer, so a bottom-anchored trigger
-          would float over that text instead of the picture. Mirrors the save
-          heart's top-right placement. */}
+      {/* Bottom-left, opening upward — same anchor as the outfit tile's dustbin. */}
       <RemoveOptionsMenu
         label="Remove piece"
         collectionLabel={collectionLabel}
         onRemoveFromCurrentMoodboard={onRemoveFromCurrentMoodboard}
         onRemoveFromAll={onRemoveFromAll}
-        triggerClassName="absolute top-2 left-2 z-10"
-        panelClassName="absolute left-0 top-full mt-1"
+        triggerClassName="absolute bottom-2 left-2 z-10"
+        panelClassName="absolute left-0 bottom-full mb-1"
       />
     </div>
   )

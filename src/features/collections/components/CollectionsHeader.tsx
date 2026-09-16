@@ -1,3 +1,5 @@
+import type { ReactNode } from "react"
+
 import { TabBar, type TabBarItem } from "@/design-system/primitives"
 import { cn } from "@/lib/utils"
 
@@ -5,7 +7,8 @@ interface CollectionsHeaderProps {
   activeTab: string
   onTabChange: (tab: string) => void
   /** The signed-in user's name; the title reads "<first>'s boards". Falls
-   *  back to "Your boards" while the profile loads or if the name is blank. */
+   *  back to "Your boards" while the profile loads or if the name is blank.
+   *  Ignored when `titleContent` is given. */
   ownerName?: string | null
   className?: string
   style?: React.CSSProperties
@@ -14,6 +17,9 @@ interface CollectionsHeaderProps {
   tabs?: TabBarItem[]
   tabsFit?: "equal" | "scroll"
   autoCenterActiveTab?: boolean
+  /** Replaces the "<name>'s boards" title — a board-detail page puts its own
+   *  back · name · save-count row here instead. */
+  titleContent?: ReactNode
 }
 
 // Lowercase per the V2 casing rule: tabs, pills, chips and button labels are
@@ -41,14 +47,17 @@ const CollectionsHeader = ({
   tabs = TABS,
   tabsFit = "equal",
   autoCenterActiveTab = false,
+  titleContent,
 }: CollectionsHeaderProps) => {
   return (
     <header className={cn("bg-background", className)} style={style}>
       {/* No header action — "+ New" is the first tile in the board grid. */}
       <div className="flex h-control-header-title items-center border-b border-hairline px-4">
-        <h1 className="min-w-0 flex-1 truncate font-display text-title font-medium text-ink">
-          {possessiveTitle(ownerName)}
-        </h1>
+        {titleContent ?? (
+          <h1 className="min-w-0 flex-1 truncate font-display text-title font-medium text-ink">
+            {possessiveTitle(ownerName)}
+          </h1>
+        )}
       </div>
       <TabBar
         items={tabs}

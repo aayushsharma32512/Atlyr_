@@ -26,7 +26,9 @@ interface BoardDetailHeaderProps {
 }
 
 /**
- * Board detail header — back · name · delete.
+ * Board detail header — back · name · save count · delete. Sits in
+ * CollectionsHeader's title row in place of the owner title, so it carries
+ * no padding of its own — the row it's embedded in already has it.
  *
  * The name is the edit affordance: tapping it swaps in an input, so there is no
  * pencil. Enter or blur commits, Escape restores. Delete is the only thing
@@ -111,7 +113,7 @@ export function BoardDetailHeader({
   }
 
   return (
-    <div className="flex items-center gap-2 px-1">
+    <div className="flex min-w-0 flex-1 items-center gap-2">
       <button
         type="button"
         onClick={onBack}
