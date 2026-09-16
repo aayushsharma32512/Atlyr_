@@ -53,7 +53,15 @@ const CollectionsHeader = ({
     <header className={cn("bg-background", className)} style={style}>
       {/* No header action — "+ New" is the first tile in the board grid. */}
       <div className="flex h-control-header-title items-center border-b border-hairline px-4">
-        {titleContent ?? (
+        {titleContent ? (
+          // Keyed on the active tab so React remounts this row on every board
+          // switch, not just the first time the header itself mounts — a plain
+          // CSS enter animation only plays on insertion, and without the key
+          // this node never gets reinserted after its first render.
+          <div key={activeTab} className="flex min-w-0 flex-1 animate-in fade-in-0 duration-200">
+            {titleContent}
+          </div>
+        ) : (
           <h1 className="min-w-0 flex-1 truncate font-display text-title font-medium text-ink">
             {possessiveTitle(ownerName)}
           </h1>

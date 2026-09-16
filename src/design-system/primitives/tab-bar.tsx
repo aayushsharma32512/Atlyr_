@@ -45,7 +45,10 @@ export function TabBar({
       buttonRect.left + buttonRect.width / 2 - (containerRect.left + containerRect.width / 2)
     if (Math.abs(offset) < 1) return
 
-    container.scrollBy({ left: offset, behavior: "smooth" })
+    // Instant, not smooth: a native smooth-scroll runs its own ~300-500ms
+    // timeline with no way to match it to the title's fade duration, so the
+    // two used to visibly race each other on every board switch.
+    container.scrollBy({ left: offset, behavior: "auto" })
   }, [activeId, autoCenterActive, scroll])
 
   useEffect(() => {
