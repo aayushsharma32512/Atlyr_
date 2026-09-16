@@ -31,9 +31,8 @@ export function AlternatesSearchButton({
       disabled={isReadOnly}
       onClick={onOpen}
       className={cn(
-        // In the column's flow, not floating over the tiles: the rack shrinks to
-        // make room, so the last row of tiles is never under the lens.
-        "mb-2 ml-auto mt-1.5 flex h-control-field w-control-field flex-none items-center justify-center",
+        // Floats over the tiles; the rack pads its bottom so the last row scrolls clear.
+        "absolute bottom-2 right-2 flex h-control-field w-control-field items-center justify-center",
         "rounded-control border border-hairline bg-white text-ink",
         "disabled:cursor-not-allowed disabled:opacity-40",
         className,
@@ -57,7 +56,6 @@ export interface AlternatesSearchBarProps {
   onClearThumb?: () => void
   /** Opens the reference-image dialog. */
   onOpenImagePicker?: () => void
-  onFilter?: () => void
   className?: string
 }
 
@@ -82,7 +80,6 @@ export function AlternatesSearchBar({
   thumbSrc,
   onClearThumb,
   onOpenImagePicker,
-  onFilter,
   className,
 }: AlternatesSearchBarProps) {
   const barRef = useRef<HTMLDivElement>(null)
@@ -138,18 +135,9 @@ export function AlternatesSearchBar({
       className={cn("absolute inset-x-2 z-[7]", className)}
       style={{ bottom: RESTING_GAP, transform: lift ? `translateY(${-lift}px)` : undefined }}
     >
-      <div className="flex h-control-field w-full items-center gap-1.5 rounded-control border border-hairline bg-white px-1">
-        {onFilter ? (
-          <button
-            type="button"
-            aria-label="Filters"
-            onClick={onFilter}
-            className="flex h-8 w-8 shrink-0 items-center justify-center text-ink"
-          >
-            <Icons.filter className="h-[18px] w-[18px]" aria-hidden="true" />
-          </button>
-        ) : null}
-
+      {/* No right padding: the lens square at the end sits exactly where the
+          collapsed button was, so opening the bar does not move it. */}
+      <div className="flex h-control-field w-full items-center gap-1.5 rounded-control border border-hairline bg-white pl-3">
         {thumbSrc ? (
           <span className="inline-flex h-control-chip shrink-0 items-center gap-1.5 rounded-control border border-hairline bg-background pl-0.5 pr-1.5">
             <img src={thumbSrc} alt="Reference" className="h-5 w-5 rounded-badge object-cover" />
@@ -197,11 +185,13 @@ export function AlternatesSearchBar({
           type="button"
           aria-label="Import an image"
           onClick={onOpenImagePicker}
-          className="flex h-8 w-8 shrink-0 items-center justify-center text-ink"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-control bg-ink text-background"
         >
-          <Icons.camera className="h-[18px] w-[18px]" aria-hidden="true" />
+          <Icons.camera className="h-5 w-5" aria-hidden="true" />
         </button>
 
+        {/* Same 40px box as the collapsed lens, so the icon does not move when
+            the bar opens; the bar's own border stands in for the lens's. */}
         <button
           type="button"
           aria-label="Search"
@@ -209,9 +199,9 @@ export function AlternatesSearchBar({
             onSubmit()
             close()
           }}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-control bg-ink text-background"
+          className="flex h-control-field w-control-field shrink-0 items-center justify-center text-ink"
         >
-          <Icons.search className="h-[18px] w-[18px]" aria-hidden="true" />
+          <Icons.search className="h-5 w-5" aria-hidden="true" />
         </button>
       </div>
     </div>

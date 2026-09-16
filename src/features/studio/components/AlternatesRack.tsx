@@ -54,8 +54,9 @@ export function AlternatesRack({
         </div>
       ) : null}
 
-      {/* No right padding: with the scrollbar gone the tiles run to the edge. */}
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-2 pl-2 scrollbar-hide">
+      {/* No right padding: with the scrollbar gone the tiles run to the edge.
+          Bottom padding clears the floating search lens for the last row. */}
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-14 pl-2 pt-2 scrollbar-hide">
         {isLoading ? (
           <div className="grid grid-cols-2 content-start gap-1.5">
             {Array.from({ length: 6 }).map((_, index) => (
