@@ -78,4 +78,36 @@ export function useStudioAlternatives(
   })
 }
 
+/**
+ * The wardrobe rack for one slot: products saved to the wardrobe moodboard
+ * directly, plus the `slot` garment out of any outfit saved to the wardrobe
+ * moodboard. `productIds`/`outfitIds` come from the wardrobe entry of the
+ * product/outfit collection-membership maps already loaded for the ≡ chips.
+ */
+export function useStudioWardrobeAlternatives(
+  slot: StudioProductTraySlot | null,
+  productIds: string[],
+  outfitIds: string[],
+  opts?: { enabled?: boolean },
+) {
+  const queryKey = studioKeys.wardrobeAlternatives({
+    slot: slot ?? "none",
+    productIds,
+    outfitIds,
+  })
+
+  return useQuery<StudioAlternativeProduct[]>({
+    queryKey,
+    enabled: Boolean(slot) && (opts?.enabled ?? true),
+    queryFn: () => {
+      if (!slot) {
+        return Promise.resolve<StudioAlternativeProduct[]>([])
+      }
+      return studioService.getWardrobeAlternatives({ slot, productIds, outfitIds })
+    },
+    select: (data) => data ?? [],
+    staleTime: 30 * 1000,
+  })
+}
+
 

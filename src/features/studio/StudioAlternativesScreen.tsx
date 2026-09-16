@@ -27,7 +27,7 @@ import { selectRackProducts } from "./utils/rackOrder"
 import { useStudioContext } from "./context/StudioContext"
 import { useStudioOutfit } from "@/features/studio/hooks/useStudioOutfit"
 import { useStudioHeroProduct } from "@/features/studio/hooks/useStudioHeroProduct"
-import { useStudioAlternatives } from "@/features/studio/hooks/useStudioAlternatives"
+import { useStudioAlternatives, useStudioWardrobeAlternatives } from "@/features/studio/hooks/useStudioAlternatives"
 import { useStudioSwapActions } from "@/features/studio/hooks/useStudioSwapActions"
 import { useStudioSearch } from "@/features/studio/hooks/useStudioSearch"
 import { useStudioSearchResults } from "@/features/studio/hooks/useStudioSearchResults"
@@ -304,21 +304,43 @@ export function StudioAlternativesView() {
     )
   }, [alternativeProducts, activeCollectionSlugs, productCollectionMembership.data])
 
-  const isLoading = search.hasActiveSearch
-    ? searchResultsQuery.isLoading
-    : fallbackAlternativesQuery.isLoading
-
   /** Source lives in the URL. wardrobe→yours, explore→alternates (brief §7). */
   const source: StudioSource = parsedParams.source ?? "explore"
 
-  const rackProducts = useMemo(() => {
-    if (source === "wardrobe") {
-      return []
-    }
+  // The wardrobe moodboard holds both standalone products and whole outfits.
+  // The rack shows this slot's garment either way — a saved outfit is not a
+  // rack candidate itself, its top/bottom/shoes are.
+  const wardrobeProductIds = useMemo(
+    () => Array.from(productCollectionMembership.data?.wardrobe ?? []),
+    [productCollectionMembership.data],
+  )
+  const wardrobeOutfitIds = useMemo(
+    () => Array.from(outfitMembershipQuery.data?.wardrobe ?? []),
+    [outfitMembershipQuery.data],
+  )
+  const wardrobeAlternativesQuery = useStudioWardrobeAlternatives(slot, wardrobeProductIds, wardrobeOutfitIds, {
+    enabled: source === "wardrobe",
+  })
 
+  const isLoading =
+    source === "wardrobe"
+      ? wardrobeAlternativesQuery.isLoading
+      : search.hasActiveSearch
+        ? searchResultsQuery.isLoading
+        : fallbackAlternativesQuery.isLoading
+
+  const rackProducts = useMemo(() => {
     // Drop anything the photoreal mannequin cannot actually wear — see
     // isPlaceableOnMannequin. Applied to every slot.
     const mannequin = (outfitData?.avatarGender ?? adminGender ?? gender ?? "female") as "male" | "female"
+
+    if (source === "wardrobe") {
+      const wardrobeItems = wardrobeAlternativesQuery.data ?? []
+      return shouldFilterSlotByPlacement(slot)
+        ? wardrobeItems.filter((product) => isPlaceableOnMannequin(product, mannequin))
+        : wardrobeItems
+    }
+
     const placeable = shouldFilterSlotByPlacement(slot)
       ? filteredAlternativeProducts.filter((product) => isPlaceableOnMannequin(product, mannequin))
       : filteredAlternativeProducts
@@ -335,6 +357,7 @@ export function StudioAlternativesView() {
     productSaveActions,
     slot,
     source,
+    wardrobeAlternativesQuery.data,
   ])
 
   // --- FILTER OPTIONS ---
