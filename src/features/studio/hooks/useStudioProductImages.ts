@@ -17,6 +17,8 @@ export function useStudioProductImages(productId: string | null | undefined) {
             }
             return productImagesService.getProductImages(productId)
         },
+        // Avoids the wrong-shaped fallback image flashing on a first-time tap.
+        placeholderData: (previousData) => previousData,
         staleTime: 60 * 1000, // 1 minute
     })
 }
