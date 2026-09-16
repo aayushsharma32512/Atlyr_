@@ -163,16 +163,21 @@ export function BoardDetailHeader({
         </span>
       ) : null}
 
-      {canManage ? (
-        <button
-          type="button"
-          onClick={() => setIsConfirmOpen(true)}
-          aria-label={`Delete ${label}`}
-          className="flex h-8 w-8 flex-none items-center justify-center text-ink"
-        >
-          <Icons.remove className="h-5 w-5" aria-hidden="true" />
-        </button>
-      ) : null}
+      {/* Reserved whether or not this board can be deleted, so "N saves" sits at
+          the same x position on every board page — a system board (no delete)
+          would otherwise sit 32px further right than a user board. */}
+      <div className="flex h-8 w-8 flex-none items-center justify-center">
+        {canManage ? (
+          <button
+            type="button"
+            onClick={() => setIsConfirmOpen(true)}
+            aria-label={`Delete ${label}`}
+            className="flex h-8 w-8 items-center justify-center text-ink"
+          >
+            <Icons.remove className="h-5 w-5" aria-hidden="true" />
+          </button>
+        ) : null}
+      </div>
 
       <AlertDialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
         <AlertDialogContent>

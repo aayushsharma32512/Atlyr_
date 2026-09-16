@@ -405,14 +405,14 @@ export function HomeScreenView() {
   }, [favoritesItems])
 
   const moodboardTabs = useMemo<TabBarItem[]>(() => {
-    const systemOrder = ["for-you", "wardrobe", "try-ons", "favorites", "all-outfits"]
+    // for-you and all-outfits are synthetic feeds, not real moodboards — hidden
+    // here the same way CollectionsPage hides them from its own board grid.
+    const systemOrder = ["wardrobe", "try-ons", "favorites"]
     const labels: Record<string, string> = {
       // V2 casing: pills and board titles are lowercase.
       wardrobe: "wardrobe",
       "try-ons": "try-ons",
       favorites: "favorites",
-      "for-you": "for you",
-      "all-outfits": "all outfits",
     }
     const systemTabs: TabBarItem[] = systemOrder.map((slug) => ({
       id: slug,
@@ -425,6 +425,15 @@ export function HomeScreenView() {
 
     return [...systemTabs, ...userTabs]
   }, [moodboards])
+
+  // for-you and all-outfits are still real, routable boards — StudioScrollUpScreen
+  // and SharedLookScreen both land on for-you directly — they're just not shown
+  // as tabs. Kept separate from moodboardTabs so hiding them from the tab row
+  // doesn't also make their own URLs unrecognized.
+  const routableMoodboardIds = useMemo(
+    () => [...moodboardTabs.map((tab) => tab.id), "for-you", "all-outfits"],
+    [moodboardTabs],
+  )
 
   const activeMoodboardLabel = useMemo(
     () => moodboardTabs.find((tab) => tab.id === activeMoodboardId)?.label ?? "Moodboard",
@@ -521,7 +530,7 @@ export function HomeScreenView() {
   }, [scrollHomeToTop, searchParams, setSearchParams])
 
   useEffect(() => {
-    const availableIds = moodboardTabs.map((tab) => tab.id)
+    const availableIds = routableMoodboardIds
     const nextUserId = user?.id ?? null
     const wasLoggedOut = lastUserIdRef.current === null
     const justLoggedIn = wasLoggedOut && Boolean(nextUserId)
@@ -545,7 +554,7 @@ export function HomeScreenView() {
       params.set("moodboard", activeMoodboardId)
       setSearchParams(params, { replace: true })
     }
-  }, [activeMoodboardId, moodboardParam, moodboardTabs, searchParams, setSearchParams, user?.id])
+  }, [activeMoodboardId, moodboardParam, routableMoodboardIds, searchParams, setSearchParams, user?.id])
 
   useEffect(() => {
     if (!user?.id || prefetchMoodboardSlugs.length === 0) {
