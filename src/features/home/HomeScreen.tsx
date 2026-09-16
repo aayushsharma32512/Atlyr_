@@ -1695,7 +1695,7 @@ export function HomeScreenView() {
               tabs={moodboardTabs}
               tabsFit="scroll"
               autoCenterActiveTab
-              className="fixed top-0 inset-x-0 z-50 mx-auto w-full max-w-[24.5rem] md:max-w-[47rem] lg:max-w-[62rem] xl:max-w-[78rem]"
+              className="fixed top-0 inset-x-0 z-50 mx-auto w-full max-w-[24.5rem] animate-in fade-in-0 duration-300 md:max-w-[47rem] lg:max-w-[62rem] xl:max-w-[78rem]"
             />
             <CollectionsHeader
               ownerName={profile?.name ?? null}
