@@ -1,4 +1,4 @@
-import { useRef } from "react"
+import { useRef, type ReactNode } from "react"
 
 import { cn } from "@/lib/utils"
 import { Icons } from "@/design-system/icons"
@@ -30,6 +30,13 @@ export interface ProductTileProps {
   price?: string
   brand?: string
   className?: string
+  /**
+   * Rendered bottom-left inside the image box, mirroring the pin's top-right
+   * corner slot. Anchoring it here — not on a wrapper around the whole tile —
+   * keeps it pinned to the image regardless of the footer's height, since the
+   * footer (name, price/brand) sits below the image as a separate row.
+   */
+  bottomLeftOverlay?: ReactNode
 }
 
 /** Cropped garments stop short of the corner overlays. */
@@ -52,6 +59,7 @@ export function ProductTile({
   price,
   brand,
   className,
+  bottomLeftOverlay,
 }: ProductTileProps) {
   const small = size === "small"
   const interactive = Boolean(onSelect) && !worn
@@ -138,6 +146,7 @@ export function ProductTile({
             <Icons.save className="h-4 w-4" fill={saved ? "currentColor" : "none"} aria-hidden="true" />
           </button>
         ) : null}
+        {bottomLeftOverlay}
       </div>
       {!small ? (
         <div className="flex items-center gap-2 px-0.5">

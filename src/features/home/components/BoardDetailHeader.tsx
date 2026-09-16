@@ -158,7 +158,7 @@ export function BoardDetailHeader({
       )}
 
       {typeof itemCount === "number" ? (
-        <span className="flex-none text-section font-medium tracking-[0.06em] text-faint">
+        <span className="flex-none text-section font-medium tracking-[0.06em] text-violet">
           {itemCount} {itemCount === 1 ? "save" : "saves"}
         </span>
       ) : null}
@@ -172,7 +172,7 @@ export function BoardDetailHeader({
             type="button"
             onClick={() => setIsConfirmOpen(true)}
             aria-label={`Delete ${label}`}
-            className="flex h-8 w-8 items-center justify-center text-ink"
+            className="flex h-8 w-8 items-center justify-center text-violet"
           >
             <Icons.remove className="h-5 w-5" aria-hidden="true" />
           </button>

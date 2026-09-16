@@ -224,26 +224,30 @@ function ProductMasonryCard({
   getProductWrapperRef,
 }: ProductMasonryCardProps) {
   return (
-    <div ref={getProductWrapperRef?.(item.id)} className="relative">
+    <div ref={getProductWrapperRef?.(item.id)}>
       {/* Name only — the design carries no brand or price on a tile (brief §3.2).
           cropToContent frames a segmented cutout instead of the empty canvas
-          around it, same as ProductsTab and the board covers. */}
+          around it, same as ProductsTab and the board covers. The dustbin is
+          passed in as an overlay rather than positioned from out here, so it
+          anchors to the image box itself and not the tile's full height —
+          the footer (name) below the image would otherwise push it half
+          outside the border on narrower columns. */}
       <ProductTile
         title={item.productName ?? "Piece"}
         imageSrc={item.imageUrl ?? null}
         mark={false}
         cropToContent
         onSelect={onProductSelect ? () => onProductSelect(item.id) : undefined}
-      />
-
-      {/* Bottom-left, opening upward — same anchor as the outfit tile's dustbin. */}
-      <RemoveOptionsMenu
-        label="Remove piece"
-        collectionLabel={collectionLabel}
-        onRemoveFromCurrentMoodboard={onRemoveFromCurrentMoodboard}
-        onRemoveFromAll={onRemoveFromAll}
-        triggerClassName="absolute bottom-2 left-2 z-10"
-        panelClassName="absolute left-0 bottom-full mb-1"
+        bottomLeftOverlay={
+          <RemoveOptionsMenu
+            label="Remove piece"
+            collectionLabel={collectionLabel}
+            onRemoveFromCurrentMoodboard={onRemoveFromCurrentMoodboard}
+            onRemoveFromAll={onRemoveFromAll}
+            triggerClassName="absolute bottom-2 left-2 z-10"
+            panelClassName="absolute left-0 bottom-full mb-1"
+          />
+        }
       />
     </div>
   )
