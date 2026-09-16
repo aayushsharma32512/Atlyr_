@@ -72,13 +72,8 @@ const MoodboardCard = ({
 
   const handleNavigate = useCallback(() => {
     if (!slug) return
-    // An empty board has nothing to show — send the user off to find things to save.
-    if (itemCount === 0) {
-      navigate("/search")
-      return
-    }
     navigate(boardPath(slug))
-  }, [navigate, slug, itemCount])
+  }, [navigate, slug])
 
   const renderCover = () => {
     if (cells.length === 0) {

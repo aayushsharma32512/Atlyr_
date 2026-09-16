@@ -7,7 +7,8 @@ import MoodboardCard, { FIGURE_FRAME_ASPECT } from "./components/MoodboardCard"
 import { CreationsTab } from "./components/CreationsTab"
 import { ProductsTab } from "./components/ProductsTab"
 
-import { MoodboardPickerDrawer, OutfitInspirationTile, SectionHeader } from "@/design-system/primitives"
+import { OutfitInspirationTile, SectionHeader } from "@/design-system/primitives"
+import { CreateBoardDrawer } from "./components/CreateBoardDrawer"
 import { Icons } from "@/design-system/icons"
 import { buildStudioUrl } from "@/features/studio/utils/studioUrlState"
 import { cn } from "@/lib/utils"
@@ -140,7 +141,8 @@ export function CollectionsPage() {
   const handleCreateMoodboard = async (name: string) => {
     const result = await createMoodboardMutation.mutateAsync(name)
     toast({ title: "Moodboard created", description: result.label })
-    return result.slug
+    setIsPickerOpen(false)
+    navigate(boardPath(result.slug))
   }
 
   const renderMoodboards = (boards: Moodboard[]) => {
@@ -192,17 +194,17 @@ export function CollectionsPage() {
       <SectionHeader title="Boards" className="mb-2" />
       <div className="grid grid-cols-2 items-start gap-2 sm:grid-cols-3 lg:grid-cols-4">
         {/* + New leads the grid, then Try-Ons, Favorites, newest board, the rest.
-            Shaped like a card — square cover plus the 40h footer — so the row lines up. */}
+            Same cover-plus-caption shape as MoodboardCard below, so the row lines up. */}
         <button
           type="button"
           onClick={() => setIsPickerOpen(true)}
           aria-label="New board"
-          className="flex w-full flex-col overflow-hidden rounded-lg border border-dashed border-hairline-dashed text-ink transition-colors hover:bg-editorial/30"
+          className="flex w-full flex-col gap-1.5 text-left"
         >
-          <span className="flex aspect-square w-full items-center justify-center">
+          <span className="flex aspect-square w-full items-center justify-center rounded-lg border border-dashed border-violet text-violet transition-colors hover:bg-editorial/30">
             <Icons.add className="h-5 w-5" aria-hidden="true" />
           </span>
-          <span className="h-10" />
+          <span className="px-0.5 text-card font-medium text-ink">create board</span>
         </button>
         {boards.map((moodboard, index) => (
           <MoodboardCard
@@ -270,20 +272,11 @@ export function CollectionsPage() {
         </div>
       )}
 
-      <MoodboardPickerDrawer
+      <CreateBoardDrawer
         open={isPickerOpen}
         onOpenChange={setIsPickerOpen}
-        moodboards={moodboards}
-        defaultSelection={undefined}
-        // Picking an existing board here opens it, exactly as tapping its card
-        // does. Before, this only closed the drawer, so the chips looked inert.
-        onSelect={(slug) => {
-          setIsPickerOpen(false)
-          navigate(boardPath(slug))
-        }}
         onCreate={handleCreateMoodboard}
         isSaving={createMoodboardMutation.isPending}
-        title="Create or select a moodboard"
       />
 
     </AppShellLayout>

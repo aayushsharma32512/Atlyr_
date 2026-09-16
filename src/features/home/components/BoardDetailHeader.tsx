@@ -26,7 +26,9 @@ interface BoardDetailHeaderProps {
 }
 
 /**
- * Board detail header — back · name · delete.
+ * Board detail header — back · name · save count · delete. Sits in
+ * CollectionsHeader's title row in place of the owner title, so it carries
+ * no padding of its own — the row it's embedded in already has it.
  *
  * The name is the edit affordance: tapping it swaps in an input, so there is no
  * pencil. Enter or blur commits, Escape restores. Delete is the only thing
@@ -111,7 +113,7 @@ export function BoardDetailHeader({
   }
 
   return (
-    <div className="flex items-center gap-2 px-1">
+    <div className="flex min-w-0 flex-1 items-center gap-2">
       <button
         type="button"
         onClick={onBack}
@@ -156,21 +158,26 @@ export function BoardDetailHeader({
       )}
 
       {typeof itemCount === "number" ? (
-        <span className="flex-none text-section font-medium tracking-[0.06em] text-faint">
+        <span className="flex-none text-section font-medium tracking-[0.06em] text-violet">
           {itemCount} {itemCount === 1 ? "save" : "saves"}
         </span>
       ) : null}
 
-      {canManage ? (
-        <button
-          type="button"
-          onClick={() => setIsConfirmOpen(true)}
-          aria-label={`Delete ${label}`}
-          className="flex h-8 w-8 flex-none items-center justify-center text-ink"
-        >
-          <Icons.remove className="h-5 w-5" aria-hidden="true" />
-        </button>
-      ) : null}
+      {/* Reserved whether or not this board can be deleted, so "N saves" sits at
+          the same x position on every board page — a system board (no delete)
+          would otherwise sit 32px further right than a user board. */}
+      <div className="flex h-8 w-8 flex-none items-center justify-center">
+        {canManage ? (
+          <button
+            type="button"
+            onClick={() => setIsConfirmOpen(true)}
+            aria-label={`Delete ${label}`}
+            className="flex h-8 w-8 items-center justify-center text-violet"
+          >
+            <Icons.remove className="h-5 w-5" aria-hidden="true" />
+          </button>
+        ) : null}
+      </div>
 
       <AlertDialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
         <AlertDialogContent>

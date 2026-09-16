@@ -12,8 +12,8 @@ export interface StudioPieceRowsProps {
   itemBySlot: Partial<Record<StudioCanvasSlot, StudioProductTrayItem | null>>
   hiddenSlots?: Partial<Record<StudioCanvasSlot, boolean>>
   isReadOnly?: boolean
-  /** Tapping a row opens Alternates for it. Focus comes from the figure. */
-  onOpenAlternates: (slot: StudioCanvasSlot) => void
+  /** Tapping a row opens Focus (the zoomed view) for it. Alternates comes from the figure. */
+  onOpenFocus: (slot: StudioCanvasSlot) => void
   onRemove: (slot: StudioCanvasSlot) => void
   /** Move a row `delta` places up (negative) or down the layer stack. */
   onReorder?: (slot: StudioCanvasSlot, delta: number) => void
@@ -39,7 +39,7 @@ export function StudioPieceRows({
   itemBySlot,
   hiddenSlots = {},
   isReadOnly = false,
-  onOpenAlternates,
+  onOpenFocus,
   onRemove,
   onReorder,
   highlight = false,
@@ -109,7 +109,7 @@ export function StudioPieceRows({
             label={item?.title ?? null}
             empty={!item}
             removable={!isReadOnly && Boolean(item)}
-            // V2 Studio rows carry no 4-square: tapping the row already opens Alternates.
+            // V2 Studio rows carry no 4-square: tapping the row already opens Focus.
             alternatives={false}
             style={rowStyle(index)}
             className={cn(lifted && "relative z-10 drop-shadow-md")}
@@ -139,9 +139,9 @@ export function StudioPieceRows({
                   }
                 : undefined
             }
-            onSelect={() => onOpenAlternates(slot)}
+            onSelect={() => onOpenFocus(slot)}
             onRemove={isReadOnly ? undefined : () => onRemove(slot)}
-            onOpenAlternatives={isReadOnly ? undefined : () => onOpenAlternates(slot)}
+            onOpenAlternatives={isReadOnly ? undefined : () => onOpenFocus(slot)}
           />
         )
       })}

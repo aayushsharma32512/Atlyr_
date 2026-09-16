@@ -1,14 +1,25 @@
-import { TabBar } from "@/design-system/primitives"
+import type { ReactNode } from "react"
+
+import { TabBar, type TabBarItem } from "@/design-system/primitives"
 import { cn } from "@/lib/utils"
 
 interface CollectionsHeaderProps {
   activeTab: string
   onTabChange: (tab: string) => void
   /** The signed-in user's name; the title reads "<first>'s boards". Falls
-   *  back to "Your boards" while the profile loads or if the name is blank. */
+   *  back to "Your boards" while the profile loads or if the name is blank.
+   *  Ignored when `titleContent` is given. */
   ownerName?: string | null
   className?: string
   style?: React.CSSProperties
+  /** Defaults to the moodboards/creations/products tabs — a board-detail page
+   *  passes its own board list instead, so the two screens share one header. */
+  tabs?: TabBarItem[]
+  tabsFit?: "equal" | "scroll"
+  autoCenterActiveTab?: boolean
+  /** Replaces the "<name>'s boards" title — a board-detail page puts its own
+   *  back · name · save-count row here instead. */
+  titleContent?: ReactNode
 }
 
 // Lowercase per the V2 casing rule: tabs, pills, chips and button labels are
@@ -27,16 +38,42 @@ function possessiveTitle(ownerName?: string | null) {
 }
 
 /** 52h title row, then the 36h tab bar. */
-const CollectionsHeader = ({ activeTab, onTabChange, ownerName, className, style }: CollectionsHeaderProps) => {
+const CollectionsHeader = ({
+  activeTab,
+  onTabChange,
+  ownerName,
+  className,
+  style,
+  tabs = TABS,
+  tabsFit = "equal",
+  autoCenterActiveTab = false,
+  titleContent,
+}: CollectionsHeaderProps) => {
   return (
     <header className={cn("bg-background", className)} style={style}>
       {/* No header action — "+ New" is the first tile in the board grid. */}
       <div className="flex h-control-header-title items-center border-b border-hairline px-4">
-        <h1 className="min-w-0 flex-1 truncate font-display text-title font-medium text-ink">
-          {possessiveTitle(ownerName)}
-        </h1>
+        {titleContent ? (
+          // Keyed on the active tab so React remounts this row on every board
+          // switch, not just the first time the header itself mounts — a plain
+          // CSS enter animation only plays on insertion, and without the key
+          // this node never gets reinserted after its first render.
+          <div key={activeTab} className="flex min-w-0 flex-1 animate-in fade-in-0 duration-200">
+            {titleContent}
+          </div>
+        ) : (
+          <h1 className="min-w-0 flex-1 truncate font-display text-title font-medium text-ink">
+            {possessiveTitle(ownerName)}
+          </h1>
+        )}
       </div>
-      <TabBar items={TABS} activeId={activeTab} onChange={onTabChange} />
+      <TabBar
+        items={tabs}
+        activeId={activeTab}
+        onChange={onTabChange}
+        fit={tabsFit}
+        autoCenterActive={autoCenterActiveTab}
+      />
     </header>
   )
 }
