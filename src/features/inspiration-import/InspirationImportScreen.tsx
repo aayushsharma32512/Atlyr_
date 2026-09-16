@@ -168,8 +168,9 @@ export default function InspirationImportScreen() {
   const [choosingCandidate, setChoosingCandidate] = useState(false)
   const [pickError, setPickError] = useState<string | null>(null)
   const [activeCandidateId, setActiveCandidateId] = useState<string | null>(null)
-  // Web first: the rack opens on the Lens results, inventory is the option.
-  const [resultsSource, setResultsSource] = useState<"inventory" | "web">("web")
+  // Inventory first: it's already preloaded and fast. Web is one tap away, and is itself
+  // preloaded in the background (see the webQueries hook below) so that tap is instant too.
+  const [resultsSource, setResultsSource] = useState<"inventory" | "web">("inventory")
   const [sourcePreviewUrl, setSourcePreviewUrl] = useState<string | null>(null)
   const importStartTriggeredRef = useRef(false)
   const seededRef = useRef(false)
@@ -254,10 +255,12 @@ export default function InspirationImportScreen() {
   const selectedCandidate = selectedCandidates.find((item) => item.id === activeCandidateId)
     ?? selectedCandidates[0]
     ?? null
-  const webQuery = useImportWebResults(importId ?? "", selectedCandidate?.id ?? null)
-  const refetchWeb = webQuery.refetch
-  const activeCandidateIdRef = useRef<string | null>(null)
-  activeCandidateIdRef.current = selectedCandidate?.id ?? null
+  // Preloads Web search for every selected candidate (top and/or bottom) in parallel, regardless
+  // of which tab is showing — so switching to Web later shows what's already there instead of
+  // starting the search from zero.
+  const webQueries = useImportWebResults(importId ?? "", selectedCandidates)
+  const webQuery = webQueries.find((query) => query.candidateId === selectedCandidate?.id)
+    ?? { candidateId: null, data: undefined, error: null, isFetching: false, isError: false }
   const catalogueSearches = useImportCatalogueResults(record)
   const activeCatalogueSearch = catalogueSearches.find(({ candidate }) => candidate.id === selectedCandidate?.id)
   const catalogueResults = activeCatalogueSearch?.results ?? []
@@ -329,16 +332,8 @@ export default function InspirationImportScreen() {
   }, [record])
 
   useEffect(() => {
-    setResultsSource("web")
+    setResultsSource("inventory")
   }, [selectedCandidate?.id])
-
-  // The Lens search runs the moment a candidate is shown in web mode. The query
-  // is manual (enabled: false), so flipping to inventory and back never refires it.
-  useEffect(() => {
-    if (!selectedCandidate || resultsSource !== "web") return
-    if (webQuery.data !== undefined || webQuery.isFetching || webQuery.isError) return
-    void refetchWeb()
-  }, [refetchWeb, resultsSource, selectedCandidate, webQuery.data, webQuery.isError, webQuery.isFetching])
 
   useEffect(() => {
     if (!record) return

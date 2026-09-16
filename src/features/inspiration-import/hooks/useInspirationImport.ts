@@ -82,17 +82,34 @@ export function useImportCatalogueResults(
   }))
 }
 
-export function useImportWebResults(importId: string, candidateId: string | null) {
-  return useQuery({
-    queryKey: inspirationImportKeys.web(importId, candidateId ?? "none"),
-    queryFn: ({ signal }) => candidateId
-      ? inspirationImportService.searchWeb(importId, candidateId, signal)
-      : Promise.resolve([]),
-    enabled: false,
-    retry: false,
-    staleTime: 60 * 60 * 1000,
-    gcTime: 60 * 60 * 1000,
+/**
+ * One Web search per selected candidate (top and/or bottom), fired the moment each candidate is
+ * selected — not gated on which tab the user has open. Mirrors useImportCatalogueResults so both
+ * sources preload the same way; whichever categories exist get their own independent fetch.
+ */
+export function useImportWebResults(
+  importId: string,
+  candidates: { id: string }[],
+) {
+  const queries = useQueries({
+    queries: candidates.map((candidate) => ({
+      queryKey: inspirationImportKeys.web(importId, candidate.id),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        inspirationImportService.searchWeb(importId, candidate.id, signal),
+      enabled: Boolean(importId && candidate.id),
+      retry: false,
+      staleTime: 60 * 60 * 1000,
+      gcTime: 60 * 60 * 1000,
+    })),
   })
+
+  return candidates.map((candidate, index) => ({
+    candidateId: candidate.id,
+    data: queries[index]?.data,
+    error: queries[index]?.error ?? null,
+    isFetching: queries[index]?.isFetching ?? false,
+    isError: queries[index]?.isError ?? false,
+  }))
 }
 
 export function useStageImportSelections(importId: string) {
