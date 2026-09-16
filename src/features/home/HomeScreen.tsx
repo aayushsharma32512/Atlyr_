@@ -4,6 +4,7 @@ import { useLocation, useNavigate, useParams, useSearchParams } from "react-rout
 import { supabase } from "@/integrations/supabase/client"
 
 import { Button } from "@/components/ui/button"
+import { Icons } from "@/design-system/icons"
 import {
   OutfitInspirationGrid,
   ProductResultsGrid,
@@ -1507,21 +1508,41 @@ export function HomeScreenView() {
       return (
         <button
           type="button"
-          onClick={() => navigate("/search")}
+          onClick={() =>
+            navigate(isWardrobeActive ? "/inspiration-import?intent=wardrobe" : "/search")
+          }
           className="flex flex-1 flex-col items-center justify-center gap-2 rounded-frame border border-dashed border-hairline-dashed bg-card/40 px-4 py-6 text-sm text-muted-foreground transition-colors hover:bg-editorial/30"
         >
           <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-dashed border-muted-foreground/40">
             <span className="text-xl font-light">+</span>
           </div>
-          <span>Add items</span>
+          <span>{isWardrobeActive ? "Add wardrobe item" : "Add items"}</span>
         </button>
       )
     }
+
+    // A leading "+" tile on the wardrobe board only — the wardrobe's items come
+    // from photographing what the user already owns, not from browsing the
+    // catalogue, so it launches inspiration-import instead of search.
+    const leadingTile = isWardrobeActive ? (
+      <button
+        type="button"
+        aria-label="Add wardrobe item"
+        onClick={() => navigate("/inspiration-import?intent=wardrobe")}
+        className="flex w-full flex-col gap-1.5 text-left"
+      >
+        <div className="flex aspect-square w-full items-center justify-center rounded-lg border border-dashed border-hairline-dashed text-ink transition-colors hover:bg-editorial/30">
+          <Icons.add className="h-5 w-5" aria-hidden="true" />
+        </div>
+        <p className="truncate px-0.5 text-card font-medium text-ink">add wardrobe item</p>
+      </button>
+    ) : undefined
 
     return (
       <div className="flex flex-col gap-4">
         <MixedMasonryGrid
           items={moodboardItems}
+          leadingTile={leadingTile}
           currentUserId={user?.id}
           collectionSlug={activeMoodboardId}
           collectionLabel={activeMoodboardLabel}

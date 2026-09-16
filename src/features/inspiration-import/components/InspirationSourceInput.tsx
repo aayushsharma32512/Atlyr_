@@ -21,7 +21,7 @@ const COPY: Record<InspirationIntent, { prompt: [string, string]; hint: string }
   },
   wardrobe: {
     prompt: ["drop your favorite fit check photos", "and we will add those pieces"],
-    hint: "one piece per photo · flat lay or on you",
+    hint: "",
   },
 }
 
@@ -73,7 +73,7 @@ export function InspirationSourceInput({ file, isPending, error, intent = "inspi
               <br />
               {copy.prompt[1]}
             </span>
-            <span className="text-chip text-taupe">{copy.hint}</span>
+            {copy.hint ? <span className="text-chip text-taupe">{copy.hint}</span> : null}
           </>
         )}
         {previewUrl && isPending ? (

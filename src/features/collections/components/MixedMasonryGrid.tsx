@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefCallback } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefCallback } from "react"
 import { MoreVertical, Trash2, X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -16,6 +16,8 @@ type OutfitMoodboardItem = Extract<MoodboardItem, { itemType: "outfit" }>
 
 type MixedMasonryGridProps = {
   items: MoodboardItem[]
+  /** Rendered ahead of every item, in the first column — e.g. an "add item" CTA. */
+  leadingTile?: ReactNode
   currentUserId?: string | null
   collectionSlug?: string
   collectionLabel?: string
@@ -36,6 +38,7 @@ type MixedMasonryGridProps = {
 
 export function MixedMasonryGrid({
   items,
+  leadingTile,
   currentUserId,
   collectionSlug,
   collectionLabel,
@@ -122,6 +125,7 @@ export function MixedMasonryGrid({
     >
       {buckets.map((column, index) => (
         <div key={`masonry-col-${index}`} className="flex min-w-0 flex-col gap-2.5">
+          {index === 0 ? leadingTile : null}
           {column.map(renderItem)}
         </div>
       ))}
