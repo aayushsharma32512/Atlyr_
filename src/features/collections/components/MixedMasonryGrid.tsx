@@ -29,6 +29,8 @@ type MixedMasonryGridProps = {
   isProductSaved?: (productId: string) => boolean
   onToggleProductSave?: (productId: string, nextSaved: boolean) => void
   onLongPressProductSave?: (productId: string) => void
+  onRemoveProductFromCurrentMoodboard?: (productId: string) => void
+  onRemoveProductFromAll?: (productId: string) => void
   getOutfitWrapperRef?: (outfitId: string) => RefCallback<HTMLDivElement> | undefined
   getProductWrapperRef?: (productId: string) => RefCallback<HTMLDivElement> | undefined
   className?: string
@@ -49,6 +51,8 @@ export function MixedMasonryGrid({
   isProductSaved,
   onToggleProductSave,
   onLongPressProductSave,
+  onRemoveProductFromCurrentMoodboard,
+  onRemoveProductFromAll,
   getOutfitWrapperRef,
   getProductWrapperRef,
   className,
@@ -90,26 +94,23 @@ export function MixedMasonryGrid({
     }
 
     const saved = isProductSaved ? isProductSaved(item.id) : false
-    // The wrapper only carries the impressions ref and the tilt now. ProductTile
-    // is its own card and its own tap target, so the bordered role="button" box
-    // around it was a frame inside a frame with a button inside a button.
     return (
       <div
         key={`${item.itemType}-${item.id}-${item.createdAt}`}
-        ref={getProductWrapperRef?.(item.id)}
         className="transition-transform"
       >
-        {/* Name only — the design carries no brand or price on a tile (brief §3.2).
-            cropToContent frames a segmented cutout instead of the empty canvas
-            around it, same as ProductsTab and the board covers. */}
-        <ProductTile
-          title={item.productName ?? "Piece"}
-          imageSrc={item.imageUrl ?? null}
+        <ProductMasonryCard
+          item={item}
           saved={saved}
-          cropToContent
-          onSelect={onProductSelect ? () => onProductSelect(item.id) : undefined}
-          onToggleSave={() => onToggleProductSave?.(item.id, !saved)}
-          onLongPressSave={() => onLongPressProductSave?.(item.id)}
+          collectionLabel={collectionLabel}
+          onProductSelect={onProductSelect}
+          onToggleProductSave={onToggleProductSave}
+          onLongPressProductSave={onLongPressProductSave}
+          onRemoveFromCurrentMoodboard={
+            onRemoveProductFromCurrentMoodboard ? () => onRemoveProductFromCurrentMoodboard(item.id) : undefined
+          }
+          onRemoveFromAll={onRemoveProductFromAll ? () => onRemoveProductFromAll(item.id) : undefined}
+          getProductWrapperRef={getProductWrapperRef}
         />
       </div>
     )
@@ -154,21 +155,6 @@ function OutfitMasonryCard({
   onRemoveFromAll,
   getOutfitWrapperRef,
 }: OutfitMasonryCardProps) {
-  const [showRemoveOptions, setShowRemoveOptions] = useState(false)
-  const removeOptionsRef = useRef<HTMLDivElement>(null)
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    if (!showRemoveOptions) return
-    const handler = (e: MouseEvent) => {
-      if (removeOptionsRef.current && !removeOptionsRef.current.contains(e.target as Node)) {
-        setShowRemoveOptions(false)
-      }
-    }
-    document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
-  }, [showRemoveOptions])
-
   const title = item.outfit?.name ?? "Moodboard look"
   const gender = item.gender ?? "female"
 
@@ -177,11 +163,6 @@ function OutfitMasonryCard({
   const handleSelect = useCallback(() => {
     onOutfitSelect?.(item)
   }, [item, onOutfitSelect])
-
-  const handleDustbinClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    setShowRemoveOptions((v) => !v)
-  }
 
   const handleEditClick = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -192,7 +173,6 @@ function OutfitMasonryCard({
     }
   }
 
-  const showDustbin = Boolean(onRemoveFromAll || onRemoveFromCurrentMoodboard)
   const showEdit = Boolean(onEdit || onMoveToMoodboard)
 
   return (
@@ -220,53 +200,157 @@ function OutfitMasonryCard({
         </button>
       )}
 
-      {/* Dustbin — bottom-left of the frame, dropdown opens upward-right */}
-      {showDustbin && (
-        <div ref={removeOptionsRef} className="absolute bottom-9 left-2 z-10">
-          <button
-            type="button"
-            onClick={handleDustbinClick}
-            className="flex size-6 items-center justify-center rounded-md bg-transparent text-muted-foreground/80 transition-colors hover:bg-muted/60 hover:text-destructive"
-            aria-label="Remove outfit"
-          >
-            <Trash2 className="h-4 w-4" strokeWidth={1.5} />
-          </button>
+      {/* Bottom-left, opening upward: OutfitCard's 300px frame carries its own
+          bottom overlay, so the trigger sits 36px up to clear it. */}
+      <RemoveOptionsMenu
+        label="Remove outfit"
+        collectionLabel={collectionLabel}
+        onRemoveFromCurrentMoodboard={onRemoveFromCurrentMoodboard}
+        onRemoveFromAll={onRemoveFromAll}
+        triggerClassName="absolute bottom-9 left-2 z-10"
+        panelClassName="absolute left-0 bottom-full mb-1"
+      />
+    </div>
+  )
+}
 
-          {showRemoveOptions && (
-            <div className="absolute left-0 bottom-full mb-1 min-w-[160px] rounded-md border border-hairline bg-background shadow-md py-1 z-20">
-              {onRemoveFromCurrentMoodboard && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setShowRemoveOptions(false)
-                    onRemoveFromCurrentMoodboard()
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-foreground hover:bg-muted/50"
-                >
-                  <X className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">{collectionLabel ?? "This board"}</span>
-                </button>
-              )}
-              {onRemoveFromAll && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setShowRemoveOptions(false)
-                    onRemoveFromAll()
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-destructive hover:bg-muted/50"
-                >
-                  <Trash2 className="h-3.5 w-3.5 shrink-0" />
-                  Everywhere
-                </button>
-              )}
-            </div>
+type ProductMasonryCardProps = {
+  item: Extract<MoodboardItem, { itemType: "product" }>
+  saved: boolean
+  collectionLabel?: string
+  onProductSelect?: (productId: string) => void
+  onToggleProductSave?: (productId: string, nextSaved: boolean) => void
+  onLongPressProductSave?: (productId: string) => void
+  onRemoveFromCurrentMoodboard?: () => void
+  onRemoveFromAll?: () => void
+  getProductWrapperRef?: (productId: string) => RefCallback<HTMLDivElement> | undefined
+}
+
+/** Same card, same bottom-left dustbin as an outfit tile — just no three-dot: a product has no name/tags/occasion to edit. */
+function ProductMasonryCard({
+  item,
+  saved,
+  collectionLabel,
+  onProductSelect,
+  onToggleProductSave,
+  onLongPressProductSave,
+  onRemoveFromCurrentMoodboard,
+  onRemoveFromAll,
+  getProductWrapperRef,
+}: ProductMasonryCardProps) {
+  return (
+    <div ref={getProductWrapperRef?.(item.id)} className="relative">
+      {/* Name only — the design carries no brand or price on a tile (brief §3.2).
+          cropToContent frames a segmented cutout instead of the empty canvas
+          around it, same as ProductsTab and the board covers. */}
+      <ProductTile
+        title={item.productName ?? "Piece"}
+        imageSrc={item.imageUrl ?? null}
+        saved={saved}
+        cropToContent
+        onSelect={onProductSelect ? () => onProductSelect(item.id) : undefined}
+        onToggleSave={() => onToggleProductSave?.(item.id, !saved)}
+        onLongPressSave={() => onLongPressProductSave?.(item.id)}
+      />
+
+      {/* Top-left, opening downward: unlike OutfitCard, ProductTile's name/price
+          sit outside the image as a real footer, so a bottom-anchored trigger
+          would float over that text instead of the picture. Mirrors the save
+          heart's top-right placement. */}
+      <RemoveOptionsMenu
+        label="Remove piece"
+        collectionLabel={collectionLabel}
+        onRemoveFromCurrentMoodboard={onRemoveFromCurrentMoodboard}
+        onRemoveFromAll={onRemoveFromAll}
+        triggerClassName="absolute top-2 left-2 z-10"
+        panelClassName="absolute left-0 top-full mt-1"
+      />
+    </div>
+  )
+}
+
+/**
+ * Dustbin trigger + dropdown. Shared by outfit and product tiles so "remove
+ * from this board" vs. "everywhere" reads and behaves identically wherever it
+ * appears — only the anchor differs, since the two tiles don't share a shape.
+ */
+function RemoveOptionsMenu({
+  label,
+  collectionLabel,
+  onRemoveFromCurrentMoodboard,
+  onRemoveFromAll,
+  triggerClassName,
+  panelClassName,
+}: {
+  label: string
+  collectionLabel?: string
+  onRemoveFromCurrentMoodboard?: () => void
+  onRemoveFromAll?: () => void
+  triggerClassName: string
+  panelClassName: string
+}) {
+  const [showRemoveOptions, setShowRemoveOptions] = useState(false)
+  const removeOptionsRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!showRemoveOptions) return
+    const handler = (e: MouseEvent) => {
+      if (removeOptionsRef.current && !removeOptionsRef.current.contains(e.target as Node)) {
+        setShowRemoveOptions(false)
+      }
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [showRemoveOptions])
+
+  if (!onRemoveFromAll && !onRemoveFromCurrentMoodboard) return null
+
+  return (
+    <div ref={removeOptionsRef} className={triggerClassName}>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          setShowRemoveOptions((v) => !v)
+        }}
+        className="flex size-6 items-center justify-center rounded-md bg-transparent text-muted-foreground/80 transition-colors hover:bg-muted/60 hover:text-destructive"
+        aria-label={label}
+      >
+        <Trash2 className="h-4 w-4" strokeWidth={1.5} />
+      </button>
+
+      {showRemoveOptions && (
+        <div className={cn("min-w-[160px] rounded-lg border border-hairline bg-background py-1 shadow-md z-20", panelClassName)}>
+          {onRemoveFromCurrentMoodboard && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                setShowRemoveOptions(false)
+                onRemoveFromCurrentMoodboard()
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-chip text-ink hover:bg-editorial/40"
+            >
+              <X className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{collectionLabel ?? "This board"}</span>
+            </button>
+          )}
+          {onRemoveFromAll && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                setShowRemoveOptions(false)
+                onRemoveFromAll()
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-chip text-violet hover:bg-editorial/40"
+            >
+              <Trash2 className="h-3.5 w-3.5 shrink-0" />
+              Everywhere
+            </button>
           )}
         </div>
       )}
-
     </div>
   )
 }

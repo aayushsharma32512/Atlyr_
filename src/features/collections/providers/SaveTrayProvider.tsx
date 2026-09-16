@@ -19,13 +19,19 @@ import type { EntityUiContext } from "@/integrations/posthog/engagementTracking/
 import { getOutfitChips } from "@/utils/outfitChips"
 
 type SaveRequest =
-  | { kind: "look"; outfitId: string; context?: EntityUiContext }
-  | { kind: "piece"; productId: string; context?: EntityUiContext }
+  | { kind: "look"; outfitId: string; context?: EntityUiContext; presetBoardSlug?: string }
+  | { kind: "piece"; productId: string; context?: EntityUiContext; presetBoardSlug?: string }
 
 interface SaveTrayValue {
   isOpen: boolean
-  openLookSave: (outfitId: string, context?: EntityUiContext) => void
-  openPieceSave: (productId: string, context?: EntityUiContext) => void
+  /**
+   * `presetBoardSlug`: when opened from a specific board's own page, that
+   * board should be the default checked chip for an item with no saves yet
+   * — not the app-wide "favorites" fallback. Ignored once the item already
+   * has real memberships; those are always the authoritative default.
+   */
+  openLookSave: (outfitId: string, context?: EntityUiContext, presetBoardSlug?: string) => void
+  openPieceSave: (productId: string, context?: EntityUiContext, presetBoardSlug?: string) => void
   close: () => void
 }
 
@@ -50,11 +56,11 @@ export function useSaveTray() {
 export function SaveTrayProvider({ children }: { children: ReactNode }) {
   const [request, setRequest] = useState<SaveRequest | null>(null)
 
-  const openLookSave = useCallback((outfitId: string, context?: EntityUiContext) => {
-    setRequest({ kind: "look", outfitId, context })
+  const openLookSave = useCallback((outfitId: string, context?: EntityUiContext, presetBoardSlug?: string) => {
+    setRequest({ kind: "look", outfitId, context, presetBoardSlug })
   }, [])
-  const openPieceSave = useCallback((productId: string, context?: EntityUiContext) => {
-    setRequest({ kind: "piece", productId, context })
+  const openPieceSave = useCallback((productId: string, context?: EntityUiContext, presetBoardSlug?: string) => {
+    setRequest({ kind: "piece", productId, context, presetBoardSlug })
   }, [])
   const close = useCallback(() => setRequest(null), [])
 
@@ -176,6 +182,12 @@ function SaveTraySheet({ request, onClose }: { request: SaveRequest; onClose: ()
       ? `look:${request.outfitId}:${outfit?.id ?? ""}:${lookSlugs.join("|")}`
       : `piece:${request.productId}:${pieceSlugs.join("|")}`
 
+  // Real memberships always win; the preset only fills in for an item that
+  // has never been saved anywhere, so it doesn't default to Favorites when
+  // the user clearly meant "this board" by opening the card from it.
+  const lookDefaultSlugs = lookSlugs.length ? lookSlugs : request.presetBoardSlug ? [request.presetBoardSlug] : ["favorites"]
+  const pieceDefaultSlugs = pieceSlugs.length ? pieceSlugs : request.presetBoardSlug ? [request.presetBoardSlug] : ["favorites"]
+
   return (
     <div className="px-4 pb-6 pt-4">
       <StudioSaveCard
@@ -184,11 +196,7 @@ function SaveTraySheet({ request, onClose }: { request: SaveRequest; onClose: ()
         defaultName={request.kind === "look" && ownsLook ? (outfit?.name ?? "") : undefined}
         defaultTags={request.kind === "look" && ownsLook ? getOutfitChips(outfit) : []}
         boards={request.kind === "look" ? lookBoards : pieceBoards}
-        defaultBoardSlugs={
-          request.kind === "look"
-            ? lookSlugs.length ? lookSlugs : ["favorites"]
-            : pieceSlugs.length ? pieceSlugs : ["favorites"]
-        }
+        defaultBoardSlugs={request.kind === "look" ? lookDefaultSlugs : pieceDefaultSlugs}
         isSaving={isSaving || productSaveActions.isSaving}
         onSave={(data) => void handleSave(data)}
         onCancel={onClose}
