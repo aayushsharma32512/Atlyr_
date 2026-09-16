@@ -464,7 +464,7 @@ export function StudioScreenView() {
   // mid-slide. Keeping the slot lets it animate away showing what you dismissed.
   const { focus, openFocus, closeFocus } = useStudioFocus()
 
-  /** Tapping a garment on the figure focuses it; the rows go to Alternates. */
+  /** Tapping a garment on the figure opens Alternates for it; the rows open Focus. */
   const handleAvatarItemSelect = useCallback(
     (item: OutfitItem) => {
       if (tour.isHighlighted("mannequin")) {
@@ -477,14 +477,8 @@ export function StudioScreenView() {
       if (!slot) {
         return
       }
-      // Tapping the placeholder picks a real piece rather than focusing a product we don't have.
-      if (hiddenSlots[slot]) {
-        openAlternativesSplit(slot, { forceSlot: true })
-        return
-      }
 
-      // Warm the rack and seed the hero, so Alternates opens populated when the
-      // focus sheet hands off to it.
+      // Warm the rack and seed the hero, so Alternates opens already populated.
       if (syncOutfitId) {
         const trayMatch = resolvedTrayItems.find((trayItem) => trayItem.slot === slot)
         if (trayMatch) {
@@ -498,15 +492,13 @@ export function StudioScreenView() {
         })
       }
 
-      openFocus(slot)
+      openAlternativesSplit(slot, { forceSlot: true })
     },
     [
       gender,
-      hiddenSlots,
       isViewOnly,
       normalizeSlot,
       openAlternativesSplit,
-      openFocus,
       queryClient,
       resolvedTrayItems,
       syncOutfitId,
@@ -1240,7 +1232,7 @@ export function StudioScreenView() {
               itemBySlot={itemBySlot}
               hiddenSlots={hiddenSlots}
               isReadOnly={isViewOnly}
-              onOpenAlternates={handleOpenAlternates}
+              onOpenFocus={openFocus}
               onRemove={(slot) => handleRemoveSlot(toTraySlot(slot))}
               highlight={tour.isHighlighted("slot-rows")}
             />
