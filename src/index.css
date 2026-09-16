@@ -424,6 +424,13 @@ img {
     @apply border-border;
   }
 
+  html,
+  body {
+    /* Stops iOS Safari's rubber-band bounce at the page edges, which was
+       exposing blank space past the last card on short screens. */
+    overscroll-behavior-y: none;
+  }
+
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-sans);

@@ -28,7 +28,7 @@ export interface BottomNavBarProps {
   className?: string
 }
 
-/** 55h bar. Active tab is just the ink icon — no pill, no fill. */
+/** 55h bar. Active tab is just the violet icon — no pill, no fill. */
 export function BottomNavBar({ activeId, onNavigate, className }: BottomNavBarProps) {
   return (
     <nav
@@ -53,15 +53,7 @@ export function BottomNavBar({ activeId, onNavigate, className }: BottomNavBarPr
             className={cn(
               "flex h-control-secondary w-control-secondary items-center justify-center",
               "rounded-control bg-transparent transition-colors",
-              // Studio is the exception in the bar: its icon is always violet
-              // (design doc §3), solid in both states. Any alpha over the
-              // #F8F8F7 ground washes it to a lavender that reads as disabled.
-              // The other four stay ink/grey so violet keeps meaning selection.
-              id === "studio"
-                ? "text-violet"
-                : isActive
-                  ? "text-ink"
-                  : "text-taupe",
+              isActive ? "text-violet" : "text-taupe",
             )}
           >
             <Icon className="h-5 w-5" aria-hidden="true" />

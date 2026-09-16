@@ -72,6 +72,14 @@ import {
 // ---------- Search session persistence ----------
 const SEARCH_SESSION_KEY = "atlyr:search:lastState"
 
+// Search scrolls its own internal container instead of the document (unlike
+// AppShellLayout's other screens) so iOS Safari never animates its address
+// bar mid-scroll. AppShellLayout reserves 2.5rem of bottom padding under its
+// <main> for the fixed bottom nav bar; subtract it here so this wrapper's
+// height plus that padding lands on exactly 100dvh — otherwise the document
+// itself would grow past the viewport and start scrolling again.
+const SEARCH_SCREEN_HEIGHT = "calc(100dvh - 2.5rem)"
+
 interface SearchSessionState {
   search: string
   mode: "products" | "outfits"
@@ -86,7 +94,8 @@ function generateSearchId(): string {
 }
 
 export function SearchScreenView() {
-  useScrollRestoration("scroll:search")
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  useScrollRestoration("scroll:search", scrollContainerRef)
   const location = useLocation()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -1071,7 +1080,7 @@ export function SearchScreenView() {
     params.set("scope", scope)
     params.set("mode", scopeToMode(scope))
     setSearchParams(params, { replace: false })
-    window.scrollTo({ top: 0, behavior: "auto" })
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: "auto" })
   }, [scope, setSearchParams])
 
   const handleFindItems = useCallback(() => navigate("/inspiration-import"), [navigate])
@@ -1368,7 +1377,7 @@ export function SearchScreenView() {
         },
         { replace: true },
       )
-      window.scrollTo({ top: 0, behavior: "auto" })
+      scrollContainerRef.current?.scrollTo({ top: 0, behavior: "auto" })
     },
     [handleFilterChange, scope, setSearchParams],
   )
@@ -1446,7 +1455,7 @@ export function SearchScreenView() {
         },
         { replace: false },
       )
-      window.scrollTo({ top: 0, behavior: "auto" })
+      scrollContainerRef.current?.scrollTo({ top: 0, behavior: "auto" })
     },
     [setSearchParams],
   )
@@ -1481,7 +1490,7 @@ export function SearchScreenView() {
         },
         { replace: false },
       )
-      window.scrollTo({ top: 0, behavior: "auto" })
+      scrollContainerRef.current?.scrollTo({ top: 0, behavior: "auto" })
     },
     [setSearchParams],
   )
@@ -1525,7 +1534,7 @@ export function SearchScreenView() {
   const listTitle = openList === "hot" ? "Hot styles" : "Atlyr curations"
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex flex-col overflow-hidden bg-background" style={{ height: SEARCH_SCREEN_HEIGHT }}>
       {/* Header like Collections: 52h title row, then the scope pills where its tab bar sits. Fixed, ghost block under it. */}
       {openList ? null : (
         <header className="fixed inset-x-0 top-0 z-30 bg-background">
@@ -1537,67 +1546,73 @@ export function SearchScreenView() {
           </div>
         </header>
       )}
-      <div className={cn("shrink-0", openList ? "h-2" : "h-[88px]")} aria-hidden="true" />
 
-      {/* 56 dock + 55 nav + 16, less the shell's 40. */}
-      <div className="mx-auto w-full max-w-[24.5rem] px-4 pb-[87px] md:max-w-[47rem] lg:max-w-[62rem] xl:max-w-[78rem]">
-        {isResultsMode ? (
-          <>
-            {activeFilter === "products" ? renderProductResultsContent() : renderOutfitResultsContent()}
-            <div ref={loadMoreRef} className="h-6 w-full" />
-            {isFetchingMore ? <ResultsSkeleton kind={activeFilter} count={2} /> : null}
-          </>
-        ) : openList ? (
-          feed.kind === "looks" && openList === "curations" ? (
-            openBoard ? (
-              <SearchListPage
-                kind="looks"
-                title={openBoard.title}
-                section={boardSection}
+      {/* The document never scrolls here — this is the one scroll container for the
+          whole screen, so a hard scroll on iOS Safari can't desync the fixed header
+          and dock from window.innerHeight while the address bar animates. */}
+      <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className={cn("shrink-0", openList ? "h-2" : "h-[88px]")} aria-hidden="true" />
+
+        {/* 56 dock + 55 nav + 16, less the shell's 40. */}
+        <div className="mx-auto w-full max-w-[24.5rem] px-4 pb-[87px] md:max-w-[47rem] lg:max-w-[62rem] xl:max-w-[78rem]">
+          {isResultsMode ? (
+              <>
+                {activeFilter === "products" ? renderProductResultsContent() : renderOutfitResultsContent()}
+                <div ref={loadMoreRef} className="h-6 w-full" />
+                {isFetchingMore ? <ResultsSkeleton kind={activeFilter} count={2} /> : null}
+              </>
+            ) : openList ? (
+              feed.kind === "looks" && openList === "curations" ? (
+                openBoard ? (
+                  <SearchListPage
+                    kind="looks"
+                    title={openBoard.title}
+                    section={boardSection}
+                    heightCm={heightCm ?? 170}
+                    onBack={handleCloseBoard}
+                    handlers={feedHandlers}
+                  />
+                ) : (
+                  <CurationBoardsPage
+                    boards={feed.boards}
+                    isLoading={feed.boardsLoading}
+                    gender={feed.gender}
+                    heightCm={heightCm ?? 170}
+                    onBack={handleCloseList}
+                    onOpenBoard={handleOpenBoard}
+                  />
+                )
+              ) : feed.kind === "looks" ? (
+                <SearchListPage
+                  kind="looks"
+                  title={listTitle}
+                  section={feed[openList]}
+                  heightCm={heightCm ?? 170}
+                  onBack={handleCloseList}
+                  handlers={feedHandlers}
+                />
+              ) : (
+                <SearchListPage
+                  kind="pieces"
+                  title={listTitle}
+                  section={feed[openList]}
+                  heightCm={heightCm ?? 170}
+                  onBack={handleCloseList}
+                  handlers={feedHandlers}
+                />
+              )
+            ) : (
+              <SearchFeed
+                sections={feed}
                 heightCm={heightCm ?? 170}
-                onBack={handleCloseBoard}
+                onOpenList={handleOpenList}
+                onOpenBoard={handleOpenBoard}
+                onPersonalise={handleFindItems}
                 handlers={feedHandlers}
               />
-            ) : (
-              <CurationBoardsPage
-                boards={feed.boards}
-                isLoading={feed.boardsLoading}
-                gender={feed.gender}
-                heightCm={heightCm ?? 170}
-                onBack={handleCloseList}
-                onOpenBoard={handleOpenBoard}
-              />
-            )
-          ) : feed.kind === "looks" ? (
-            <SearchListPage
-              kind="looks"
-              title={listTitle}
-              section={feed[openList]}
-              heightCm={heightCm ?? 170}
-              onBack={handleCloseList}
-              handlers={feedHandlers}
-            />
-          ) : (
-            <SearchListPage
-              kind="pieces"
-              title={listTitle}
-              section={feed[openList]}
-              heightCm={heightCm ?? 170}
-              onBack={handleCloseList}
-              handlers={feedHandlers}
-            />
-          )
-        ) : (
-          <SearchFeed
-            sections={feed}
-            heightCm={heightCm ?? 170}
-            onOpenList={handleOpenList}
-            onOpenBoard={handleOpenBoard}
-            onPersonalise={handleFindItems}
-            handlers={feedHandlers}
-          />
-        )}
-      </div>
+            )}
+          </div>
+        </div>
 
       <SearchDock>
         <SearchBar
