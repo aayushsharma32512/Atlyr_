@@ -104,14 +104,23 @@ function SaveTraySheet({ request, onClose }: { request: SaveRequest; onClose: ()
   const outfitQuery = useStudioOutfit(request.kind === "look" ? request.outfitId : null)
 
   const moodboards = useMemo(() => overviewQuery.data?.moodboards ?? [], [overviewQuery.data?.moodboards])
+  // Wardrobe holds looks as well as pieces (a board page renders both for it,
+  // same as any custom moodboard), so it needs to be a pickable — and
+  // check-able — chip here too, not just favorites.
   const lookBoards = useMemo(
-    () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites").map(({ slug, label }) => ({ slug, label })),
+    () =>
+      moodboards
+        .filter((m) => !m.isSystem || m.slug === "favorites" || m.slug === "wardrobe")
+        .map(({ slug, label }) => ({ slug, label })),
     [moodboards],
   )
-  // Wardrobe leads the piece row (the piece variant of the card), then the rest.
+  // Wardrobe leads the piece row (the piece variant of the card), then the
+  // rest — lookBoards already carries wardrobe (see above), so drop it from
+  // the spread here instead of listing it twice.
   const pieceBoards = useMemo(() => {
     const wardrobe = moodboards.find((m) => m.slug === "wardrobe")
-    return wardrobe ? [{ slug: wardrobe.slug, label: wardrobe.label }, ...lookBoards] : lookBoards
+    const rest = lookBoards.filter((board) => board.slug !== "wardrobe")
+    return wardrobe ? [{ slug: wardrobe.slug, label: wardrobe.label }, ...rest] : lookBoards
   }, [lookBoards, moodboards])
 
   const outfit = request.kind === "look" ? (outfitQuery.data?.outfit ?? null) : null
