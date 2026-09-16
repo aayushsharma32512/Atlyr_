@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import { Icons } from "@/design-system/icons"
 import { cn } from "@/lib/utils"
@@ -76,6 +76,17 @@ export function StudioSaveCard({
 
   const toggleBoard = (slug: string) =>
     setBoardSlugs((prev) => (prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]))
+
+  // Boards this item is already in, at open time — frozen for the life of the
+  // card. Re-deriving this from `boardSlugs` on every toggle would make a chip
+  // jump to the front the moment the user taps it, mid-selection.
+  const initialActiveSlugs = useRef(new Set(defaultBoardSlugs)).current
+  const orderedBoards = useMemo(() => {
+    const active = boards.filter((board) => initialActiveSlugs.has(board.slug))
+    const rest = boards.filter((board) => !initialActiveSlugs.has(board.slug))
+    return [...active, ...rest]
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initialActiveSlugs is frozen for this card's lifetime
+  }, [boards])
 
   const createBoard = async () => {
     const label = window.prompt("Name your board")?.trim()
@@ -165,7 +176,7 @@ export function StudioSaveCard({
             new
           </button>
         ) : null}
-        {boards.map((board) => {
+        {orderedBoards.map((board) => {
           const on = boardSlugs.includes(board.slug)
           return (
             <button

@@ -8,6 +8,8 @@ export const studioKeys = {
     [...studioKeys.all, "hero-product", outfitId ?? "none", slot ?? "none"] as const,
   alternatives: (args: { outfitId: string | null | undefined; slot: string | null | undefined; gender: string | null }) =>
     [...studioKeys.all, "alternatives", args.outfitId ?? "none", args.slot ?? "none", args.gender ?? "neutral"] as const,
+  collectionAlternatives: (args: { slot: string | null | undefined; productIds: string[]; outfitIds: string[] }) =>
+    [...studioKeys.all, "collection-alternatives", args.slot ?? "none", args.productIds, args.outfitIds] as const,
   productOutfits: (
     productId: string | null | undefined,
     slot: StudioProductTraySlot | null | undefined,

@@ -1009,6 +1009,71 @@ async function getAlternatives({ slot, gender, limit = 24, filters }: GetAlterna
     .filter((item): item is StudioAlternativeProduct => Boolean(item))
 }
 
+interface GetCollectionAlternativesInput {
+  slot: StudioProductTraySlot
+  /** Products saved to the moodboard directly (e.g. wardrobe, favorites). */
+  productIds: string[]
+  /** Outfits saved to the moodboard — each contributes its `slot` garment, if it has one. */
+  outfitIds: string[]
+}
+
+/**
+ * The rack for one moodboard (wardrobe, favorites, ...): every garment the
+ * user saved to it for this slot — saved one at a time, or living inside a
+ * saved outfit. A saved outfit is not a rack candidate itself; its
+ * top/bottom/shoes are, same as any standalone save.
+ */
+async function getCollectionAlternatives({
+  slot,
+  productIds,
+  outfitIds,
+}: GetCollectionAlternativesInput): Promise<StudioAlternativeProduct[]> {
+  const itemType = SLOT_TO_ITEM_TYPE[slot]
+  const seenIds = new Set<string>()
+  const results: StudioAlternativeProduct[] = []
+
+  if (productIds.length > 0) {
+    const { data, error } = await supabase
+      .from("products")
+      .select(
+        "id, product_name, brand, price, image_url, thumbnail_url, product_url, gender, type, type_category, placement_x, placement_y, image_length, placement, size, currency, color, fit, feel, vibes, body_parts_visible",
+      )
+      .in("id", productIds)
+      .eq("type", itemType)
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    for (const row of data ?? []) {
+      const alt = mapProductRowToAlternative(row as Database["public"]["Tables"]["products"]["Row"])
+      if (!seenIds.has(alt.id)) {
+        seenIds.add(alt.id)
+        results.push(alt)
+      }
+    }
+  }
+
+  if (outfitIds.length > 0) {
+    const { data, error } = await supabase.from("outfits").select(OUTFIT_SELECT).in("id", outfitIds)
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    for (const row of (data ?? []) as unknown as DbOutfitRow[]) {
+      const product = row[slot]
+      if (!product || product.type !== itemType || seenIds.has(product.id)) {
+        continue
+      }
+      seenIds.add(product.id)
+      results.push(mapProductRowToAlternative(product))
+    }
+  }
+
+  return results
+}
+
 async function getProductById(productId: string): Promise<StudioProductTrayItem | null> {
   if (!productId) {
     return null
@@ -1449,6 +1514,7 @@ export const studioService = {
   getProductTrayItems,
   deriveTrayItemsFromOutfit,
   getAlternatives,
+  getCollectionAlternatives,
   getProductById,
   getOutfitsByProduct,
   getProductDetail,
