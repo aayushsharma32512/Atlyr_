@@ -1009,24 +1009,25 @@ async function getAlternatives({ slot, gender, limit = 24, filters }: GetAlterna
     .filter((item): item is StudioAlternativeProduct => Boolean(item))
 }
 
-interface GetWardrobeAlternativesInput {
+interface GetCollectionAlternativesInput {
   slot: StudioProductTraySlot
-  /** Products saved to the wardrobe moodboard directly. */
+  /** Products saved to the moodboard directly (e.g. wardrobe, favorites). */
   productIds: string[]
-  /** Outfits saved to the wardrobe moodboard — each contributes its `slot` garment, if it has one. */
+  /** Outfits saved to the moodboard — each contributes its `slot` garment, if it has one. */
   outfitIds: string[]
 }
 
 /**
- * The wardrobe rack: every garment the user actually owns for this slot — saved
- * one at a time, or living inside a saved outfit. A saved outfit is not a rack
- * candidate itself; its top/bottom/shoes are, same as any standalone save.
+ * The rack for one moodboard (wardrobe, favorites, ...): every garment the
+ * user saved to it for this slot — saved one at a time, or living inside a
+ * saved outfit. A saved outfit is not a rack candidate itself; its
+ * top/bottom/shoes are, same as any standalone save.
  */
-async function getWardrobeAlternatives({
+async function getCollectionAlternatives({
   slot,
   productIds,
   outfitIds,
-}: GetWardrobeAlternativesInput): Promise<StudioAlternativeProduct[]> {
+}: GetCollectionAlternativesInput): Promise<StudioAlternativeProduct[]> {
   const itemType = SLOT_TO_ITEM_TYPE[slot]
   const seenIds = new Set<string>()
   const results: StudioAlternativeProduct[] = []
@@ -1513,7 +1514,7 @@ export const studioService = {
   getProductTrayItems,
   deriveTrayItemsFromOutfit,
   getAlternatives,
-  getWardrobeAlternatives,
+  getCollectionAlternatives,
   getProductById,
   getOutfitsByProduct,
   getProductDetail,
