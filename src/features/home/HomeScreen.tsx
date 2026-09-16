@@ -14,7 +14,8 @@ import {
 } from "@/design-system/primitives"
 import { AppShellLayout } from "@/layouts/AppShellLayout"
 import { BoardDetailHeader } from "./components/BoardDetailHeader"
-import { MoodboardPins, type MoodboardTab } from "./components/MoodboardPins"
+import CollectionsHeader from "@/features/collections/components/CollectionsHeader"
+import type { TabBarItem } from "@/design-system/primitives"
 import { boardPath, isBoardPath } from "@/features/collections/boardUrl"
 import { FeedHeroBand } from "./components/FeedHeroBand"
 import { useResponsiveColumns } from "@/shared/hooks/useResponsiveColumns"
@@ -106,15 +107,12 @@ export function HomeScreenView() {
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
   const curatedLoadMoreRef = useRef<HTMLDivElement | null>(null)
   const allOutfitsLoadMoreRef = useRef<HTMLDivElement | null>(null)
-  const lastScrollTopRef = useRef(0)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
-  const [isTopBarVisible, setIsTopBarVisible] = useState(true)
   const lastUserIdRef = useRef<string | null>(null)
-  const { gender: profileGender, heightCm } = useProfileContext()
+  const { gender: profileGender, heightCm, profile } = useProfileContext()
   const [selectedTryOnIndex, setSelectedTryOnIndex] = useState<number | null>(null)
   const lastMoodboardPrefetchKeyRef = useRef<string | null>(null)
   const [isMoodboardPickerOpen, setIsMoodboardPickerOpen] = useState(false)
-  const [isSearchFocused, setIsSearchFocused] = useState(false)
   const [pendingOutfitId, setPendingOutfitId] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | undefined>(undefined)
@@ -406,7 +404,7 @@ export function HomeScreenView() {
     )
   }, [favoritesItems])
 
-  const moodboardTabs = useMemo<MoodboardTab[]>(() => {
+  const moodboardTabs = useMemo<TabBarItem[]>(() => {
     const systemOrder = ["for-you", "wardrobe", "try-ons", "favorites", "all-outfits"]
     const labels: Record<string, string> = {
       // V2 casing: pills and board titles are lowercase.
@@ -416,7 +414,7 @@ export function HomeScreenView() {
       "for-you": "for you",
       "all-outfits": "all outfits",
     }
-    const systemTabs: MoodboardTab[] = systemOrder.map((slug) => ({
+    const systemTabs: TabBarItem[] = systemOrder.map((slug) => ({
       id: slug,
       label: labels[slug] ?? slug,
     }))
@@ -432,47 +430,6 @@ export function HomeScreenView() {
     () => moodboardTabs.find((tab) => tab.id === activeMoodboardId)?.label ?? "Moodboard",
     [activeMoodboardId, moodboardTabs],
   )
-
-  const handleScroll = useCallback(
-    (scrollTop: number) => {
-      if (scrollTop <= 0) {
-        setIsTopBarVisible(true)
-        lastScrollTopRef.current = 0
-        return
-      }
-
-      const delta = scrollTop - lastScrollTopRef.current
-      const threshold = 6
-
-      if (delta > threshold) {
-        setIsTopBarVisible(false)
-        lastScrollTopRef.current = scrollTop
-        return
-      }
-
-      if (delta < -threshold) {
-        setIsTopBarVisible(true)
-        lastScrollTopRef.current = scrollTop
-      }
-    },
-    [setIsTopBarVisible],
-  )
-
-  useEffect(() => {
-    lastScrollTopRef.current = 0
-    setIsTopBarVisible(true)
-  }, [isResultsMode])
-
-  useEffect(() => {
-    const handleWindowScroll = () => {
-      handleScroll(window.scrollY)
-    }
-
-    window.addEventListener("scroll", handleWindowScroll, { passive: true })
-    return () => {
-      window.removeEventListener("scroll", handleWindowScroll)
-    }
-  }, [handleScroll])
 
   const scrollHomeToTop = useCallback(() => {
     if (scrollContainerRef.current) {
@@ -490,8 +447,6 @@ export function HomeScreenView() {
       const params = new URLSearchParams(searchParams)
       params.set("moodboard", nextId)
       setSearchParams(params, { replace: true })
-      lastScrollTopRef.current = 0
-      setIsTopBarVisible(true)
       requestAnimationFrame(scrollHomeToTop)
     }
 
@@ -1680,7 +1635,6 @@ export function HomeScreenView() {
               <div
                 ref={scrollContainerRef}
                 className="flex flex-1 flex-col overflow-y-auto px-2 pb-6 pt-2 scrollbar-hide"
-                onScroll={(event) => handleScroll(event.currentTarget.scrollTop)}
               >
                 {activeFilter === "products" ? renderProductResultsContent() : renderOutfitResultsContent()}
                 <div ref={loadMoreRef} className="h-6 w-full" />
@@ -1689,28 +1643,32 @@ export function HomeScreenView() {
             </div>
           </div>
         ) : (
-          <div
-            ref={scrollContainerRef}
-            className="flex flex-1 min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-24 pt-[44px]"
-            onScroll={(event) => handleScroll(event.currentTarget.scrollTop)}
-          >
+          <>
+            {/* Same header as /collection: real bar fixed to the viewport so it
+                never hides or stretches on overscroll, ghost bar in normal flow
+                purely to reserve its height (see CollectionsPage). */}
+            <CollectionsHeader
+              ownerName={profile?.name ?? null}
+              activeTab={activeMoodboardId}
+              onTabChange={handleMoodboardSelect}
+              tabs={moodboardTabs}
+              tabsFit="scroll"
+              autoCenterActiveTab
+              className="fixed top-0 inset-x-0 z-50 mx-auto w-full max-w-[24.5rem] md:max-w-[47rem] lg:max-w-[62rem] xl:max-w-[78rem]"
+            />
+            <CollectionsHeader
+              ownerName={profile?.name ?? null}
+              activeTab={activeMoodboardId}
+              onTabChange={() => {}}
+              tabs={moodboardTabs}
+              tabsFit="scroll"
+              autoCenterActiveTab
+              className="invisible pointer-events-none relative z-[-1]"
+            />
             <div
-              className={cn(
-                // No px-4 here: the tab bar carries the gutter itself, so it lines up with
-                // the Collections header's tabs rather than sitting 32px in.
-                // Top of the page now: the board has no search bar or wordmark above its pills.
-                "fixed top-0 inset-x-0 z-10 mx-auto w-full max-w-[24.5rem] md:max-w-[47rem] lg:max-w-[62rem] xl:max-w-[78rem] transition-transform transition-opacity duration-200",
-                // Hide the tab row while the search is focused so the expanded
-                // search sheet (with its filter pill) doesn't overlap it.
-                isTopBarVisible && !isSearchFocused ? "translate-y-0 opacity-100" : "-translate-y-6 opacity-0 pointer-events-none",
-              )}
+              ref={scrollContainerRef}
+              className="flex flex-1 min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-24"
             >
-              <MoodboardPins
-                tabs={moodboardTabs}
-                activeTabId={activeMoodboardId}
-                onTabSelect={handleMoodboardSelect}
-              />
-            </div>
             {activeMoodboardId === "try-ons" ? (
               <>
                 <BoardDetailHeader
@@ -1864,6 +1822,7 @@ export function HomeScreenView() {
               </>
             )}
           </div>
+          </>
         )}
       </div>
 

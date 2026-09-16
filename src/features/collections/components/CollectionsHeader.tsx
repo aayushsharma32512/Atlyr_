@@ -1,4 +1,4 @@
-import { TabBar } from "@/design-system/primitives"
+import { TabBar, type TabBarItem } from "@/design-system/primitives"
 import { cn } from "@/lib/utils"
 
 interface CollectionsHeaderProps {
@@ -9,6 +9,11 @@ interface CollectionsHeaderProps {
   ownerName?: string | null
   className?: string
   style?: React.CSSProperties
+  /** Defaults to the moodboards/creations/products tabs — a board-detail page
+   *  passes its own board list instead, so the two screens share one header. */
+  tabs?: TabBarItem[]
+  tabsFit?: "equal" | "scroll"
+  autoCenterActiveTab?: boolean
 }
 
 // Lowercase per the V2 casing rule: tabs, pills, chips and button labels are
@@ -27,7 +32,16 @@ function possessiveTitle(ownerName?: string | null) {
 }
 
 /** 52h title row, then the 36h tab bar. */
-const CollectionsHeader = ({ activeTab, onTabChange, ownerName, className, style }: CollectionsHeaderProps) => {
+const CollectionsHeader = ({
+  activeTab,
+  onTabChange,
+  ownerName,
+  className,
+  style,
+  tabs = TABS,
+  tabsFit = "equal",
+  autoCenterActiveTab = false,
+}: CollectionsHeaderProps) => {
   return (
     <header className={cn("bg-background", className)} style={style}>
       {/* No header action — "+ New" is the first tile in the board grid. */}
@@ -36,7 +50,13 @@ const CollectionsHeader = ({ activeTab, onTabChange, ownerName, className, style
           {possessiveTitle(ownerName)}
         </h1>
       </div>
-      <TabBar items={TABS} activeId={activeTab} onChange={onTabChange} />
+      <TabBar
+        items={tabs}
+        activeId={activeTab}
+        onChange={onTabChange}
+        fit={tabsFit}
+        autoCenterActive={autoCenterActiveTab}
+      />
     </header>
   )
 }
