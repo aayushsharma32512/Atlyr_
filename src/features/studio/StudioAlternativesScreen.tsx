@@ -36,7 +36,7 @@ import type { StudioAlternativeProduct, StudioProductTraySlot } from "@/services
 import { useStudioResolvedSlots } from "@/features/studio/hooks/useStudioResolvedSlots"
 import { isPlaceableOnMannequin, shouldFilterSlotByPlacement } from "@/features/studio/utils/placementSupport"
 import { mapTrayItemToStudioRenderedItem } from "@/features/studio/mappers/renderedItemMapper"
-import { isDressTop, usePlaceholderItems } from "@/features/studio/hooks/usePlaceholderItems"
+import { isDressTop, STUDIO_BASE_ITEMS_ENABLED, usePlaceholderItems } from "@/features/studio/hooks/usePlaceholderItems"
 import { mapTrayItemToProductDetail } from "@/services/studio/studioService"
 import { useSaveOutfit } from "@/features/outfits/hooks/useSaveOutfit"
 import { useCreateDraftOutfit } from "@/features/outfits/hooks/useCreateDraftOutfit"
@@ -501,11 +501,14 @@ export function StudioAlternativesView() {
 
     return zones
       .map((zone) => {
-        if (hiddenSlots[zone]) {
-          return zone === "top" ? placeholderTop : zone === "bottom" && !topIsDress ? placeholderBottom : null
-        }
         const trayItem = trayByZone.get(zone)
         const baseItem = baseByZone.get(zone)
+        // hiddenSlots only tracks an explicit ×; a zone that never had an item (a saved
+        // dress-only look has no bottom entry at all) is just as empty and needs the same
+        // stand-in, or the bare mannequin's own baked-in underwear shows through instead.
+        if (hiddenSlots[zone] || (!trayItem && !baseItem)) {
+          return zone === "top" ? placeholderTop : zone === "bottom" && !topIsDress ? placeholderBottom : null
+        }
         if (trayItem) {
           const fallbackBodyPartsVisible =
             baseItem?.id === trayItem.id ? baseItem.bodyPartsVisible ?? null : null
@@ -1244,6 +1247,7 @@ export function StudioAlternativesView() {
           avatarGender={outfitData?.avatarGender ?? "female"}
           avatarHeightCm={outfitData?.avatarHeightCm ?? 170}
           cardClassName="h-full w-full"
+          allowEmptyMannequin={isAdminMode || !STUDIO_BASE_ITEMS_ENABLED}
           // A tap on a garment opens the focus view — Studio's, with the rack collapsed.
           onItemSelect={(item) => {
             if (isStudioSlot(item.type)) enterFocus(item.type)

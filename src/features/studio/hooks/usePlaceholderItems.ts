@@ -4,12 +4,25 @@ import { studioKeys } from "@/features/studio/queryKeys"
 import { mapTrayItemToStudioRenderedItem } from "@/features/studio/mappers/renderedItemMapper"
 import { studioService, type StudioProductTrayItem } from "@/services/studio/studioService"
 
-/** Product drawn on the canvas in place of a removed top/bottom. Missing entry = bare mannequin. */
-const PLACEHOLDER_PRODUCT_IDS: Record<"male" | "female", { top?: string; bottom?: string }> = {
-  // TODO: Aayush — swap in the grey placeholder product IDs (female top/bottom, male top/bottom)
-  female: { bottom: "bb1064983005bebc85a2258ca8a264890b07a87d" },
-  male: {},
-}
+/**
+ * Off only when explicitly disabled (VITE_STUDIO_BASE_ITEMS_ENABLED=false in .env/.env.local).
+ * Unset means on, so an environment that never heard of this flag keeps today's behavior.
+ */
+export const STUDIO_BASE_ITEMS_ENABLED = import.meta.env.VITE_STUDIO_BASE_ITEMS_ENABLED !== "false"
+
+/**
+ * Product drawn on the canvas in place of a removed top/bottom. Missing entry = bare mannequin.
+ * Male has no top entry by design: an uncovered male torso needs no stand-in.
+ */
+const PLACEHOLDER_PRODUCT_IDS: Record<"male" | "female", { top?: string; bottom?: string }> = STUDIO_BASE_ITEMS_ENABLED
+  ? {
+      female: {
+        top: "7b58b1c8a88776b68c011751b2280aabddd0aa82",
+        bottom: "4b24df4881f53fc54036fe4001de6fb0f0f16e08",
+      },
+      male: { bottom: "1e64b68071ae71cd8cde866f693839d8c1b85330" },
+    }
+  : { female: {}, male: {} }
 
 function usePlaceholderProduct(productId: string | undefined) {
   // Own cache key: studioKeys.product holds StudioProductDetail, a different shape.

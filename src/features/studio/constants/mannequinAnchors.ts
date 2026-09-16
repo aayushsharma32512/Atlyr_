@@ -28,11 +28,8 @@ export type HeadAnchor = {
 }
 
 export const PLACEMENT_HEAD_ANCHOR: Record<"male" | "female", HeadAnchor> = {
-  female: { cx: 896, top: 146, chin: 508, width: 259 },
-  // chin moved 548 -> 553 when male.png's background was cut: unmatting the silhouette band darkens
-  // those edge pixels, so the neck reads a hair wider and the pinch lands 5px lower. Re-measured, not
-  // hand-tuned — see scripts/measure-head-anchor.ts.
-  male: { cx: 900, top: 164, chin: 553, width: 278 },
+  female: { cx: 893, top: 146, chin: 514, width: 259 },
+  male: { cx: 898, top: 163, chin: 532, width: 280 },
 }
 
 /**

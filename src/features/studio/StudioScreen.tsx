@@ -61,7 +61,7 @@ import { useOptionalAdminGender } from "@/features/admin/providers/AdminGenderCo
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
 import { setPendingStudioComboChange, useStudioCombinationTracking } from "@/integrations/posthog/engagementTracking/studio/studioTracking"
 import { trackTryonFlowStarted } from "@/integrations/posthog/engagementTracking/tryon/tryonTracking"
-import { isDressTop, usePlaceholderItems } from "@/features/studio/hooks/usePlaceholderItems"
+import { isDressTop, STUDIO_BASE_ITEMS_ENABLED, usePlaceholderItems } from "@/features/studio/hooks/usePlaceholderItems"
 
 const DEFAULT_AVATAR_HEAD = "/avatars/Default.png"
 
@@ -559,11 +559,14 @@ export function StudioScreenView() {
 
     return zones
       .map((zone) => {
-        if (hiddenSlots[zone]) {
-          return zone === "top" ? placeholderTop : zone === "bottom" && !topIsDress ? placeholderBottom : null
-        }
         const trayItem = trayByZone.get(zone)
         const baseItem = baseByZone.get(zone)
+        // hiddenSlots only tracks an explicit ×; a zone that never had an item (a saved
+        // dress-only look has no bottom entry at all) is just as empty and needs the same
+        // stand-in, or the bare mannequin's own baked-in underwear shows through instead.
+        if (hiddenSlots[zone] || (!trayItem && !baseItem)) {
+          return zone === "top" ? placeholderTop : zone === "bottom" && !topIsDress ? placeholderBottom : null
+        }
         if (trayItem) {
           const fallbackBodyPartsVisible =
             baseItem?.id === trayItem.id ? baseItem.bodyPartsVisible ?? null : null
@@ -1171,7 +1174,7 @@ export function StudioScreenView() {
                   cardClassName="h-full w-full"
                   onItemSelect={isViewOnly ? undefined : handleAvatarItemSelect}
                   slotOrder={slotOrder}
-                  allowEmptyMannequin={isAdminMode}
+                  allowEmptyMannequin={isAdminMode || !STUDIO_BASE_ITEMS_ENABLED}
                   onSlotSelect={isAdminMode && !isViewOnly ? (slot) => openAlternativesSplit(slot) : undefined}
                   onAvatarReady={setAvatarReady}
                   avatarRef={snapshotRef}
