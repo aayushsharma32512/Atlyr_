@@ -34,6 +34,7 @@ import { useStudioSearchResults } from "@/features/studio/hooks/useStudioSearchR
 import { useProductFilterOptions } from "@/features/search/hooks/useProductFilterOptions"
 import type { StudioAlternativeProduct, StudioProductTraySlot } from "@/services/studio/studioService"
 import { useStudioResolvedSlots } from "@/features/studio/hooks/useStudioResolvedSlots"
+import { useCurrentLookId } from "@/features/studio/hooks/useCurrentLookId"
 import { isPlaceableOnMannequin, shouldFilterSlotByPlacement } from "@/features/studio/utils/placementSupport"
 import { mapTrayItemToStudioRenderedItem } from "@/features/studio/mappers/renderedItemMapper"
 import { isDressTop, STUDIO_BASE_ITEMS_ENABLED, usePlaceholderItems } from "@/features/studio/hooks/usePlaceholderItems"
@@ -638,25 +639,29 @@ export function StudioAlternativesView() {
   // a fresh derived look, which is the existing/correct behavior.
   const isEditingExistingOutfit = Boolean(resolvedOutfitId && isOwnOutfit && !hasSlotOverrides)
 
-  // The save row's own tags win regardless of who made the look — the current
-  // user may have saved someone else's look before. A slot override means
-  // Save will derive a different outfit than resolvedOutfitId, so neither
-  // its save-row tags nor its public tags carry over to that derived outfit.
-  // Owning the look but having no save row yet falls back to its public tags.
-  const canReadCurrentOutfitTags = Boolean(resolvedOutfitId) && !hasSlotOverrides
-  const savedLookTags = canReadCurrentOutfitTags ? getSavedTags("look", resolvedOutfitId as string) : []
+  // Saved state (heart, boards, tags) keys on the combo on screen, not the URL's base look.
+  const { currentLookId } = useCurrentLookId({
+    outfitId: resolvedOutfitId,
+    hasSlotOverrides,
+    topId: outfitItems.topId,
+    bottomId: outfitItems.bottomId,
+    shoesId: outfitItems.footwearId,
+  })
+
+  // The save row's tags win; an owned, never-saved base look falls back to its public tags.
+  const savedLookTags = currentLookId ? getSavedTags("look", currentLookId) : []
   const lookInitialTags = savedLookTags.length
     ? savedLookTags
-    : isOwnOutfit && canReadCurrentOutfitTags ? (outfitData?.outfit?.tags ?? []) : []
+    : isOwnOutfit && !hasSlotOverrides ? (outfitData?.outfit?.tags ?? []) : []
 
-  // The boards this exact outfit id is really on right now, so the save
+  // The boards the current combo is really on right now, so the save
   // picker's default reflects truth instead of always assuming Favorites.
   const currentOutfitMoodboardSlugs = useMemo(() => {
-    if (!resolvedOutfitId) return []
+    if (!currentLookId) return []
     return Object.entries(outfitMembershipQuery.data ?? {})
-      .filter(([slug, ids]) => ids.has(resolvedOutfitId) && selectableMoodboards.some((m) => m.slug === slug))
+      .filter(([slug, ids]) => ids.has(currentLookId) && selectableMoodboards.some((m) => m.slug === slug))
       .map(([slug]) => slug)
-  }, [resolvedOutfitId, outfitMembershipQuery.data, selectableMoodboards])
+  }, [currentLookId, outfitMembershipQuery.data, selectableMoodboards])
 
   const resolveTryOnSnapshot = useCallback(async () => {
     if (!outfitData?.outfit || !user?.id) {
@@ -1283,6 +1288,8 @@ export function StudioAlternativesView() {
       label: "Save this look",
       icon: Icons.save,
       disabled: isViewOnly,
+      active: currentOutfitMoodboardSlugs.length > 0,
+      filled: currentOutfitMoodboardSlugs.length > 0,
       onClick: () => {
         setProductSaveId(null)
         setIsSaveDrawerOpen(true)
@@ -1519,7 +1526,7 @@ export function StudioAlternativesView() {
             {isSaveDrawerOpen || productSaveId ? (
               isSaveDrawerOpen ? (
               <StudioSaveCard
-                key={`look:${resolvedOutfitId ?? ""}:${getOutfitTagsFromItems(resolvedTrayItems).join("|")}:${lookInitialTags.join("|")}`}
+                key={`look:${currentLookId ?? ""}:${getOutfitTagsFromItems(resolvedTrayItems).join("|")}:${lookInitialTags.join("|")}`}
                 className="h-full"
                 defaultName={
                   outfitData?.outfit?.name?.startsWith("draft-look-")

@@ -32,6 +32,7 @@ import { prefetchStudioAlternatives } from "@/features/studio/hooks/useStudioAlt
 import { useStudioSwapActions } from "@/features/studio/hooks/useStudioSwapActions"
 import { prefetchStudioSearchResults } from "@/features/studio/hooks/useStudioSearchResults"
 import { useStudioResolvedSlots } from "@/features/studio/hooks/useStudioResolvedSlots"
+import { useCurrentLookId } from "@/features/studio/hooks/useCurrentLookId"
 import type { StudioProductTrayItem, StudioProductTraySlot } from "@/services/studio/studioService"
 import { buildStudioSearchParams, buildStudioUrl, parseStudioSearchParams, type SlotIdMap } from "@/features/studio/utils/studioUrlState"
 import { mapLegacyOutfitItemsToStudioItems, mapTrayItemToStudioRenderedItem } from "@/features/studio/mappers/renderedItemMapper"
@@ -613,25 +614,29 @@ export function StudioScreenView() {
   // a fresh derived look, which is the existing/correct behavior.
   const isEditingExistingOutfit = Boolean(resolvedOutfitId && isOwnOutfit && !hasSlotOverrides)
 
-  // The save row's own tags win regardless of who made the look — the current
-  // user may have saved someone else's look before. A slot override means
-  // Save will derive a different outfit than resolvedOutfitId, so neither
-  // its save-row tags nor its public tags carry over to that derived outfit.
-  // Owning the look but having no save row yet falls back to its public tags.
-  const canReadCurrentOutfitTags = Boolean(resolvedOutfitId) && !hasSlotOverrides
-  const savedLookTags = canReadCurrentOutfitTags ? getSavedTags("look", resolvedOutfitId as string) : []
+  // Saved state (heart, boards, tags) keys on the combo on screen, not the URL's base look.
+  const { currentLookId } = useCurrentLookId({
+    outfitId: resolvedOutfitId,
+    hasSlotOverrides,
+    topId: outfitItems.topId,
+    bottomId: outfitItems.bottomId,
+    shoesId: outfitItems.footwearId,
+  })
+
+  // The save row's tags win; an owned, never-saved base look falls back to its public tags.
+  const savedLookTags = currentLookId ? getSavedTags("look", currentLookId) : []
   const lookInitialTags = savedLookTags.length
     ? savedLookTags
-    : isOwnOutfit && canReadCurrentOutfitTags ? (studioAvatar?.tags ?? []) : []
+    : isOwnOutfit && !hasSlotOverrides ? (studioAvatar?.tags ?? []) : []
 
-  // The boards this exact outfit id is really on right now, so the save
+  // The boards the current combo is really on right now, so the save
   // picker's default reflects truth instead of always assuming Favorites.
   const currentOutfitMoodboardSlugs = useMemo(() => {
-    if (!resolvedOutfitId) return []
+    if (!currentLookId) return []
     return Object.entries(outfitMembershipQuery.data ?? {})
-      .filter(([slug, ids]) => ids.has(resolvedOutfitId) && selectableMoodboards.some((m) => m.slug === slug))
+      .filter(([slug, ids]) => ids.has(currentLookId) && selectableMoodboards.some((m) => m.slug === slug))
       .map(([slug]) => slug)
-  }, [resolvedOutfitId, outfitMembershipQuery.data, selectableMoodboards])
+  }, [currentLookId, outfitMembershipQuery.data, selectableMoodboards])
 
   const resolveTryOnSnapshot = useCallback(async () => {
     if (!studioAvatar || !user?.id) {
@@ -1204,7 +1209,7 @@ export function StudioScreenView() {
             {isSaveDrawerOpen ? (
               // Same 170 as the rows it replaces, so the canvas — and the figure — never move.
               <StudioSaveCard
-                key={`look:${resolvedOutfitId ?? ""}:${getOutfitTagsFromItems(resolvedTrayItems).join("|")}:${lookInitialTags.join("|")}`}
+                key={`look:${currentLookId ?? ""}:${getOutfitTagsFromItems(resolvedTrayItems).join("|")}:${lookInitialTags.join("|")}`}
                 compact
                 className="h-full"
                 defaultName={
@@ -1239,6 +1244,7 @@ export function StudioScreenView() {
             />
             <StudioActionBar
               isReadOnly={isViewOnly}
+              saved={currentOutfitMoodboardSlugs.length > 0}
               onSave={() => setIsSaveDrawerOpen(true)}
               onTryOn={handleTryOn}
               onFindItems={handleFindItems}
