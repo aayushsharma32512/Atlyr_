@@ -1438,7 +1438,6 @@ export function StudioAlternativesView() {
                 thumbSrc={search.draftImageUrl}
                 onClearThumb={search.handleClearImage}
                 onOpenImagePicker={() => setIsReferenceDialogOpen(true)}
-                onFilter={() => setIsFilterOpen(true)}
               />
             ) : null}
           </div>
