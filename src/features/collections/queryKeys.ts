@@ -36,6 +36,7 @@ export const collectionsKeys = {
   collectionProducts: (slug: string) => [...collectionsKeys.products(), "collection", slug] as const,
   products: () => [...collectionsKeys.all, "products"] as const,
   productCollectionMembership: () => [...collectionsKeys.products(), "membership"] as const,
+  savedProductTags: () => [...collectionsKeys.products(), "saved-tags"] as const,
   productFavorites: () => [...collectionsKeys.all, "product-favorites"] as const,
   trendingProducts: (gender: string | null) => [...collectionsKeys.products(), "trending", gender ?? "all"] as const,
 }

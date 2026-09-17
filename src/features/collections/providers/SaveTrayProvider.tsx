@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react"
+import { useQuery } from "@tanstack/react-query"
 
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from "@/components/ui/drawer"
 import { useAuth } from "@/contexts/AuthContext"
@@ -14,9 +15,11 @@ import { useUpdateOutfit } from "@/features/outfits/hooks/useUpdateOutfit"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { StudioSaveCard } from "@/features/studio/components/StudioSaveCard"
 import { useStudioOutfit } from "@/features/studio/hooks/useStudioOutfit"
+import { studioKeys } from "@/features/studio/queryKeys"
 import { useToast } from "@/hooks/use-toast"
 import type { EntityUiContext } from "@/integrations/posthog/engagementTracking/entityEvents"
-import { getOutfitChips } from "@/utils/outfitChips"
+import { studioService } from "@/services/studio/studioService"
+import { getOutfitTagsFromItems, getTrayItemTags } from "@/utils/productTags"
 
 type SaveRequest =
   | { kind: "look"; outfitId: string; context?: EntityUiContext; presetBoardSlug?: string }
@@ -102,6 +105,13 @@ function SaveTraySheet({ request, onClose }: { request: SaveRequest; onClose: ()
   const removeFromCollection = useRemoveFromCollection()
   const updateOutfit = useUpdateOutfit()
   const outfitQuery = useStudioOutfit(request.kind === "look" ? request.outfitId : null)
+  const pieceProductId = request.kind === "piece" ? request.productId : null
+  const pieceProductQuery = useQuery({
+    queryKey: [...studioKeys.all, "save-tray-product", pieceProductId ?? "none"],
+    queryFn: () => studioService.getProductById(pieceProductId as string),
+    enabled: Boolean(pieceProductId),
+    staleTime: 5 * 60 * 1000,
+  })
 
   const moodboards = useMemo(() => overviewQuery.data?.moodboards ?? [], [overviewQuery.data?.moodboards])
   // Wardrobe holds looks as well as pieces (a board page renders both for it,
@@ -132,10 +142,16 @@ function SaveTraySheet({ request, onClose }: { request: SaveRequest; onClose: ()
   }, [lookBoards, membershipQuery.data, request])
   const pieceSlugs = request.kind === "piece" ? productSaveActions.getProductBoardSlugs(request.productId) : []
 
+  const tagOptions = request.kind === "look" ? getOutfitTagsFromItems(outfit?.items ?? []) : getTrayItemTags(pieceProductQuery.data)
+  const initialTags =
+    request.kind === "look"
+      ? ownsLook ? (outfit?.tags ?? []) : []
+      : productSaveActions.getSavedProductTags(request.productId)
+
   const handleSave = async (data: { name: string; tags: string[]; boardSlugs: string[] }) => {
     if (request.kind === "piece") {
       try {
-        await productSaveActions.onSaveToBoards(request.productId, data.boardSlugs, request.context)
+        await productSaveActions.onSaveToBoards(request.productId, data.boardSlugs, data.tags, request.context)
       } catch {
         // onSaveToBoards has already toasted; keep the card open to retry.
         return
@@ -166,8 +182,7 @@ function SaveTraySheet({ request, onClose }: { request: SaveRequest; onClose: ()
           occasionId: outfit.occasion?.id ?? "",
           backgroundId: outfit.backgroundId ?? null,
           isPrivate: false,
-          vibe: outfit.vibes ?? null,
-          keywords: data.tags.join(", "),
+          tags: data.tags,
           createdByName: profile?.name ?? null,
         })
       }
@@ -188,8 +203,8 @@ function SaveTraySheet({ request, onClose }: { request: SaveRequest; onClose: ()
   // memberships finish loading rather than keeping the stale defaults.
   const cardKey =
     request.kind === "look"
-      ? `look:${request.outfitId}:${outfit?.id ?? ""}:${lookSlugs.join("|")}`
-      : `piece:${request.productId}:${pieceSlugs.join("|")}`
+      ? `look:${request.outfitId}:${outfit?.id ?? ""}:${lookSlugs.join("|")}:${initialTags.join("|")}`
+      : `piece:${request.productId}:${pieceSlugs.join("|")}:${initialTags.join("|")}`
 
   // Real memberships always win; the preset only fills in for an item that
   // has never been saved anywhere, so it doesn't default to Favorites when
@@ -210,7 +225,8 @@ function SaveTraySheet({ request, onClose }: { request: SaveRequest; onClose: ()
         key={cardKey}
         kind={request.kind}
         defaultName={request.kind === "look" && ownsLook ? (outfit?.name ?? "") : undefined}
-        defaultTags={request.kind === "look" && ownsLook ? getOutfitChips(outfit) : []}
+        tagOptions={tagOptions}
+        initialTags={initialTags}
         boards={request.kind === "look" ? lookBoards : pieceBoards}
         defaultBoardSlugs={request.kind === "look" ? lookDefaultSlugs : pieceDefaultSlugs}
         isSaving={isSaving || productSaveActions.isSaving}

@@ -14,10 +14,12 @@ export interface StudioSaveCardProps {
    * "look" when a name is given (the older contract) and "piece" otherwise.
    */
   kind?: "look" | "piece"
-  /** Omit to hide the name and tag rows. */
+  /** Omit to hide the name row. */
   defaultName?: string
-  /** Suggested tags, drawn from the worn pieces. */
-  defaultTags?: string[]
+  /** Derived tags on offer as toggle chips, drawn from the worn pieces. */
+  tagOptions?: string[]
+  /** Stored tags when editing an existing save — pre-selects matching options, rest become custom. */
+  initialTags?: string[]
   boards: StudioSaveBoard[]
   /** Look saves: how many pieces are worn, for the "save look · N pieces" callout. */
   pieceCount?: number
@@ -36,6 +38,106 @@ const CHIP =
 /** The rails bleed to the frame edge, so a chip can scroll off rather than clip. */
 const RAIL = "-mx-4 flex flex-none items-center gap-1.5 overflow-x-auto px-4 scrollbar-hide"
 
+interface PillRailProps {
+  items: StudioSaveBoard[]
+  activeKeys: string[]
+  /** Keys active when the card opened; they lead the rail and never move after. */
+  initialActiveKeys: Set<string>
+  /** Keys created from this rail, newest first; they sit right after the create pill. */
+  createdKeys: string[]
+  createLabel: string
+  placeholder: string
+  onToggle: (key: string) => void
+  onCreate?: (label: string) => void | Promise<void>
+}
+
+/** Created pills first (newest leading), then pills that were on at open, then the rest. */
+function orderPills(items: StudioSaveBoard[], initialActiveKeys: Set<string>, createdKeys: string[]) {
+  const created = createdKeys.map((key) => items.find((item) => item.slug === key)).filter((item): item is StudioSaveBoard => Boolean(item))
+  const lead = items.filter((item) => initialActiveKeys.has(item.slug) && !createdKeys.includes(item.slug))
+  const rest = items.filter((item) => !initialActiveKeys.has(item.slug) && !createdKeys.includes(item.slug))
+  return [...created, ...lead, ...rest]
+}
+
+/**
+ * One scrollable row of pills: the create pill, then the ordered pills.
+ * Toggling never reorders, or a chip would jump under the finger.
+ */
+function PillRail({ items, activeKeys, initialActiveKeys, createdKeys, createLabel, placeholder, onToggle, onCreate }: PillRailProps) {
+  const [adding, setAdding] = useState(false)
+  const [draft, setDraft] = useState("")
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (adding) inputRef.current?.focus()
+  }, [adding])
+
+  const ordered = useMemo(() => orderPills(items, initialActiveKeys, createdKeys), [createdKeys, initialActiveKeys, items])
+
+  const commit = () => {
+    const label = draft.trim()
+    setDraft("")
+    setAdding(false)
+    if (label && onCreate) void onCreate(label)
+  }
+
+  return (
+    <div className={RAIL}>
+      {onCreate ? (
+        adding ? (
+          <input
+            ref={inputRef}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={commit}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault()
+                commit()
+              }
+              if (event.key === "Escape") {
+                setDraft("")
+                setAdding(false)
+              }
+            }}
+            placeholder={placeholder}
+            className={cn(CHIP, "w-28 border border-hairline bg-white text-ink outline-none")}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className={cn(CHIP, "border border-dashed border-hairline-dashed bg-white text-ink")}
+          >
+            <Icons.add className="h-[11px] w-[11px]" strokeWidth={2} aria-hidden="true" />
+            {createLabel}
+          </button>
+        )
+      ) : null}
+      {ordered.map((item) => {
+        const on = activeKeys.includes(item.slug)
+        return (
+          <button
+            key={item.slug}
+            type="button"
+            aria-pressed={on}
+            onClick={() => onToggle(item.slug)}
+            className={cn(
+              CHIP,
+              // V2: active pill = 1.5px violet border and violet text, no fill.
+              on ? "border-[1.5px] border-violet bg-white text-violet" : "border border-hairline bg-white text-ink",
+            )}
+          >
+            {item.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+const tagKey = (label: string) => label.trim().toLowerCase()
+
 /**
  * Save, in place of the slot rows — name, tags, boards, then Save/Cancel.
  * Replaces the drawer on this screen; the artboard puts it inside the 170h card.
@@ -43,7 +145,8 @@ const RAIL = "-mx-4 flex flex-none items-center gap-1.5 overflow-x-auto px-4 scr
 export function StudioSaveCard({
   kind,
   defaultName,
-  defaultTags = [],
+  tagOptions = [],
+  initialTags = [],
   boards,
   pieceCount,
   compact = false,
@@ -57,51 +160,68 @@ export function StudioSaveCard({
   const isLook = (kind ?? (defaultName !== undefined ? "look" : "piece")) === "look"
   const hasDetails = defaultName !== undefined
   const [name, setName] = useState(defaultName ?? "")
-  const [tags, setTags] = useState<string[]>(defaultTags)
-  const [boardSlugs, setBoardSlugs] = useState<string[]>(defaultBoardSlugs)
-  const [addingTag, setAddingTag] = useState(false)
-  const [draftTag, setDraftTag] = useState("")
-  const tagInputRef = useRef<HTMLInputElement>(null)
-  const [addingBoard, setAddingBoard] = useState(false)
-  const [draftBoard, setDraftBoard] = useState("")
-  const boardInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    if (addingTag) tagInputRef.current?.focus()
-  }, [addingTag])
-  useEffect(() => {
-    if (addingBoard) boardInputRef.current?.focus()
-  }, [addingBoard])
-
-  const commitTag = () => {
-    const value = draftTag.trim()
-    if (value && !tags.includes(value)) setTags((prev) => [...prev, value])
-    setDraftTag("")
-    setAddingTag(false)
+  // Tags: derived options plus the user's own. A stored tag that matches an option
+  // pre-selects it; any other stored tag comes back as a custom pill.
+  const [customTags, setCustomTags] = useState<string[]>(() =>
+    initialTags.filter((tag) => !tagOptions.some((option) => tagKey(option) === tagKey(tag))),
+  )
+  const [selectedTags, setSelectedTags] = useState<string[]>(() => [
+    ...tagOptions.filter((option) => initialTags.some((tag) => tagKey(tag) === tagKey(option))),
+    ...initialTags.filter((tag) => !tagOptions.some((option) => tagKey(option) === tagKey(tag))),
+  ])
+  const [createdTags, setCreatedTags] = useState<string[]>([])
+  const initialActiveTags = useRef(new Set(selectedTags)).current
+  const tagItems = useMemo(
+    () => [...customTags, ...tagOptions].map((tag) => ({ slug: tag, label: tag })),
+    [customTags, tagOptions],
+  )
+  const toggleTag = (tag: string) => {
+    const isCustom = customTags.includes(tag)
+    if (selectedTags.includes(tag)) {
+      setSelectedTags((prev) => prev.filter((t) => t !== tag))
+      // A custom pill switched off is gone; there is nothing to leave behind.
+      if (isCustom) {
+        setCustomTags((prev) => prev.filter((t) => t !== tag))
+        setCreatedTags((prev) => prev.filter((t) => t !== tag))
+      }
+      return
+    }
+    setSelectedTags((prev) => [...prev, tag])
   }
+
+  const createTag = (label: string) => {
+    const existing = tagItems.find((item) => tagKey(item.slug) === tagKey(label))
+    if (existing) {
+      if (!selectedTags.includes(existing.slug)) setSelectedTags((prev) => [...prev, existing.slug])
+      return
+    }
+    setCustomTags((prev) => [label, ...prev])
+    setSelectedTags((prev) => [...prev, label])
+    setCreatedTags((prev) => [label, ...prev])
+  }
+
+  // Boards.
+  const [boardSlugs, setBoardSlugs] = useState<string[]>(defaultBoardSlugs)
+  const [createdBoards, setCreatedBoards] = useState<string[]>([])
+  const initialActiveSlugs = useRef(new Set(defaultBoardSlugs)).current
 
   const toggleBoard = (slug: string) =>
     setBoardSlugs((prev) => (prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]))
 
-  // Boards this item is already in, at open time — frozen for the life of the
-  // card. Re-deriving this from `boardSlugs` on every toggle would make a chip
-  // jump to the front the moment the user taps it, mid-selection.
-  const initialActiveSlugs = useRef(new Set(defaultBoardSlugs)).current
-  const orderedBoards = useMemo(() => {
-    const active = boards.filter((board) => initialActiveSlugs.has(board.slug))
-    const rest = boards.filter((board) => !initialActiveSlugs.has(board.slug))
-    return [...active, ...rest]
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- initialActiveSlugs is frozen for this card's lifetime
-  }, [boards])
-
-  const commitBoard = async () => {
-    const label = draftBoard.trim()
-    setDraftBoard("")
-    setAddingBoard(false)
-    if (!label || !onCreateBoard) return
+  const createBoard = async (label: string) => {
+    if (!onCreateBoard) return
     const slug = await onCreateBoard(label)
-    if (slug) setBoardSlugs((prev) => [...prev, slug])
+    if (slug) {
+      setBoardSlugs((prev) => [...prev, slug])
+      setCreatedBoards((prev) => [slug, ...prev])
+    }
   }
+
+  const tagsInRailOrder = () =>
+    orderPills(tagItems, initialActiveTags, createdTags)
+      .map((item) => item.slug)
+      .filter((tag) => selectedTags.includes(tag))
 
   return (
     <div className={cn("flex flex-1 flex-col justify-start", compact ? "gap-1" : "gap-1.5", className)}>
@@ -116,111 +236,38 @@ export function StudioSaveCard({
         </p>
       )}
       {hasDetails ? (
-      <>
-      <label className={cn("box-border flex flex-none items-center gap-1.5 rounded-control border border-hairline bg-white pl-2.5 pr-1", compact ? "h-9" : "h-11")}>
-        <span className="sr-only">Look name</span>
-        <input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="Name this look"
-          className="min-w-0 flex-1 truncate bg-transparent text-label font-medium text-ink outline-none placeholder:text-taupe"
-        />
-      </label>
-
-      <div className={RAIL}>
-        {addingTag ? (
+        <label className={cn("box-border flex flex-none items-center gap-1.5 rounded-control border border-hairline bg-white pl-2.5 pr-1", compact ? "h-9" : "h-11")}>
+          <span className="sr-only">Look name</span>
           <input
-            ref={tagInputRef}
-            value={draftTag}
-            onChange={(event) => setDraftTag(event.target.value)}
-            onBlur={commitTag}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") commitTag()
-              if (event.key === "Escape") {
-                setDraftTag("")
-                setAddingTag(false)
-              }
-            }}
-            placeholder="Tag"
-            className={cn(CHIP, "w-24 border border-hairline bg-white text-ink outline-none")}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Name this look"
+            className="min-w-0 flex-1 truncate bg-transparent text-label font-medium text-ink outline-none placeholder:text-taupe"
           />
-        ) : (
-          <button
-            type="button"
-            onClick={() => setAddingTag(true)}
-            className={cn(CHIP, "border border-dashed border-hairline-dashed bg-white text-ink")}
-          >
-            <Icons.add className="h-[11px] w-[11px] flex-none text-ink" strokeWidth={2} aria-hidden="true" />
-            add tag
-          </button>
-        )}
-        {/* The chip is a label, not a button — removing is the × alone, or a tap
-            anywhere on it deleted the tag by accident. */}
-        {tags.map((tag) => (
-          <span key={tag} className={cn(CHIP, "border border-hairline bg-white text-ink")}>
-            {tag}
-            <button
-              type="button"
-              aria-label={`Remove ${tag}`}
-              onClick={() => setTags((prev) => prev.filter((t) => t !== tag))}
-              className="-mr-0.5 flex h-4 w-4 flex-none items-center justify-center text-taupe"
-            >
-              <Icons.close className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
-            </button>
-          </span>
-        ))}
-      </div>
-      </>
+        </label>
       ) : null}
 
-      <div className={RAIL}>
-        {onCreateBoard ? (
-          addingBoard ? (
-            <input
-              ref={boardInputRef}
-              value={draftBoard}
-              onChange={(event) => setDraftBoard(event.target.value)}
-              onBlur={() => void commitBoard()}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") void commitBoard()
-                if (event.key === "Escape") {
-                  setDraftBoard("")
-                  setAddingBoard(false)
-                }
-              }}
-              placeholder="Board name"
-              className={cn(CHIP, "w-28 border border-hairline bg-white text-ink outline-none")}
-            />
-          ) : (
-            <button
-              type="button"
-              onClick={() => setAddingBoard(true)}
-              className={cn(CHIP, "border border-dashed border-hairline-dashed bg-white text-ink")}
-            >
-              <Icons.add className="h-[11px] w-[11px]" strokeWidth={2} aria-hidden="true" />
-              new
-            </button>
-          )
-        ) : null}
-        {orderedBoards.map((board) => {
-          const on = boardSlugs.includes(board.slug)
-          return (
-            <button
-              key={board.slug}
-              type="button"
-              aria-pressed={on}
-              onClick={() => toggleBoard(board.slug)}
-              className={cn(
-                CHIP,
-                // V2: active board = 1.5px violet border and violet text, no fill.
-                on ? "border-[1.5px] border-violet bg-white text-violet" : "border border-hairline bg-white text-ink",
-              )}
-            >
-              {board.label}
-            </button>
-          )
-        })}
-      </div>
+      <PillRail
+        items={tagItems}
+        activeKeys={selectedTags}
+        initialActiveKeys={initialActiveTags}
+        createdKeys={createdTags}
+        createLabel="tag"
+        placeholder="Tag"
+        onToggle={toggleTag}
+        onCreate={createTag}
+      />
+
+      <PillRail
+        items={boards}
+        activeKeys={boardSlugs}
+        initialActiveKeys={initialActiveSlugs}
+        createdKeys={createdBoards}
+        createLabel="board"
+        placeholder="Board name"
+        onToggle={toggleBoard}
+        onCreate={onCreateBoard ? createBoard : undefined}
+      />
 
       {/* V2 order: cancel (white) · save (ink). */}
       <div className="mt-auto flex flex-none items-center gap-2">
@@ -239,7 +286,7 @@ export function StudioSaveCard({
         <button
           type="button"
           disabled={isSaving}
-          onClick={() => onSave({ name: name.trim() || (defaultName ?? ""), tags, boardSlugs })}
+          onClick={() => onSave({ name: name.trim() || (defaultName ?? ""), tags: tagsInRailOrder(), boardSlugs })}
           className={cn(
             "box-border flex flex-1 items-center justify-center gap-2 rounded-control",
             compact ? "h-control-secondary" : "h-control-primary",

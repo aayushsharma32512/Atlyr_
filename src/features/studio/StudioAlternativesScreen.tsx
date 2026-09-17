@@ -38,6 +38,7 @@ import { isPlaceableOnMannequin, shouldFilterSlotByPlacement } from "@/features/
 import { mapTrayItemToStudioRenderedItem } from "@/features/studio/mappers/renderedItemMapper"
 import { isDressTop, STUDIO_BASE_ITEMS_ENABLED, usePlaceholderItems } from "@/features/studio/hooks/usePlaceholderItems"
 import { mapTrayItemToAlternative, mapTrayItemToProductDetail } from "@/services/studio/studioService"
+import { getOutfitTagsFromItems, getTrayItemTags } from "@/utils/productTags"
 import { useSaveOutfit } from "@/features/outfits/hooks/useSaveOutfit"
 import { useCreateDraftOutfit } from "@/features/outfits/hooks/useCreateDraftOutfit"
 import { useFindOutfitByItems } from "@/features/outfits/hooks/useFindOutfitByItems"
@@ -736,8 +737,7 @@ export function StudioAlternativesView() {
       outfitName: string
       categoryId: string
       occasionId: string
-      vibe: string
-      keywords: string
+      tags: string[]
       isPrivate: boolean
       moodboardIds?: string[]
     }) => {
@@ -762,8 +762,7 @@ export function StudioAlternativesView() {
             occasionId: data.occasionId,
             backgroundId: outfitData?.outfit?.backgroundId ?? null,
             isPrivate: data.isPrivate,
-            vibe: data.vibe,
-            keywords: data.keywords,
+            tags: data.tags,
             createdByName: profile?.name ?? null,
           })
           outfitId = resolvedOutfitId
@@ -776,8 +775,7 @@ export function StudioAlternativesView() {
             bottomId: outfitItems.bottomId,
             shoesId: outfitItems.footwearId,
             gender: outfitData?.avatarGender ?? "female",
-            vibe: data.vibe,
-            keywords: data.keywords,
+            tags: data.tags,
             isPrivate: data.isPrivate,
             createdByName: profile?.name ?? null,
             userId: user.id,
@@ -872,18 +870,6 @@ export function StudioAlternativesView() {
     ],
   )
 
-  /** Same shape as the Studio card: tags come from the worn pieces. */
-  const suggestedTags = useMemo(() => {
-    const seen = new Set<string>()
-    resolvedTrayItems.forEach((item) => {
-      ;[...item.vibeTags, ...item.feelTags, ...item.fitTags]
-        .filter(Boolean)
-        .slice(0, 2)
-        .forEach((tag) => seen.add(tag))
-    })
-    return [...seen].slice(0, 5)
-  }, [resolvedTrayItems])
-
   /** The card has no category or occasion fields, so carry the outfit's own. */
   const handleSaveFromCard = useCallback(
     async (data: { name: string; tags: string[]; boardSlugs: string[] }) => {
@@ -892,8 +878,7 @@ export function StudioAlternativesView() {
           outfitName: data.name,
           categoryId: outfitData?.outfit?.category ?? "",
           occasionId: outfitData?.outfit?.occasion?.id ?? "",
-          vibe: "",
-          keywords: data.tags.join(", "),
+          tags: data.tags,
           isPrivate: false,
           moodboardIds: data.boardSlugs,
         })
@@ -905,12 +890,12 @@ export function StudioAlternativesView() {
     [handleSaveOutfit, outfitData?.outfit?.category, outfitData?.outfit?.occasion?.id],
   )
 
-  /** Product pins open the same card, boards only. */
+  /** Product pins open the same card, boards and tags both. */
   const handleSaveProduct = useCallback(
-    async (boardSlugs: string[]) => {
+    async (boardSlugs: string[], tags: string[] = []) => {
       if (!productSaveId) return
       try {
-        await productSaveActions.onSaveToBoards(productSaveId, boardSlugs)
+        await productSaveActions.onSaveToBoards(productSaveId, boardSlugs, tags)
         setProductSaveId(null)
         toast({ title: boardSlugs.length ? "Saved" : "Removed from boards" })
       } catch {
@@ -1286,17 +1271,7 @@ export function StudioAlternativesView() {
     : (heroProduct?.title ?? focusedItem?.product_name ?? focusedItem?.brand ?? "Selected piece")
   const heroPrice = heroProduct?.price ?? focusedItem?.price ?? 0
 
-  /** fit · feel · vibe · colour · material. No brand, no price. */
-  const heroAttributes = useMemo(() => {
-    if (!heroProduct) return []
-    return [
-      ...(heroProduct.fitTags ?? []),
-      ...(heroProduct.feelTags ?? []),
-      ...(heroProduct.vibeTags ?? []),
-      heroProduct.color,
-      heroProduct.materialType,
-    ].filter((value): value is string => Boolean(value)).slice(0, 5)
-  }, [heroProduct])
+  const heroAttributes = useMemo(() => getTrayItemTags(heroProduct), [heroProduct])
 
   const heroImages = useMemo(
     () =>
@@ -1419,11 +1394,12 @@ export function StudioAlternativesView() {
               {productSaveId ? (
                 <div className="box-border flex h-[225px] flex-none flex-col px-4 py-2.5">
                   <StudioSaveCard
-                    key={productSaveId}
+                    key={`${productSaveId}:${productSaveActions.getSavedProductTags(productSaveId).join("|")}`}
                     kind="piece"
                     className="h-full"
                     defaultName={heroTitle}
-                    defaultTags={heroAttributes}
+                    tagOptions={getTrayItemTags(heroProduct)}
+                    initialTags={productSaveActions.getSavedProductTags(productSaveId)}
                     boards={selectableMoodboards.map((m) => ({ slug: m.slug, label: m.label }))}
                     defaultBoardSlugs={
                       productSaveActions.getProductBoardSlugs(productSaveId).length
@@ -1431,7 +1407,7 @@ export function StudioAlternativesView() {
                         : ["favorites"]
                     }
                     isSaving={productSaveActions.isSaving}
-                    onSave={(data) => void handleSaveProduct(data.boardSlugs)}
+                    onSave={(data) => void handleSaveProduct(data.boardSlugs, data.tags)}
                     onCancel={() => setProductSaveId(null)}
                     onCreateBoard={(name) =>
                       createMoodboardMutation.mutateAsync(name).then((res) => res.slug)
@@ -1525,7 +1501,8 @@ export function StudioAlternativesView() {
                     ? `${profile?.name ?? "Your"}'s Look #${String(Date.now()).slice(-4)}`
                     : (outfitData?.outfit?.name ?? "")
                 }
-                defaultTags={suggestedTags}
+                tagOptions={getOutfitTagsFromItems(resolvedTrayItems)}
+                initialTags={isEditingExistingOutfit ? (outfitData?.outfit?.tags ?? []) : []}
                 boards={selectableMoodboards.map((m) => ({ slug: m.slug, label: m.label }))}
                 defaultBoardSlugs={
                   currentOutfitMoodboardSlugs.length ? currentOutfitMoodboardSlugs : ["favorites"]
@@ -1543,7 +1520,7 @@ export function StudioAlternativesView() {
                 kind="piece"
                 className="h-full"
                 defaultName={heroTitle}
-                defaultTags={heroAttributes}
+                tagOptions={getTrayItemTags(heroProduct)}
                 boards={selectableMoodboards.map((m) => ({ slug: m.slug, label: m.label }))}
                 defaultBoardSlugs={
                   productSaveActions.getProductBoardSlugs(productSaveId!).length
@@ -1551,7 +1528,7 @@ export function StudioAlternativesView() {
                     : ["favorites"]
                 }
                 isSaving={productSaveActions.isSaving}
-                onSave={(data) => void handleSaveProduct(data.boardSlugs)}
+                onSave={(data) => void handleSaveProduct(data.boardSlugs, data.tags)}
                 onCancel={() => setProductSaveId(null)}
                 onCreateBoard={(name) =>
                   createMoodboardMutation.mutateAsync(name).then((res) => res.slug)
