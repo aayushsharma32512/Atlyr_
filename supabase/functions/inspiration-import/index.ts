@@ -488,7 +488,10 @@ async function webSearch(context: Awaited<ReturnType<typeof requireUser>>, body:
   form.set("image", crop, "retrieval.webp")
   const uploadResponse = await fetch("https://serpapi.com/image", { method: "POST", body: form, signal: AbortSignal.timeout(20_000) })
   const upload = await uploadResponse.json().catch(() => ({})) as Record<string, unknown>
-  if (!uploadResponse.ok || typeof upload.image_id !== "string") throw new Error("SerpApi image upload failed")
+  if (!uploadResponse.ok || typeof upload.image_id !== "string") {
+    console.error("[inspiration-import] serpapi upload", uploadResponse.status, upload.error ?? null)
+    throw new Error("SerpApi image upload failed")
+  }
   const params = new URLSearchParams({
     engine: "google_lens", image_id: upload.image_id,
     country: Deno.env.get("SERPAPI_COUNTRY") ?? "us", hl: "en", safe: "active", auto_crop: "false",
@@ -496,7 +499,10 @@ async function webSearch(context: Awaited<ReturnType<typeof requireUser>>, body:
   })
   const response = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(25_000) })
   const payload = await response.json().catch(() => ({})) as Record<string, unknown>
-  if (!response.ok || !Array.isArray(payload.visual_matches)) throw new Error("SerpApi Lens search failed")
+  if (!response.ok || !Array.isArray(payload.visual_matches)) {
+    console.error("[inspiration-import] serpapi lens", response.status, payload.error ?? null)
+    throw new Error("SerpApi Lens search failed")
+  }
   const stillSelected = await selectedCandidate(context, importId, current.candidate.id)
   if (stillSelected.candidate.id !== current.candidate.id) throw new HttpError(409, "candidate_changed", "The selected garment changed; search again")
   return {
@@ -515,36 +521,20 @@ function validSelectionPayload(value: InspirationWebSelectionPayload): boolean {
     && Number.isInteger(value.expiresAt)
 }
 
-async function stageSelections(context: Awaited<ReturnType<typeof requireUser>>, body: Record<string, unknown>) {
+async function addWebSelections(context: Awaited<ReturnType<typeof requireUser>>, body: Record<string, unknown>) {
   const importId = requiredString(body, "importId")
   if (!Array.isArray(body.selections) || body.selections.length < 1 || body.selections.length > 2) {
     throw new HttpError(400, "invalid_web_selections", "Choose at most one online top and one online bottom")
   }
-  if (!Array.isArray(body.catalogueSelections) || body.catalogueSelections.length > 1
-    || body.catalogueSelections.length + body.selections.length > 2) {
-    throw new HttpError(400, "invalid_catalogue_selections", "Choose at most one inventory item per garment")
-  }
 
-  const catalogueSelections: Array<{ candidateId: string; productId: string }> = []
   const verified: InspirationWebSelectionPayload[] = []
   const seenCandidates = new Set<string>()
-  for (const raw of body.catalogueSelections) {
-    const input = asObject(raw)
-    const candidateId = requiredString(input, "candidateId")
-    const productId = requiredString(input, "productId")
-    if (seenCandidates.has(candidateId)) {
-      throw new HttpError(400, "invalid_catalogue_selections", "Each garment can have only one final selection")
-    }
-    seenCandidates.add(candidateId)
-    await selectedCandidate(context, importId, candidateId)
-    catalogueSelections.push({ candidateId, productId })
-  }
   for (const raw of body.selections) {
     const input = asObject(raw)
     const candidateId = requiredString(input, "candidateId")
     const selectionToken = requiredString(input, "selectionToken")
     if (seenCandidates.has(candidateId)) {
-      throw new HttpError(400, "invalid_web_selections", "Each garment can have only one final selection")
+      throw new HttpError(400, "invalid_web_selections", "Each garment can have only one online pick")
     }
     seenCandidates.add(candidateId)
     await selectedCandidate(context, importId, candidateId)
@@ -557,10 +547,9 @@ async function stageSelections(context: Awaited<ReturnType<typeof requireUser>>,
     verified.push(selection)
   }
 
-  const { data, error } = await context.admin.rpc("stage_inspiration_import_selections", {
+  const { data, error } = await context.admin.rpc("add_inspiration_import_web_selections", {
     p_user_id: context.userId,
     p_import_id: importId,
-    p_catalogue_results: catalogueSelections,
     p_web_results: verified.map((selection) => ({
       candidateId: selection.candidateId,
       providerResultId: selection.providerResultId,
@@ -573,16 +562,108 @@ async function stageSelections(context: Awaited<ReturnType<typeof requireUser>>,
     })),
   })
   if (error) {
-    console.error("[inspiration-import] selection staging failed", {
+    console.error("[inspiration-import] add to atlyr failed", {
       importId,
       code: error.code,
       message: error.message,
       details: error.details,
       hint: error.hint,
     })
-    throw new HttpError(409, "selection_staging_failed", "The final selections could not be saved")
+    throw new HttpError(409, "add_web_selections_failed", "The online picks could not be saved")
   }
   return data
+}
+
+async function requireAdmin(context: Awaited<ReturnType<typeof requireUser>>) {
+  const { data, error } = await context.admin.from("profiles").select("role").eq("user_id", context.userId).maybeSingle()
+  queryError(error, "Unable to read profile")
+  if (data?.role !== "admin") throw new HttpError(403, "admin_required", "Admin access required")
+}
+
+// The Atlyr team's review list: every web pick a user sent with "add to atlyr", newest first.
+async function adminListWebRequests(context: Awaited<ReturnType<typeof requireUser>>) {
+  await requireAdmin(context)
+  const { data: selections, error } = await context.admin.from("inspiration_import_selections")
+    .select("id,import_id,candidate_id,web_result_id,status,ingestion_job_id,ingested_product_id,created_at")
+    .eq("source", "web").order("created_at", { ascending: false }).limit(200)
+  queryError(error, "Unable to read requests")
+  const rows = (selections ?? []) as ImportRow[]
+  if (!rows.length) return { requests: [] }
+
+  const unique = (values: unknown[]) => [...new Set(values.filter(Boolean))] as string[]
+  const [webResults, candidates, imports] = await Promise.all([
+    context.admin.from("inspiration_import_web_results").select("id,title,merchant_domain,listing_url,image_url")
+      .in("id", unique(rows.map((row) => row.web_result_id))),
+    context.admin.from("inspiration_import_candidates").select("id,category,retrieval_crop_path")
+      .in("id", unique(rows.map((row) => row.candidate_id))),
+    context.admin.from("inspiration_imports").select("id,user_id")
+      .in("id", unique(rows.map((row) => row.import_id))),
+  ])
+  queryError(webResults.error, "Unable to read online results")
+  queryError(candidates.error, "Unable to read candidates")
+  queryError(imports.error, "Unable to read imports")
+  const importById = new Map((imports.data ?? []).map((row: ImportRow) => [row.id, row]))
+  const { data: profiles, error: profilesError } = await context.admin.from("profiles").select("user_id,name")
+    .in("user_id", unique((imports.data ?? []).map((row: ImportRow) => row.user_id)))
+  queryError(profilesError, "Unable to read profiles")
+  const webById = new Map((webResults.data ?? []).map((row: ImportRow) => [row.id, row]))
+  const candidateById = new Map((candidates.data ?? []).map((row: ImportRow) => [row.id, row]))
+  const nameByUserId = new Map((profiles ?? []).map((row: ImportRow) => [row.user_id, row.name]))
+
+  // Rows with a job show the pipeline's live state instead of the stamp written at submit time.
+  const jobById = new Map<string, ImportRow>()
+  const verdictByProductId = new Map<string, string>()
+  const jobIds = unique(rows.map((row) => row.ingestion_job_id))
+  if (jobIds.length) {
+    const { data: jobs, error: jobsError } = await context.admin.from("ingestion_pipeline_jobs")
+      .select("job_id,current_state,ingested_product_id").in("job_id", jobIds)
+    queryError(jobsError, "Unable to read ingestion jobs")
+    for (const job of (jobs ?? []) as ImportRow[]) jobById.set(job.job_id, job)
+    const productIds = unique((jobs ?? []).map((job: ImportRow) => job.ingested_product_id))
+    if (productIds.length) {
+      const { data: products, error: productsError } = await context.admin.from("ingested_products")
+        .select("id,verdict").in("id", productIds)
+      queryError(productsError, "Unable to read ingested products")
+      for (const product of (products ?? []) as ImportRow[]) verdictByProductId.set(product.id, product.verdict)
+    }
+  }
+  const liveStatus = (row: ImportRow) => {
+    const job = row.ingestion_job_id ? jobById.get(row.ingestion_job_id) : null
+    if (!job) return { status: row.status, jobState: null, productId: row.ingested_product_id ?? null }
+    const productId = job.ingested_product_id ?? null
+    if (productId && verdictByProductId.get(productId) === "approved") return { status: "ingested", jobState: job.current_state, productId }
+    if (["failed", "discarded", "cancelled"].includes(job.current_state)) return { status: "failed", jobState: job.current_state, productId }
+    return { status: "ingesting", jobState: job.current_state, productId }
+  }
+
+  const requests = await Promise.all(rows.map(async (row) => {
+    const web = webById.get(row.web_result_id) ?? {}
+    const candidate = candidateById.get(row.candidate_id) ?? {}
+    const userId = importById.get(row.import_id)?.user_id ?? null
+    const live = liveStatus(row)
+    return {
+      id: row.id, importId: row.import_id, status: live.status, jobState: live.jobState, createdAt: row.created_at,
+      ingestionJobId: row.ingestion_job_id ?? null, ingestedProductId: live.productId,
+      category: candidate.category ?? null,
+      cropUrl: await signedUrl(context.admin, candidate.retrieval_crop_path ?? null),
+      title: web.title ?? "", merchantDomain: web.merchant_domain ?? "",
+      listingUrl: safeHttpUrl(web.listing_url) ?? "", imageUrl: safeHttpUrl(web.image_url) ?? "",
+      userId, userName: userId ? nameByUserId.get(userId) ?? null : null,
+    }
+  }))
+  return { requests }
+}
+
+async function adminMarkWebRequest(context: Awaited<ReturnType<typeof requireUser>>, body: Record<string, unknown>) {
+  await requireAdmin(context)
+  const selectionId = requiredString(body, "selectionId")
+  const ingestionJobId = requiredString(body, "ingestionJobId")
+  const { data, error } = await context.admin.from("inspiration_import_selections")
+    .update({ status: "queued", ingestion_job_id: ingestionJobId, updated_at: new Date().toISOString() })
+    .eq("id", selectionId).eq("source", "web").select("id").maybeSingle()
+  queryError(error, "Unable to update request")
+  if (!data) throw new HttpError(404, "request_not_found", "Request not found")
+  return { id: data.id, status: "queued", ingestionJobId }
 }
 
 async function openStudio(context: Awaited<ReturnType<typeof requireUser>>, body: Record<string, unknown>) {
@@ -631,7 +712,11 @@ serve(async (req) => {
       get: () => getImport(context, body),
       "select-candidate": () => selectCandidate(context, body),
       "web-search": () => webSearch(context, body),
-      "stage-selections": () => stageSelections(context, body),
+      "add-web-selections": () => addWebSelections(context, body),
+      // Older app builds still send this name; remove once every client uses add-web-selections.
+      "stage-selections": () => addWebSelections(context, body),
+      "admin-list-web-requests": () => adminListWebRequests(context),
+      "admin-mark-web-request": () => adminMarkWebRequest(context, body),
       "open-studio": () => openStudio(context, body),
       delete: () => deleteImport(context, body),
     }

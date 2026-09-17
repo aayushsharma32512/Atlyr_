@@ -82,12 +82,13 @@ wording elsewhere in this plan:
 
 This section supersedes every submit/poll/publish statement below for the current delivery:
 
-- when any final choice is from Lens, **Save selections for ingestion** atomically persists the
-  complete look before returning: catalogue choices become `selected_for_outfit`, web choices and
-  their product URLs become `selected_for_ingestion`, and the import becomes `selections_staged`;
+- the tray has two independent buttons. **add to atlyr · n** appends the selected Lens picks as
+  `selected_for_ingestion` rows (one request per listing URL per import) and keeps the user on the
+  screen. **studio · n** opens the selected inventory picks in Studio. Neither button changes what
+  the other can do, and neither locks the import;
 - no ingestion-service HTTP endpoint is called and no ingestion job is created or polled;
-- no outfit is created for a staged look. A later ingestion integration will create the private
-  outfit only after every selected web product succeeds;
+- the Atlyr team reviews `selected_for_ingestion` rows in the admin area and starts ingestion from
+  there;
 - the future ingestion service can read the selected garment, candidate category, and product URL
   from `inspiration_import_selections` joined to `inspiration_import_web_results` and
   `inspiration_import_candidates` using its service-role client.
@@ -181,10 +182,9 @@ so a jacket and shirt occupying the same pixels may collapse into one candidate.
        -> optional Search online
             -> Lens cards use external images only
             -> select/deselect at most one web result for that category
-  -> Open in Studio for inventory-only choices
-  -> Save selections for ingestion when either choice is from Lens
-       -> atomically persist final catalogue choice(s) and signed web choice(s)
-       -> stop at the durable selections_staged state
+  -> studio · n opens the inventory choice(s) in Studio
+  -> add to atlyr · n appends the signed web choice(s) as ingestion requests
+       -> the user stays on the screen and can add more
 ```
 
 Selection is category-scoped: `top` and `bottom` each hold either one inventory result, one web
@@ -677,21 +677,18 @@ chosen signed tokens together:
 
 ```json
 {
-  "action": "stage-selections",
+  "action": "add-web-selections",
   "importId": "uuid",
   "selections": [
     { "candidateId": "uuid", "selectionToken": "signed-token" }
-  ],
-  "catalogueSelections": [
-    { "candidateId": "uuid", "productId": "product-id" }
   ]
 }
 ```
 
-The server verifies every token, candidate binding, and catalogue product/category match before one
-service-only transaction replaces the durable final selection set. A browser client cannot invoke
-the persistence RPC directly. One top and one bottom selection may coexist across both sources; no
-other Lens matches are stored.
+The server verifies every token and candidate binding before one service-only transaction appends
+the web picks. A listing URL already requested from the same import is skipped. A browser client
+cannot invoke the persistence RPC directly. At most one top and one bottom pick per call; the user
+can call again with new picks.
 
 ### 10.7 Deferred ingestion and Studio creation
 
@@ -830,8 +827,8 @@ The migration adds narrowly scoped RPCs instead of opening the workflow tables t
 
 - `begin_inspiration_detection(...)` - validates ownership/state and returns the attempt identity;
 - `select_inspiration_candidates(...)` - atomically confirms one candidate per category;
-- `stage_inspiration_import_selections(...)` - service-only atomic persistence of the complete final
-  catalogue/web selection set;
+- `add_inspiration_import_web_selections(...)` - service-only append of web picks as ingestion
+  requests; never changes the import status;
 - `open_inspiration_import_in_studio(...)` - validates the final products and records the draft;
 - `finalize_inspiration_detection(...)` - service-role-only conditional finalization.
 

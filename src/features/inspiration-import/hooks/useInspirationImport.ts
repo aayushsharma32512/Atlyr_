@@ -6,7 +6,7 @@ import { inspirationImportService } from "@/services/inspirationImport/inspirati
 import type {
   InspirationImport,
   InspirationOpenStudioInput,
-  InspirationStageSelectionsInput,
+  InspirationAddWebSelectionsInput,
 } from "@/services/inspirationImport/types"
 
 const DETECTION_POLL_INTERVAL_MS = 3_000
@@ -112,10 +112,26 @@ export function useImportWebResults(
   }))
 }
 
-export function useStageImportSelections(importId: string) {
+export function useInspirationWebRequests() {
+  return useQuery({
+    queryKey: inspirationImportKeys.webRequests(),
+    queryFn: () => inspirationImportService.listWebRequests(),
+    staleTime: 30_000,
+  })
+}
+
+export function useMarkInspirationWebRequest() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: InspirationStageSelectionsInput) => inspirationImportService.stageSelections(importId, input),
+    mutationFn: (input: { selectionId: string; ingestionJobId: string }) => inspirationImportService.markWebRequestQueued(input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: inspirationImportKeys.webRequests() }),
+  })
+}
+
+export function useAddImportWebSelections(importId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: InspirationAddWebSelectionsInput) => inspirationImportService.addWebSelections(importId, input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: inspirationImportKeys.detail(importId) })
     },

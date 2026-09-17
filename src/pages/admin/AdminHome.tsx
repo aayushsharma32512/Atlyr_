@@ -84,6 +84,7 @@ const GROUPS: Group[] = [
       { label: "Outfit screener", to: "/admin/outfit-screener", blurb: "Accept or reject generated outfit pairs, theme by theme." },
       { label: "Inventory cleanup", to: "/admin/inventory", blurb: "Delete broken products, hide stale outfits." },
       { label: "Ingestion v2", to: "/admin/ingestion-v2", blurb: "The v2 ingestion dashboard." },
+      { label: "Inspiration requests", to: "/admin/inspiration-requests", blurb: "Online listings users asked us to add to inventory." },
       {
         label: "Ingestion automated",
         to: "/admin/ingestion-automated",

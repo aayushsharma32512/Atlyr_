@@ -51,18 +51,34 @@ type InspirationWebSelectionInput = {
   selectionToken: string
 }
 
-type InspirationCatalogueSelectionInput = {
-  candidateId: string
-  productId: string
-}
-
-export type InspirationStageSelectionsInput = {
+export type InspirationAddWebSelectionsInput = {
   selections: InspirationWebSelectionInput[]
-  catalogueSelections: InspirationCatalogueSelectionInput[]
 }
 
-export type InspirationStageSelectionsResult = {
-  selectionCount: number
+export type InspirationWebRequestStatus =
+  | "selected_for_ingestion" | "queued" | "ingesting" | "ingested" | "failed"
+
+export type InspirationWebRequest = {
+  id: string
+  importId: string
+  status: InspirationWebRequestStatus
+  jobState: string | null
+  createdAt: string
+  ingestionJobId: string | null
+  ingestedProductId: string | null
+  category: InspirationCategory | null
+  cropUrl: string | null
+  title: string
+  merchantDomain: string
+  listingUrl: string
+  imageUrl: string
+  userId: string | null
+  userName: string | null
+}
+
+export type InspirationAddWebSelectionsResult = {
+  addedCount: number
+  skippedCount: number
   webSelectionIds: string[]
 }
 

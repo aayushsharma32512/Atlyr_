@@ -4,8 +4,9 @@ import type {
   InspirationImport,
   InspirationOpenStudioInput,
   InspirationOpenStudioResult,
-  InspirationStageSelectionsInput,
-  InspirationStageSelectionsResult,
+  InspirationAddWebSelectionsInput,
+  InspirationAddWebSelectionsResult,
+  InspirationWebRequest,
   InspirationWebResult,
 } from "./types"
 import {
@@ -180,15 +181,24 @@ async function searchWeb(
   return results
 }
 
-async function stageSelections(
+async function addWebSelections(
   importId: string,
-  input: InspirationStageSelectionsInput,
-): Promise<InspirationStageSelectionsResult> {
-  return invokeImport<InspirationStageSelectionsResult>({
-    action: "stage-selections",
+  input: InspirationAddWebSelectionsInput,
+): Promise<InspirationAddWebSelectionsResult> {
+  return invokeImport<InspirationAddWebSelectionsResult>({
+    action: "add-web-selections",
     importId,
     ...input,
   })
+}
+
+async function listWebRequests(): Promise<InspirationWebRequest[]> {
+  const { requests } = await invokeImport<{ requests: InspirationWebRequest[] }>({ action: "admin-list-web-requests" })
+  return requests
+}
+
+async function markWebRequestQueued(input: { selectionId: string; ingestionJobId: string }) {
+  return invokeImport<{ id: string; status: "queued"; ingestionJobId: string }>({ action: "admin-mark-web-request", ...input })
 }
 
 async function openInStudio(importId: string, input: InspirationOpenStudioInput) {
@@ -204,6 +214,8 @@ export const inspirationImportService = {
   selectCandidates,
   searchCatalogue,
   searchWeb,
-  stageSelections,
+  addWebSelections,
   openInStudio,
+  listWebRequests,
+  markWebRequestQueued,
 }
