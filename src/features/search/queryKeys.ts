@@ -5,6 +5,8 @@ const serializeFilters = (filters: unknown) => JSON.stringify(filters ?? {})
 export const searchKeys = {
   all: ["search"] as const,
   browseCollections: (gender: Gender) => [...searchKeys.all, "browse-collections", gender ?? "neutral"] as const,
+  browseCollectionLooks: (categoryId: string, gender: Gender) =>
+    [...searchKeys.all, "browse-collection-looks", categoryId, gender ?? "neutral"] as const,
   browseProducts: (slot: string, gender: Gender) =>
     [...searchKeys.all, "browse-products", slot, gender ?? "neutral"] as const,
   outfitResults: (params: { query: string; gender: Gender; filters: unknown }) =>

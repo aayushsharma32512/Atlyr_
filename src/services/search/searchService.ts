@@ -208,7 +208,7 @@ async function getFeaturedCategories(): Promise<CategoryMetadata[]> {
   }))
 }
 
-async function fetchCategoryOutfits(categoryId: string, limit: number, gender: Gender) {
+async function fetchCategoryOutfits(categoryId: string, gender: Gender, from: number, limit: number) {
   const query = supabase
     .from("outfits")
     .select(
@@ -315,7 +315,9 @@ async function fetchCategoryOutfits(categoryId: string, limit: number, gender: G
     .eq("visible_in_feed", true)
     .not("gender", "is", null)
     .order("popularity", { ascending: false })
-    .limit(limit)
+    // Ties on popularity need a fixed order, or a page can repeat a row.
+    .order("id", { ascending: true })
+    .range(from, from + limit - 1)
 
   query.or(buildGenderFilter(gender))
 
@@ -328,6 +330,26 @@ async function fetchCategoryOutfits(categoryId: string, limit: number, gender: G
   return (data ?? []) as DbOutfitWithJoins[]
 }
 
+function toBrowseOutfit(
+  row: DbOutfitWithJoins,
+  gender: Gender,
+  avatarHeadUrl: string | null,
+  avatarHeightCm: number | null,
+): SearchBrowseOutfit {
+  const outfit = mapDbOutfitToOutfit(row)
+  const studioOutfit = mapDbOutfitToStudioOutfit(row as unknown as Parameters<typeof mapDbOutfitToStudioOutfit>[0])
+  return {
+    id: outfit.id,
+    title: outfit.name,
+    chips: getOutfitChips(outfit),
+    outfit,
+    studioOutfit,
+    avatarHeadUrl,
+    avatarGender: gender,
+    avatarHeightCm,
+  }
+}
+
 export async function getBrowseCollections({
   gender,
   avatarHeadUrl,
@@ -338,25 +360,9 @@ export async function getBrowseCollections({
 
   const collections = await Promise.all(
     categories.map(async (category) => {
-      const outfits = await fetchCategoryOutfits(category.id, limitPerCategory, gender)
+      const outfits = await fetchCategoryOutfits(category.id, gender, 0, limitPerCategory)
 
-      const mapped = outfits.map((row) => {
-        const outfit = mapDbOutfitToOutfit(row)
-        const studioOutfit = mapDbOutfitToStudioOutfit(
-          row as unknown as Parameters<typeof mapDbOutfitToStudioOutfit>[0],
-        )
-
-        return {
-          id: outfit.id,
-          title: outfit.name,
-          chips: getOutfitChips(outfit),
-          outfit,
-          studioOutfit,
-          avatarHeadUrl,
-          avatarGender: gender,
-          avatarHeightCm,
-        } satisfies SearchBrowseOutfit
-      })
+      const mapped = outfits.map((row) => toBrowseOutfit(row, gender, avatarHeadUrl, avatarHeightCm))
 
       return {
         categoryId: category.id,
@@ -369,6 +375,32 @@ export async function getBrowseCollections({
   )
 
   return collections.filter((collection) => collection.outfits.length > 0)
+}
+
+const BROWSE_COLLECTION_LOOKS_PAGE = 20
+
+interface BrowseCollectionLooksInput {
+  categoryId: string
+  gender: Gender
+  avatarHeadUrl: string | null
+  avatarHeightCm: number | null
+  cursor?: number | null
+}
+
+/** One curation, opened: every look in the category, most popular first, a page at a time. */
+export async function browseCollectionLooks({
+  categoryId,
+  gender,
+  avatarHeadUrl,
+  avatarHeightCm,
+  cursor,
+}: BrowseCollectionLooksInput): Promise<SearchFunctionResponse<SearchBrowseOutfit>> {
+  const from = Math.max(cursor ?? 0, 0)
+  const rows = await fetchCategoryOutfits(categoryId, gender, from, BROWSE_COLLECTION_LOOKS_PAGE)
+  return {
+    results: rows.map((row) => toBrowseOutfit(row, gender, avatarHeadUrl, avatarHeightCm)),
+    nextCursor: rows.length === BROWSE_COLLECTION_LOOKS_PAGE ? from + BROWSE_COLLECTION_LOOKS_PAGE : null,
+  }
 }
 
 const PRODUCT_PRICE_FORMATTER = new Intl.NumberFormat("en-IN", {
@@ -952,6 +984,7 @@ export async function browseProducts({ slot, gender, cursor }: BrowseProductsInp
 
 export const searchService = {
   getBrowseCollections,
+  browseCollectionLooks,
   searchOutfits,
   searchProducts,
   getProductFilterOptions,
