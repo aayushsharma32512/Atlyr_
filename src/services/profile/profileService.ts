@@ -1,8 +1,12 @@
 import { supabase } from "@/integrations/supabase/client"
 import type { Tables, TablesUpdate } from "@/integrations/supabase/types"
+import { profilePhotoToWebp } from "@/features/profile/utils/profilePhotoToWebp"
 
 export type ProfileRecord = Tables<"profiles">
 export type ProfileUpdateInput = TablesUpdate<"profiles">
+
+const PROFILE_PHOTO_BUCKET = "public-files"
+const PROFILE_PHOTO_MAX_BYTES = 20 * 1024 * 1024
 
 async function getProfile(userId: string): Promise<ProfileRecord | null> {
   if (!userId) {
@@ -60,7 +64,43 @@ async function updateProfile(userId: string, updates: ProfileUpdateInput): Promi
   return insertedProfile
 }
 
+/** The photo URL lives in auth user metadata, the same `avatar_url` key Google sign-in fills. */
+async function uploadProfilePhoto(userId: string, file: File): Promise<string> {
+  if (!userId) {
+    throw new Error("Cannot upload a photo without a user id")
+  }
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Choose an image file")
+  }
+  if (file.size > PROFILE_PHOTO_MAX_BYTES) {
+    throw new Error("Choose an image under 20 MB")
+  }
+
+  const photo = await profilePhotoToWebp(file)
+  const filePath = `profile-photos/${userId}/${Date.now()}.webp`
+
+  const { error: uploadError } = await supabase.storage
+    .from(PROFILE_PHOTO_BUCKET)
+    .upload(filePath, photo, { contentType: photo.type, cacheControl: "31536000" })
+
+  if (uploadError) {
+    throw new Error(uploadError.message)
+  }
+
+  const { data } = supabase.storage.from(PROFILE_PHOTO_BUCKET).getPublicUrl(filePath)
+  const { error: metadataError } = await supabase.auth.updateUser({
+    data: { avatar_url: data.publicUrl },
+  })
+
+  if (metadataError) {
+    throw new Error(metadataError.message)
+  }
+
+  return data.publicUrl
+}
+
 export const profileService = {
   getProfile,
   updateProfile,
+  uploadProfilePhoto,
 }

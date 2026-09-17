@@ -3,10 +3,12 @@ import { useNavigate } from "react-router-dom"
 
 import { useAuth } from "@/contexts/AuthContext"
 import { useCollectionsOverview } from "@/features/collections/hooks/useMoodboards"
-import { MannequinHeadAvatar } from "@/features/profile/components/MannequinHeadAvatar"
-import { useAvatarHairStyles } from "@/features/profile/hooks/useAvatarHairStyles"
+import { useLikenessListQuery } from "@/features/likeness/hooks/useLikenessListQuery"
+import { ProfileIdentityCard } from "@/features/profile/components/ProfileIdentityCard"
 import { useDailyLimits } from "@/features/profile/hooks/useDailyLimits"
+import { useProfilePhotoMutation, useProfileUpdateMutation } from "@/features/profile/hooks/useProfileQuery"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
+import { useToast } from "@/hooks/use-toast"
 import { AppShellLayout } from "@/layouts/AppShellLayout"
 import { boardPath } from "@/features/collections/boardUrl"
 
@@ -55,24 +57,24 @@ function formatAgeAndGender(age?: number | null, gender?: "male" | "female" | nu
     gender ? `${gender.charAt(0).toUpperCase()}${gender.slice(1)}` : null,
   ].filter(Boolean)
 
-  return parts.length ? parts.join(" · ") : "Not set"
+  return parts.length ? parts.join(" · ") : "Add your age and gender"
+}
+
+function readPhotoUrl(metadata: Record<string, unknown> | undefined) {
+  const value = metadata?.avatar_url
+  return typeof value === "string" && value.length > 0 ? value : null
 }
 
 function ProfilePageView() {
-  const { profile, gender, skinTone, hairStyleId, hairColorHex } = useProfileContext()
+  const { profile, gender } = useProfileContext()
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
-  const hairStylesQuery = useAvatarHairStyles(gender)
+  const { toast } = useToast()
   const limitsQuery = useDailyLimits()
   const collectionsQuery = useCollectionsOverview()
-
-  const resolvedHairStyle = (() => {
-    if (!hairStylesQuery.data.length) return null
-    if (hairStyleId && hairStylesQuery.byId.has(hairStyleId)) {
-      return hairStylesQuery.byId.get(hairStyleId) ?? null
-    }
-    return hairStylesQuery.defaultStyle
-  })()
+  const likenessQuery = useLikenessListQuery({ enabled: Boolean(user) })
+  const updateProfileMutation = useProfileUpdateMutation()
+  const photoMutation = useProfilePhotoMutation()
 
   const moodboards = collectionsQuery.data?.moodboards ?? []
   const wardrobe = moodboards.find((board) => board.slug === "wardrobe")
@@ -82,8 +84,20 @@ function ProfilePageView() {
   const tryonsRemaining = tryon ? Math.max(tryon.limit - tryon.count, 0) : null
 
   const profileName = profile?.name?.trim() || "Your profile"
-  const profileInitial = profileName.charAt(0).toUpperCase()
   const joinedDate = formatJoinedDate(user?.created_at ?? profile?.created_at)
+  const likenessCount = likenessQuery.data?.length ?? 0
+
+  const handleSaveName = (name: string) => {
+    updateProfileMutation.mutate(
+      { name },
+      { onError: () => toast({ title: "Could not save name", variant: "destructive" }) },
+    )
+  }
+  const handlePickPhoto = (file: File) => {
+    photoMutation.mutate(file, {
+      onError: (error) => toast({ title: "Could not upload photo", description: error.message, variant: "destructive" }),
+    })
+  }
   const handleLogout = async () => {
     await signOut()
     navigate("/")
@@ -92,53 +106,18 @@ function ProfilePageView() {
   return (
     <div className="min-h-[calc(100dvh-55px)] bg-background text-foreground">
       <div className="mx-auto w-full max-w-lg px-5 pb-10 pt-6 sm:px-6 sm:pt-8">
-        <header className="flex items-end justify-between gap-4 px-1">
-          <h1 className="min-w-0 truncate font-display text-[38px] font-medium leading-none tracking-[-0.025em] text-foreground sm:text-[42px]">
-            {profileName}
-          </h1>
-          {joinedDate ? (
-            <p className="shrink-0 pb-0.5 text-sm font-medium text-muted-foreground sm:text-base">
-              joined {joinedDate}
-            </p>
-          ) : null}
-        </header>
-
-        <button
-          type="button"
-          onClick={() => navigate("/profile/avatar")}
-          className="group mt-7 flex min-h-36 w-full items-center gap-5 rounded-lg border border-hairline bg-white p-4 text-left shadow-xs hover:border-hairline-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-5"
-        >
-          <div className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-md border border-hairline bg-muted/30 sm:size-28">
-            {gender ? (
-              <MannequinHeadAvatar
-                size={88}
-                gender={gender}
-                skinToneHex={skinTone}
-                hairStyle={
-                  resolvedHairStyle
-                    ? { styleKey: resolvedHairStyle.styleKey, gender }
-                    : null
-                }
-                hairColorHex={hairColorHex}
-                className="rounded-md bg-transparent"
-              />
-            ) : (
-              <span className="font-display text-3xl text-muted-foreground">{profileInitial}</span>
-            )}
-          </div>
-
-          <div className="min-w-0 flex-1">
-            <p className="text-lg font-semibold text-foreground">Your likeness</p>
-            <p className="mt-1 text-sm leading-5 text-muted-foreground">
-              Your saved avatar and likenesses
-            </p>
-          </div>
-
-          <ChevronRight
-            className="size-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
-            aria-hidden="true"
-          />
-        </button>
+        <ProfileIdentityCard
+          name={profileName}
+          photoUrl={readPhotoUrl(user?.user_metadata)}
+          detailsLine={formatAgeAndGender(profile?.age, gender)}
+          email={user?.email ?? null}
+          joinedLine={joinedDate}
+          isSavingName={updateProfileMutation.isPending}
+          isUploadingPhoto={photoMutation.isPending}
+          onSaveName={handleSaveName}
+          onPickPhoto={handlePickPhoto}
+          onEditDetails={() => navigate("/profile/user-details")}
+        />
 
         <section
           className="mt-5 overflow-hidden rounded-lg border border-hairline bg-white shadow-xs"
@@ -165,9 +144,15 @@ function ProfilePageView() {
             onClick={() => navigate(boardPath("try-ons"))}
           />
           <ProfileRow
-            label="User details"
-            value={formatAgeAndGender(profile?.age, gender)}
-            onClick={() => navigate("/profile/user-details")}
+            label="Likeness"
+            value={
+              likenessQuery.isLoading
+                ? "Loading…"
+                : likenessCount
+                  ? pluralize(likenessCount, "likeness", "likenesses")
+                  : "Create yours"
+            }
+            onClick={() => navigate("/profile/avatar")}
           />
           <ProfileRow
             label="Boards"
