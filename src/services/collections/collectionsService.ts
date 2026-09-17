@@ -515,24 +515,43 @@ export async function saveToCollection(params: {
   outfitId: string
   slug: string
   label?: string
+  tags?: string[]
 }): Promise<void> {
-  const { userId, outfitId, slug, label } = params
+  const { userId, outfitId, slug, label, tags } = params
   if (!userId) {
     throw new Error("User must be authenticated to save")
   }
 
   const normalizedSlug = slug.toLowerCase()
   const collectionLabel = label ?? (SYSTEM_MOODBOARDS.find((s) => s.slug === normalizedSlug)?.label ?? slug)
+  const normalizedTags = tags && tags.length > 0 ? tags : null
 
+  // `tags` is omitted entirely from plain board-membership calls (a heart toggle),
+  // so they never touch a row's tags — only a tags-aware caller (the save card) does.
   const { error } = await supabase.from("user_favorites").upsert(
     {
       user_id: userId,
       outfit_id: outfitId,
       collection_slug: normalizedSlug,
       collection_label: collectionLabel,
+      ...(tags !== undefined ? { tags: normalizedTags } : {}),
     },
     { onConflict: "user_id,outfit_id,collection_slug" },
   )
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  // A look can sit on several boards; every user_favorites row for it should agree
+  // on the same tags, so a tag edit on one board carries to every other board too.
+  if (tags !== undefined) {
+    await supabase
+      .from("user_favorites")
+      .update({ tags: normalizedTags })
+      .eq("user_id", userId)
+      .eq("outfit_id", outfitId)
+  }
 
   // Update the collection timestamp for recency sorting
   await supabase
@@ -540,10 +559,6 @@ export async function saveToCollection(params: {
     .update({ updated_at: new Date().toISOString() })
     .eq("user_id", userId)
     .eq("slug", normalizedSlug)
-
-  if (error) {
-    throw new Error(error.message)
-  }
 }
 
 export async function saveProductToCollection(params: {
@@ -876,24 +891,27 @@ export async function fetchProductCollectionMembership(
   return result
 }
 
-/** The user's saved tags per product, for pre-selecting them when the save card reopens. */
-export async function fetchSavedProductTags(userId: string | null): Promise<Record<string, string[]>> {
-  if (!userId) return {}
+/** The user's saved tags per product and per outfit, for pre-selecting them when the save card reopens. */
+export async function fetchSavedTags(
+  userId: string | null,
+): Promise<{ products: Record<string, string[]>; outfits: Record<string, string[]> }> {
+  if (!userId) return { products: {}, outfits: {} }
   const { data, error } = await supabase
     .from("user_favorites")
-    .select("product_id, tags")
+    .select("product_id, outfit_id, tags")
     .eq("user_id", userId)
     .not("tags", "is", null)
 
   if (error) throw new Error(error.message)
 
-  const result: Record<string, string[]> = {}
+  const products: Record<string, string[]> = {}
+  const outfits: Record<string, string[]> = {}
   for (const row of data ?? []) {
-    if (row.product_id && Array.isArray(row.tags) && row.tags.length > 0) {
-      result[row.product_id] = row.tags
-    }
+    if (!Array.isArray(row.tags) || row.tags.length === 0) continue
+    if (row.product_id) products[row.product_id] = row.tags
+    else if (row.outfit_id) outfits[row.outfit_id] = row.tags
   }
-  return result
+  return { products, outfits }
 }
 
 /**

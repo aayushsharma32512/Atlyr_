@@ -11,6 +11,7 @@ import {
   useSaveToCollection,
 } from "@/features/collections/hooks/useMoodboards"
 import { useProductSaveActions } from "@/features/collections/hooks/useProductSaveActions"
+import { useSavedTagsLookup } from "@/features/collections/hooks/useSavedTags"
 import { useUpdateOutfit } from "@/features/outfits/hooks/useUpdateOutfit"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { StudioSaveCard } from "@/features/studio/components/StudioSaveCard"
@@ -100,6 +101,7 @@ function SaveTraySheet({ request, onClose }: { request: SaveRequest; onClose: ()
   const overviewQuery = useCollectionsOverview()
   const createMoodboardMutation = useCreateMoodboard()
   const productSaveActions = useProductSaveActions()
+  const { getSavedTags } = useSavedTagsLookup()
   const membershipQuery = useOutfitCollectionMembership()
   const saveToCollection = useSaveToCollection()
   const removeFromCollection = useRemoveFromCollection()
@@ -143,9 +145,12 @@ function SaveTraySheet({ request, onClose }: { request: SaveRequest; onClose: ()
   const pieceSlugs = request.kind === "piece" ? productSaveActions.getProductBoardSlugs(request.productId) : []
 
   const tagOptions = request.kind === "look" ? getOutfitTagsFromItems(outfit?.items ?? []) : getTrayItemTags(pieceProductQuery.data)
+  // The save row's own tags win for a look too; a look the user owns but has never
+  // saved (no user_favorites row yet) falls back to the look's public tags.
+  const savedLookTags = request.kind === "look" ? getSavedTags("look", request.outfitId) : []
   const initialTags =
     request.kind === "look"
-      ? ownsLook ? (outfit?.tags ?? []) : []
+      ? savedLookTags.length ? savedLookTags : (ownsLook ? (outfit?.tags ?? []) : [])
       : productSaveActions.getSavedProductTags(request.productId)
 
   const handleSave = async (data: { name: string; tags: string[]; boardSlugs: string[] }) => {
@@ -165,13 +170,22 @@ function SaveTraySheet({ request, onClose }: { request: SaveRequest; onClose: ()
       const labelBySlug = new Map(lookBoards.map((board) => [board.slug, board.label] as const))
       const current = new Set(lookSlugs)
       const next = new Set(data.boardSlugs)
-      for (const slug of data.boardSlugs.filter((slug) => !current.has(slug))) {
+      const toAdd = data.boardSlugs.filter((slug) => !current.has(slug))
+      for (const slug of toAdd) {
         await saveToCollection.mutateAsync({
-          outfitId: request.outfitId, slug, label: labelBySlug.get(slug), entityTitle: outfit?.name,
+          outfitId: request.outfitId, slug, label: labelBySlug.get(slug), entityTitle: outfit?.name, tags: data.tags,
         })
       }
       for (const slug of lookSlugs.filter((slug) => !next.has(slug))) {
         await removeFromCollection.mutateAsync({ outfitId: request.outfitId, slug })
+      }
+      // Boards may be unchanged while only the tags changed — piggyback the tag write on
+      // one surviving board so every user_favorites row for this look still agrees.
+      if (toAdd.length === 0 && data.boardSlugs.length > 0) {
+        const slug = data.boardSlugs[0]
+        await saveToCollection.mutateAsync({
+          outfitId: request.outfitId, slug, label: labelBySlug.get(slug), entityTitle: outfit?.name, tags: data.tags,
+        })
       }
       if (ownsLook && outfit && user?.id) {
         await updateOutfit.mutateAsync({
@@ -203,8 +217,8 @@ function SaveTraySheet({ request, onClose }: { request: SaveRequest; onClose: ()
   // memberships finish loading rather than keeping the stale defaults.
   const cardKey =
     request.kind === "look"
-      ? `look:${request.outfitId}:${outfit?.id ?? ""}:${lookSlugs.join("|")}:${initialTags.join("|")}`
-      : `piece:${request.productId}:${pieceSlugs.join("|")}:${initialTags.join("|")}`
+      ? `look:${request.outfitId}:${outfit?.id ?? ""}:${lookSlugs.join("|")}:${tagOptions.join("|")}:${initialTags.join("|")}`
+      : `piece:${request.productId}:${pieceSlugs.join("|")}:${tagOptions.join("|")}:${initialTags.join("|")}`
 
   // Real memberships always win; the preset only fills in for an item that
   // has never been saved anywhere, so it doesn't default to Favorites when

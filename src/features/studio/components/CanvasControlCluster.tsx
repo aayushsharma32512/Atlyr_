@@ -13,13 +13,15 @@ import { cn } from "@/lib/utils"
 export interface CanvasControlItem {
   id: string
   label: string
-  icon: React.ComponentType<{ className?: string }>
+  icon: React.ComponentType<{ className?: string; fill?: string }>
   onClick?: () => void
   disabled?: boolean
   /** The one creative accent — shuffle. Everything else is ink. */
   tone?: "ink" | "terracotta"
   /** Checkpoint is a toggle; show it engaged. */
   active?: boolean
+  /** Save is a state; a saved look shows a filled heart, same as the Studio action bar. */
+  filled?: boolean
   highlight?: boolean
 }
 
@@ -51,7 +53,7 @@ export function CanvasControlCluster({ items, className }: CanvasControlClusterP
               item.highlight && "relative z-[75] ring-2 ring-primary ring-offset-2 ring-offset-background",
             )}
           >
-            <Icon className="size-4" />
+            <Icon className="size-4" fill={item.filled ? "currentColor" : "none"} />
           </button>
         )
       })}

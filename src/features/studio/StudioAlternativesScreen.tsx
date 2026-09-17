@@ -34,6 +34,7 @@ import { useStudioSearchResults } from "@/features/studio/hooks/useStudioSearchR
 import { useProductFilterOptions } from "@/features/search/hooks/useProductFilterOptions"
 import type { StudioAlternativeProduct, StudioProductTraySlot } from "@/services/studio/studioService"
 import { useStudioResolvedSlots } from "@/features/studio/hooks/useStudioResolvedSlots"
+import { useCurrentLookId } from "@/features/studio/hooks/useCurrentLookId"
 import { isPlaceableOnMannequin, shouldFilterSlotByPlacement } from "@/features/studio/utils/placementSupport"
 import { mapTrayItemToStudioRenderedItem } from "@/features/studio/mappers/renderedItemMapper"
 import { isDressTop, STUDIO_BASE_ITEMS_ENABLED, usePlaceholderItems } from "@/features/studio/hooks/usePlaceholderItems"
@@ -51,6 +52,7 @@ import {
   useSaveToCollection,
   useProductCollectionMembership,
 } from "@/features/collections/hooks/useMoodboards"
+import { useSavedTagsLookup } from "@/features/collections/hooks/useSavedTags"
 import { useUpdateOutfit } from "@/features/outfits/hooks/useUpdateOutfit"
 import { useAuth } from "@/contexts/AuthContext"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
@@ -142,6 +144,7 @@ export function StudioAlternativesView() {
   const { mutateAsync: saveToCollectionMutation } = useSaveToCollection()
   const { mutateAsync: removeFromCollectionMutation } = useRemoveFromCollection()
   const outfitMembershipQuery = useOutfitCollectionMembership()
+  const { getSavedTags } = useSavedTagsLookup()
   const { data: moodboards = [], isLoading: moodboardsLoading } = useMoodboards()
   const selectableMoodboards = useMemo(
     () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites" || m.slug === "wardrobe"),
@@ -636,14 +639,29 @@ export function StudioAlternativesView() {
   // a fresh derived look, which is the existing/correct behavior.
   const isEditingExistingOutfit = Boolean(resolvedOutfitId && isOwnOutfit && !hasSlotOverrides)
 
-  // The boards this exact outfit id is really on right now, so the save
+  // Saved state (heart, boards, tags) keys on the combo on screen, not the URL's base look.
+  const { currentLookId } = useCurrentLookId({
+    outfitId: resolvedOutfitId,
+    hasSlotOverrides,
+    topId: outfitItems.topId,
+    bottomId: outfitItems.bottomId,
+    shoesId: outfitItems.footwearId,
+  })
+
+  // The save row's tags win; an owned, never-saved base look falls back to its public tags.
+  const savedLookTags = currentLookId ? getSavedTags("look", currentLookId) : []
+  const lookInitialTags = savedLookTags.length
+    ? savedLookTags
+    : isOwnOutfit && !hasSlotOverrides ? (outfitData?.outfit?.tags ?? []) : []
+
+  // The boards the current combo is really on right now, so the save
   // picker's default reflects truth instead of always assuming Favorites.
   const currentOutfitMoodboardSlugs = useMemo(() => {
-    if (!resolvedOutfitId) return []
+    if (!currentLookId) return []
     return Object.entries(outfitMembershipQuery.data ?? {})
-      .filter(([slug, ids]) => ids.has(resolvedOutfitId) && selectableMoodboards.some((m) => m.slug === slug))
+      .filter(([slug, ids]) => ids.has(currentLookId) && selectableMoodboards.some((m) => m.slug === slug))
       .map(([slug]) => slug)
-  }, [resolvedOutfitId, outfitMembershipQuery.data, selectableMoodboards])
+  }, [currentLookId, outfitMembershipQuery.data, selectableMoodboards])
 
   const resolveTryOnSnapshot = useCallback(async () => {
     if (!outfitData?.outfit || !user?.id) {
@@ -800,7 +818,7 @@ export function StudioAlternativesView() {
 
           for (const slug of toAdd) {
             try {
-              await saveToCollectionMutation({ outfitId, slug, label: moodboardLabelBySlug.get(slug) })
+              await saveToCollectionMutation({ outfitId, slug, label: moodboardLabelBySlug.get(slug), tags: data.tags })
             } catch {
               hadCollectionError = true
             }
@@ -812,10 +830,21 @@ export function StudioAlternativesView() {
               hadCollectionError = true
             }
           }
+          // Boards may be unchanged while only the tags changed — piggyback the tag write on
+          // one surviving board so every user_favorites row for this look still agrees.
+          if (toAdd.length === 0 && selectedMoodboardSlugs.length > 0) {
+            try {
+              await saveToCollectionMutation({
+                outfitId, slug: selectedMoodboardSlugs[0], label: moodboardLabelBySlug.get(selectedMoodboardSlugs[0]), tags: data.tags,
+              })
+            } catch {
+              hadCollectionError = true
+            }
+          }
         } else {
           for (const slug of selectedMoodboardSlugs) {
             try {
-              await saveToCollectionMutation({ outfitId, slug, label: moodboardLabelBySlug.get(slug) })
+              await saveToCollectionMutation({ outfitId, slug, label: moodboardLabelBySlug.get(slug), tags: data.tags })
             } catch {
               hadCollectionError = true
             }
@@ -1259,6 +1288,8 @@ export function StudioAlternativesView() {
       label: "Save this look",
       icon: Icons.save,
       disabled: isViewOnly,
+      active: currentOutfitMoodboardSlugs.length > 0,
+      filled: currentOutfitMoodboardSlugs.length > 0,
       onClick: () => {
         setProductSaveId(null)
         setIsSaveDrawerOpen(true)
@@ -1394,7 +1425,7 @@ export function StudioAlternativesView() {
               {productSaveId ? (
                 <div className="box-border flex h-[225px] flex-none flex-col px-4 py-2.5">
                   <StudioSaveCard
-                    key={`${productSaveId}:${productSaveActions.getSavedProductTags(productSaveId).join("|")}`}
+                    key={`${productSaveId}:${getTrayItemTags(heroProduct).join("|")}:${productSaveActions.getSavedProductTags(productSaveId).join("|")}`}
                     kind="piece"
                     className="h-full"
                     defaultName={heroTitle}
@@ -1495,6 +1526,7 @@ export function StudioAlternativesView() {
             {isSaveDrawerOpen || productSaveId ? (
               isSaveDrawerOpen ? (
               <StudioSaveCard
+                key={`look:${currentLookId ?? ""}:${getOutfitTagsFromItems(resolvedTrayItems).join("|")}:${lookInitialTags.join("|")}`}
                 className="h-full"
                 defaultName={
                   outfitData?.outfit?.name?.startsWith("draft-look-")
@@ -1502,7 +1534,7 @@ export function StudioAlternativesView() {
                     : (outfitData?.outfit?.name ?? "")
                 }
                 tagOptions={getOutfitTagsFromItems(resolvedTrayItems)}
-                initialTags={isEditingExistingOutfit ? (outfitData?.outfit?.tags ?? []) : []}
+                initialTags={lookInitialTags}
                 boards={selectableMoodboards.map((m) => ({ slug: m.slug, label: m.label }))}
                 defaultBoardSlugs={
                   currentOutfitMoodboardSlugs.length ? currentOutfitMoodboardSlugs : ["favorites"]
@@ -1516,11 +1548,12 @@ export function StudioAlternativesView() {
               />
               ) : (
               <StudioSaveCard
-                key={productSaveId}
+                key={`${productSaveId}:${getTrayItemTags(heroProduct).join("|")}:${productSaveActions.getSavedProductTags(productSaveId).join("|")}`}
                 kind="piece"
                 className="h-full"
                 defaultName={heroTitle}
                 tagOptions={getTrayItemTags(heroProduct)}
+                initialTags={productSaveActions.getSavedProductTags(productSaveId!)}
                 boards={selectableMoodboards.map((m) => ({ slug: m.slug, label: m.label }))}
                 defaultBoardSlugs={
                   productSaveActions.getProductBoardSlugs(productSaveId!).length
