@@ -233,8 +233,11 @@ export function StudioAlternativesView() {
     setSearchProductId(currentSlotProductId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slot]) // Intentionally NOT including currentSlotProductId — only re-lock on slot change
-  // The worn piece seeds the rack once per slot; picking an alternative must not re-run it.
-  const seededImageRef = useRef<Partial<Record<StudioProductTraySlot, string>>>({})
+  // A mannequin tap seeds the rack with the piece worn at that moment; a rack tap never does.
+  const seedRef = useRef<
+    Partial<Record<StudioProductTraySlot, { imageUrl: string; productId: string; product: StudioAlternativeProduct | null }>>
+  >({})
+  const pendingSimilarSlotRef = useRef<StudioProductTraySlot | null>(parsedParams.similar ? slot : null)
 
   // Cold start: no outfit exists yet in this session — show product tray immediately
   // so the user can browse and add items to create their first outfit.
@@ -255,24 +258,37 @@ export function StudioAlternativesView() {
   const prevSlotRef = useRef<StudioProductTraySlot>(slot)
   const isInitializedRef = useRef(false)
 
-  // --- INITIALIZATION FLOW: the worn piece's image seeds a similarity search on mount or tab change ---
+  /** Runs the pending similarity seed once the worn piece for this slot is known. */
+  const seedPendingSimilar = useCallback(() => {
+    if (pendingSimilarSlotRef.current !== slot) return
+    if (hiddenSlots[slot] || isViewOnly) {
+      pendingSimilarSlotRef.current = null
+      return
+    }
+    if (!currentSlotImageUrl || !currentSlotProductId) return
+    pendingSimilarSlotRef.current = null
+    const wornTrayItem = resolvedTrayItems.find((item) => item.slot === slot && item.productId === currentSlotProductId)
+    seedRef.current[slot] = {
+      imageUrl: currentSlotImageUrl,
+      productId: currentSlotProductId,
+      product: wornTrayItem ? mapTrayItemToAlternative(wornTrayItem) : null,
+    }
+    setSearchProductId(currentSlotProductId)
+    search.forceSearchForSlot(slot, currentSlotImageUrl)
+  }, [currentSlotImageUrl, currentSlotProductId, hiddenSlots, isViewOnly, resolvedTrayItems, search, slot])
+
+  // --- INITIALIZATION FLOW: resume or initialise the slot's search; only a mannequin tap seeds it ---
   useEffect(() => {
     if (prevSlotRef.current !== slot) {
-      search.resetForSlot(slot, currentSlotImageUrl, isAdminMode)
+      search.resetForSlot(slot, null, isAdminMode)
       prevSlotRef.current = slot
     } else if (!isInitializedRef.current) {
       isInitializedRef.current = true
-      search.resetForSlot(slot, currentSlotImageUrl, isAdminMode)
-    } else if (currentSlotImageUrl && !seededImageRef.current[slot] && !search.hasActiveSearch && !isAdminMode) {
-      // The outfit resolved after the slot was initialised empty: seed it now.
-      setSearchProductId(currentSlotProductId)
-      search.handleForceSearch(currentSlotImageUrl)
+      search.resetForSlot(slot, null, isAdminMode)
     }
-    if (currentSlotImageUrl && !seededImageRef.current[slot]) {
-      seededImageRef.current[slot] = currentSlotImageUrl
-    }
+    seedPendingSimilar()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slot, currentSlotImageUrl, isAdminMode])
+  }, [slot, currentSlotImageUrl, currentSlotProductId, isAdminMode])
 
   // --- SEARCH RESULTS QUERY ---
   const searchResultsQuery = useStudioSearchResults({
@@ -362,21 +378,18 @@ export function StudioAlternativesView() {
       ? filteredAlternativeProducts.filter((product) => isPlaceableOnMannequin(product, mannequin))
       : filteredAlternativeProducts
 
-    // The worn piece leads the rack, injected from the tray when the search left it out.
-    const wornId = hiddenSlots[slot] ? null : activeSlotIds[slot] ?? null
-    if (!wornId) return products
-    const wornTrayItem = resolvedTrayItems.find((item) => item.slot === slot && item.productId === wornId)
-    const worn = products.find((product) => product.id === wornId) ?? (wornTrayItem ? mapTrayItemToAlternative(wornTrayItem) : null)
-    return worn ? [worn, ...products.filter((product) => product.id !== wornId)] : products
+    // The mannequin-tapped piece leads its similarity results; a later pick keeps its own place.
+    const seed = seedRef.current[slot]
+    if (!seed || search.committedImageUrl !== seed.imageUrl) return products
+    const seedProduct = products.find((product) => product.id === seed.productId) ?? seed.product
+    return seedProduct ? [seedProduct, ...products.filter((product) => product.id !== seed.productId)] : products
   }, [
-    activeSlotIds,
     adminGender,
     filteredAlternativeProducts,
     gender,
-    hiddenSlots,
     outfitData?.avatarGender,
-    resolvedTrayItems,
     savesAlternativesQuery.data,
+    search.committedImageUrl,
     slot,
     source,
     wardrobeAlternativesQuery.data,
@@ -918,6 +931,7 @@ export function StudioAlternativesView() {
       if (isViewOnly) {
         return
       }
+      pendingSimilarSlotRef.current = null
 
       // Cold start: no outfit exists yet — create a draft outfit with this product then navigate into it
       if (!resolvedOutfitId && !isAdminMode) {
@@ -1158,15 +1172,9 @@ export function StudioAlternativesView() {
    * off the worn image and shows a clearable line above the rack.
    */
   const handleSimilarSearch = useCallback(() => {
-    const imageUrl = currentSlotImageUrl
-    if (isViewOnly || !imageUrl || !currentSlotProductId) {
-      return
-    }
-    // Search by the id of the item on screen. The image is still sent, because the
-    // results panel opens only when a search has text or an image.
-    setSearchProductId(currentSlotProductId)
-    search.handleForceSearch(imageUrl)
-  }, [currentSlotImageUrl, currentSlotProductId, isViewOnly, search])
+    pendingSimilarSlotRef.current = slot
+    seedPendingSimilar()
+  }, [seedPendingSimilar, slot])
 
   /**
    * Product-level Find items, seeded with the worn piece's cutout. The rack's
@@ -1193,6 +1201,16 @@ export function StudioAlternativesView() {
       else handleCategoryChange(nextSlot, { focus: nextSlot })
     },
     [handleCategoryChange, openFocus, slot],
+  )
+  // Same slot: seed now. Another slot: switch, and the init effect seeds once it resolves.
+  const handleMannequinTap = useCallback(
+    (tapped: StudioProductTraySlot) => {
+      if (isViewOnly) return
+      pendingSimilarSlotRef.current = tapped
+      if (tapped === slot) seedPendingSimilar()
+      else handleCategoryChange(tapped)
+    },
+    [handleCategoryChange, isViewOnly, seedPendingSimilar, slot],
   )
   const handleStepFocus = useCallback(
     (delta: number) => {
@@ -1292,7 +1310,7 @@ export function StudioAlternativesView() {
     if (search.committedText) return `"${search.committedText}"`
     if (search.committedImageUrl) {
       const isSeededByWornPiece =
-        search.committedImageUrl === currentSlotImageUrl || search.committedImageUrl === seededImageRef.current[slot]
+        search.committedImageUrl === currentSlotImageUrl || search.committedImageUrl === seedRef.current[slot]?.imageUrl
       return isSeededByWornPiece ? "Similar to this item" : "Similar to your photo"
     }
     return null
@@ -1328,11 +1346,11 @@ export function StudioAlternativesView() {
           avatarHeightCm={outfitData?.avatarHeightCm ?? 170}
           cardClassName="h-full w-full"
           allowEmptyMannequin={isAdminMode || !STUDIO_BASE_ITEMS_ENABLED}
-          // A garment tap switches the rack to that slot; only inside the focus view does it move the zoom.
+          // A garment tap seeds the rack with that piece; inside the focus view it only moves the zoom.
           onItemSelect={(item) => {
             if (!isStudioSlot(item.type)) return
             if (focus) enterFocus(item.type)
-            else handleCategoryChange(item.type)
+            else handleMannequinTap(item.type)
           }}
           onAvatarReady={setAvatarReady}
           avatarRef={snapshotRef}
@@ -1353,7 +1371,7 @@ export function StudioAlternativesView() {
           onItemSelect={(item) => {
             if (!isStudioSlot(item.type)) return
             if (focus) enterFocus(item.type)
-            else handleCategoryChange(item.type)
+            else handleMannequinTap(item.type)
           }}
           onSlotSelect={(nextSlot) => handleCategoryChange(nextSlot)}
           onAvatarReady={setAvatarReady}

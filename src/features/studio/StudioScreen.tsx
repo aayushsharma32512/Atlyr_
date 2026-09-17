@@ -492,7 +492,7 @@ export function StudioScreenView() {
         })
       }
 
-      openAlternativesSplit(slot, { forceSlot: true })
+      openAlternativesSplit(slot, { forceSlot: true, similar: true })
     },
     [
       gender,
