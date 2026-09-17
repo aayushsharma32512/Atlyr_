@@ -2,6 +2,10 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { persistQueryClient } from "@tanstack/react-query-persist-client";
+import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
+import { adminInventoryQueryKeys } from "@/features/admin-inventory/queryKeys";
+import { outfitScreenerQueryKeys } from "@/features/outfit-screener-review/queryKeys";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { GuestProvider, useGuest } from "@/contexts/GuestContext";
@@ -45,6 +49,7 @@ const AdminInvites = lazy(() => import("./pages/AdminInvites.tsx"));
 const AdminStudioRoutes = lazy(() => import("./pages/admin/studio/index.tsx"));
 const EnrichmentReviewDashboard = lazy(() => import("./pages/admin/EnrichmentReviewDashboard.tsx"));
 const OutfitScreenerDashboard = lazy(() => import("./pages/admin/OutfitScreenerDashboard.tsx"));
+const AdminInventoryDashboard = lazy(() => import("./pages/admin/AdminInventoryDashboard.tsx"));
 const IngestionV2Dashboard = lazy(() => import("./pages/admin/IngestionV2Dashboard.tsx"));
 const IngestionAutomatedDashboard = lazy(() => import("./pages/admin/IngestionAutomatedDashboard.tsx"));
 const PlacementDashboard = lazy(() => import("./pages/admin/PlacementDashboard.tsx"));
@@ -69,6 +74,32 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+// Persists only the admin-inventory and outfit-screener-review query caches, so a refresh
+// on those admin screens renders from cache instead of re-fetching. Consumer-app queries
+// are never written to localStorage.
+const PERSISTED_QUERY_KEY_PREFIXES: string[] = [adminInventoryQueryKeys.all[0], outfitScreenerQueryKeys.all[0]];
+
+try {
+  const persister = createSyncStoragePersister({
+    storage: window.localStorage,
+    key: "atlyr-admin-query-cache",
+  });
+
+  persistQueryClient({
+    queryClient,
+    persister,
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    // Bump when a persisted query's data shape changes.
+    buster: "admin-inventory-v2",
+    dehydrateOptions: {
+      shouldDehydrateQuery: (query) =>
+        PERSISTED_QUERY_KEY_PREFIXES.includes(query.queryKey[0] as string),
+    },
+  });
+} catch {
+  // localStorage unavailable (private mode, disabled storage) — cache just won't persist.
+}
 
 function ShareAccessGuard({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -305,6 +336,14 @@ const App = () => (
                       element={
                         <AdminAccessGuard>
                           <OutfitScreenerDashboard />
+                        </AdminAccessGuard>
+                      }
+                    />
+                    <Route
+                      path="/admin/inventory"
+                      element={
+                        <AdminAccessGuard>
+                          <AdminInventoryDashboard />
                         </AdminAccessGuard>
                       }
                     />
