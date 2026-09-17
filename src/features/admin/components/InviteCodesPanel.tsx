@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 import { useBulkUpdateInviteCodes, useCreateInviteCodes, useInviteCodesQuery, useSetInviteCodeActive } from "@/features/admin/hooks/useInviteCodes"
 import type { InviteCode, InviteCodeBulkOp } from "@/services/admin/inviteAdminService"
+import { InviteMessageComposer } from "./InviteMessageComposer"
 
 type CodeState = "active" | "inactive" | "expired" | "used_up"
 
@@ -113,11 +114,15 @@ export function InviteCodesPanel() {
   const allSelected = rows.length > 0 && rows.every((c) => selected.has(c.id))
   const selectedRows = rows.filter((c) => selected.has(c.id))
 
-  const runBulk = (op: InviteCodeBulkOp) =>
-    bulkMutation.mutate({ ids: selectedRows.map((c) => c.id), op }, {
-      onSuccess: () => toast({ title: `${selectedRows.length} code${selectedRows.length === 1 ? "" : "s"} updated` }),
+  const runBulk = (op: InviteCodeBulkOp, ids: string[] = selectedRows.map((c) => c.id)) =>
+    bulkMutation.mutate({ ids, op }, {
+      onSuccess: () => toast({ title: `${ids.length} code${ids.length === 1 ? "" : "s"} updated` }),
       onError: (err) => toast({ title: "Bulk update failed", description: err.message, variant: "destructive" }),
     })
+
+  // Messages compose for the selection, else for what was just created.
+  const composerCodes = selectedRows.length ? selectedRows : justCreated
+  const composerSource = selectedRows.length ? "selected" : justCreated.length ? "created" : "none"
 
   return (
     <>
@@ -175,6 +180,13 @@ export function InviteCodesPanel() {
           )}
         </CardContent>
       </Card>
+
+      <InviteMessageComposer
+        codes={composerCodes}
+        source={composerSource}
+        onMarkShared={(ids) => runBulk("mark_shared", ids)}
+        markingShared={bulkMutation.isPending}
+      />
 
       <Card>
         <CardHeader className="pb-3">
