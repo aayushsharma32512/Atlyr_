@@ -1460,7 +1460,7 @@ export function SearchScreenView() {
     [feed, openBoard],
   )
 
-  const listTitle = openList === "hot" ? "Hot styles" : "Atlyr curations"
+  const listTitle = openList === "hot" ? "Hot styles" : "Curations"
 
   return (
     <div className="flex flex-col overflow-hidden bg-background" style={{ height: SEARCH_SCREEN_HEIGHT }}>
