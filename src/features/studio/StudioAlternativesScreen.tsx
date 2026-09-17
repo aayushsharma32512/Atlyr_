@@ -1313,9 +1313,11 @@ export function StudioAlternativesView() {
           avatarHeightCm={outfitData?.avatarHeightCm ?? 170}
           cardClassName="h-full w-full"
           allowEmptyMannequin={isAdminMode || !STUDIO_BASE_ITEMS_ENABLED}
-          // A tap on a garment opens the focus view — Studio's, with the rack collapsed.
+          // A garment tap switches the rack to that slot; only inside the focus view does it move the zoom.
           onItemSelect={(item) => {
-            if (isStudioSlot(item.type)) enterFocus(item.type)
+            if (!isStudioSlot(item.type)) return
+            if (focus) enterFocus(item.type)
+            else handleCategoryChange(item.type)
           }}
           onAvatarReady={setAvatarReady}
           avatarRef={snapshotRef}
@@ -1334,7 +1336,9 @@ export function StudioAlternativesView() {
           cardClassName="h-full w-full"
           allowEmptyMannequin
           onItemSelect={(item) => {
-            if (isStudioSlot(item.type)) enterFocus(item.type)
+            if (!isStudioSlot(item.type)) return
+            if (focus) enterFocus(item.type)
+            else handleCategoryChange(item.type)
           }}
           onSlotSelect={(nextSlot) => handleCategoryChange(nextSlot)}
           onAvatarReady={setAvatarReady}
