@@ -190,6 +190,8 @@ export default function InspirationImportScreen() {
   }, [])
   const autoRef = useRef<{ slot: InspirationCategory | null; results: "inventory" | "web" } | null>(null)
   const [isSeeding, setIsSeeding] = useState(false)
+  // A Studio-seeded import has no photo to detect on, so it never shows the detection screens.
+  const [seededFlow, setSeededFlow] = useState(false)
   const openedDraftRef = useRef<{ signature: string; outfitId: string } | null>(null)
 
   useEffect(() => {
@@ -209,6 +211,7 @@ export default function InspirationImportScreen() {
     seededRef.current = true
     autoRef.current = { slot: seedParams.pieces[0]?.slot ?? null, results: seedParams.results }
     setIsSeeding(true)
+    setSeededFlow(true)
     console.log("[find-items] 0/5 seeding", seedParams)
     Promise.all(seedParams.pieces.map((piece) => cutoutToFile(piece.source)))
       .then((files) => {
@@ -576,6 +579,16 @@ export default function InspirationImportScreen() {
     )
   }
 
+  const seededLoader = (
+    <main className="flex min-h-screen items-center justify-center bg-background">
+      <div className="text-center">
+        <Loader2 className="mx-auto size-6 animate-spin text-ink" />
+        <p className="mt-3 text-chip text-taupe">Finding items…</p>
+      </div>
+    </main>
+  )
+  if (!importId && seedParams && !primaryError) return seededLoader
+
   if (!importId) {
     return (
       <AppShellLayout>
@@ -619,6 +632,7 @@ export default function InspirationImportScreen() {
         </main>
       )
     }
+    if (seededFlow) return seededLoader
     return sourcePreviewUrl ? (
       <DetectionProgress sourceUrl={sourcePreviewUrl} onBack={returnToSource} onMinimise={() => navigate("/collection")} />
     ) : (
@@ -632,6 +646,7 @@ export default function InspirationImportScreen() {
   }
 
   if (record.import.status === "detecting" || record.import.status === "source_ready") {
+    if (seededFlow) return seededLoader
     return (
       <DetectionProgress
         sourceUrl={record.sourceUrl ?? sourcePreviewUrl}
