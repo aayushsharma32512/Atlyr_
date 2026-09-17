@@ -20,6 +20,7 @@ import { SearchListPage } from "@/features/search/components/SearchListPage"
 import { SearchScopeRail } from "@/features/search/components/SearchScopeRail"
 import type { FeedHandlers, FeedList, FeedLayout } from "@/features/search/components/SearchRail"
 import { useSearchFeed } from "@/features/search/hooks/useSearchFeed"
+import { useSearchBrowseCollectionLooks } from "@/features/search/hooks/useSearchBrowseCollectionLooks"
 import { flattenBrowseLooks, type FeedLook, type FeedPiece } from "@/features/search/utils/feedShaping"
 import { CurationBoardsPage } from "@/features/search/components/CurationBoards"
 import type { FeedSection } from "@/features/search/hooks/useSearchFeed"
@@ -1447,17 +1448,21 @@ export function SearchScreenView() {
         : null,
     [boardParam, feed, openList],
   )
-  // One board's looks as a finite section for the list page.
+  // The rail only carries a preview of each board; the opened board pages through all of its looks.
+  const boardLooks = useSearchBrowseCollectionLooks({ categoryId: openBoard?.categoryId ?? null })
   const boardSection = useMemo<FeedSection<FeedLook>>(
     () => ({
-      items: openBoard && feed.kind === "looks" ? flattenBrowseLooks([openBoard], feed.gender) : [],
-      isLoading: false,
-      isError: false,
-      hasNextPage: false,
-      isFetchingNextPage: false,
-      fetchNextPage: () => {},
+      items:
+        openBoard && feed.kind === "looks"
+          ? flattenBrowseLooks([{ ...openBoard, outfits: boardLooks.data?.pages.flatMap((page) => page.results) ?? [] }], feed.gender)
+          : [],
+      isLoading: boardLooks.isLoading,
+      isError: boardLooks.isError,
+      hasNextPage: Boolean(boardLooks.hasNextPage),
+      isFetchingNextPage: boardLooks.isFetchingNextPage,
+      fetchNextPage: () => void boardLooks.fetchNextPage(),
     }),
-    [feed, openBoard],
+    [boardLooks, feed, openBoard],
   )
 
   const listTitle = openList === "hot" ? "Hot styles" : "Curations"
