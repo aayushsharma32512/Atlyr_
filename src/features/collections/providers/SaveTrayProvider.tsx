@@ -197,8 +197,15 @@ function SaveTraySheet({ request, onClose }: { request: SaveRequest; onClose: ()
   const lookDefaultSlugs = lookSlugs.length ? lookSlugs : request.presetBoardSlug ? [request.presetBoardSlug] : ["favorites"]
   const pieceDefaultSlugs = pieceSlugs.length ? pieceSlugs : request.presetBoardSlug ? [request.presetBoardSlug] : ["favorites"]
 
+  // The card mounts only once its data is in, so it never remounts mid-slide;
+  // the min height is the boards-only card, which every kind at least has.
+  const isReady =
+    Boolean(overviewQuery.data) &&
+    (request.kind === "piece" || (Boolean(outfitQuery.data) && Boolean(membershipQuery.data)))
+
   return (
-    <div className="px-4 pb-6 pt-4">
+    <div className="min-h-[136px] px-4 pb-6 pt-4">
+      {isReady ? (
       <StudioSaveCard
         key={cardKey}
         kind={request.kind}
@@ -211,6 +218,7 @@ function SaveTraySheet({ request, onClose }: { request: SaveRequest; onClose: ()
         onCancel={onClose}
         onCreateBoard={(name) => createMoodboardMutation.mutateAsync(name).then((res) => res.slug)}
       />
+      ) : null}
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useMemo } from "react"
 
 import { useToast } from "@/hooks/use-toast"
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
@@ -11,22 +11,17 @@ import {
   useRemoveProductFromCollection,
   useSaveProductToCollection,
 } from "@/features/collections/hooks/useMoodboards"
+import { useSaveTray } from "@/features/collections/providers/SaveTrayProvider"
 import type { Moodboard } from "@/services/collections/collectionsService"
 import { addNotice, saveLine } from "@/features/notifications/notices"
 
-// Slugs excluded from the moodboard picker (managed by tap, not Move Moodboard)
+// Slugs excluded from the moodboard picker (managed by tap, not the save tray)
 const SYSTEM_SLUGS = new Set(["favorites", "try-ons", "generations"])
-
-type SaveActionState = {
-  isPickerOpen: boolean
-  pendingProductId: string | null
-  pendingContext: EntityUiContext | null
-  currentMoodboardSlugs: string[]
-}
 
 export function useProductSaveActions() {
   const { toast } = useToast()
   const analytics = useEngagementAnalytics()
+  const { openPieceSave } = useSaveTray()
   const favoritesQuery = useFavoriteProducts()
   const saveMutation = useSaveProductToCollection()
   const removeFromCollectionMutation = useRemoveProductFromCollection()
@@ -38,13 +33,6 @@ export function useProductSaveActions() {
       .filter((m) => !m.isSystem || m.slug === "wardrobe"),
     [collectionsOverviewQuery.data?.moodboards],
   )
-
-  const [state, setState] = useState<SaveActionState>({
-    isPickerOpen: false,
-    pendingProductId: null,
-    pendingContext: null,
-    currentMoodboardSlugs: [],
-  })
 
   const favoriteIds = useMemo(() => favoritesQuery.data ?? [], [favoritesQuery.data])
   const favoriteSet = useMemo(() => new Set(favoriteIds), [favoriteIds])
@@ -108,24 +96,10 @@ export function useProductSaveActions() {
   )
 
   const handleLongPressSave = useCallback(
-    async (productId: string, uiContext: EntityUiContext = {}) => {
-      const alreadySaved = favoriteSet.has(productId)
-      try {
-        if (!alreadySaved) {
-          // Save to favorites first if not yet saved
-          await saveMutation.mutateAsync({ productId, slug: "favorites", label: "Favorites" })
-          addNotice({ id: "save:product:" + productId + ":favorites:" + Date.now(), kind: "save", title: "Saved to Favourites", line: saveLine(uiContext.section), at: Date.now(), payload: { productId, slug: "favorites" } })
-          trackSaveToggled(analytics, { entity_type: "product", entity_id: productId, collection_slug: "favorites", new_state: true, save_method: "long_press", ...uiContext })
-          trackSavedToCollection(analytics, { entity_type: "product", entity_id: productId, collection_slug: "favorites", save_method: "long_press", ...uiContext })
-        }
-        const currentSlugs = getProductMoodboardSlugs(productId)
-        setState({ isPickerOpen: true, pendingProductId: productId, pendingContext: uiContext, currentMoodboardSlugs: currentSlugs })
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Unable to save product"
-        toast({ title: "Save failed", description: message, variant: "destructive" })
-      }
+    (productId: string, uiContext: EntityUiContext = {}) => {
+      openPieceSave(productId, uiContext)
     },
-    [analytics, favoriteSet, getProductMoodboardSlugs, saveMutation, toast],
+    [openPieceSave],
   )
 
   /** Every board a product is on, Favorites included — the save card's starting selection. */
@@ -160,67 +134,21 @@ export function useProductSaveActions() {
     [analytics, getProductBoardSlugs, removeFromCollectionMutation, saveMutation, selectableMoodboards, toast],
   )
 
-  /** Diff-sync: add newly selected boards, remove deselected boards */
-  const handleApplyMoodboards = useCallback(
-    async (selectedSlugs: string[]) => {
-      if (!state.pendingProductId) return
-
-      const labelBySlug = new Map(selectableMoodboards.map((m) => [m.slug, m.label]))
-      const current = new Set(state.currentMoodboardSlugs)
-      const next = new Set(selectedSlugs)
-      const toAdd = selectedSlugs.filter((s) => !current.has(s))
-      const toRemove = state.currentMoodboardSlugs.filter((s) => !next.has(s))
-
-      let hadError = false
-      const uiContext = state.pendingContext ?? {}
-
-      for (const slug of toAdd) {
-        try {
-          await saveMutation.mutateAsync({ productId: state.pendingProductId, slug, label: labelBySlug.get(slug) })
-          trackSavedToCollection(analytics, { entity_type: "product", entity_id: state.pendingProductId, collection_slug: slug, save_method: "long_press", ...uiContext })
-        } catch { hadError = true }
-      }
-
-      for (const slug of toRemove) {
-        try {
-          await removeFromCollectionMutation.mutateAsync({ productId: state.pendingProductId, slug })
-        } catch { hadError = true }
-      }
-
-      setState({ isPickerOpen: false, pendingProductId: null, pendingContext: null, currentMoodboardSlugs: [] })
-
-      if (hadError) {
-        toast({ title: "Saved with issues", description: "Could not update all moodboards.", variant: "destructive" })
-      }
-    },
-    [analytics, removeFromCollectionMutation, saveMutation, selectableMoodboards, state, toast],
-  )
-
   const handleCreateMoodboard = useCallback(
     async (name: string) => {
       const trimmed = name.trim()
       if (!trimmed) return
       try {
         const created = await createMoodboardMutation.mutateAsync(trimmed)
-        const slug = typeof created === "object" && created?.slug ? created.slug : null
-        if (slug && state.pendingProductId) {
-          await saveMutation.mutateAsync({ productId: state.pendingProductId, slug, label: created?.label })
-          const uiContext = state.pendingContext ?? {}
-          trackSavedToCollection(analytics, { entity_type: "product", entity_id: state.pendingProductId, collection_slug: slug, save_method: "long_press", ...uiContext })
-        }
-        return slug
+        return typeof created === "object" && created?.slug ? created.slug : undefined
       } catch (err) {
         const message = err instanceof Error ? err.message : "Could not create moodboard"
         toast({ title: "Create failed", description: message, variant: "destructive" })
         return undefined
       }
     },
-    [analytics, createMoodboardMutation, saveMutation, state, toast],
+    [createMoodboardMutation, toast],
   )
-
-  const closePicker = useCallback(() => {
-    setState({ isPickerOpen: false, pendingProductId: null, pendingContext: null, currentMoodboardSlugs: [] })
-  }, [])
 
   return {
     moodboards: selectableMoodboards as Moodboard[],
@@ -232,12 +160,7 @@ export function useProductSaveActions() {
     onLongPressSave: handleLongPressSave,
     getProductBoardSlugs,
     onSaveToBoards: handleSaveToBoards,
-    onApplyMoodboards: handleApplyMoodboards,
     onCreateMoodboard: handleCreateMoodboard,
-    isPickerOpen: state.isPickerOpen,
-    pendingProductId: state.pendingProductId,
-    currentMoodboardSlugs: state.currentMoodboardSlugs,
-    closePicker,
     isSaving: saveMutation.isPending || createMoodboardMutation.isPending || removeFromCollectionMutation.isPending,
   }
 }
