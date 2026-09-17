@@ -26,6 +26,7 @@ import { useToast } from "@/hooks/use-toast"
 import { supabase } from "@/integrations/supabase/client"
 import { isStudioSlot } from "@/features/studio/utils/studioUrlState"
 import type { Outfit } from "@/types"
+import { getOutfitChips } from "@/utils/outfitChips"
 
 type OutfitGridLayoutMode = "balanced" | "fixedAvatar"
 
@@ -134,7 +135,7 @@ export function OutfitSuggestionsView() {
         id: outfitId ?? `${index}`,
         variant: "narrow" as const,
         title: studioOutfit?.name ?? outfit.name ?? "Outfit",
-        chips: [studioOutfit?.fit ?? outfit.fit, studioOutfit?.feel ?? outfit.feel].filter(Boolean) as string[],
+        chips: getOutfitChips(studioOutfit ?? outfit),
         attribution: undefined,
         outfitId,
         renderedItems,

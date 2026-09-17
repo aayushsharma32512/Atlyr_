@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { ProductAlternateCard, ProductSheet, TrayActionButton } from "@/design-system/primitives"
 import { cn } from "@/lib/utils"
 import { parseProductDescription } from "@/utils/productDescription"
+import { getTrayItemTags } from "@/utils/productTags"
 
 import { BASE_DELIVERY_SPECS, BASE_PRIMARY_SPECS } from "./constants/specs"
 import { useStudioContext } from "./context/StudioContext"
@@ -65,13 +66,7 @@ export function ProductPageView() {
 
   const productQuery = useStudioProduct(activeProductId)
   const product = productQuery.data
-  const tags = useMemo(() => {
-    if (!product) {
-      return []
-    }
-    // Six fits the two rows a full-width details block gives us.
-    return [...product.fitTags, ...product.feelTags, ...product.vibeTags].slice(0, 6)
-  }, [product])
+  const tags = useMemo(() => getTrayItemTags(product), [product])
 
   const similarItemsQuery = useStudioSimilarProducts(activeProductId)
   const similarItems = similarItemsQuery.data ?? []

@@ -24,6 +24,8 @@ import { buildStudioSearchParams, type SlotIdMap } from "@/features/studio/utils
 import type { StudioAlternativeProduct, StudioComplementaryProduct, StudioProductTraySlot } from "@/services/studio/studioService"
 import type { Outfit } from "@/types"
 import { resolveOutfitAttribution } from "@/utils/outfitAttribution"
+import { getOutfitChips } from "@/utils/outfitChips"
+import { getTrayItemTags } from "@/utils/productTags"
 import { useToast } from "@/hooks/use-toast"
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
 import { buildRailId, type EntityUiContext, trackItemClicked, trackProductBuyClicked, trackSavedToCollection, trackSaveToggled } from "@/integrations/posthog/engagementTracking/entityEvents"
@@ -240,7 +242,7 @@ function OutfitRailItem({
         studioOutfit?.imageSrcFallback ?? renderedItems?.[0]?.imageUrl ?? outfit.items?.[0]?.imageUrl ?? undefined
       }
       title={studioOutfit?.name ?? outfit.name}
-      chips={[studioOutfit?.fit ?? outfit.fit, studioOutfit?.feel ?? outfit.feel].filter(Boolean) as string[]}
+      chips={getOutfitChips(studioOutfit ?? outfit)}
       attribution={resolveOutfitAttribution(outfit.created_by)}
       disableAvatarSwipe
       isSaved={localSaved}
@@ -390,12 +392,7 @@ export function SimilarItemsView() {
     lastViewedProductIdRef.current = activeProductId
     trackStudioProductViewed(analytics, activeProductId)
   }, [activeProductId, analytics, product])
-  const heroTags = useMemo(() => {
-    if (!product) {
-      return []
-    }
-    return [...product.fitTags, ...product.feelTags, ...product.vibeTags]
-  }, [product])
+  const heroTags = useMemo(() => getTrayItemTags(product), [product])
 
   const wardrobeQuery = useWardrobePairings(product?.slot ?? null)
   const wardrobeItems = wardrobeQuery.items

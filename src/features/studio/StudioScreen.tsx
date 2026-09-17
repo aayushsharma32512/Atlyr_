@@ -20,7 +20,7 @@ import {
   type StudioCanvasSlot,
 } from "./constants/layering"
 import type { OutfitItem } from "@/types"
-import { getOutfitTagsFromItems } from "@/utils/productTags"
+import { getOutfitTagsFromItems, getTrayItemTags } from "@/utils/productTags"
 import { StudioLayout } from "./StudioLayout"
 import { useStudioTourContext } from "./context/StudioTourContext"
 import { useStudioContext } from "./context/StudioContext"
@@ -1015,17 +1015,7 @@ export function StudioScreenView() {
     [focusImagesQuery.data, focusItem?.imageUrl, focusItem?.thumbnailUrl],
   )
 
-  /** fit · feel · vibe · colour · material — no brand, no price. */
-  const focusAttributes = useMemo(() => {
-    if (!focusItem) return []
-    return [
-      ...focusItem.fitTags,
-      ...focusItem.feelTags,
-      ...focusItem.vibeTags,
-      focusItem.color,
-      focusItem.materialType,
-    ].filter((value): value is string => Boolean(value)).slice(0, 5)
-  }, [focusItem])
+  const focusAttributes = useMemo(() => getTrayItemTags(focusItem), [focusItem])
 
   // A slot emptied while focused has nothing to show — drop back to the canvas.
   // Not before the look and its slots have loaded: a deep link's focus must survive the fetch.

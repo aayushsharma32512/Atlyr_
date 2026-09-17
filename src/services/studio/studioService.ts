@@ -76,6 +76,7 @@ export interface StudioProductDetail {
   gender: Gender
   care: string | null
   materialType: string | null
+  colorGroup: string | null
 }
 
 export interface StudioAlternativeProduct {
@@ -901,7 +902,8 @@ export function mapTrayItemToProductDetail(item: StudioProductTrayItem): StudioP
     category: null,
     gender: null,
     care: null,
-    materialType: null,
+    materialType: item.materialType ?? null,
+    colorGroup: item.colorGroup ?? null,
   }
 }
 
@@ -1140,7 +1142,7 @@ async function getProductDetail(productId: string): Promise<StudioProductDetail 
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, product_name, brand, price, currency, description, description_text, image_url, product_url, fit, feel, vibes, type, category_id, gender, care, material_type",
+      "id, product_name, brand, price, currency, description, description_text, image_url, product_url, fit, feel, vibes, type, category_id, gender, care, material_type, color_group",
     )
     .eq("id", productId)
     .maybeSingle()
@@ -1170,6 +1172,7 @@ async function getProductDetail(productId: string): Promise<StudioProductDetail 
     gender: data.gender === "male" || data.gender === "female" ? data.gender : null,
     care: data.care ?? null,
     materialType: data.material_type ?? null,
+    colorGroup: data.color_group ?? null,
   }
 }
 

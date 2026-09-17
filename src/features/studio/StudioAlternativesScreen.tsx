@@ -1271,17 +1271,7 @@ export function StudioAlternativesView() {
     : (heroProduct?.title ?? focusedItem?.product_name ?? focusedItem?.brand ?? "Selected piece")
   const heroPrice = heroProduct?.price ?? focusedItem?.price ?? 0
 
-  /** fit · feel · vibe · colour · material. No brand, no price. */
-  const heroAttributes = useMemo(() => {
-    if (!heroProduct) return []
-    return [
-      ...(heroProduct.fitTags ?? []),
-      ...(heroProduct.feelTags ?? []),
-      ...(heroProduct.vibeTags ?? []),
-      heroProduct.color,
-      heroProduct.materialType,
-    ].filter((value): value is string => Boolean(value)).slice(0, 5)
-  }, [heroProduct])
+  const heroAttributes = useMemo(() => getTrayItemTags(heroProduct), [heroProduct])
 
   const heroImages = useMemo(
     () =>
