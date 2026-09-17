@@ -1,23 +1,7 @@
-import { useEffect } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import Index from "./Index";
 import { useAuth } from "@/contexts/AuthContext";
-import { clearPendingInviteCode, clearReturningMarker } from "@/features/auth/inviteStorage";
 import { useHasAppAccessQuery } from "@/features/auth/hooks/useInviteAccess";
-
-function BlockedAccessRedirect() {
-  const { signOut } = useAuth();
-
-  useEffect(() => {
-    clearPendingInviteCode();
-    clearReturningMarker();
-    signOut().finally(() => {
-      window.location.replace("/?waitlist=1");
-    });
-  }, [signOut]);
-
-  return null;
-}
 
 const AppRouter = () => {
   const { user, loading } = useAuth();
@@ -37,8 +21,10 @@ const AppRouter = () => {
     return null;
   }
 
+  // Signed in without access: stay signed in and offer the invite-code door.
   if (accessQuery.isError || !accessQuery.data) {
-    return <BlockedAccessRedirect />;
+    const next = encodeURIComponent(`${location.pathname}${location.search}`);
+    return <Navigate to={`/auth/invite?next=${next}`} replace />;
   }
 
   return <Index />;

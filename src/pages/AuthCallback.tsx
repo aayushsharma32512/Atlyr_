@@ -1,23 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
+import { useQueryClient } from "@tanstack/react-query"
 
 import { useAuth } from "@/contexts/AuthContext"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { getAuthIntent, clearAuthIntent } from "@/features/auth/authIntentStorage"
-import { clearReturningMarker, setReturningMarker } from "@/features/auth/inviteStorage"
-import { useHasAppAccessQuery } from "@/features/auth/hooks/useInviteAccess"
+import { clearPendingInviteCode, getPendingInviteCode, setReturningMarker } from "@/features/auth/inviteStorage"
+import { inviteErrorText } from "@/features/auth/inviteCode"
+import { useHasAppAccessQuery, useRedeemInviteMutation } from "@/features/auth/hooks/useInviteAccess"
+import { authKeys } from "@/features/auth/queryKeys"
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
 import { useToast } from "@/hooks/use-toast"
 
-// Email-approval flow: after Google sign-in, access is decided by has_app_access()
-// (email is invited/converted in the waitlist). No invite code anywhere.
+// After Google sign-in, access = has_app_access(): the email is approved on the waitlist,
+// or the user has redeemed an invite code. A code entered before sign-in is redeemed here.
 export default function AuthCallback() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { user, loading, signOut } = useAuth()
+  const { user, loading } = useAuth()
   const { profile, role } = useProfileContext()
   const analytics = useEngagementAnalytics()
+  const queryClient = useQueryClient()
   const { toast } = useToast()
+  const redeem = useRedeemInviteMutation()
 
   const next = useMemo(() => searchParams.get("next") || "/app", [searchParams])
   const [message, setMessage] = useState("Finalizing sign-in…")
@@ -43,38 +48,54 @@ export default function AuthCallback() {
       setMessage("Verifying access…")
       return
     }
-
-    const hasAccess = !accessQuery.isError && Boolean(accessQuery.data)
     doneRef.current = true
 
-    if (!hasAccess) {
-      const email = user.email ?? "this email"
-      clearReturningMarker()
-      signOut().catch(() => null).finally(() => {
-        toast({
-          title: "Not approved yet",
-          description: `${email} isn't approved yet. Please contact the admin for access.`,
-          variant: "destructive",
-        })
-        navigate("/auth/login", { replace: true })
+    const enter = () => {
+      const intent = getAuthIntent()
+      clearAuthIntent()
+      analytics.capture(intent === "signup" ? "auth_signup_succeeded" : "auth_login_succeeded")
+      analytics.identify(user.id, {
+        email: user.email ?? null,
+        name: typeof profile?.name === "string" ? profile.name : null,
+        role,
       })
+      setReturningMarker()
+      navigate(next, { replace: true })
+    }
+
+    const hasAccess = !accessQuery.isError && Boolean(accessQuery.data)
+    if (hasAccess) {
+      clearPendingInviteCode()
+      enter()
       return
     }
 
-    // Approved → identify + go in.
-    const intent = getAuthIntent()
-    clearAuthIntent()
-    analytics.capture(intent === "signup" ? "auth_signup_succeeded" : "auth_login_succeeded")
-    analytics.identify(user.id, {
-      email: user.email ?? null,
-      name: typeof profile?.name === "string" ? profile.name : null,
-      role,
-    })
-    setReturningMarker()
-    navigate(next, { replace: true })
+    const pendingCode = getPendingInviteCode()
+    if (!pendingCode) {
+      navigate(`/auth/invite?next=${encodeURIComponent(next)}`, { replace: true })
+      return
+    }
+
+    setMessage("Redeeming your invite…")
+    redeem.mutateAsync(pendingCode)
+      .then((result) => {
+        clearPendingInviteCode()
+        if (!result.success) {
+          toast({ title: "Invite code not accepted", description: inviteErrorText(result.error), variant: "destructive" })
+          navigate(`/auth/invite?next=${encodeURIComponent(next)}`, { replace: true })
+          return
+        }
+        // AppRouter reads the same cached access flag; flip it so it doesn't bounce on stale "false".
+        queryClient.setQueryData(authKeys.access(user.id), true)
+        enter()
+      })
+      .catch(() => {
+        toast({ title: "Invite code not accepted", description: inviteErrorText(null), variant: "destructive" })
+        navigate(`/auth/invite?next=${encodeURIComponent(next)}`, { replace: true })
+      })
   }, [
     loading, user, accessQuery.isLoading, accessQuery.isFetching, accessQuery.data, accessQuery.isError,
-    navigate, signOut, toast, analytics, profile?.name, role, next,
+    navigate, toast, analytics, profile?.name, role, next, redeem, queryClient,
   ])
 
   return (
