@@ -41,6 +41,7 @@ export function InviteMessageComposer({ codes, source, onMarkShared, markingShar
   const { toast } = useToast()
   const [template, setTemplate] = useState(loadTemplate)
   const [namesRaw, setNamesRaw] = useState("")
+  const [autoShare, setAutoShare] = useState(true)
 
   const names = useMemo(() => namesRaw.split("\n").map((n) => n.trim()).filter(Boolean), [namesRaw])
   const messages = useMemo(
@@ -53,10 +54,14 @@ export function InviteMessageComposer({ codes, source, onMarkShared, markingShar
     try { localStorage.setItem(TEMPLATE_KEY, next) } catch { /* per-browser convenience only */ }
   }
 
-  const copy = async (text: string, what: string) => {
+  // Copying or opening WhatsApp is the moment a code leaves the admin's hands.
+  const share = (ids: string[]) => { if (autoShare) onMarkShared(ids) }
+
+  const copy = async (text: string, what: string, ids: string[]) => {
     try {
       await navigator.clipboard.writeText(text)
       toast({ title: `Copied ${what}` })
+      share(ids)
     } catch {
       toast({ title: "Copy failed", variant: "destructive" })
     }
@@ -95,12 +100,18 @@ export function InviteMessageComposer({ codes, source, onMarkShared, markingShar
         {messages.length > 0 && (
           <>
             <div className="flex flex-wrap items-center gap-1.5">
-              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => copy(messages.map((m) => m.text).join("\n\n---\n\n"), "all messages")}>
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => copy(messages.map((m) => m.text).join("\n\n---\n\n"), "all messages", messages.map((m) => m.id))}>
                 <Copy className="mr-1 h-3 w-3" /> Copy all
               </Button>
-              <Button variant="outline" size="sm" className="h-7 text-xs" disabled={markingShared} onClick={() => onMarkShared(messages.map((m) => m.id))}>
-                <Send className="mr-1 h-3 w-3" /> Mark these shared
-              </Button>
+              {!autoShare && (
+                <Button variant="outline" size="sm" className="h-7 text-xs" disabled={markingShared} onClick={() => onMarkShared(messages.map((m) => m.id))}>
+                  <Send className="mr-1 h-3 w-3" /> Mark these shared
+                </Button>
+              )}
+              <label className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+                <input type="checkbox" checked={autoShare} onChange={(e) => setAutoShare(e.target.checked)} />
+                Mark shared on copy
+              </label>
             </div>
             <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
               {messages.map((m) => (
@@ -112,11 +123,11 @@ export function InviteMessageComposer({ codes, source, onMarkShared, markingShar
                     <pre className="whitespace-pre-wrap font-sans text-sm text-foreground">{m.text}</pre>
                   </div>
                   <div className="flex shrink-0 flex-col gap-1.5">
-                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => copy(m.text, m.name ? `message for ${m.name}` : "message")}>
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => copy(m.text, m.name ? `message for ${m.name}` : "message", [m.id])}>
                       <Copy className="mr-1 h-3 w-3" /> Copy
                     </Button>
                     <Button size="sm" variant="outline" className="h-7 text-xs" asChild>
-                      <a href={`https://wa.me/?text=${encodeURIComponent(m.text)}`} target="_blank" rel="noopener noreferrer">
+                      <a href={`https://wa.me/?text=${encodeURIComponent(m.text)}`} target="_blank" rel="noopener noreferrer" onClick={() => share([m.id])}>
                         <ExternalLink className="mr-1 h-3 w-3" /> WhatsApp
                       </a>
                     </Button>
