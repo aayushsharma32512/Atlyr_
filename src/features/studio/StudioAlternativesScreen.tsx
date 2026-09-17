@@ -51,6 +51,7 @@ import {
   useSaveToCollection,
   useProductCollectionMembership,
 } from "@/features/collections/hooks/useMoodboards"
+import { useSavedTagsLookup } from "@/features/collections/hooks/useSavedTags"
 import { useUpdateOutfit } from "@/features/outfits/hooks/useUpdateOutfit"
 import { useAuth } from "@/contexts/AuthContext"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
@@ -142,6 +143,7 @@ export function StudioAlternativesView() {
   const { mutateAsync: saveToCollectionMutation } = useSaveToCollection()
   const { mutateAsync: removeFromCollectionMutation } = useRemoveFromCollection()
   const outfitMembershipQuery = useOutfitCollectionMembership()
+  const { getSavedTags } = useSavedTagsLookup()
   const { data: moodboards = [], isLoading: moodboardsLoading } = useMoodboards()
   const selectableMoodboards = useMemo(
     () => moodboards.filter((m) => !m.isSystem || m.slug === "favorites" || m.slug === "wardrobe"),
@@ -636,6 +638,17 @@ export function StudioAlternativesView() {
   // a fresh derived look, which is the existing/correct behavior.
   const isEditingExistingOutfit = Boolean(resolvedOutfitId && isOwnOutfit && !hasSlotOverrides)
 
+  // The save row's own tags win regardless of who made the look — the current
+  // user may have saved someone else's look before. A slot override means
+  // Save will derive a different outfit than resolvedOutfitId, so neither
+  // its save-row tags nor its public tags carry over to that derived outfit.
+  // Owning the look but having no save row yet falls back to its public tags.
+  const canReadCurrentOutfitTags = Boolean(resolvedOutfitId) && !hasSlotOverrides
+  const savedLookTags = canReadCurrentOutfitTags ? getSavedTags("look", resolvedOutfitId as string) : []
+  const lookInitialTags = savedLookTags.length
+    ? savedLookTags
+    : isOwnOutfit && canReadCurrentOutfitTags ? (outfitData?.outfit?.tags ?? []) : []
+
   // The boards this exact outfit id is really on right now, so the save
   // picker's default reflects truth instead of always assuming Favorites.
   const currentOutfitMoodboardSlugs = useMemo(() => {
@@ -800,7 +813,7 @@ export function StudioAlternativesView() {
 
           for (const slug of toAdd) {
             try {
-              await saveToCollectionMutation({ outfitId, slug, label: moodboardLabelBySlug.get(slug) })
+              await saveToCollectionMutation({ outfitId, slug, label: moodboardLabelBySlug.get(slug), tags: data.tags })
             } catch {
               hadCollectionError = true
             }
@@ -812,10 +825,21 @@ export function StudioAlternativesView() {
               hadCollectionError = true
             }
           }
+          // Boards may be unchanged while only the tags changed — piggyback the tag write on
+          // one surviving board so every user_favorites row for this look still agrees.
+          if (toAdd.length === 0 && selectedMoodboardSlugs.length > 0) {
+            try {
+              await saveToCollectionMutation({
+                outfitId, slug: selectedMoodboardSlugs[0], label: moodboardLabelBySlug.get(selectedMoodboardSlugs[0]), tags: data.tags,
+              })
+            } catch {
+              hadCollectionError = true
+            }
+          }
         } else {
           for (const slug of selectedMoodboardSlugs) {
             try {
-              await saveToCollectionMutation({ outfitId, slug, label: moodboardLabelBySlug.get(slug) })
+              await saveToCollectionMutation({ outfitId, slug, label: moodboardLabelBySlug.get(slug), tags: data.tags })
             } catch {
               hadCollectionError = true
             }
@@ -1394,7 +1418,7 @@ export function StudioAlternativesView() {
               {productSaveId ? (
                 <div className="box-border flex h-[225px] flex-none flex-col px-4 py-2.5">
                   <StudioSaveCard
-                    key={`${productSaveId}:${productSaveActions.getSavedProductTags(productSaveId).join("|")}`}
+                    key={`${productSaveId}:${getTrayItemTags(heroProduct).join("|")}:${productSaveActions.getSavedProductTags(productSaveId).join("|")}`}
                     kind="piece"
                     className="h-full"
                     defaultName={heroTitle}
@@ -1495,6 +1519,7 @@ export function StudioAlternativesView() {
             {isSaveDrawerOpen || productSaveId ? (
               isSaveDrawerOpen ? (
               <StudioSaveCard
+                key={`look:${resolvedOutfitId ?? ""}:${getOutfitTagsFromItems(resolvedTrayItems).join("|")}:${lookInitialTags.join("|")}`}
                 className="h-full"
                 defaultName={
                   outfitData?.outfit?.name?.startsWith("draft-look-")
@@ -1502,7 +1527,7 @@ export function StudioAlternativesView() {
                     : (outfitData?.outfit?.name ?? "")
                 }
                 tagOptions={getOutfitTagsFromItems(resolvedTrayItems)}
-                initialTags={isEditingExistingOutfit ? (outfitData?.outfit?.tags ?? []) : []}
+                initialTags={lookInitialTags}
                 boards={selectableMoodboards.map((m) => ({ slug: m.slug, label: m.label }))}
                 defaultBoardSlugs={
                   currentOutfitMoodboardSlugs.length ? currentOutfitMoodboardSlugs : ["favorites"]
@@ -1516,11 +1541,12 @@ export function StudioAlternativesView() {
               />
               ) : (
               <StudioSaveCard
-                key={productSaveId}
+                key={`${productSaveId}:${getTrayItemTags(heroProduct).join("|")}:${productSaveActions.getSavedProductTags(productSaveId).join("|")}`}
                 kind="piece"
                 className="h-full"
                 defaultName={heroTitle}
                 tagOptions={getTrayItemTags(heroProduct)}
+                initialTags={productSaveActions.getSavedProductTags(productSaveId!)}
                 boards={selectableMoodboards.map((m) => ({ slug: m.slug, label: m.label }))}
                 defaultBoardSlugs={
                   productSaveActions.getProductBoardSlugs(productSaveId!).length

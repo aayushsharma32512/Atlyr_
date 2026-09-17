@@ -10,8 +10,8 @@ import {
   useProductCollectionMembership,
   useRemoveProductFromCollection,
   useSaveProductToCollection,
-  useSavedProductTags,
 } from "@/features/collections/hooks/useMoodboards"
+import { useSavedTagsLookup } from "@/features/collections/hooks/useSavedTags"
 import { useSaveTray } from "@/features/collections/providers/SaveTrayProvider"
 import type { Moodboard } from "@/services/collections/collectionsService"
 import { addNotice, saveLine } from "@/features/notifications/notices"
@@ -29,10 +29,10 @@ export function useProductSaveActions() {
   const createMoodboardMutation = useCreateMoodboard()
   const collectionsOverviewQuery = useCollectionsOverview()
   const membershipQuery = useProductCollectionMembership()
-  const savedTagsQuery = useSavedProductTags()
+  const { getSavedTags } = useSavedTagsLookup()
   const getSavedProductTags = useCallback(
-    (productId: string) => savedTagsQuery.data?.[productId] ?? [],
-    [savedTagsQuery.data],
+    (productId: string) => getSavedTags("piece", productId),
+    [getSavedTags],
   )
   const selectableMoodboards = useMemo(
     () => (collectionsOverviewQuery.data?.moodboards ?? [])

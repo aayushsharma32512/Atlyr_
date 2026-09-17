@@ -13,6 +13,8 @@ export const collectionsKeys = {
   removeProductFromCollection: () => [...collectionsKeys.all, "remove-product-from-collection"] as const,
   removeOutfitFromLibrary: () => [...collectionsKeys.all, "remove-outfit-from-library"] as const,
   removeProductFromLibrary: () => [...collectionsKeys.all, "remove-product-from-library"] as const,
+  /** The user's save-row tags, products and outfits combined — one key so a save on either kind invalidates it. */
+  savedTags: () => [...collectionsKeys.all, "saved-tags"] as const,
   productsByIds: (ids: string[]) => [...collectionsKeys.all, "products-by-ids", [...ids].sort().join(",")] as const,
   creations: (size = 20) => [...collectionsKeys.all, "creations", size] as const,
   /**
@@ -36,7 +38,6 @@ export const collectionsKeys = {
   collectionProducts: (slug: string) => [...collectionsKeys.products(), "collection", slug] as const,
   products: () => [...collectionsKeys.all, "products"] as const,
   productCollectionMembership: () => [...collectionsKeys.products(), "membership"] as const,
-  savedProductTags: () => [...collectionsKeys.products(), "saved-tags"] as const,
   productFavorites: () => [...collectionsKeys.all, "product-favorites"] as const,
   trendingProducts: (gender: string | null) => [...collectionsKeys.products(), "trending", gender ?? "all"] as const,
 }

@@ -47,6 +47,7 @@ import {
   useRemoveFromCollection,
   useSaveToCollection,
 } from "@/features/collections/hooks/useMoodboards"
+import { useSavedTagsLookup } from "@/features/collections/hooks/useSavedTags"
 import { useUpdateOutfit } from "@/features/outfits/hooks/useUpdateOutfit"
 import { useAuth } from "@/contexts/AuthContext"
 import { useToast } from "@/hooks/use-toast"
@@ -124,6 +125,7 @@ export function StudioScreenView() {
   const { mutateAsync: saveToCollectionMutation } = useSaveToCollection()
   const { mutateAsync: removeFromCollectionMutation } = useRemoveFromCollection()
   const outfitMembershipQuery = useOutfitCollectionMembership()
+  const { getSavedTags } = useSavedTagsLookup()
   const { user } = useAuth()
   const { toast } = useToast()
   const { applySnapshot, canRedo, canUndo, checkpointActive, recordChange, redo, toggleCheckpoint, undo } =
@@ -611,6 +613,17 @@ export function StudioScreenView() {
   // a fresh derived look, which is the existing/correct behavior.
   const isEditingExistingOutfit = Boolean(resolvedOutfitId && isOwnOutfit && !hasSlotOverrides)
 
+  // The save row's own tags win regardless of who made the look — the current
+  // user may have saved someone else's look before. A slot override means
+  // Save will derive a different outfit than resolvedOutfitId, so neither
+  // its save-row tags nor its public tags carry over to that derived outfit.
+  // Owning the look but having no save row yet falls back to its public tags.
+  const canReadCurrentOutfitTags = Boolean(resolvedOutfitId) && !hasSlotOverrides
+  const savedLookTags = canReadCurrentOutfitTags ? getSavedTags("look", resolvedOutfitId as string) : []
+  const lookInitialTags = savedLookTags.length
+    ? savedLookTags
+    : isOwnOutfit && canReadCurrentOutfitTags ? (studioAvatar?.tags ?? []) : []
+
   // The boards this exact outfit id is really on right now, so the save
   // picker's default reflects truth instead of always assuming Favorites.
   const currentOutfitMoodboardSlugs = useMemo(() => {
@@ -763,7 +776,7 @@ export function StudioScreenView() {
 
           for (const slug of toAdd) {
             try {
-              await saveToCollectionMutation({ outfitId, slug, label: moodboardLabelBySlug.get(slug) })
+              await saveToCollectionMutation({ outfitId, slug, label: moodboardLabelBySlug.get(slug), tags: data.tags })
             } catch {
               hadCollectionError = true
             }
@@ -775,10 +788,21 @@ export function StudioScreenView() {
               hadCollectionError = true
             }
           }
+          // Boards may be unchanged while only the tags changed — piggyback the tag write on
+          // one surviving board so every user_favorites row for this look still agrees.
+          if (toAdd.length === 0 && selectedMoodboardSlugs.length > 0) {
+            try {
+              await saveToCollectionMutation({
+                outfitId, slug: selectedMoodboardSlugs[0], label: moodboardLabelBySlug.get(selectedMoodboardSlugs[0]), tags: data.tags,
+              })
+            } catch {
+              hadCollectionError = true
+            }
+          }
         } else {
           for (const slug of selectedMoodboardSlugs) {
             try {
-              await saveToCollectionMutation({ outfitId, slug, label: moodboardLabelBySlug.get(slug) })
+              await saveToCollectionMutation({ outfitId, slug, label: moodboardLabelBySlug.get(slug), tags: data.tags })
             } catch {
               hadCollectionError = true
             }
@@ -1180,6 +1204,7 @@ export function StudioScreenView() {
             {isSaveDrawerOpen ? (
               // Same 170 as the rows it replaces, so the canvas — and the figure — never move.
               <StudioSaveCard
+                key={`look:${resolvedOutfitId ?? ""}:${getOutfitTagsFromItems(resolvedTrayItems).join("|")}:${lookInitialTags.join("|")}`}
                 compact
                 className="h-full"
                 defaultName={
@@ -1188,7 +1213,7 @@ export function StudioScreenView() {
                     : (studioAvatar?.name ?? "")
                 }
                 tagOptions={getOutfitTagsFromItems(resolvedTrayItems)}
-                initialTags={isEditingExistingOutfit ? (studioAvatar?.tags ?? []) : []}
+                initialTags={lookInitialTags}
                 boards={selectableMoodboards.map((m) => ({ slug: m.slug, label: m.label }))}
                 defaultBoardSlugs={
                   currentOutfitMoodboardSlugs.length ? currentOutfitMoodboardSlugs : ["favorites"]

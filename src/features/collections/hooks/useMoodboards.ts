@@ -21,7 +21,7 @@ import {
   fetchMoodboardOutfits,
   fetchMoodboardItems,
   fetchProductCollectionMembership,
-  fetchSavedProductTags,
+  fetchSavedTags,
   fetchOutfitCollectionMembership,
   anonymiseOutfit,
   deleteMoodboard,
@@ -184,11 +184,17 @@ export function useSaveToCollection() {
   return useMutation({
     mutationKey: collectionsKeys.saveToCollection(),
     // `entityTitle` is only for the notification line; the service never sees it.
-    mutationFn: (params: { outfitId: string; slug: string; label?: string; entityTitle?: string }) => {
+    mutationFn: (params: { outfitId: string; slug: string; label?: string; entityTitle?: string; tags?: string[] }) => {
       if (!user?.id) {
         throw new Error("Please sign in to save outfits")
       }
-      return saveToCollection({ outfitId: params.outfitId, slug: params.slug, label: params.label, userId: user.id })
+      return saveToCollection({
+        outfitId: params.outfitId,
+        slug: params.slug,
+        label: params.label,
+        tags: params.tags,
+        userId: user.id,
+      })
     },
     onSuccess: (_result, params) => {
       addNotice({
@@ -206,6 +212,7 @@ export function useSaveToCollection() {
       queryClient.invalidateQueries({ queryKey: collectionsKeys.creationsCounts() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.tryOnsAll() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.moodboardItemsAll() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.savedTags() })
     },
   })
 }
@@ -272,6 +279,7 @@ export function useSaveProductToCollection() {
       queryClient.invalidateQueries({ queryKey: collectionsKeys.productFavorites() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.products() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.moodboardItemsAll() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.savedTags() })
     },
   })
 }
@@ -295,6 +303,7 @@ export function useRemoveFromCollection() {
       queryClient.invalidateQueries({ queryKey: collectionsKeys.creationsCounts() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.tryOnsAll() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.moodboardItemsAll() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.savedTags() })
     },
   })
 }
@@ -360,6 +369,7 @@ export function useRemoveProductFromCollection() {
       queryClient.invalidateQueries({ queryKey: collectionsKeys.productFavorites() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.products() })
       queryClient.invalidateQueries({ queryKey: collectionsKeys.moodboardItemsAll() })
+      queryClient.invalidateQueries({ queryKey: collectionsKeys.savedTags() })
     },
   })
 }
@@ -513,12 +523,12 @@ export function useMoodboardPreviews(slugs: string[]) {
   })
 }
 
-/** Record<productId, tags> for the user's saved products; keyed under products() so a save refreshes it. */
-export function useSavedProductTags() {
+/** The user's save-row tags, keyed by product id and by outfit id, for pre-selecting them when a save card reopens. */
+export function useSavedTags() {
   const { user } = useAuth()
   return useQuery({
-    queryKey: [...collectionsKeys.savedProductTags(), user?.id ?? null],
-    queryFn: () => fetchSavedProductTags(user?.id ?? null),
+    queryKey: [...collectionsKeys.savedTags(), user?.id ?? null],
+    queryFn: () => fetchSavedTags(user?.id ?? null),
     enabled: Boolean(user?.id),
     staleTime: 2 * 60 * 1000,
   })
