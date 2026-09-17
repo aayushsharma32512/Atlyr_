@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom"
 import { ChevronLeft } from "lucide-react"
 
 import { useAuth } from "@/contexts/AuthContext"
-import { IconButton } from "@/design-system/primitives"
 import { LikenessGallery } from "@/features/likeness/components/LikenessGallery"
 import { useLikenessListQuery } from "@/features/likeness/hooks/useLikenessListQuery"
 import { useLikenessSetActiveMutation } from "@/features/likeness/hooks/useLikenessSetActiveMutation"
@@ -13,7 +12,7 @@ import { checkLikenessLimit } from "@/services/likeness/likenessService"
 import { useToast } from "@/hooks/use-toast"
 import { AppShellLayout } from "@/layouts/AppShellLayout"
 
-/** Canvas 6o2 — the likeness gallery. */
+/** The likeness gallery, on the same light grammar as the profile page. */
 export function AvatarPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -73,41 +72,35 @@ export function AvatarPage() {
 
   return (
     <AppShellLayout>
-      {/* The darkroom fills the viewport, but the CONTENT is a phone column —
-          same treatment as the studio. Without the cap, `grid-cols-2` on a
-          laptop gives ~950px cells and the aspect-[3/4] tiles become 1200px
-          tall, which is the giant empty box. */}
-      <div className="flex min-h-0 flex-1 justify-center bg-ink-deepest">
-        <div className="flex min-h-0 w-full max-w-sm flex-1 flex-col md:max-w-md">
-        <header className="flex shrink-0 items-center px-3 pt-2">
-          <IconButton
-            tone="ghost"
-            size="xs"
-            aria-label="Back"
+      <div className="min-h-[calc(100dvh-55px)] bg-background text-foreground">
+        <div className="mx-auto w-full max-w-lg px-5 pb-10 pt-4 sm:px-6">
+          <button
+            type="button"
             onClick={handleBack}
-            className="text-on-ink-2 hover:text-on-ink-1"
+            className="-ml-1 flex min-h-10 items-center gap-1 pr-2 text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <ChevronLeft className="size-4" aria-hidden="true" />
-          </IconButton>
-          <h1 className="flex-1 text-center font-display text-[17px] font-medium text-on-ink-1">
-            Your likenesses
-          </h1>
-          <span className="size-7 shrink-0" aria-hidden="true" />
-        </header>
+            Profile
+          </button>
 
-        <LikenessGallery
-          className="pt-3"
-          poses={listQuery.data ?? []}
-          onSetActive={handleSetActive}
-          onDelete={handleDelete}
-          onGenerateNew={handleGenerateNew}
-          // Goes to the studio rather than starting a generation. A try-on needs
-          // an outfit to put on the pose, and this screen has none — the active
-          // pose IS what a studio try-on will use, so this is the honest door.
-          onTryOn={() => navigate("/studio")}
-          remainingToday={limit ? Math.max(0, limit.limit - limit.count) : null}
-          isBusy={setActiveMutation.isPending || deleteMutation.isPending}
-        />
+          <header className="mt-2 px-1">
+            <h1 className="font-display text-[34px] font-medium leading-none tracking-[-0.025em] text-foreground sm:text-[38px]">
+              Your likenesses
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              The active pose is the one every try-on uses.
+            </p>
+          </header>
+
+          <LikenessGallery
+            className="mt-6"
+            poses={listQuery.data ?? []}
+            onSetActive={handleSetActive}
+            onDelete={handleDelete}
+            onGenerateNew={handleGenerateNew}
+            remainingToday={limit ? Math.max(0, limit.limit - limit.count) : null}
+            isBusy={setActiveMutation.isPending || deleteMutation.isPending}
+          />
         </div>
       </div>
     </AppShellLayout>

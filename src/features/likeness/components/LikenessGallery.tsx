@@ -1,22 +1,14 @@
 import { Maximize2, Plus, Sparkles, X } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
 import type { LikenessPose } from "@/services/likeness/likenessService"
 import { cn } from "@/lib/utils"
 import { poseDate, poseLabel } from "./StepThreeForm"
 
 /**
- * Canvas 6o2 — the gallery behind "all poses". Every generated likeness in one
- * place, exactly one of them gold-sealed ACTIVE.
- *
- * Not a variant of StepThreeForm. That component answers "which one for this
- * try-on" — a picker, transient, always ending in a Try on. This answers "what
- * do I have, and what is my default" — a manager, with delete and a daily
- * generation meter. Folding both into one component meant every future change
- * to either had to be reasoned about twice.
- *
- * Runs entirely on existing edge functions: likeness-list / -select /
- * -set-active / -delete, plus checkLikenessLimit for the meter.
+ * The gallery behind "all poses": every generated likeness in one place, one
+ * of them sealed ACTIVE. A manager, not a picker — StepThreeForm answers
+ * "which one for this try-on"; this answers "what do I have, and what is my
+ * default", with delete and the daily generation meter.
  */
 
 export interface LikenessGalleryProps {
@@ -24,11 +16,45 @@ export interface LikenessGalleryProps {
   onSetActive: (poseId: string) => void
   onDelete?: (poseId: string) => void
   onGenerateNew: () => void
-  onTryOn?: (poseId: string) => void
   /** From checkLikenessLimit — rendered inline under "Generate new pose". */
   remainingToday?: number | null
   isBusy?: boolean
   className?: string
+}
+
+function PoseImage({ url, className }: { url: string | null; className?: string }) {
+  return (
+    <span className={cn("flex items-center justify-center overflow-hidden bg-muted/30", className)}>
+      {url ? (
+        <img src={url} alt="" loading="lazy" className="size-full object-cover" />
+      ) : (
+        <span className="text-xs uppercase tracking-[0.1em] text-muted-foreground">render</span>
+      )}
+    </span>
+  )
+}
+
+function ActiveSeal() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-violet-tint px-2 py-0.5 text-xs font-semibold uppercase tracking-[0.12em] text-violet">
+      <Sparkles className="size-3" aria-hidden="true" />
+      Active
+    </span>
+  )
+}
+
+function FullViewLink({ url }: { url: string }) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="Open full view"
+      className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+    >
+      <Maximize2 className="size-4" aria-hidden="true" />
+    </a>
+  )
 }
 
 export function LikenessGallery({
@@ -36,7 +62,6 @@ export function LikenessGallery({
   onSetActive,
   onDelete,
   onGenerateNew,
-  onTryOn,
   remainingToday = null,
   isBusy = false,
   className,
@@ -44,208 +69,129 @@ export function LikenessGallery({
   const active = poses.find((pose) => pose.isActive) ?? null
   const others = poses.filter((pose) => pose.id !== active?.id)
   const canGenerate = remainingToday === null || remainingToday > 0
+  const meter = remainingToday !== null ? `${remainingToday} left today` : null
 
-  /**
-   * With one pose the canvas layout collapses: a small thumbnail card at the
-   * top, a two-column grid holding a single dashed tile, and two-thirds of the
-   * screen empty below it. That is the common case — most people will have
-   * exactly one likeness for a long time.
-   *
-   * So the screen has two shapes. Alone, the active pose becomes a full-height
-   * portrait that actually uses the room, with generate as a footer row. Once
-   * there are others, it shrinks back to the canvas's compact card and the grid
-   * takes over. Neither state has a void in it.
-   */
+  // With a single pose the two-column grid holds one dashed tile and looks
+  // broken, so the lone active pose becomes a tall portrait with generate as a
+  // full-width row under it.
   const isSolo = Boolean(active) && others.length === 0
 
   return (
-    // The likeness screens are the app's one dark register — see StepTwoForm.
-    <div className={cn("flex min-h-0 flex-1 flex-col bg-ink-deepest", className)}>
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-4">
-        {active && isSolo ? (
-          <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-control border border-gold bg-ink-deep">
-            <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-ink">
-              {active.imageUrl ? (
-                <img src={active.imageUrl} alt="" className="h-full w-full object-contain" />
-              ) : (
-                <span className="text-[8px] uppercase tracking-[0.1em] text-on-ink-3">render</span>
-              )}
-
-              <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-control bg-ink-deepest/75 px-1.5 py-1 text-[7.5px] font-bold uppercase tracking-[0.16em] text-gold">
-                <Sparkles className="size-2.5" aria-hidden="true" />
-                Active
-              </span>
-
-              {active.imageUrl ? (
-                <a
-                  href={active.imageUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Open full view"
-                  className="absolute right-2 top-2 rounded-control bg-ink-deepest/75 p-1.5 text-on-ink-2 hover:text-on-ink-1"
-                >
-                  <Maximize2 className="size-3" aria-hidden="true" />
-                </a>
-              ) : null}
-            </div>
-
-            <div className="flex shrink-0 items-baseline gap-2 border-t border-ink-line px-3 py-2.5">
-              <p className="min-w-0 flex-1 truncate text-[12px] font-semibold text-on-ink-1">
-                {poseLabel(active)}
-              </p>
-              <p className="shrink-0 text-[8.5px] text-on-ink-3">made {poseDate(active.createdAt)}</p>
-            </div>
-          </section>
-        ) : active ? (
-          <section className="shrink-0 rounded-control border border-gold bg-ink-deep p-2.5">
-            <div className="flex gap-3">
-              <div className="relative h-[92px] w-[74px] shrink-0 overflow-hidden rounded-[4px] bg-ink">
-                {active.imageUrl ? (
-                  <img src={active.imageUrl} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  <span className="flex h-full w-full items-center justify-center text-[7px] uppercase tracking-[0.1em] text-on-ink-3">
-                    render
-                  </span>
-                )}
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <span className="inline-flex items-center gap-1 text-[7.5px] font-bold uppercase tracking-[0.16em] text-gold">
-                  <Sparkles className="size-2.5" aria-hidden="true" />
-                  Active
-                </span>
-                <p className="mt-1.5 truncate text-[12px] font-semibold text-on-ink-1">
-                  {poseLabel(active)}
-                </p>
-                <p className="mt-0.5 text-[8.5px] text-on-ink-3">
-                  made {poseDate(active.createdAt)}
-                </p>
-              </div>
-
-              {active.imageUrl ? (
-                <a
-                  href={active.imageUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Open full view"
-                  className="h-fit shrink-0 rounded-control p-1 text-on-ink-2 hover:text-on-ink-1"
-                >
-                  <Maximize2 className="size-3" aria-hidden="true" />
-                </a>
-              ) : null}
-            </div>
-          </section>
-        ) : (
-          <section className="flex min-h-0 flex-1 flex-col items-center justify-center rounded-control border border-dashed border-ink-line bg-ink-deep/60 px-6 text-center">
-            <p className="text-[11px] font-semibold text-on-ink-1">No likeness yet</p>
-            <p className="mt-1.5 max-w-[220px] text-[9px] leading-relaxed text-on-ink-3">
-              Generate one and it becomes your default for every try-on.
-            </p>
-          </section>
-        )}
-
-        {/* Alone, generate is a single full-width row under the portrait — a
-            lone dashed tile in a two-column grid reads as a broken layout. */}
-        {isSolo ? (
-          <button
-            type="button"
-            onClick={onGenerateNew}
-            disabled={isBusy || !canGenerate}
-            className={cn(
-              "mt-2.5 flex shrink-0 items-center gap-2.5 rounded-control border border-dashed",
-              "border-ink-line px-3.5 py-3 text-left transition-colors",
-              "hover:border-on-ink-3 disabled:opacity-40",
-            )}
-          >
-            <Plus className="size-4 shrink-0 text-on-ink-3" aria-hidden="true" />
-            <span className="min-w-0 flex-1">
-              <span className="block text-[10px] font-semibold text-on-ink-2">Generate another pose</span>
-              {remainingToday !== null ? (
-                <span className="block text-[8px] text-on-ink-3">{remainingToday} left today</span>
-              ) : null}
+    <div className={cn("flex flex-col", className)}>
+      {active && isSolo ? (
+        <section className="overflow-hidden rounded-lg border border-hairline bg-white shadow-xs">
+          <div className="relative">
+            <PoseImage url={active.imageUrl} className="aspect-[3/4] w-full" />
+            <span className="absolute left-3 top-3">
+              <ActiveSeal />
             </span>
-          </button>
-        ) : null}
+            {active.imageUrl ? (
+              <span className="absolute right-2 top-2 rounded-full bg-white/90 shadow-xs">
+                <FullViewLink url={active.imageUrl} />
+              </span>
+            ) : null}
+          </div>
+          <div className="flex items-baseline gap-3 border-t border-hairline px-4 py-3">
+            <p className="min-w-0 flex-1 truncate text-[15px] font-semibold text-foreground">
+              {poseLabel(active)}
+            </p>
+            <p className="shrink-0 text-sm text-muted-foreground">made {poseDate(active.createdAt)}</p>
+          </div>
+        </section>
+      ) : active ? (
+        <section className="flex items-center gap-4 rounded-lg border border-hairline bg-white p-4 shadow-xs">
+          <PoseImage
+            url={active.imageUrl}
+            className="h-28 w-[84px] shrink-0 rounded-md border border-hairline"
+          />
+          <div className="min-w-0 flex-1">
+            <ActiveSeal />
+            <p className="mt-2 truncate text-[15px] font-semibold text-foreground">{poseLabel(active)}</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">made {poseDate(active.createdAt)}</p>
+          </div>
+          {active.imageUrl ? <FullViewLink url={active.imageUrl} /> : null}
+        </section>
+      ) : (
+        <section className="flex flex-col items-center rounded-lg border border-dashed border-hairline-3 px-6 py-12 text-center">
+          <p className="text-[15px] font-semibold text-foreground">No likeness yet</p>
+          <p className="mt-1.5 max-w-[260px] text-sm leading-5 text-muted-foreground">
+            Generate one and it becomes your default for every try-on.
+          </p>
+        </section>
+      )}
 
-        {!isSolo && (
-        <p className="mb-2 mt-4 shrink-0 text-[7.5px] font-bold uppercase tracking-[0.16em] text-on-ink-3">
-          {others.length > 0 ? "Other poses · tap to set active" : "More poses"}
-        </p>
-        )}
+      {isSolo ? (
+        <button
+          type="button"
+          onClick={onGenerateNew}
+          disabled={isBusy || !canGenerate}
+          className="mt-4 flex min-h-16 items-center gap-4 rounded-lg border border-dashed border-hairline-3 px-4 text-left transition-colors hover:border-violet disabled:opacity-40"
+        >
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-violet-tint text-violet">
+            <Plus className="size-4" aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[15px] font-semibold text-foreground">Generate another pose</span>
+            {meter ? <span className="block text-sm text-muted-foreground">{meter}</span> : null}
+          </span>
+        </button>
+      ) : (
+        <>
+          <p className="mb-3 mt-7 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            {others.length > 0 ? "Other poses · tap to set active" : "More poses"}
+          </p>
 
-        <div className={cn("grid grid-cols-2 gap-2", isSolo && "hidden")}>
-          {others.map((pose) => (
-            <div key={pose.id} className="relative">
-              <button
-                type="button"
-                disabled={isBusy}
-                onClick={() => onSetActive(pose.id)}
-                title="Set as active"
-                className="flex w-full flex-col overflow-hidden rounded-control border border-ink-line bg-ink-deep text-left transition-colors hover:border-on-ink-3 disabled:opacity-60"
-              >
-                <span className="relative flex aspect-[3/4] w-full items-center justify-center overflow-hidden bg-ink">
-                  {pose.imageUrl ? (
-                    <img src={pose.imageUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
-                  ) : (
-                    <span className="text-[7px] uppercase tracking-[0.1em] text-on-ink-3">render</span>
-                  )}
-                </span>
-                <span className="flex items-baseline gap-1.5 px-2 py-1.5">
-                  <span className="min-w-0 flex-1 truncate text-[8.5px] font-medium text-on-ink-2">
-                    {poseLabel(pose)}
-                  </span>
-                  <span className="shrink-0 text-[7.5px] text-on-ink-3">{poseDate(pose.createdAt)}</span>
-                </span>
-              </button>
-
-              {/* Outside the set-active button: a ✕ nested inside it would be
-                  invalid HTML and the tap would activate the pose it deletes. */}
-              {onDelete ? (
+          <div className="grid grid-cols-2 gap-3">
+            {others.map((pose) => (
+              <div key={pose.id} className="relative">
                 <button
                   type="button"
                   disabled={isBusy}
-                  onClick={() => onDelete(pose.id)}
-                  aria-label="Delete this pose"
-                  className="absolute right-1 top-1 rounded-[2px] bg-ink-deepest/75 p-1 text-on-ink-2 hover:text-on-ink-1 disabled:opacity-50"
+                  onClick={() => onSetActive(pose.id)}
+                  title="Set as active"
+                  className="flex w-full flex-col overflow-hidden rounded-lg border border-hairline bg-white text-left shadow-xs transition-colors hover:border-violet disabled:opacity-60"
                 >
-                  <X className="size-2.5" aria-hidden="true" />
+                  <PoseImage url={pose.imageUrl} className="aspect-[3/4] w-full" />
+                  <span className="flex items-baseline gap-2 border-t border-hairline px-3 py-2.5">
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
+                      {poseLabel(pose)}
+                    </span>
+                    <span className="shrink-0 text-xs text-muted-foreground">{poseDate(pose.createdAt)}</span>
+                  </span>
                 </button>
-              ) : null}
-            </div>
-          ))}
 
-          <button
-            type="button"
-            onClick={onGenerateNew}
-            disabled={isBusy || !canGenerate}
-            className={cn(
-              "flex aspect-[3/4] flex-col items-center justify-center gap-1 rounded-control border border-dashed",
-              "border-ink-line text-on-ink-3 transition-colors hover:border-on-ink-3 disabled:opacity-40",
-            )}
-          >
-            <Plus className="size-4" aria-hidden="true" />
-            <span className="text-[9px] font-medium text-on-ink-2">Generate new pose</span>
-            {remainingToday !== null ? (
-              <span className="text-[7.5px]">{remainingToday} left today</span>
-            ) : null}
-          </button>
-        </div>
-      </div>
+                {/* Outside the set-active button: a ✕ nested inside it would be
+                    invalid HTML and the tap would activate the pose it deletes. */}
+                {onDelete ? (
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    onClick={() => onDelete(pose.id)}
+                    aria-label="Delete this pose"
+                    className="absolute right-2 top-2 flex size-8 items-center justify-center rounded-full bg-white/90 text-muted-foreground shadow-xs hover:text-foreground disabled:opacity-50"
+                  >
+                    <X className="size-3.5" aria-hidden="true" />
+                  </button>
+                ) : null}
+              </div>
+            ))}
 
-      {onTryOn ? (
-        <div className="shrink-0 px-4 pb-5 pt-2">
-          <Button
-            type="button"
-            onClick={() => active && onTryOn(active.id)}
-            disabled={!active || isBusy}
-            className="flex h-11 w-full items-center justify-center rounded-control bg-primary px-4 shadow-sm hover:bg-primary/90"
-          >
-            <span className="text-[12px] font-bold text-primary-foreground">
-              Try on with active pose →
-            </span>
-          </Button>
-        </div>
-      ) : null}
+            <button
+              type="button"
+              onClick={onGenerateNew}
+              disabled={isBusy || !canGenerate}
+              className="flex aspect-[3/4] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-hairline-3 px-4 text-center transition-colors hover:border-violet disabled:opacity-40"
+            >
+              <span className="flex size-10 items-center justify-center rounded-full bg-violet-tint text-violet">
+                <Plus className="size-5" aria-hidden="true" />
+              </span>
+              <span className="text-sm font-semibold text-foreground">Generate new pose</span>
+              {meter ? <span className="text-xs text-muted-foreground">{meter}</span> : null}
+            </button>
+          </div>
+        </>
+      )}
+
     </div>
   )
 }
