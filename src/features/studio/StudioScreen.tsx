@@ -20,6 +20,7 @@ import {
   type StudioCanvasSlot,
 } from "./constants/layering"
 import type { OutfitItem } from "@/types"
+import { getOutfitTagsFromItems } from "@/utils/productTags"
 import { StudioLayout } from "./StudioLayout"
 import { useStudioTourContext } from "./context/StudioTourContext"
 import { useStudioContext } from "./context/StudioContext"
@@ -699,8 +700,7 @@ export function StudioScreenView() {
       outfitName: string
       categoryId: string
       occasionId: string
-      vibe: string
-      keywords: string
+      tags: string[]
       isPrivate: boolean
       moodboardIds?: string[]
     }) => {
@@ -725,8 +725,7 @@ export function StudioScreenView() {
             occasionId: data.occasionId,
             backgroundId: studioAvatar?.backgroundId ?? null,
             isPrivate: data.isPrivate,
-            vibe: data.vibe,
-            keywords: data.keywords,
+            tags: data.tags,
             createdByName: profile?.name ?? null,
           })
           outfitId = resolvedOutfitId
@@ -739,8 +738,7 @@ export function StudioScreenView() {
             bottomId: outfitItems.bottomId,
             shoesId: outfitItems.footwearId,
             gender: avatarGender,
-            vibe: data.vibe,
-            keywords: data.keywords,
+            tags: data.tags,
             isPrivate: data.isPrivate,
             createdByName: profile?.name ?? null,
             userId: user.id,
@@ -843,8 +841,7 @@ export function StudioScreenView() {
           outfitName: data.name,
           categoryId: studioAvatar?.category ?? "",
           occasionId: studioAvatar?.occasion?.id ?? "",
-          vibe: "",
-          keywords: data.tags.join(", "),
+          tags: data.tags,
           isPrivate: false,
           moodboardIds: data.boardSlugs,
         })
@@ -987,18 +984,6 @@ export function StudioScreenView() {
     },
     [handleFindItems, navigate],
   )
-
-  /** Two tags per worn piece, deduped — the prototype's seed for the save card. */
-  const suggestedTags = useMemo(() => {
-    const seen = new Set<string>()
-    resolvedTrayItems.forEach((item) => {
-      ;[...item.vibeTags, ...item.feelTags, ...item.fitTags]
-        .filter(Boolean)
-        .slice(0, 2)
-        .forEach((tag) => seen.add(tag))
-    })
-    return [...seen].slice(0, 5)
-  }, [resolvedTrayItems])
 
   const focusItem = focus ? itemBySlot[focus] ?? null : null
 
@@ -1212,7 +1197,8 @@ export function StudioScreenView() {
                     ? `${profile?.name ?? "Your"}'s Look #${String(Date.now()).slice(-4)}`
                     : (studioAvatar?.name ?? "")
                 }
-                defaultTags={suggestedTags}
+                tagOptions={getOutfitTagsFromItems(resolvedTrayItems)}
+                initialTags={isEditingExistingOutfit ? (studioAvatar?.tags ?? []) : []}
                 boards={selectableMoodboards.map((m) => ({ slug: m.slug, label: m.label }))}
                 defaultBoardSlugs={
                   currentOutfitMoodboardSlugs.length ? currentOutfitMoodboardSlugs : ["favorites"]

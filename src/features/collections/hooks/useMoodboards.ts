@@ -21,6 +21,7 @@ import {
   fetchMoodboardOutfits,
   fetchMoodboardItems,
   fetchProductCollectionMembership,
+  fetchSavedProductTags,
   fetchOutfitCollectionMembership,
   anonymiseOutfit,
   deleteMoodboard,
@@ -214,7 +215,7 @@ export function useSaveProductToCollection() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationKey: collectionsKeys.saveProductToCollection(),
-    mutationFn: (params: { productId: string; slug: string; label?: string }) => {
+    mutationFn: (params: { productId: string; slug: string; label?: string; tags?: string[] }) => {
       if (!user?.id) {
         throw new Error("Please sign in to save products")
       }
@@ -508,6 +509,17 @@ export function useMoodboardPreviews(slugs: string[]) {
     queryFn: () => fetchMoodboardPreviews(slugs, user?.id ?? null),
     enabled: Boolean(user?.id) && slugs.length > 0,
     initialData: {},
+    staleTime: 2 * 60 * 1000,
+  })
+}
+
+/** Record<productId, tags> for the user's saved products; keyed under products() so a save refreshes it. */
+export function useSavedProductTags() {
+  const { user } = useAuth()
+  return useQuery({
+    queryKey: [...collectionsKeys.savedProductTags(), user?.id ?? null],
+    queryFn: () => fetchSavedProductTags(user?.id ?? null),
+    enabled: Boolean(user?.id),
     staleTime: 2 * 60 * 1000,
   })
 }

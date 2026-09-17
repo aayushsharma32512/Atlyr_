@@ -31,8 +31,7 @@ export interface SaveOutfitInput {
   bottomId?: string | null
   shoesId?: string | null
   gender?: string | null
-  vibe?: string | null
-  keywords?: string | null
+  tags?: string[] | null
   isPrivate: boolean
   createdByName?: string | null
   userId: string
@@ -61,8 +60,7 @@ export interface UpdateOutfitInput {
   occasionId: string
   backgroundId?: string | null
   isPrivate: boolean
-  vibe?: string | null
-  keywords?: string | null
+  tags?: string[] | null
   createdByName?: string | null
 }
 
@@ -105,6 +103,10 @@ function normalizeGender(value?: string | null) {
     return value
   }
   return null
+}
+
+function normalizeTags(tags?: string[] | null): string[] | null {
+  return tags && tags.length > 0 ? tags : null
 }
 
 export async function fetchCategories({
@@ -181,8 +183,7 @@ export async function saveOutfit(input: SaveOutfitInput) {
     created_by: createdBy,
     is_private: input.isPrivate,
     visible_in_feed: true,
-    word_association: normalizeText(input.keywords),
-    vibes: normalizeText(input.vibe),
+    tags: normalizeTags(input.tags),
     user_id: input.userId,
     // original: source_outfit_id = own id. copy: source_outfit_id = source outfit's id.
     source_outfit_id: input.sourceOutfitId ?? newId,
@@ -242,8 +243,7 @@ export async function updateOutfit(input: UpdateOutfitInput) {
     is_private: input.isPrivate,
     visible_in_feed: true, // private only anonymises created_by — never hides from feed
     created_by: createdBy,
-    vibes: normalizeText(input.vibe),
-    word_association: normalizeText(input.keywords),
+    tags: normalizeTags(input.tags),
     updated_at: new Date().toISOString(),
   }
 

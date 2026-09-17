@@ -921,6 +921,7 @@ export type Database = {
           rating: number
           shoes_id: string | null
           source_outfit_id: string | null
+          tags: string[] | null
           top_id: string | null
           updated_at: string
           user_id: string | null
@@ -957,6 +958,7 @@ export type Database = {
           rating?: number
           shoes_id?: string | null
           source_outfit_id?: string | null
+          tags?: string[] | null
           top_id?: string | null
           updated_at?: string
           user_id?: string | null
@@ -993,6 +995,7 @@ export type Database = {
           rating?: number
           shoes_id?: string | null
           source_outfit_id?: string | null
+          tags?: string[] | null
           top_id?: string | null
           updated_at?: string
           user_id?: string | null
@@ -1549,6 +1552,7 @@ export type Database = {
           id: string
           outfit_id: string | null
           product_id: string | null
+          tags: string[] | null
           user_id: string
         }
         Insert: {
@@ -1558,6 +1562,7 @@ export type Database = {
           id?: string
           outfit_id?: string | null
           product_id?: string | null
+          tags?: string[] | null
           user_id: string
         }
         Update: {
@@ -1567,6 +1572,7 @@ export type Database = {
           id?: string
           outfit_id?: string | null
           product_id?: string | null
+          tags?: string[] | null
           user_id?: string
         }
         Relationships: [

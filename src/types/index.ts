@@ -64,6 +64,8 @@ export interface OutfitItem {
   image_length?: number | null; // Product image length in centimeters for scaling
   fit?: string | null; // Product fit from database
   feel?: string | null; // Product feel from database
+  vibes?: string | null; // Product vibes from database
+  material_type?: string | null; // Product material type from database
   category_id?: string | null; // Product category id from database
   type_category?: string | null; // Product type_category (e.g., tops, bottoms, shoes)
   // Additional fields for expanded state
@@ -95,6 +97,7 @@ export interface Outfit {
   feel?: string | null;
   vibes?: string | null;
   word_association?: string | null;
+  tags?: string[] | null; // User-selected tags from the save card
   rating?: number; // Outfit rating from database
   popularity?: number | null; // Popularity score from database
   created_at?: string | null; // Creation timestamp

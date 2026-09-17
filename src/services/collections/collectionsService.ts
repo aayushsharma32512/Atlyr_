@@ -149,6 +149,7 @@ const OUTFIT_SELECT = `
   feel,
   vibes,
   word_association,
+  tags,
   rating,
   popularity,
   created_at,
@@ -179,6 +180,8 @@ const OUTFIT_SELECT = `
     category_id,
     fit,
     feel,
+    vibes,
+    material_type,
     placement_x,
     placement_y,
     image_length,
@@ -204,6 +207,8 @@ const OUTFIT_SELECT = `
     category_id,
     fit,
     feel,
+    vibes,
+    material_type,
     placement_x,
     placement_y,
     image_length,
@@ -229,6 +234,8 @@ const OUTFIT_SELECT = `
     category_id,
     fit,
     feel,
+    vibes,
+    material_type,
     placement_x,
     placement_y,
     image_length,
@@ -544,14 +551,16 @@ export async function saveProductToCollection(params: {
   productId: string
   slug: string
   label?: string
+  tags?: string[]
 }): Promise<void> {
-  const { userId, productId, slug, label } = params
+  const { userId, productId, slug, label, tags } = params
   if (!userId) {
     throw new Error("User must be authenticated to save")
   }
 
   const normalizedSlug = slug.toLowerCase()
   const collectionLabel = label ?? (SYSTEM_MOODBOARDS.find((s) => s.slug === normalizedSlug)?.label ?? slug)
+  const normalizedTags = tags && tags.length > 0 ? tags : null
 
   const { error } = await supabase.from("user_favorites").upsert(
     {
@@ -559,9 +568,24 @@ export async function saveProductToCollection(params: {
       product_id: productId,
       collection_slug: normalizedSlug,
       collection_label: collectionLabel,
+      tags: normalizedTags,
     },
     { onConflict: "user_id,collection_slug,product_id" },
   )
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  // A product can sit on several boards; every user_favorites row for it should agree
+  // on the same tags, so a tag edit on one board carries to every other board too.
+  if (tags !== undefined) {
+    await supabase
+      .from("user_favorites")
+      .update({ tags: normalizedTags })
+      .eq("user_id", userId)
+      .eq("product_id", productId)
+  }
 
   // Update the collection timestamp for recency sorting
   await supabase
@@ -569,10 +593,6 @@ export async function saveProductToCollection(params: {
     .update({ updated_at: new Date().toISOString() })
     .eq("user_id", userId)
     .eq("slug", normalizedSlug)
-
-  if (error) {
-    throw new Error(error.message)
-  }
 }
 
 export async function removeFromCollection(params: { userId: string; outfitId: string; slug: string }): Promise<void> {
@@ -852,6 +872,26 @@ export async function fetchProductCollectionMembership(
     if (!slug || !productId) continue
     if (!result[slug]) result[slug] = []
     result[slug].push(productId)
+  }
+  return result
+}
+
+/** The user's saved tags per product, for pre-selecting them when the save card reopens. */
+export async function fetchSavedProductTags(userId: string | null): Promise<Record<string, string[]>> {
+  if (!userId) return {}
+  const { data, error } = await supabase
+    .from("user_favorites")
+    .select("product_id, tags")
+    .eq("user_id", userId)
+    .not("tags", "is", null)
+
+  if (error) throw new Error(error.message)
+
+  const result: Record<string, string[]> = {}
+  for (const row of data ?? []) {
+    if (row.product_id && Array.isArray(row.tags) && row.tags.length > 0) {
+      result[row.product_id] = row.tags
+    }
   }
   return result
 }

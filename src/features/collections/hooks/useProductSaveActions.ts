@@ -10,6 +10,7 @@ import {
   useProductCollectionMembership,
   useRemoveProductFromCollection,
   useSaveProductToCollection,
+  useSavedProductTags,
 } from "@/features/collections/hooks/useMoodboards"
 import { useSaveTray } from "@/features/collections/providers/SaveTrayProvider"
 import type { Moodboard } from "@/services/collections/collectionsService"
@@ -28,6 +29,11 @@ export function useProductSaveActions() {
   const createMoodboardMutation = useCreateMoodboard()
   const collectionsOverviewQuery = useCollectionsOverview()
   const membershipQuery = useProductCollectionMembership()
+  const savedTagsQuery = useSavedProductTags()
+  const getSavedProductTags = useCallback(
+    (productId: string) => savedTagsQuery.data?.[productId] ?? [],
+    [savedTagsQuery.data],
+  )
   const selectableMoodboards = useMemo(
     () => (collectionsOverviewQuery.data?.moodboards ?? [])
       .filter((m) => !m.isSystem || m.slug === "wardrobe"),
@@ -111,19 +117,26 @@ export function useProductSaveActions() {
     [favoriteSet, getProductMoodboardSlugs],
   )
 
-  /** The save card: sync a product to exactly these boards, Favorites included. */
+  /** The save card: sync a product to exactly these boards, Favorites included, with these tags. */
   const handleSaveToBoards = useCallback(
-    async (productId: string, slugs: string[], uiContext: EntityUiContext = {}) => {
+    async (productId: string, slugs: string[], tags: string[] = [], uiContext: EntityUiContext = {}) => {
       const current = getProductBoardSlugs(productId)
       const labelBySlug = new Map<string, string>([["favorites", "Favorites"]])
       selectableMoodboards.forEach((m) => labelBySlug.set(m.slug, m.label))
       try {
-        for (const slug of slugs.filter((s) => !current.includes(s))) {
-          await saveMutation.mutateAsync({ productId, slug, label: labelBySlug.get(slug) })
+        const added = slugs.filter((s) => !current.includes(s))
+        for (const slug of added) {
+          await saveMutation.mutateAsync({ productId, slug, label: labelBySlug.get(slug), tags })
           trackSavedToCollection(analytics, { entity_type: "product", entity_id: productId, collection_slug: slug, save_method: "click", ...uiContext })
         }
         for (const slug of current.filter((s) => !slugs.includes(s))) {
           await removeFromCollectionMutation.mutateAsync({ productId, slug })
+        }
+        // Boards may be unchanged while only the tags changed — piggyback the tag write on
+        // one surviving board so every row for this product still ends up agreeing.
+        if (added.length === 0 && slugs.length > 0) {
+          const slug = slugs[0]
+          await saveMutation.mutateAsync({ productId, slug, label: labelBySlug.get(slug), tags })
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unable to save product"
@@ -159,6 +172,7 @@ export function useProductSaveActions() {
     onToggleWardrobe: handleToggleWardrobe,
     onLongPressSave: handleLongPressSave,
     getProductBoardSlugs,
+    getSavedProductTags,
     onSaveToBoards: handleSaveToBoards,
     onCreateMoodboard: handleCreateMoodboard,
     isSaving: saveMutation.isPending || createMoodboardMutation.isPending || removeFromCollectionMutation.isPending,

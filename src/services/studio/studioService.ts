@@ -1,3 +1,4 @@
+import { splitTagList } from "@/utils/productTags"
 import { supabase } from "@/integrations/supabase/client"
 import type { Database } from "@/integrations/supabase/types"
 import type { PostgrestError } from "@supabase/supabase-js"
@@ -44,6 +45,7 @@ export interface StudioProductTrayItem {
   /** Canvas-transform placement (new mannequin) — null when the product hasn't been placed yet. */
   placement?: StudioPlacementByMannequin | null
   color?: string | null
+  colorGroup?: string | null
   size?: string | null
   itemType?: Database["public"]["Enums"]["item_type"] | null
   /** Free-form label, e.g. "midi dress" — tells a dress apart from other tops. */
@@ -129,6 +131,7 @@ const OUTFIT_SELECT = `
   feel,
   vibes,
   word_association,
+  tags,
   rating,
   popularity,
   created_at,
@@ -319,11 +322,13 @@ const OUTFIT_TRAY_SELECT = `
     placement,
     size,
     color,
+    color_group,
     type,
     gender,
     fit,
     feel,
     vibes,
+    material_type,
     body_parts_visible
   ),
   bottom:products!outfits_bottom_id_fkey(
@@ -341,11 +346,13 @@ const OUTFIT_TRAY_SELECT = `
     placement,
     size,
     color,
+    color_group,
     type,
     gender,
     fit,
     feel,
     vibes,
+    material_type,
     body_parts_visible
   ),
   shoes:products!outfits_shoes_id_fkey(
@@ -363,11 +370,13 @@ const OUTFIT_TRAY_SELECT = `
     placement,
     size,
     color,
+    color_group,
     type,
     gender,
     fit,
     feel,
     vibes,
+    material_type,
     body_parts_visible
   )
 `
@@ -379,15 +388,7 @@ type DbOutfitTrayRow = {
   shoes: Database["public"]["Tables"]["products"]["Row"] | null
 }
 
-function parseTagList(value?: string | null): string[] {
-  if (!value) {
-    return []
-  }
-  return value
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry && entry.toLowerCase() !== "null" && entry.toLowerCase() !== "nan")
-}
+const parseTagList = splitTagList
 
 function toTrayItem(slot: StudioProductTraySlot, product: Database["public"]["Tables"]["products"]["Row"] | null) {
   if (!product) {
@@ -416,6 +417,7 @@ function toTrayItem(slot: StudioProductTraySlot, product: Database["public"]["Ta
     imageLength: placement.imageLength,
     placement: toPlacementTransform(product as unknown as Parameters<typeof toPlacementTransform>[0]),
     color: product.color ?? null,
+    colorGroup: product.color_group ?? null,
     size: product.size ?? null,
     itemType: product.type ?? null,
     typeCategory: product.type_category ?? null,
@@ -473,15 +475,16 @@ function deriveTrayItemsFromOutfit(outfit: Outfit | null): StudioProductTrayItem
         placementY: placement.placementY,
         imageLength: placement.imageLength,
         color: product.color ?? null,
+        colorGroup: product.color_group ?? null,
         size: product.size ?? null,
         itemType: slot,
         typeCategory: product.type_category ?? null,
         metadataSource: placement.metadataSource,
         fitTags: parseTagList(product.fit),
         feelTags: parseTagList(product.feel),
-        vibeTags: [],
+        vibeTags: parseTagList(product.vibes),
         care: null, // Not available in legacy Outfit items
-        materialType: null,
+        materialType: product.material_type ?? null,
         bodyPartsVisible: null,
       } satisfies StudioProductTrayItem
     })
@@ -1082,7 +1085,7 @@ async function getProductById(productId: string): Promise<StudioProductTrayItem 
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, product_name, brand, price, image_url, thumbnail_url, product_url, gender, type, type_category, placement_x, placement_y, image_length, placement, size, currency, color, fit, feel, vibes, body_parts_visible, care, material_type",
+      "id, product_name, brand, price, image_url, thumbnail_url, product_url, gender, type, type_category, placement_x, placement_y, image_length, placement, size, currency, color, color_group, fit, feel, vibes, body_parts_visible, care, material_type",
     )
     .eq("id", productId)
     .maybeSingle()
@@ -1115,6 +1118,7 @@ async function getProductById(productId: string): Promise<StudioProductTrayItem 
     imageLength: placement.imageLength,
     placement: toPlacementTransform(data as unknown as Parameters<typeof toPlacementTransform>[0]),
     color: data.color ?? null,
+    colorGroup: data.color_group ?? null,
     size: data.size ?? null,
     itemType: data.type ?? null,
     typeCategory: data.type_category ?? null,
