@@ -10,6 +10,7 @@ import { AppShellLayout } from "@/layouts/AppShellLayout"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 import { adminKeys, type WaitlistTab } from "@/features/admin/queryKeys"
+import { InviteCodesPanel } from "@/features/admin/components/InviteCodesPanel"
 import {
   listWaitlist,
   setWaitlistApproval,
@@ -50,6 +51,7 @@ export default function AdminInvitesPage() {
   const [busyEmail, setBusyEmail] = useState<string | null>(null)
   const [quickEmail, setQuickEmail] = useState("")
   const [tab, setTab] = useState<WaitlistTab>("pending")
+  const [section, setSection] = useState<"waitlist" | "codes">("waitlist")
 
   const waitlistQuery = useInfiniteQuery({
     queryKey: adminKeys.waitlistTab(tab),
@@ -86,15 +88,41 @@ export default function AdminInvitesPage() {
       <div className="mx-auto w-full max-w-4xl p-4 sm:p-6">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold text-foreground">Waitlist approvals</h1>
+            <h1 className="text-2xl font-semibold text-foreground">Invites</h1>
             <p className="text-sm text-muted-foreground">
-              Newest applicants first. Approve → they can log in directly with Google (no code).
+              {section === "waitlist"
+                ? "Newest applicants first. Approve → they can log in directly with Google (no code)."
+                : "Codes you can hand out. Redeeming one grants access without a waitlist approval."}
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => waitlistQuery.refetch()} disabled={waitlistQuery.isFetching}>
-            <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", waitlistQuery.isFetching && "animate-spin")} /> Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            <div className="inline-flex rounded-lg bg-muted p-0.5">
+              {([
+                { key: "waitlist", label: "Waitlist" },
+                { key: "codes", label: "Invite codes" },
+              ] as const).map((s) => (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => setSection(s.key)}
+                  className={cn(
+                    "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                    section === s.key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+            {section === "waitlist" && (
+              <Button variant="outline" size="sm" onClick={() => waitlistQuery.refetch()} disabled={waitlistQuery.isFetching}>
+                <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", waitlistQuery.isFetching && "animate-spin")} /> Refresh
+              </Button>
+            )}
+          </div>
         </div>
+
+        {section === "codes" ? <InviteCodesPanel /> : (<>
 
         {/* Quick approve an email that isn't on the list yet */}
         <Card className="mb-4">
@@ -223,6 +251,7 @@ export default function AdminInvitesPage() {
             )}
           </CardContent>
         </Card>
+        </>)}
       </div>
     </AppShellLayout>
   )
