@@ -1,14 +1,13 @@
 import { Icons } from "@/design-system/icons"
-import { OutfitInspirationTile, SectionHeader } from "@/design-system/primitives"
-import { CANONICAL_HERO_RENDER_BOX } from "@/features/studio/constants/renderBox"
+import { OutfitCard, SectionHeader } from "@/design-system/primitives"
+import { FEED_GRID } from "@/features/search/components/FeedGrid"
 import { cn } from "@/lib/utils"
 import type { SearchBrowseCollection } from "@/services/search/searchService"
 
-/** Studio's frame, fitted by height, keeps each figure head to toe in its cell. */
-const FIGURE_FRAME_ASPECT = `${CANONICAL_HERO_RENDER_BOX.width} / ${CANONICAL_HERO_RENDER_BOX.height}`
-/** Two frames side by side, so the portrait cover fits both figures exactly. */
-const COVER_STYLE = { aspectRatio: `${CANONICAL_HERO_RENDER_BOX.width * 2} / ${CANONICAL_HERO_RENDER_BOX.height}` }
-const CARD = "w-[112px] shrink-0"
+// The rail matches the hot styles rail (96w × 136h figure); the page matches its 250h look card.
+const RAIL_CARD = "w-[96px] shrink-0"
+const RAIL_FRAME = "h-[136px]"
+const PAGE_CARD = "h-[250px]"
 
 type Gender = "male" | "female"
 
@@ -17,44 +16,37 @@ interface CurationBoardCardProps {
   gender: Gender
   heightCm: number
   onSelect: () => void
-  className?: string
 }
 
-/**
- * A curation as a board: its first two looks side by side, then its name and
- * count — the same card the Boards tab draws for a moodboard, so a curation
- * reads as a board you could save to. An empty cell is the ground: no grey.
- */
-function CurationBoardCard({ board, gender, heightCm, onSelect, className }: CurationBoardCardProps) {
-  const looks = board.outfits.slice(0, 2)
-  const fillers = Array.from({ length: Math.max(0, 2 - looks.length) })
+const coverOf = (board: SearchBrowseCollection, gender: Gender) => {
+  const cover = board.outfits[0]
+  return {
+    outfitId: cover?.outfit.id,
+    renderedItems: cover?.studioOutfit?.renderedItems,
+    gender: cover?.outfit.gender === "male" ? "male" : cover?.outfit.gender === "female" ? "female" : gender,
+  } as const
+}
+
+/** A curation on the rail: its first look in the hot styles tile, the curation's name below. */
+function CurationRailCard({ board, gender, heightCm, onSelect }: CurationBoardCardProps) {
+  const cover = coverOf(board, gender)
   return (
-    <button type="button" role="listitem" onClick={onSelect} className={cn("flex flex-col gap-1.5 text-left", className)}>
-      <div className="relative w-full overflow-hidden rounded-lg border border-hairline bg-background" style={COVER_STYLE}>
-        <div className="absolute inset-0 grid grid-cols-2 bg-background">
-          {looks.map((entry) => (
-            <div key={entry.id} className="flex min-h-0 min-w-0 items-center justify-center overflow-hidden bg-background">
-              <div className="h-full" style={{ aspectRatio: FIGURE_FRAME_ASPECT }}>
-                <OutfitInspirationTile
-                  preset="moodboardPreview"
-                  outfitId={entry.outfit.id}
-                  avatarGender={entry.outfit.gender === "male" ? "male" : entry.outfit.gender === "female" ? "female" : gender}
-                  avatarHeightCm={heightCm}
-                  wrapperClassName="h-full w-full rounded-none bg-transparent p-0"
-                />
-              </div>
-            </div>
-          ))}
-          {fillers.map((_, i) => (
-            <div key={`fill-${i}`} className="bg-background" />
-          ))}
-        </div>
+    <button type="button" role="listitem" onClick={onSelect} className={cn("flex flex-col gap-1.5 text-left", RAIL_CARD)}>
+      <div className={cn("w-full", RAIL_FRAME)}>
+        <OutfitCard title={board.title} footer={false} outfitId={cover.outfitId} renderedItems={cover.renderedItems} gender={cover.gender} heightCm={heightCm} />
       </div>
-      <div className="flex w-full items-baseline gap-2">
-        <span className="min-w-0 flex-1 truncate text-card font-medium text-ink">{board.title}</span>
-        <span className="shrink-0 text-chip text-taupe">{board.outfits.length}</span>
-      </div>
+      <span className="w-full truncate px-0.5 text-card font-medium text-ink">{board.title}</span>
     </button>
+  )
+}
+
+/** A curation on the page: the grid's look card, named after the curation instead of the look. */
+function CurationPageCard({ board, gender, heightCm, onSelect }: CurationBoardCardProps) {
+  const cover = coverOf(board, gender)
+  return (
+    <div role="listitem" className={PAGE_CARD}>
+      <OutfitCard title={board.title} outfitId={cover.outfitId} renderedItems={cover.renderedItems} gender={cover.gender} heightCm={heightCm} onSelect={onSelect} />
+    </div>
   )
 }
 
@@ -68,7 +60,7 @@ interface CurationBoardsProps {
   onOpenBoard: (board: SearchBrowseCollection) => void
 }
 
-/** The Search rail: 112px portrait cards, two tall looks per cover. */
+/** The Search rail: hot styles tiles, one look per curation. */
 export function CurationBoards({ title, boards, isLoading, gender, heightCm, onOpenList, onOpenBoard }: CurationBoardsProps) {
   const isEmpty = !isLoading && boards.length === 0
 
@@ -89,17 +81,10 @@ export function CurationBoards({ title, boards, isLoading, gender, heightCm, onO
         <div className="flex gap-2 overflow-x-auto py-0.5 scrollbar-hide" role="list" aria-label={title}>
           {isLoading
             ? Array.from({ length: 3 }).map((_, i) => (
-                <span key={i} role="listitem" className={`skeleton-shimmer rounded-lg ${CARD}`} style={COVER_STYLE} />
+                <span key={i} role="listitem" className={cn("skeleton-shimmer rounded-lg", RAIL_CARD, RAIL_FRAME)} />
               ))
             : boards.map((board) => (
-                <CurationBoardCard
-                  key={board.categoryId}
-                  board={board}
-                  gender={gender}
-                  heightCm={heightCm}
-                  onSelect={() => onOpenBoard(board)}
-                  className={CARD}
-                />
+                <CurationRailCard key={board.categoryId} board={board} gender={gender} heightCm={heightCm} onSelect={() => onOpenBoard(board)} />
               ))}
         </div>
       )}
@@ -117,8 +102,8 @@ interface CurationBoardsPageProps {
 }
 
 /**
- * The rail, opened: 52h header row, then every curation as a board in two
- * columns — the Boards tab's grid, not a flat list of looks. The design's
+ * The rail, opened: 52h header row, then every curation as one look card in
+ * the feed grid — the same grid the opened hot styles list draws. The design's
  * this-week hero above the grid is deliberately not built.
  */
 export function CurationBoardsPage({ boards, isLoading, gender, heightCm, onBack, onOpenBoard }: CurationBoardsPageProps) {
@@ -136,20 +121,13 @@ export function CurationBoardsPage({ boards, isLoading, gender, heightCm, onBack
         className="pt-2"
         actionSlot={<span className="text-chip tabular-nums text-taupe">{isLoading ? "" : boards.length}</span>}
       />
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4" role="list" aria-label="Curations">
+      <div className={FEED_GRID} role="list" aria-label="Curations">
         {isLoading
           ? Array.from({ length: 4 }).map((_, i) => (
-              <span key={i} role="listitem" className="skeleton-shimmer w-full rounded-lg" style={COVER_STYLE} />
+              <span key={i} role="listitem" className={cn("skeleton-shimmer w-full rounded-lg", PAGE_CARD)} />
             ))
           : boards.map((board) => (
-              <CurationBoardCard
-                key={board.categoryId}
-                board={board}
-                gender={gender}
-                heightCm={heightCm}
-                onSelect={() => onOpenBoard(board)}
-                className="w-full"
-              />
+              <CurationPageCard key={board.categoryId} board={board} gender={gender} heightCm={heightCm} onSelect={() => onOpenBoard(board)} />
             ))}
       </div>
     </div>
