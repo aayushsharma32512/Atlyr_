@@ -488,7 +488,10 @@ async function webSearch(context: Awaited<ReturnType<typeof requireUser>>, body:
   form.set("image", crop, "retrieval.webp")
   const uploadResponse = await fetch("https://serpapi.com/image", { method: "POST", body: form, signal: AbortSignal.timeout(20_000) })
   const upload = await uploadResponse.json().catch(() => ({})) as Record<string, unknown>
-  if (!uploadResponse.ok || typeof upload.image_id !== "string") throw new Error("SerpApi image upload failed")
+  if (!uploadResponse.ok || typeof upload.image_id !== "string") {
+    console.error("[inspiration-import] serpapi upload", uploadResponse.status, upload.error ?? null)
+    throw new Error("SerpApi image upload failed")
+  }
   const params = new URLSearchParams({
     engine: "google_lens", image_id: upload.image_id,
     country: Deno.env.get("SERPAPI_COUNTRY") ?? "us", hl: "en", safe: "active", auto_crop: "false",
@@ -496,7 +499,10 @@ async function webSearch(context: Awaited<ReturnType<typeof requireUser>>, body:
   })
   const response = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(25_000) })
   const payload = await response.json().catch(() => ({})) as Record<string, unknown>
-  if (!response.ok || !Array.isArray(payload.visual_matches)) throw new Error("SerpApi Lens search failed")
+  if (!response.ok || !Array.isArray(payload.visual_matches)) {
+    console.error("[inspiration-import] serpapi lens", response.status, payload.error ?? null)
+    throw new Error("SerpApi Lens search failed")
+  }
   const stillSelected = await selectedCandidate(context, importId, current.candidate.id)
   if (stillSelected.candidate.id !== current.candidate.id) throw new HttpError(409, "candidate_changed", "The selected garment changed; search again")
   return {
