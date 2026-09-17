@@ -21,8 +21,8 @@ export interface CreateBoardDrawerProps {
 
 /**
  * Just a name, nothing to pick. The "+" tile on Collections only ever makes a
- * new board — the shared MoodboardPickerDrawer's "select an existing one"
- * chips had no reason to be here and only made the two actions confusing.
+ * new board — a "select an existing one" picker had no reason to be here and
+ * only made the two actions confusing.
  */
 export function CreateBoardDrawer({ open, onOpenChange, onCreate, isSaving = false }: CreateBoardDrawerProps) {
   const [name, setName] = useState("")

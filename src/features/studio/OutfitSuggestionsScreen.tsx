@@ -5,7 +5,6 @@ import {
   FilterSearchBar,
   type FilterSearchBarChip,
   OutfitInspirationGrid,
-  MoodboardPickerDrawer,
   ScreenHeader,
 } from "@/design-system/primitives"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
@@ -18,12 +17,11 @@ import { useStudioProductOutfits } from "@/features/studio/hooks/useStudioProduc
 import type { InspirationItem, StudioOutfitDTO } from "@/features/studio/types"
 import { mapLegacyOutfitItemsToStudioItems } from "@/features/studio/mappers/renderedItemMapper"
 import {
-  useCreateMoodboard,
   useFavorites,
-  useMoodboards,
   useRemoveOutfitFromLibrary,
   useSaveToCollection,
 } from "@/features/collections/hooks/useMoodboards"
+import { useSaveTray } from "@/features/collections/providers/SaveTrayProvider"
 import { useToast } from "@/hooks/use-toast"
 import { supabase } from "@/integrations/supabase/client"
 import { isStudioSlot } from "@/features/studio/utils/studioUrlState"
@@ -123,14 +121,7 @@ export function OutfitSuggestionsView() {
   const favoriteIds = favoritesQuery.data ?? []
   const saveToCollectionMutation = useSaveToCollection()
   const removeOutfitFromLibraryMutation = useRemoveOutfitFromLibrary()
-  const createMoodboardMutation = useCreateMoodboard()
-  const { data: moodboards = [] } = useMoodboards()
-  const selectableMoodboards = useMemo(
-    () => moodboards.filter((m) => !m.isSystem),
-    [moodboards],
-  )
-  const [pendingOutfitId, setPendingOutfitId] = useState<string | null>(null)
-  const [isOutfitPickerOpen, setIsOutfitPickerOpen] = useState(false)
+  const { openLookSave } = useSaveTray()
 
   const buildInspirationItem = useCallback(
     (entry: OutfitEntry, index: number): InspirationItem => {
@@ -256,17 +247,8 @@ export function OutfitSuggestionsView() {
   )
 
   const handleLongPressOutfitById = useCallback(
-    async (outfitId: string) => {
-      try {
-        await saveToCollectionMutation.mutateAsync({ outfitId, slug: "favorites", label: "Favorites" })
-        setPendingOutfitId(outfitId)
-        setIsOutfitPickerOpen(true)
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Unable to save outfit"
-        toast({ title: "Save failed", description: message, variant: "destructive" })
-      }
-    },
-    [saveToCollectionMutation, toast],
+    (outfitId: string) => openLookSave(outfitId),
+    [openLookSave],
   )
 
   const handleToggleFavorite = useCallback(
@@ -285,46 +267,6 @@ export function OutfitSuggestionsView() {
       handleLongPressOutfitById(outfitId)
     },
     [handleLongPressOutfitById],
-  )
-
-  const handleMoodboardPickerSelect = useCallback(
-    async (slug: string) => {
-      if (!pendingOutfitId) return
-      const label = selectableMoodboards.find((board) => board.slug === slug)?.label ?? slug
-      try {
-        await saveToCollectionMutation.mutateAsync({ outfitId: pendingOutfitId, slug, label })
-        setPendingOutfitId(null)
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Unable to add to moodboard"
-        toast({ title: "Add failed", description: message, variant: "destructive" })
-      }
-    },
-    [pendingOutfitId, saveToCollectionMutation, selectableMoodboards, toast],
-  )
-
-  const handleMoodboardPickerApply = useCallback(
-    async (slugs: string[]) => {
-      if (!pendingOutfitId) return
-      try {
-        for (const slug of slugs) {
-          const label = selectableMoodboards.find((board) => board.slug === slug)?.label ?? slug
-          await saveToCollectionMutation.mutateAsync({ outfitId: pendingOutfitId, slug, label })
-        }
-        setPendingOutfitId(null)
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Unable to add to moodboards"
-        toast({ title: "Add failed", description: message, variant: "destructive" })
-      }
-    },
-    [pendingOutfitId, saveToCollectionMutation, selectableMoodboards, toast],
-  )
-
-  const handleCreateMoodboard = useCallback(
-    async (name: string) => {
-      const result = await createMoodboardMutation.mutateAsync(name)
-      return result.slug
-    },
-    [createMoodboardMutation],
   )
 
   const handleOutfitSelect = useCallback(
@@ -478,23 +420,6 @@ export function OutfitSuggestionsView() {
           />
         </div>
       </div>
-
-      <MoodboardPickerDrawer
-        open={isOutfitPickerOpen}
-        onOpenChange={(open) => {
-          setIsOutfitPickerOpen(open)
-          if (!open) {
-            setPendingOutfitId(null)
-          }
-        }}
-        moodboards={selectableMoodboards}
-        mode="multi"
-        onSelect={handleMoodboardPickerSelect}
-        onApply={handleMoodboardPickerApply}
-        onCreate={handleCreateMoodboard}
-        isSaving={saveToCollectionMutation.isPending || createMoodboardMutation.isPending}
-        title="Add to moodboard"
-      />
     </div>
   )
 }

@@ -62,10 +62,16 @@ export function StudioSaveCard({
   const [addingTag, setAddingTag] = useState(false)
   const [draftTag, setDraftTag] = useState("")
   const tagInputRef = useRef<HTMLInputElement>(null)
+  const [addingBoard, setAddingBoard] = useState(false)
+  const [draftBoard, setDraftBoard] = useState("")
+  const boardInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (addingTag) tagInputRef.current?.focus()
   }, [addingTag])
+  useEffect(() => {
+    if (addingBoard) boardInputRef.current?.focus()
+  }, [addingBoard])
 
   const commitTag = () => {
     const value = draftTag.trim()
@@ -88,8 +94,10 @@ export function StudioSaveCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initialActiveSlugs is frozen for this card's lifetime
   }, [boards])
 
-  const createBoard = async () => {
-    const label = window.prompt("Name your board")?.trim()
+  const commitBoard = async () => {
+    const label = draftBoard.trim()
+    setDraftBoard("")
+    setAddingBoard(false)
     if (!label || !onCreateBoard) return
     const slug = await onCreateBoard(label)
     if (slug) setBoardSlugs((prev) => [...prev, slug])
@@ -167,14 +175,32 @@ export function StudioSaveCard({
 
       <div className={RAIL}>
         {onCreateBoard ? (
-          <button
-            type="button"
-            onClick={() => void createBoard()}
-            className={cn(CHIP, "border border-dashed border-hairline-dashed bg-white text-ink")}
-          >
-            <Icons.add className="h-[11px] w-[11px]" strokeWidth={2} aria-hidden="true" />
-            new
-          </button>
+          addingBoard ? (
+            <input
+              ref={boardInputRef}
+              value={draftBoard}
+              onChange={(event) => setDraftBoard(event.target.value)}
+              onBlur={() => void commitBoard()}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void commitBoard()
+                if (event.key === "Escape") {
+                  setDraftBoard("")
+                  setAddingBoard(false)
+                }
+              }}
+              placeholder="Board name"
+              className={cn(CHIP, "w-28 border border-hairline bg-white text-ink outline-none")}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAddingBoard(true)}
+              className={cn(CHIP, "border border-dashed border-hairline-dashed bg-white text-ink")}
+            >
+              <Icons.add className="h-[11px] w-[11px]" strokeWidth={2} aria-hidden="true" />
+              new
+            </button>
+          )
         ) : null}
         {orderedBoards.map((board) => {
           const on = boardSlugs.includes(board.slug)

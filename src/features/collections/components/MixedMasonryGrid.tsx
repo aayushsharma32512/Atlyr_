@@ -28,6 +28,7 @@ type MixedMasonryGridProps = {
   onRemoveFromCurrentMoodboard?: (outfitId: string) => void
   onRemoveFromAll?: (outfitId: string) => void
   onProductSelect?: (productId: string) => void
+  onMoveProductToMoodboard?: (productId: string) => void
   onRemoveProductFromCurrentMoodboard?: (productId: string) => void
   onRemoveProductFromAll?: (productId: string) => void
   getOutfitWrapperRef?: (outfitId: string) => RefCallback<HTMLDivElement> | undefined
@@ -48,6 +49,7 @@ export function MixedMasonryGrid({
   onRemoveFromCurrentMoodboard,
   onRemoveFromAll,
   onProductSelect,
+  onMoveProductToMoodboard,
   onRemoveProductFromCurrentMoodboard,
   onRemoveProductFromAll,
   getOutfitWrapperRef,
@@ -99,6 +101,7 @@ export function MixedMasonryGrid({
           item={item}
           collectionLabel={collectionLabel}
           onProductSelect={onProductSelect}
+          onMoveToMoodboard={onMoveProductToMoodboard ? () => onMoveProductToMoodboard(item.id) : undefined}
           onRemoveFromCurrentMoodboard={
             onRemoveProductFromCurrentMoodboard ? () => onRemoveProductFromCurrentMoodboard(item.id) : undefined
           }
@@ -212,23 +215,37 @@ type ProductMasonryCardProps = {
   item: Extract<MoodboardItem, { itemType: "product" }>
   collectionLabel?: string
   onProductSelect?: (productId: string) => void
+  onMoveToMoodboard?: () => void
   onRemoveFromCurrentMoodboard?: () => void
   onRemoveFromAll?: () => void
   getProductWrapperRef?: (productId: string) => RefCallback<HTMLDivElement> | undefined
 }
 
-/** Same card, same bottom-left dustbin as an outfit tile — no pin either: the
- *  dustbin and the product page (behind onSelect) already cover saving. */
+/** Same card, same bottom-left dustbin and top-right three-dot as an outfit tile. */
 function ProductMasonryCard({
   item,
   collectionLabel,
   onProductSelect,
+  onMoveToMoodboard,
   onRemoveFromCurrentMoodboard,
   onRemoveFromAll,
   getProductWrapperRef,
 }: ProductMasonryCardProps) {
   return (
-    <div ref={getProductWrapperRef?.(item.id)}>
+    <div ref={getProductWrapperRef?.(item.id)} className="relative">
+      {onMoveToMoodboard && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onMoveToMoodboard()
+          }}
+          className="absolute top-2 right-2 z-10 flex size-6 items-center justify-center rounded-md bg-transparent text-muted-foreground/80 transition-colors hover:bg-muted/60"
+          aria-label="Move to moodboard"
+        >
+          <MoreVertical className="h-4 w-4" strokeWidth={1.5} />
+        </button>
+      )}
       {/* Name only — the design carries no brand or price on a tile (brief §3.2).
           cropToContent frames a segmented cutout instead of the empty canvas
           around it, same as ProductsTab and the board covers. The dustbin is

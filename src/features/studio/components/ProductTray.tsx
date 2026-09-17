@@ -2,8 +2,7 @@ import { Heart, SquareUserRound, ChevronDown, Plus, Undo2 } from "lucide-react"
 import { useState, useRef, useCallback } from "react"
 import * as React from "react"
 
-import { ProductSummaryCard, TrayActionButton, SaveOutfitDrawer, IconButton } from "@/design-system/primitives"
-import type { Moodboard } from "@/services/collections/collectionsService"
+import { ProductSummaryCard, TrayActionButton, IconButton } from "@/design-system/primitives"
 import type { StudioProductTrayItem, StudioProductTraySlot } from "@/services/studio/studioService"
 import { cn } from "@/lib/utils"
 
@@ -13,14 +12,9 @@ const SLOT_LABELS: Record<StudioProductTraySlot, string> = {
   shoes: "Footwear",
 }
 
-type SaveActionMode = "drawer" | "toggle"
-
 interface ProductTrayProps {
   items: StudioProductTrayItem[]
   isLoading?: boolean
-  defaultOutfitName?: string
-  defaultCategoryId?: string
-  defaultOccasionId?: string
   isReadOnly?: boolean
   slotOrder?: StudioProductTraySlot[]
   hiddenSlots?: Partial<Record<StudioProductTraySlot, boolean>>
@@ -31,22 +25,9 @@ interface ProductTrayProps {
   onProductPress?: (product: StudioProductTrayItem) => void
   onDetailsPress?: () => void
   onTryOn?: () => void
-  saveActionMode?: SaveActionMode
   saveIsActive?: boolean
   onToggleSave?: () => void
-  onSaveOutfit?: (data: {
-    outfitName: string
-    categoryId: string
-    occasionId: string
-    vibe: string
-    keywords: string
-    isPrivate: boolean
-    moodboardIds?: string[]
-  }) => Promise<void> | void
   onReorder?: (reorderedItems: StudioProductTrayItem[]) => void
-  moodboards?: Moodboard[]
-  moodboardsLoading?: boolean
-  onCreateMoodboard?: (name: string) => Promise<string | void> | string | void
   showFilter?: boolean
   showRemove?: boolean
   showItems?: boolean
@@ -62,9 +43,6 @@ const noop = () => {}
 export function ProductTray({
   items,
   isLoading,
-  defaultOutfitName,
-  defaultCategoryId,
-  defaultOccasionId,
   isReadOnly = false,
   slotOrder,
   hiddenSlots,
@@ -75,14 +53,9 @@ export function ProductTray({
   onProductPress,
   onDetailsPress,
   onTryOn,
-  saveActionMode = "drawer",
   saveIsActive = false,
   onToggleSave,
-  onSaveOutfit,
   onReorder,
-  moodboards = [],
-  moodboardsLoading,
-  onCreateMoodboard,
   showFilter = true,
   showRemove = true,
   showItems = true,
@@ -93,7 +66,6 @@ export function ProductTray({
   highlightTryOn = false,
 }: ProductTrayProps) {
   const hasItems = items.length > 0
-  const [isSaveDrawerOpen, setIsSaveDrawerOpen] = useState(false)
   const [localItems, setLocalItems] = useState(items) // The local items that are being displayed in the tray
   const [localSlotOrder, setLocalSlotOrder] = useState<StudioProductTraySlot[] | null>(null)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null) // The index of the card that is being dragged
@@ -127,11 +99,7 @@ export function ProductTray({
     if (isReadOnly) {
       return
     }
-    if (saveActionMode === "toggle") {
-      onToggleSave?.()
-      return
-    }
-    setIsSaveDrawerOpen(true)
+    onToggleSave?.()
   }
 
   // When the user starts dragging a card
@@ -219,14 +187,12 @@ export function ProductTray({
     }
   }, [draggedIndex, isReadOnly, localItems.length, localSlotOrder, targetIndex, usesSlotOrder])
 
-  const SaveIcon = saveActionMode === "toggle"
-    ? ({ className }: { className?: string }) => (
-      <Heart
-        className={cn("size-4", saveIsActive ? "fill-current text-red-500" : "text-muted-foreground", className)}
-        aria-hidden="true"
-      />
-    )
-    : Heart
+  const SaveIcon = ({ className }: { className?: string }) => (
+    <Heart
+      className={cn("size-4", saveIsActive ? "fill-current text-red-500" : "text-muted-foreground", className)}
+      aria-hidden="true"
+    />
+  )
 
   return (
     <section className={cn(
@@ -386,9 +352,9 @@ export function ProductTray({
             <TrayActionButton
               tone="outline"
               iconStart={SaveIcon}
-              label={saveActionMode === "toggle" && saveIsActive ? "Saved" : "Save"}
+              label={saveIsActive ? "Saved" : "Save"}
               aria-label="Save"
-              aria-pressed={saveActionMode === "toggle" ? saveIsActive : undefined}
+              aria-pressed={saveIsActive}
               disabled={isReadOnly}
               className={cn("w-full h-9 rounded-xl text-xs", highlightSave && "relative z-[75]")}
               onClick={isReadOnly ? undefined : handleSaveClick}
@@ -429,20 +395,6 @@ export function ProductTray({
           </div>
         </div>
       )}
-
-      {saveActionMode === "drawer" ? (
-        <SaveOutfitDrawer
-          open={isSaveDrawerOpen}
-          onOpenChange={setIsSaveDrawerOpen}
-          defaultOutfitName={defaultOutfitName}
-          defaultCategoryId={defaultCategoryId}
-          defaultOccasionId={defaultOccasionId}
-          isLoadingMoodboards={moodboardsLoading}
-          moodboards={moodboards}
-          onCreateMoodboard={onCreateMoodboard}
-          onSave={onSaveOutfit}
-        />
-      ) : null}
     </section>
   )
 }

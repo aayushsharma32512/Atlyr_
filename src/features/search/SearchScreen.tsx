@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
-import { MoodboardPickerDrawer, OutfitCard, ProductTile, SearchBar, type FilterCategory } from "@/design-system/primitives"
+import { OutfitCard, ProductTile, SearchBar, type FilterCategory } from "@/design-system/primitives"
 
 import type { InspirationItem } from "@/features/studio/types"
 import { mapLegacyOutfitItemsToStudioItems } from "@/features/studio/mappers/renderedItemMapper"
@@ -33,14 +33,10 @@ import { useScrollRestoration } from "@/shared/hooks/useScrollRestoration"
 import { useProductSaveActions } from "@/features/collections/hooks/useProductSaveActions"
 import { useSaveTray } from "@/features/collections/providers/SaveTrayProvider"
 import {
-  useCreateMoodboard,
   useFavorites,
   useCollectionsOverview,
   useRemoveOutfitFromLibrary,
-  useRemoveFromCollection,
-  useSaveToCollection,
   useProductCollectionMembership,
-  useOutfitCollectionMembership,
 } from "@/features/collections/hooks/useMoodboards"
 import { useLaunchStudio } from "@/features/studio/hooks/useLaunchStudio"
 import type { Database } from "@/integrations/supabase/types"
@@ -60,7 +56,6 @@ import {
   computeBucketedRowMajorPositions,
   type EntityUiContext,
   trackItemClicked,
-  trackSavedToCollection,
   trackSaveToggled,
 } from "@/integrations/posthog/engagementTracking/entityEvents"
 import {
@@ -188,9 +183,7 @@ export function SearchScreenView() {
   const { openLookSave, openPieceSave } = useSaveTray()
   const favoritesQuery = useFavorites()
   const favoriteIds = useMemo(() => favoritesQuery.data ?? [], [favoritesQuery.data])
-  const saveToCollectionMutation = useSaveToCollection()
   const removeOutfitFromLibraryMutation = useRemoveOutfitFromLibrary()
-  const createMoodboardMutation = useCreateMoodboard()
   const collectionsOverviewQuery = useCollectionsOverview()
   const moodboards = collectionsOverviewQuery.data?.moodboards ?? []
   const selectableMoodboards = useMemo(
@@ -198,11 +191,6 @@ export function SearchScreenView() {
     [moodboards],
   )
   const productCollectionMembership = useProductCollectionMembership()
-  const outfitMembershipQuery = useOutfitCollectionMembership()
-  const removeFromCollectionMutation = useRemoveFromCollection()
-  const [pendingOutfitId, setPendingOutfitId] = useState<string | null>(null)
-  const [pendingOutfitCurrentSlugs, setPendingOutfitCurrentSlugs] = useState<string[]>([])
-  const [isOutfitPickerOpen, setIsOutfitPickerOpen] = useState(false)
   const launchStudio = useLaunchStudio()
   const isUploading = searchImageUpload.isPending
 
@@ -961,8 +949,6 @@ export function SearchScreenView() {
     [analytics, launchStudio, outfitPositionById],
   )
 
-  const pendingOutfitContextRef = useRef<EntityUiContext | null>(null)
-
   // Every heart opens the save tray — Studio's card in a bottom sheet — instead
   // of toggling favourites in place. The tray persists boards and tracks the save.
   const handleToggleOutfitById = useCallback(
@@ -995,63 +981,6 @@ export function SearchScreenView() {
       handleLongPressOutfitById(outfitId, { layout: "vertical_grid", position })
     },
     [handleLongPressOutfitById, outfitPositionById],
-  )
-
-  const handleMoodboardPickerSelect = useCallback(
-    async (slug: string) => {
-      if (!pendingOutfitId) return
-      const label = selectableMoodboards.find((board) => board.slug === slug)?.label ?? slug
-      try {
-        await saveToCollectionMutation.mutateAsync({ outfitId: pendingOutfitId, slug, label })
-        const uiContext = pendingOutfitContextRef.current ?? {}
-        trackSavedToCollection(analytics, {
-          entity_type: "outfit",
-          entity_id: pendingOutfitId,
-          collection_slug: slug,
-          save_method: "long_press",
-          ...uiContext,
-        })
-        setPendingOutfitId(null)
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Unable to add to moodboard"
-        toast({ title: "Add failed", description: message, variant: "destructive" })
-      }
-    },
-    [analytics, pendingOutfitId, saveToCollectionMutation, selectableMoodboards, toast],
-  )
-
-  const handleMoodboardPickerApply = useCallback(
-    async (selectedSlugs: string[]) => {
-      if (!pendingOutfitId) return
-      const uiContext = pendingOutfitContextRef.current ?? {}
-      const current = new Set(pendingOutfitCurrentSlugs)
-      const next = new Set(selectedSlugs)
-      const toAdd = selectedSlugs.filter((s) => !current.has(s))
-      const toRemove = pendingOutfitCurrentSlugs.filter((s) => !next.has(s))
-      let hadError = false
-      try {
-        for (const slug of toAdd) {
-          const label = selectableMoodboards.find((b) => b.slug === slug)?.label ?? slug
-          await saveToCollectionMutation.mutateAsync({ outfitId: pendingOutfitId, slug, label })
-          trackSavedToCollection(analytics, { entity_type: "outfit", entity_id: pendingOutfitId, collection_slug: slug, save_method: "long_press", ...uiContext })
-        }
-        for (const slug of toRemove) {
-          await removeFromCollectionMutation.mutateAsync({ outfitId: pendingOutfitId, slug })
-        }
-      } catch { hadError = true }
-      setPendingOutfitId(null)
-      setPendingOutfitCurrentSlugs([])
-      if (hadError) toast({ title: "Could not update all moodboards", variant: "destructive" })
-    },
-    [analytics, pendingOutfitCurrentSlugs, pendingOutfitId, removeFromCollectionMutation, saveToCollectionMutation, selectableMoodboards, toast],
-  )
-
-  const handleCreateMoodboard = useCallback(
-    async (name: string) => {
-      const result = await createMoodboardMutation.mutateAsync(name)
-      return result.slug
-    },
-    [createMoodboardMutation],
   )
 
   const isOutfitResultsLoading = outfitResultsQuery.isLoading
@@ -1640,39 +1569,6 @@ export function SearchScreenView() {
         onDraftChange={handleFilterOptionsChange}
       />
 
-      <MoodboardPickerDrawer
-        open={isOutfitPickerOpen}
-        onOpenChange={(open) => {
-          setIsOutfitPickerOpen(open)
-          if (!open) {
-            setPendingOutfitId(null)
-            setPendingOutfitCurrentSlugs([])
-          }
-        }}
-        moodboards={selectableMoodboards}
-        mode="multi"
-        defaultSelections={pendingOutfitCurrentSlugs}
-        onSelect={handleMoodboardPickerSelect}
-        onApply={handleMoodboardPickerApply}
-        onCreate={handleCreateMoodboard}
-        isSaving={saveToCollectionMutation.isPending || createMoodboardMutation.isPending}
-        title="Move Moodboard"
-      />
-
-      <MoodboardPickerDrawer
-        open={productSaveActions.isPickerOpen}
-        onOpenChange={(open) => {
-          if (!open) productSaveActions.closePicker()
-        }}
-        moodboards={productSaveActions.moodboards}
-        mode="multi"
-        defaultSelections={productSaveActions.currentMoodboardSlugs}
-        onSelect={() => {}}
-        onApply={productSaveActions.onApplyMoodboards}
-        onCreate={productSaveActions.onCreateMoodboard}
-        isSaving={productSaveActions.isSaving}
-        title="Move Moodboard"
-      />
     </div>
   )
 }

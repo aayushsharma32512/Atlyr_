@@ -3,7 +3,7 @@ import { ArrowDownRight, ArrowUpRight } from "lucide-react"
 import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
-import { ProductAlternateCard, ProductSheet, TrayActionButton, MoodboardPickerDrawer } from "@/design-system/primitives"
+import { ProductAlternateCard, ProductSheet, TrayActionButton } from "@/design-system/primitives"
 import { cn } from "@/lib/utils"
 import { parseProductDescription } from "@/utils/productDescription"
 
@@ -532,23 +532,6 @@ export function ProductPageView() {
         </div>
       </div>
     </div>
-
-      {/* Moodboard picker drawer for long press save */}
-      <MoodboardPickerDrawer
-        open={productSaveActions.isPickerOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            productSaveActions.closePicker()
-          }
-        }}
-        moodboards={productSaveActions.moodboards}
-        mode="multi"
-        onSelect={() => {}}
-        onApply={productSaveActions.onApplyMoodboards}
-        onCreate={productSaveActions.onCreateMoodboard}
-        isSaving={productSaveActions.isSaving}
-        title="Add to moodboard"
-      />
     </>
   )
 }
