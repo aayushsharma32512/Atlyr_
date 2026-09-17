@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Loader2, RotateCcw, Sparkles } from "lucide-react"
+import { Loader2, RotateCcw } from "lucide-react"
 import { useLocation, useNavigate, useParams } from "react-router-dom"
 import { Icons } from "@/design-system/icons"
 import { AppShellLayout } from "@/layouts/AppShellLayout"
@@ -27,11 +27,12 @@ import {
   useInspirationImport,
   useOpenInspirationImportInStudio,
   useSelectImportCandidates,
-  useStageImportSelections,
+  useAddImportWebSelections,
   useStartInspirationImport,
 } from "@/features/inspiration-import/hooks/useInspirationImport"
 import { useCreateDraftOutfit } from "@/features/outfits/hooks/useCreateDraftOutfit"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
+import { useToast } from "@/hooks/use-toast"
 import { buildStudioUrl } from "@/features/studio/utils/studioUrlState"
 import type {
   InspirationCatalogueResult,
@@ -158,7 +159,8 @@ export default function InspirationImportScreen() {
   const importQuery = useInspirationImport(importId)
   const detectMutation = useDetectImportCandidates(importId ?? "")
   const selectMutation = useSelectImportCandidates(importId ?? "")
-  const stageSelectionsMutation = useStageImportSelections(importId ?? "")
+  const addWebSelectionsMutation = useAddImportWebSelections(importId ?? "")
+  const { toast } = useToast()
   const createDraftMutation = useCreateDraftOutfit()
   const openStudioMutation = useOpenInspirationImportInStudio(importId ?? "")
   const [validationError, setValidationError] = useState<string | null>(null)
@@ -168,9 +170,11 @@ export default function InspirationImportScreen() {
   const [choosingCandidate, setChoosingCandidate] = useState(false)
   const [pickError, setPickError] = useState<string | null>(null)
   const [activeCandidateId, setActiveCandidateId] = useState<string | null>(null)
-  // Inventory first: it's already preloaded and fast. Web is one tap away, and is itself
-  // preloaded in the background (see the webQueries hook below) so that tap is instant too.
-  const [resultsSource, setResultsSource] = useState<"inventory" | "web">("inventory")
+  // Each garment remembers its own rail, so switching tabs returns to where the user left off.
+  // Inventory first: it's already preloaded; Web is preloaded too (see the webQueries hook below).
+  const [railByCandidate, setRailByCandidate] = useState<Record<string, "inventory" | "web">>({})
+  const setCandidateRail = (candidateId: string, source: "inventory" | "web") =>
+    setRailByCandidate((current) => current[candidateId] === source ? current : { ...current, [candidateId]: source })
   const [sourcePreviewUrl, setSourcePreviewUrl] = useState<string | null>(null)
   const importStartTriggeredRef = useRef(false)
   const seededRef = useRef(false)
@@ -275,6 +279,9 @@ export default function InspirationImportScreen() {
     }
     return [...resultsByProviderId.values()].sort((left, right) => left.rank - right.rank)
   }, [record?.webResults, selectedCandidate, webQuery.data])
+  // Persisted web rows are the listings already sent to the Atlyr team: one per garment, then locked.
+  const addedWebIds = useMemo(() => new Set((record?.webResults ?? []).map((result) => result.providerResultId)), [record?.webResults])
+  const addedCandidateIds = useMemo(() => new Set((record?.webResults ?? []).map((result) => result.candidateId)), [record?.webResults])
   const inventoryChoices = useMemo(() => selectedCandidates.reduce<Partial<Record<InspirationCategory, InspirationCatalogueResult | null>>>((result, candidate) => {
     const state = categoryChoices[candidate.category]
     result[candidate.category] = state?.candidateId === candidate.id ? state.inventoryChoice ?? null : null
@@ -289,13 +296,11 @@ export default function InspirationImportScreen() {
   const activeWebProviderResultId = selectedCandidate
     ? webChoices[selectedCandidate.category]?.providerResultId ?? null
     : null
-  // A Web pick is the final selection for a category whenever one exists — it overrides the
-  // Inventory pick for saving/Studio purposes only, never for what the mannequin shows.
-  const selectedTopId = webChoices.top ? null : inventoryChoices.top?.id ?? null
-  const selectedBottomId = webChoices.bottom ? null : inventoryChoices.bottom?.id ?? null
+  // Inventory picks go to Studio, Web picks go to the Atlyr team; the two never compete.
+  const selectedTopId = inventoryChoices.top?.id ?? null
+  const selectedBottomId = inventoryChoices.bottom?.id ?? null
   const selectedInventoryTotal = Number(Boolean(selectedTopId)) + Number(Boolean(selectedBottomId))
   const selectedWebTotal = Number(Boolean(webChoices.top)) + Number(Boolean(webChoices.bottom))
-  const selectedTotal = selectedInventoryTotal + selectedWebTotal
 
   useEffect(() => {
     if (!record) return
@@ -331,9 +336,10 @@ export default function InspirationImportScreen() {
       : record.selectedCandidateIds[0] ?? null)
   }, [record])
 
-  useEffect(() => {
-    setResultsSource("inventory")
-  }, [selectedCandidate?.id])
+  const resultsSource = (selectedCandidate ? railByCandidate[selectedCandidate.id] : undefined) ?? "inventory"
+  const setResultsSource = (source: "inventory" | "web") => {
+    if (selectedCandidate) setCandidateRail(selectedCandidate.id, source)
+  }
 
   useEffect(() => {
     if (!record) return
@@ -352,27 +358,24 @@ export default function InspirationImportScreen() {
         if (next[category]?.candidateId === candidate.id) continue
         const search = catalogueSearches.find((item) => item.candidate.id === candidate.id)
         if (!search || search.isLoading) continue
-        const persistedWeb = record.webResults.find((result) => result.candidateId === candidate.id)
         const persistedInventory = search.results.find((result) => (
           record.selections.catalogueProductIds.includes(result.id)
         ))
         const inventoryChoice = persistedInventory ?? search.results[0] ?? null
-        next[category] = { candidateId: candidate.id, inventoryChoice, webChoice: persistedWeb ?? null }
+        next[category] = { candidateId: candidate.id, inventoryChoice, webChoice: null }
         changed = true
       }
       return changed ? next : current
     })
   }, [catalogueSearches, record, selectedCandidates])
 
-  const isCommitted = record?.import.status === "committed"
-  const isStaged = record?.import.status === "selections_staged"
   const primaryError = validationError
     ?? startImport.error?.message
     ?? importQuery.error?.message
     ?? selectMutation.error?.message
     ?? catalogueSearches.find(({ error }) => error)?.error?.message
     ?? webQuery.error?.message
-    ?? stageSelectionsMutation.error?.message
+    ?? addWebSelectionsMutation.error?.message
     ?? createDraftMutation.error?.message
     ?? openStudioMutation.error?.message
     ?? record?.import.errorMessage
@@ -487,6 +490,7 @@ export default function InspirationImportScreen() {
   const selectWebResult = (result: InspirationWebResult) => {
     if (!selectedCandidate) return
     const candidate = selectedCandidate
+    if (addedCandidateIds.has(candidate.id) || addedWebIds.has(result.providerResultId)) return
     setValidationError(null)
     const current = webChoices[candidate.category] ?? null
     setCandidateWebChoice(candidate, toggleWebChoice(current, result))
@@ -498,44 +502,41 @@ export default function InspirationImportScreen() {
     candidate: { id: string; category: InspirationCategory },
   ) => {
     setActiveCandidateId(candidate.id)
-    setResultsSource("inventory")
+    setCandidateRail(candidate.id, "inventory")
   }
 
   const showInventoryResults = () => {
     if (selectedCandidate) showCandidateInventoryResults(selectedCandidate)
   }
 
-  const submitSelections = async () => {
-    if (!user?.id || !selectedTotal) {
-      setValidationError(user?.id ? "Choose at least one match." : "Sign in to open this look in Studio.")
+  const addToAtlyr = async () => {
+    if (!user?.id || !selectedWebTotal) return
+    setValidationError(null)
+    const webSelections = selectedCandidates.flatMap((candidate) => {
+      const webChoice = webChoices[candidate.category]
+      if (!webChoice?.selectionToken) return []
+      return [{ candidateId: candidate.id, selectionToken: webChoice.selectionToken }]
+    })
+    if (webSelections.length !== selectedWebTotal) {
+      setValidationError("An online result expired. Search online again and reselect it.")
       return
     }
+    try {
+      await addWebSelectionsMutation.mutateAsync({ selections: webSelections })
+      for (const candidate of selectedCandidates) setCandidateWebChoice(candidate, null)
+      toast({ title: "Added to Atlyr", description: "The Atlyr team will review and add it to Atlyr's inventory." })
+    } catch (error) {
+      setValidationError(error instanceof Error ? error.message : "The online picks could not be saved.")
+    }
+  }
 
+  const openInStudio = async () => {
+    if (!user?.id || !selectedInventoryTotal) {
+      setValidationError(user?.id ? "Choose at least one inventory match." : "Sign in to open this look in Studio.")
+      return
+    }
     setValidationError(null)
     try {
-      if (selectedWebTotal) {
-        const webSelections = selectedCandidates.flatMap((candidate) => {
-          const webChoice = webChoices[candidate.category]
-          if (!webChoice?.selectionToken) return []
-          return [{ candidateId: candidate.id, selectionToken: webChoice.selectionToken }]
-        })
-        const catalogueSelections = selectedCandidates.flatMap((candidate) => {
-          // A Web pick, when present, is the final choice for the category (see selectedTopId).
-          if (webChoices[candidate.category]) return []
-          const inventoryChoice = inventoryChoices[candidate.category]
-          if (!inventoryChoice) return []
-          return [{ candidateId: candidate.id, productId: inventoryChoice.id }]
-        })
-        if (webSelections.length !== selectedWebTotal) {
-          throw new Error("An online result expired. Search online again and reselect it.")
-        }
-        await stageSelectionsMutation.mutateAsync({
-          selections: webSelections,
-          catalogueSelections,
-        })
-        return
-      }
-
       const topProductId = selectedTopId
       const bottomProductId = selectedBottomId
       const studioSelectionSignature = `${topProductId ?? ""}:${bottomProductId ?? ""}`
@@ -630,41 +631,6 @@ export default function InspirationImportScreen() {
     )
   }
 
-  if (isCommitted || isStaged) {
-    return (
-      <main className="min-h-screen bg-background px-4 py-10 text-foreground">
-        <section className="mx-auto max-w-lg rounded-control border border-hairline p-6 text-center">
-          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-control border border-hairline bg-white text-violet">
-            <Sparkles className="h-5 w-5" aria-hidden="true" />
-          </span>
-          <p className="mt-4 text-chip text-taupe">{isStaged ? "selections saved" : "look captured"}</p>
-          <h1 className="mt-1 font-display text-title font-medium text-ink">
-            {isStaged ? "Ready for ingestion." : "Your look is ready."}
-          </h1>
-          <p className="mx-auto mt-3 max-w-sm text-body text-taupe">
-            {isStaged
-              ? "Your selected online products and catalogue pieces are stored. The Studio outfit will be created after ingestion completes."
-              : "Continue styling the selected pieces in Studio. Favourites and Wardrobe stay as they are."}
-          </p>
-          <div className="mt-6 flex flex-col gap-2 border-y border-hairline py-4 text-left text-card text-ink">
-            <div className="flex justify-between"><span>catalogue items</span><span className="tabular-nums">{record.selections.catalogueProductIds.length}</span></div>
-            <div className="flex justify-between"><span>online items</span><span className="tabular-nums">{record.selections.webResultIds.length || "none"}</span></div>
-          </div>
-          <button
-            type="button"
-            className={cn(PRIMARY, "mt-6 w-full")}
-            onClick={() => !isStaged && record.import.studioOutfitId
-              ? navigate(buildStudioUrl("/studio", "studio", { outfitId: record.import.studioOutfitId }))
-              : navigate("/inspiration-import")}
-          >
-            <Icons.studio className="h-[18px] w-[18px]" aria-hidden="true" />
-            {!isStaged && record.import.studioOutfitId ? "open in Studio" : "import another look"}
-          </button>
-        </section>
-      </main>
-    )
-  }
-
   if (record.import.status === "detecting" || record.import.status === "source_ready") {
     return (
       <DetectionProgress
@@ -677,8 +643,8 @@ export default function InspirationImportScreen() {
 
   const isChoosingCandidate = !selectedCandidate || choosingCandidate
   const foundCategories = new Set(record.candidates.map((candidate) => candidate.category)).size
-  const submitting =
-    stageSelectionsMutation.isPending || createDraftMutation.isPending || openStudioMutation.isPending
+  const addingToAtlyr = addWebSelectionsMutation.isPending
+  const openingStudio = createDraftMutation.isPending || openStudioMutation.isPending
 
   return (
     <AppShellLayout>
@@ -776,7 +742,14 @@ export default function InspirationImportScreen() {
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-3">
               {resultsSource === "web" ? (
                 webResults.length ? (
-                  <ImportRack kind="web" results={webResults} selectedId={activeWebProviderResultId} onSelect={selectWebResult} />
+                  <ImportRack
+                    kind="web"
+                    results={webResults}
+                    selectedId={activeWebProviderResultId}
+                    addedIds={addedWebIds}
+                    locked={addedCandidateIds.has(selectedCandidate.id)}
+                    onSelect={selectWebResult}
+                  />
                 ) : webQuery.isFetching ? (
                   <div className="flex min-h-40 items-center justify-center">
                     <Loader2 className="h-5 w-5 animate-spin text-ink" aria-hidden="true" />
@@ -818,7 +791,7 @@ export default function InspirationImportScreen() {
           </div>
         ) : null}
 
-        {/* The tray: one ink action, named for what comes next. */}
+        {/* The tray: web picks go to the Atlyr team, inventory picks go to Studio. */}
         <div className="flex h-[76px] flex-none items-center gap-3 border-t border-hairline bg-background px-4 pb-2">
           {isChoosingCandidate ? (
             <button
@@ -838,14 +811,34 @@ export default function InspirationImportScreen() {
               find matches · {pendingCandidateIds.length}
             </button>
           ) : (
-            <button type="button" className={PRIMARY} disabled={!selectedTotal || submitting} onClick={() => void submitSelections()}>
-              {submitting ? (
-                <Loader2 className="h-[18px] w-[18px] animate-spin" aria-hidden="true" />
-              ) : (
-                <Icons.findItems className="h-[18px] w-[18px]" aria-hidden="true" />
-              )}
-              proceed · {selectedTotal}
-            </button>
+            <>
+              <button
+                type="button"
+                className={SECONDARY}
+                disabled={!selectedWebTotal || addingToAtlyr || openingStudio}
+                onClick={() => void addToAtlyr()}
+              >
+                {addingToAtlyr ? (
+                  <Loader2 className="h-[18px] w-[18px] animate-spin" aria-hidden="true" />
+                ) : (
+                  <Icons.add className="h-[18px] w-[18px]" aria-hidden="true" />
+                )}
+                add to atlyr · {selectedWebTotal}
+              </button>
+              <button
+                type="button"
+                className={PRIMARY}
+                disabled={!selectedInventoryTotal || addingToAtlyr || openingStudio}
+                onClick={() => void openInStudio()}
+              >
+                {openingStudio ? (
+                  <Loader2 className="h-[18px] w-[18px] animate-spin" aria-hidden="true" />
+                ) : (
+                  <Icons.studio className="h-[18px] w-[18px]" aria-hidden="true" />
+                )}
+                studio · {selectedInventoryTotal}
+              </button>
+            </>
           )}
         </div>
       </div>

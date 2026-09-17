@@ -51,18 +51,13 @@ type InspirationWebSelectionInput = {
   selectionToken: string
 }
 
-type InspirationCatalogueSelectionInput = {
-  candidateId: string
-  productId: string
-}
-
-export type InspirationStageSelectionsInput = {
+export type InspirationAddWebSelectionsInput = {
   selections: InspirationWebSelectionInput[]
-  catalogueSelections: InspirationCatalogueSelectionInput[]
 }
 
-export type InspirationStageSelectionsResult = {
-  selectionCount: number
+export type InspirationAddWebSelectionsResult = {
+  addedCount: number
+  skippedCount: number
   webSelectionIds: string[]
 }
 

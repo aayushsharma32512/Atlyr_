@@ -4,8 +4,8 @@ import type {
   InspirationImport,
   InspirationOpenStudioInput,
   InspirationOpenStudioResult,
-  InspirationStageSelectionsInput,
-  InspirationStageSelectionsResult,
+  InspirationAddWebSelectionsInput,
+  InspirationAddWebSelectionsResult,
   InspirationWebResult,
 } from "./types"
 import {
@@ -180,12 +180,12 @@ async function searchWeb(
   return results
 }
 
-async function stageSelections(
+async function addWebSelections(
   importId: string,
-  input: InspirationStageSelectionsInput,
-): Promise<InspirationStageSelectionsResult> {
-  return invokeImport<InspirationStageSelectionsResult>({
-    action: "stage-selections",
+  input: InspirationAddWebSelectionsInput,
+): Promise<InspirationAddWebSelectionsResult> {
+  return invokeImport<InspirationAddWebSelectionsResult>({
+    action: "add-web-selections",
     importId,
     ...input,
   })
@@ -204,6 +204,6 @@ export const inspirationImportService = {
   selectCandidates,
   searchCatalogue,
   searchWeb,
-  stageSelections,
+  addWebSelections,
   openInStudio,
 }

@@ -45,7 +45,6 @@ created
   → detected
   → candidate_selected
   → retrieving / ready
-  → selections_staged  (when the final set contains a web result)
   → committed
 
 Any processing step may also become:
@@ -205,7 +204,7 @@ All RPCs are `SECURITY DEFINER`, so they can modify private workflow tables. Use
 | `begin_inspiration_detection` | `authenticated` | Locks import, creates attempt ID, sets `detecting`; returns existing attempt if lease is active |
 | `set_inspiration_detector_job` | `authenticated` | Saves Modal's job ID only if attempt/import still matches |
 | `select_inspiration_candidates` | `authenticated` | Atomically confirms one or two candidates, with at most one per category, and removes results outside the confirmed set |
-| `stage_inspiration_import_selections` | `service_role` only | Atomically persists the complete final catalogue/web selection set for later ingestion |
+| `add_inspiration_import_web_selections` | `service_role` only | Appends web picks as `selected_for_ingestion` requests; does not change the import status |
 | `open_inspiration_import_in_studio` | `authenticated` | Validates inventory product IDs, records provenance, and links the private Studio draft |
 | `finalize_inspiration_detection` | `service_role` only | Modal callback finalizer; atomically saves candidates or records detector failure |
 

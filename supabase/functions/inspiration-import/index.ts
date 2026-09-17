@@ -515,36 +515,20 @@ function validSelectionPayload(value: InspirationWebSelectionPayload): boolean {
     && Number.isInteger(value.expiresAt)
 }
 
-async function stageSelections(context: Awaited<ReturnType<typeof requireUser>>, body: Record<string, unknown>) {
+async function addWebSelections(context: Awaited<ReturnType<typeof requireUser>>, body: Record<string, unknown>) {
   const importId = requiredString(body, "importId")
   if (!Array.isArray(body.selections) || body.selections.length < 1 || body.selections.length > 2) {
     throw new HttpError(400, "invalid_web_selections", "Choose at most one online top and one online bottom")
   }
-  if (!Array.isArray(body.catalogueSelections) || body.catalogueSelections.length > 1
-    || body.catalogueSelections.length + body.selections.length > 2) {
-    throw new HttpError(400, "invalid_catalogue_selections", "Choose at most one inventory item per garment")
-  }
 
-  const catalogueSelections: Array<{ candidateId: string; productId: string }> = []
   const verified: InspirationWebSelectionPayload[] = []
   const seenCandidates = new Set<string>()
-  for (const raw of body.catalogueSelections) {
-    const input = asObject(raw)
-    const candidateId = requiredString(input, "candidateId")
-    const productId = requiredString(input, "productId")
-    if (seenCandidates.has(candidateId)) {
-      throw new HttpError(400, "invalid_catalogue_selections", "Each garment can have only one final selection")
-    }
-    seenCandidates.add(candidateId)
-    await selectedCandidate(context, importId, candidateId)
-    catalogueSelections.push({ candidateId, productId })
-  }
   for (const raw of body.selections) {
     const input = asObject(raw)
     const candidateId = requiredString(input, "candidateId")
     const selectionToken = requiredString(input, "selectionToken")
     if (seenCandidates.has(candidateId)) {
-      throw new HttpError(400, "invalid_web_selections", "Each garment can have only one final selection")
+      throw new HttpError(400, "invalid_web_selections", "Each garment can have only one online pick")
     }
     seenCandidates.add(candidateId)
     await selectedCandidate(context, importId, candidateId)
@@ -557,10 +541,9 @@ async function stageSelections(context: Awaited<ReturnType<typeof requireUser>>,
     verified.push(selection)
   }
 
-  const { data, error } = await context.admin.rpc("stage_inspiration_import_selections", {
+  const { data, error } = await context.admin.rpc("add_inspiration_import_web_selections", {
     p_user_id: context.userId,
     p_import_id: importId,
-    p_catalogue_results: catalogueSelections,
     p_web_results: verified.map((selection) => ({
       candidateId: selection.candidateId,
       providerResultId: selection.providerResultId,
@@ -573,14 +556,14 @@ async function stageSelections(context: Awaited<ReturnType<typeof requireUser>>,
     })),
   })
   if (error) {
-    console.error("[inspiration-import] selection staging failed", {
+    console.error("[inspiration-import] add to atlyr failed", {
       importId,
       code: error.code,
       message: error.message,
       details: error.details,
       hint: error.hint,
     })
-    throw new HttpError(409, "selection_staging_failed", "The final selections could not be saved")
+    throw new HttpError(409, "add_web_selections_failed", "The online picks could not be saved")
   }
   return data
 }
@@ -631,7 +614,9 @@ serve(async (req) => {
       get: () => getImport(context, body),
       "select-candidate": () => selectCandidate(context, body),
       "web-search": () => webSearch(context, body),
-      "stage-selections": () => stageSelections(context, body),
+      "add-web-selections": () => addWebSelections(context, body),
+      // Older app builds still send this name; remove once every client uses add-web-selections.
+      "stage-selections": () => addWebSelections(context, body),
       "open-studio": () => openStudio(context, body),
       delete: () => deleteImport(context, body),
     }

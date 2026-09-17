@@ -123,7 +123,7 @@ export function ProductTile({
             onError={onImageError}
           />
         ) : null}
-        {mark && !worn ? (
+        {mark ? (
           <button
             type="button"
             aria-label={saved ? "Unsave" : "Save"}

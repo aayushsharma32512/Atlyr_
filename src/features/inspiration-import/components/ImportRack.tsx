@@ -26,6 +26,9 @@ type WebProps = {
   kind: "web"
   results: InspirationWebResult[]
   selectedId: string | null
+  // Listings already sent to the Atlyr team. Once a garment has one, the rest of its rack is locked.
+  addedIds: ReadonlySet<string>
+  locked: boolean
   onSelect: (result: InspirationWebResult) => void
 }
 
@@ -53,7 +56,7 @@ export function ImportRack(props: CatalogueProps | WebProps) {
     )
   }
 
-  const { results, selectedId, onSelect } = props
+  const { results, selectedId, addedIds, locked, onSelect } = props
   // Two offset columns, like the design: odd items start half a tile lower.
   const columns: [InspirationWebResult[], InspirationWebResult[]] = [[], []]
   results.forEach((result, index) => columns[index % 2].push(result))
@@ -63,20 +66,28 @@ export function ImportRack(props: CatalogueProps | WebProps) {
       {columns.map((column, columnIndex) => (
         <div key={columnIndex} className={cn("flex min-w-0 flex-1 flex-col gap-2.5", columnIndex === 1 && "mt-6")}>
           {column.map((result) => {
-            const selected = selectedId === result.providerResultId
+            const added = addedIds.has(result.providerResultId)
+            const selected = !added && selectedId === result.providerResultId
+            const disabled = added || locked
             return (
-              <div key={result.id} className="flex flex-col gap-1.5">
+              <div key={result.id} className={cn("flex flex-col gap-1.5", locked && !added && "opacity-50")}>
                 <button
                   type="button"
-                  aria-label={`${selected ? "Deselect" : "Select"} ${result.title}`}
+                  aria-label={added ? `${result.title} added to Atlyr` : `${selected ? "Deselect" : "Select"} ${result.title}`}
                   aria-pressed={selected}
+                  disabled={disabled}
                   onClick={() => onSelect(result)}
                   className={cn(
                     "relative aspect-[4/5] w-full overflow-hidden rounded-chip bg-white",
-                    selected ? "border border-violet" : "border border-hairline",
+                    selected || added ? "border border-violet" : "border border-hairline",
                   )}
                 >
                   <img src={result.imageUrl} alt={result.title} className="h-full w-full object-contain" />
+                  {added ? (
+                    <span className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-violet text-white">
+                      <Icons.check className="h-3.5 w-3.5" aria-hidden="true" />
+                    </span>
+                  ) : null}
                 </button>
                 <div className="flex items-start gap-1">
                   <span className="min-w-0 flex-1 text-chip font-medium leading-snug text-ink">
