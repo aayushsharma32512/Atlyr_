@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import { Icons } from "@/design-system/icons"
-import { useViewportZoomLockController } from "@/hooks/useViewportZoomLock"
+import { SearchBar } from "@/design-system/primitives"
 import { cn } from "@/lib/utils"
 
 /** Both states hang this far off their container's bottom edge. */
@@ -60,7 +60,8 @@ export interface AlternatesSearchBarProps {
 }
 
 /**
- * The open bar: full frame width, resting exactly where the lens button was.
+ * The open bar: the shared `SearchBar`, full frame width, resting exactly
+ * where the lens button was.
  *
  * It only moves when a keyboard would cover it, and then only by the overlap.
  * The offset comes from `visualViewport` because a keyboard does not shrink the
@@ -85,7 +86,6 @@ export function AlternatesSearchBar({
   const barRef = useRef<HTMLDivElement>(null)
   /** How far to lift off the resting spot so the keyboard does not cover it. */
   const [lift, setLift] = useState(0)
-  const { lock, unlock } = useViewportZoomLockController()
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -113,97 +113,33 @@ export function AlternatesSearchBar({
     }
   }, [])
 
-  const close = () => {
-    unlock()
-    onClose()
-  }
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter") {
-      event.preventDefault()
-      onSubmit()
-      close()
-    }
-    if (event.key === "Escape") {
-      close()
-    }
-  }
-
   return (
     <div
       ref={barRef}
       className={cn("absolute inset-x-2 z-[7]", className)}
       style={{ bottom: RESTING_GAP, transform: lift ? `translateY(${-lift}px)` : undefined }}
     >
-      {/* No right padding: the lens square at the end sits exactly where the
-          collapsed button was, so opening the bar does not move it. */}
-      <div className="flex h-control-field w-full items-center gap-1.5 rounded-control border border-hairline bg-white pl-3">
-        {thumbSrc ? (
-          <span className="inline-flex h-control-chip shrink-0 items-center gap-1.5 rounded-control border border-hairline bg-background pl-0.5 pr-1.5">
-            <img src={thumbSrc} alt="Reference" className="h-5 w-5 rounded-badge object-cover" />
-            <button
-              type="button"
-              aria-label="Remove photo"
-              onClick={onClearThumb}
-              className="flex h-4 w-4 items-center justify-center text-ink"
-            >
-              <Icons.close className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
-            </button>
-          </span>
-        ) : null}
-
-        <input
-          type="search"
-          autoFocus
-          enterKeyHint="search"
-          value={value}
-          placeholder={placeholder}
-          onChange={(event) => onValueChange(event.target.value)}
-          onKeyDown={handleKeyDown}
-          onFocus={lock}
-          onBlur={unlock}
-          aria-label="Search this slot"
-          className="min-w-0 flex-1 bg-transparent text-body text-ink outline-none placeholder:text-taupe [&::-webkit-search-cancel-button]:hidden"
-        />
-
-        {/* Brief §7: "x at the right closes". Always present — with an empty
-            field there was otherwise no way out, since the lens hides while the
-            bar is open. Clearing a committed search is the query line's job. */}
-        <button
-          type="button"
-          aria-label="Close search"
-          onClick={() => {
-            onClear?.()
-            close()
-          }}
-          className="flex h-8 w-8 shrink-0 items-center justify-center text-ink"
-        >
-          <Icons.close className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
-        </button>
-
-        <button
-          type="button"
-          aria-label="Import an image"
-          onClick={onOpenImagePicker}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-control bg-ink text-background"
-        >
-          <Icons.camera className="h-5 w-5" aria-hidden="true" />
-        </button>
-
-        {/* Same 40px box as the collapsed lens, so the icon does not move when
-            the bar opens; the bar's own border stands in for the lens's. */}
-        <button
-          type="button"
-          aria-label="Search"
-          onClick={() => {
-            onSubmit()
-            close()
-          }}
-          className="flex h-control-field w-control-field shrink-0 items-center justify-center text-ink"
-        >
-          <Icons.search className="h-5 w-5" aria-hidden="true" />
-        </button>
-      </div>
+      <SearchBar
+        autoFocus
+        value={value}
+        placeholder={placeholder}
+        onValueChange={onValueChange}
+        onSubmit={() => {
+          onSubmit()
+          onClose()
+        }}
+        // Always closes, even with an empty field: the lens hides while the bar
+        // is open, so this is the only way out. A committed search is cleared
+        // from the query line instead.
+        onClear={() => {
+          onClear?.()
+          onClose()
+        }}
+        onEscape={onClose}
+        thumbSrc={thumbSrc}
+        onClearThumb={onClearThumb}
+        onOpenImagePicker={onOpenImagePicker}
+      />
     </div>
   )
 }

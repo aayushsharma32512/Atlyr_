@@ -136,9 +136,9 @@ function SearchPreviewSections() {
       <section className="grid gap-6 rounded-3xl border border-sidebar-border/60 bg-card/80 p-6 shadow-sm">
         <h2 className="text-lg font-semibold">SearchBar (390px)</h2>
         <div className="flex w-[390px] flex-col gap-4 px-4">
-          <SearchBar mode="idle" value="" onValueChange={noop} onSubmit={noop} onPickImage={noop} />
-          <SearchBar mode="results" value="ikat overshirt for a gallery night" onValueChange={noop} onSubmit={noop} onClear={noop} chip="products" onChipChange={noop} onPickImage={noop} onFindItems={noop} />
-          <SearchBar mode="results" value="" onValueChange={noop} onSubmit={noop} onClear={noop} chip="outfits" onChipChange={noop} onPickImage={noop} onFindItems={noop} thumbSrc="https://picsum.photos/seed/thumb/40/40" onClearThumb={noop} />
+          <SearchBar value="" onValueChange={noop} onSubmit={noop} onClear={noop} onPickImage={noop} />
+          <SearchBar value="ikat overshirt for a gallery night" onValueChange={noop} onSubmit={noop} onClear={noop} onPickImage={noop} />
+          <SearchBar value="" onValueChange={noop} onSubmit={noop} onClear={noop} onPickImage={noop} thumbSrc="https://picsum.photos/seed/thumb/40/40" onClearThumb={noop} />
         </div>
       </section>
       <section className="grid gap-6 rounded-3xl border border-sidebar-border/60 bg-card/80 p-6 shadow-sm">

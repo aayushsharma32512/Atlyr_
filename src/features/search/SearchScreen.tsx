@@ -1616,7 +1616,6 @@ export function SearchScreenView() {
 
       <SearchDock>
         <SearchBar
-          mode={isResultsMode ? "results" : "idle"}
           value={searchTerm}
           onValueChange={handleSearchChange}
           onSubmit={() => {
@@ -1628,7 +1627,6 @@ export function SearchScreenView() {
           onClearThumb={handleClearImage}
           onPickImage={handleImageUpload}
           isUploading={isUploading}
-          onFindItems={handleFindItems}
         />
       </SearchDock>
 
