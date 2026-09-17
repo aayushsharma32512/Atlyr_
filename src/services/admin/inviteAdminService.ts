@@ -109,8 +109,10 @@ export type InviteCode = {
   current_uses: number
   expires_at: string | null
   created_at: string
-  metadata: { label?: string | null; issued_by?: string | null } | null
+  metadata: { label?: string | null; issued_by?: string | null; shared_at?: string | null } | null
 }
+
+export type InviteCodeBulkOp = "activate" | "deactivate" | "mark_shared" | "unmark_shared"
 
 export type CreateInviteCodesRequest = {
   count: number
@@ -152,4 +154,8 @@ export async function createInviteCodes(req: CreateInviteCodesRequest): Promise<
 
 export async function setInviteCodeActive(id: string, isActive: boolean): Promise<void> {
   await invokeAdmin<{ ok: boolean }>({ action: "codes_set_active", id, isActive })
+}
+
+export async function bulkUpdateInviteCodes(ids: string[], op: InviteCodeBulkOp): Promise<void> {
+  await invokeAdmin<{ ok: boolean }>({ action: "codes_bulk", ids, op })
 }

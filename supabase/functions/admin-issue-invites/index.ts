@@ -204,6 +204,29 @@ serve(async (req) => {
     }
     return json({ codes: created }, 200)
   }
+  if (action === "codes_bulk") {
+    const ids = Array.isArray(payload?.ids) ? payload.ids.map(String).filter(Boolean).slice(0, 500) : []
+    const op = payload?.op
+    if (!ids.length) return json({ error: "INVALID_IDS" }, 400)
+    if (op === "activate" || op === "deactivate") {
+      const { error } = await ctx.adminClient
+        .from("invite_codes").update({ is_active: op === "activate" }).in("id", ids)
+      if (error) return json({ error: "UPDATE_FAILED", detail: error.message }, 500)
+      return json({ ok: true, count: ids.length }, 200)
+    }
+    if (op === "mark_shared" || op === "unmark_shared") {
+      // metadata is jsonb; merge per row so other keys (label, issued_by) survive.
+      const { data: rows, error } = await ctx.adminClient.from("invite_codes").select("id,metadata").in("id", ids)
+      if (error) return json({ error: "UPDATE_FAILED", detail: error.message }, 500)
+      for (const row of rows ?? []) {
+        const metadata = { ...(row.metadata ?? {}), shared_at: op === "mark_shared" ? new Date().toISOString() : null }
+        const { error: updateError } = await ctx.adminClient.from("invite_codes").update({ metadata }).eq("id", row.id)
+        if (updateError) return json({ error: "UPDATE_FAILED", detail: updateError.message }, 500)
+      }
+      return json({ ok: true, count: rows?.length ?? 0 }, 200)
+    }
+    return json({ error: "INVALID_OP" }, 400)
+  }
   if (action === "codes_set_active") {
     const id = String(payload?.id ?? "")
     if (!id) return json({ error: "INVALID_ID" }, 400)

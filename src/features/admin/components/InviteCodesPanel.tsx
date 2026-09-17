@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react"
-import { Copy, Link2, Loader2, Plus, RefreshCw } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Copy, Link2, Loader2, Plus, RefreshCw, Send } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -8,8 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
-import { useCreateInviteCodes, useInviteCodesQuery, useSetInviteCodeActive } from "@/features/admin/hooks/useInviteCodes"
-import type { InviteCode } from "@/services/admin/inviteAdminService"
+import { useBulkUpdateInviteCodes, useCreateInviteCodes, useInviteCodesQuery, useSetInviteCodeActive } from "@/features/admin/hooks/useInviteCodes"
+import type { InviteCode, InviteCodeBulkOp } from "@/services/admin/inviteAdminService"
 
 type CodeState = "active" | "inactive" | "expired" | "used_up"
 
@@ -40,6 +40,7 @@ export function InviteCodesPanel() {
   const codesQuery = useInviteCodesQuery()
   const createMutation = useCreateInviteCodes()
   const activeMutation = useSetInviteCodeActive()
+  const bulkMutation = useBulkUpdateInviteCodes()
 
   const [count, setCount] = useState("1")
   const [maxUses, setMaxUses] = useState("1")
@@ -48,6 +49,9 @@ export function InviteCodesPanel() {
   const [customCode, setCustomCode] = useState("")
   const [showLegacy, setShowLegacy] = useState(false)
   const [justCreated, setJustCreated] = useState<InviteCode[]>([])
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  // Anchor row for shift-click range selection.
+  const anchorIndex = useRef<number | null>(null)
 
   const copy = async (text: string, what: string) => {
     try {
@@ -85,6 +89,35 @@ export function InviteCodesPanel() {
     [codesQuery.data, showLegacy],
   )
   const legacyCount = (codesQuery.data ?? []).length - (codesQuery.data ?? []).filter((c) => c.type !== "waitlist_invite").length
+
+  // Drop selections that are no longer in view (filter change, refetch).
+  useEffect(() => {
+    const visible = new Set(rows.map((c) => c.id))
+    setSelected((prev) => (Array.from(prev).every((id) => visible.has(id)) ? prev : new Set(Array.from(prev).filter((id) => visible.has(id)))))
+  }, [rows])
+
+  const toggleRow = (index: number, shiftKey: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (shiftKey && anchorIndex.current !== null) {
+        const [from, to] = [anchorIndex.current, index].sort((a, b) => a - b)
+        for (let i = from; i <= to; i++) next.add(rows[i].id)
+      } else {
+        const id = rows[index].id
+        if (next.has(id)) next.delete(id); else next.add(id)
+      }
+      return next
+    })
+    if (!shiftKey) anchorIndex.current = index
+  }
+  const allSelected = rows.length > 0 && rows.every((c) => selected.has(c.id))
+  const selectedRows = rows.filter((c) => selected.has(c.id))
+
+  const runBulk = (op: InviteCodeBulkOp) =>
+    bulkMutation.mutate({ ids: selectedRows.map((c) => c.id), op }, {
+      onSuccess: () => toast({ title: `${selectedRows.length} code${selectedRows.length === 1 ? "" : "s"} updated` }),
+      onError: (err) => toast({ title: "Bulk update failed", description: err.message, variant: "destructive" }),
+    })
 
   return (
     <>
@@ -146,7 +179,12 @@ export function InviteCodesPanel() {
       <Card>
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <CardTitle className="text-sm">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox" aria-label="Select all"
+                checked={allSelected}
+                onChange={() => setSelected(allSelected ? new Set() : new Set(rows.map((c) => c.id)))}
+              />
               Invite codes {rows.length > 0 && <span className="font-normal text-muted-foreground">· {rows.length}</span>}
             </CardTitle>
             <div className="flex items-center gap-2">
@@ -161,6 +199,33 @@ export function InviteCodesPanel() {
               </Button>
             </div>
           </div>
+          {selectedRows.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-3 py-2">
+              <span className="mr-1 text-xs font-medium">{selectedRows.length} selected</span>
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => copy(selectedRows.map((c) => c.code).join("\n"), "codes")}>
+                <Copy className="mr-1 h-3 w-3" /> Copy codes
+              </Button>
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => copy(selectedRows.map((c) => inviteLink(c.code)).join("\n"), "links")}>
+                <Link2 className="mr-1 h-3 w-3" /> Copy links
+              </Button>
+              <Button variant="outline" size="sm" className="h-7 text-xs" disabled={bulkMutation.isPending} onClick={() => runBulk("mark_shared")}>
+                <Send className="mr-1 h-3 w-3" /> Mark shared
+              </Button>
+              <Button variant="outline" size="sm" className="h-7 text-xs" disabled={bulkMutation.isPending} onClick={() => runBulk("unmark_shared")}>
+                Unmark shared
+              </Button>
+              <Button variant="outline" size="sm" className="h-7 text-xs" disabled={bulkMutation.isPending} onClick={() => runBulk("deactivate")}>
+                Deactivate
+              </Button>
+              <Button variant="outline" size="sm" className="h-7 text-xs" disabled={bulkMutation.isPending} onClick={() => runBulk("activate")}>
+                Reactivate
+              </Button>
+              <Button variant="ghost" size="sm" className="ml-auto h-7 text-xs" onClick={() => setSelected(new Set())}>
+                Clear
+              </Button>
+              {bulkMutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {codesQuery.isLoading ? (
@@ -171,22 +236,31 @@ export function InviteCodesPanel() {
             <p className="py-8 text-center text-sm text-muted-foreground">No invite codes yet.</p>
           ) : (
             <div className="flex flex-col divide-y divide-border">
-              {rows.map((c) => {
+              {rows.map((c, index) => {
                 const state = codeState(c)
                 const badge = STATE_BADGE[state]
                 const busy = activeMutation.isPending && activeMutation.variables?.id === c.id
+                const isSelected = selected.has(c.id)
                 return (
-                  <div key={c.id} className="flex items-center gap-3 py-2.5">
+                  <div
+                    key={c.id}
+                    className={cn("flex cursor-pointer select-none items-center gap-3 py-2.5 -mx-2 px-2 rounded-md", isSelected && "bg-muted/60")}
+                    onClick={(e) => toggleRow(index, e.shiftKey)}
+                  >
+                    <input type="checkbox" checked={isSelected} readOnly tabIndex={-1} className="pointer-events-none shrink-0" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="truncate font-mono text-sm font-medium text-foreground">{c.code}</span>
                         <Badge variant="outline" className={cn("shrink-0 text-[10px]", badge.cls)}>{badge.label}</Badge>
+                        {c.metadata?.shared_at && (
+                          <Badge variant="outline" className="shrink-0 text-[10px]" title={`Shared ${formatDate(c.metadata.shared_at)}`}>Shared</Badge>
+                        )}
                       </div>
                       <div className="truncate text-xs text-muted-foreground">
                         {c.metadata?.label || "—"} · {c.current_uses}/{c.max_uses ?? "∞"} used · expires {formatDate(c.expires_at)} · created {formatDate(c.created_at)}
                       </div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-1.5">
+                    <div className="flex shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                       <Button size="icon" variant="outline" className="h-8 w-8" title="Copy code" onClick={() => copy(c.code, "code")}>
                         <Copy className="h-4 w-4" />
                       </Button>
