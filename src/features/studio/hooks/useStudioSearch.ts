@@ -32,6 +32,8 @@ export interface UseStudioSearchReturn {
     handleClearDraftText: () => void
     handleClearAll: () => void
     handleForceSearch: (imageUrl: string) => void
+    /** Commits an image search on a given slot, even one that is not active yet. */
+    forceSearchForSlot: (slot: StudioProductTraySlot, imageUrl: string) => void
     resetForSlot: (slot: StudioProductTraySlot, autoSearchImageUrl: string | null, asDraft?: boolean) => void
 
     // Helpers
@@ -168,6 +170,19 @@ export function useStudioSearch(options: UseStudioSearchOptions = {}): UseStudio
         })
     }, [updateCurrentSlotState])
 
+    const forceSearchForSlot = useCallback((slot: StudioProductTraySlot, imageUrl: string) => {
+        setSlotSearchStates((prev) => ({
+            ...prev,
+            [slot]: {
+                ...(prev[slot] || INITIAL_SLOT_SEARCH_STATE),
+                draftText: "",
+                draftImageUrl: null,
+                committedText: "",
+                committedImageUrl: imageUrl,
+            },
+        }))
+    }, [setSlotSearchStates])
+
     const resetForSlot = useCallback((slot: StudioProductTraySlot, autoSearchImageUrl: string | null, asDraft = false) => {
         // Called on tab switch.
         // If we already have state for this slot, RESUME it (persistence).
@@ -225,6 +240,7 @@ export function useStudioSearch(options: UseStudioSearchOptions = {}): UseStudio
         handleClearDraftText,
         handleClearAll,
         handleForceSearch,
+        forceSearchForSlot,
         resetForSlot,
         seedDraftImage, // New action
         hasActiveSearch,
