@@ -1,6 +1,7 @@
 import { motion } from "framer-motion"
 
 import { WordmarkLockup } from "@/design-system/primitives"
+import { InviteCodeEntry } from "./InviteCodeEntry"
 
 type LandingGateProps = {
   isAuthenticated: boolean
@@ -8,6 +9,8 @@ type LandingGateProps = {
   onWaitlistScroll: () => void
   onSignInClick: () => void
   onEnterApp: () => void
+  /** Code from an invite link (`/?invite=CODE`), already normalized; null when absent. */
+  inviteCode: string | null
 }
 
 /**
@@ -15,19 +18,17 @@ type LandingGateProps = {
  * headline, one terracotta action, and nothing else competing for the eye. The
  * marketing sections still scroll underneath.
  *
- * The canvas also draws an invite-code field and a "peek as a guest" link and
- * annotates them as shipping. Neither is reachable in the app: WaitlistSection
- * carries the whole invite apparatus but never renders the input, and the only
- * caller of signInAsGuest() is AuthScreen, which has no route. Access is granted
- * by email approval (has_app_access(), checked in AuthCallback), not by code. So
- * both are left out rather than shipped as decoration — the waitlist is the real
- * front door, and "already invited" goes to the door that actually opens.
+ * Two doors when signed out: the waitlist, and an invite code. A valid code is
+ * stored and redeemed after Google returns (AuthCallback), which grants access via
+ * has_app_access() alongside email approval. The canvas's "peek as a guest" link is
+ * left out: signInAsGuest() has no routed caller.
  */
 export function LandingGate({
   isAuthenticated,
   onWaitlistScroll,
   onSignInClick,
   onEnterApp,
+  inviteCode,
 }: LandingGateProps) {
   return (
     <div className="relative flex min-h-[100dvh] flex-col items-center justify-center px-8 text-center">
@@ -72,13 +73,16 @@ export function LandingGate({
             Take a look around <span className="text-terracotta">↓</span>
           </button>
         ) : (
-          <button
-            type="button"
-            onClick={onSignInClick}
-            className="mt-fluid-sm text-fluid-md font-medium text-muted-foreground transition-colors hover:text-terracotta"
-          >
-            Already invited? <span className="text-terracotta">Sign in →</span>
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={onSignInClick}
+              className="mt-fluid-sm text-fluid-md font-medium text-muted-foreground transition-colors hover:text-terracotta"
+            >
+              Already invited? <span className="text-terracotta">Sign in →</span>
+            </button>
+            <InviteCodeEntry initialCode={inviteCode} />
+          </>
         )}
       </motion.div>
     </div>

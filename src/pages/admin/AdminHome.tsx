@@ -79,7 +79,7 @@ const GROUPS: Group[] = [
   {
     title: "Tools",
     entries: [
-      { label: "Invites", to: "/admin/invites", blurb: "Issue and track waitlist invites." },
+      { label: "Invites", to: "/admin/invites", blurb: "Approve the waitlist and hand out invite codes." },
       { label: "Enrichment", to: "/admin/enrichment", blurb: "Review enriched product data." },
       { label: "Outfit screener", to: "/admin/outfit-screener", blurb: "Accept or reject generated outfit pairs, theme by theme." },
       { label: "Inventory cleanup", to: "/admin/inventory", blurb: "Delete broken products, hide stale outfits." },

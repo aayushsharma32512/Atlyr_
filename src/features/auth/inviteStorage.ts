@@ -1,3 +1,5 @@
+import { normalizeInviteCode } from "@/features/auth/inviteCode"
+
 const RETURNING_MARKER_KEY = "atlyr_returning_v1"
 const PENDING_INVITE_KEY = "atlyr_pending_invite_code_v1"
 
@@ -26,10 +28,10 @@ export function clearReturningMarker() {
 }
 
 export function setPendingInviteCode(code: string) {
-  const trimmed = code.trim()
-  if (!trimmed) return
+  const normalized = normalizeInviteCode(code)
+  if (!normalized) return
   try {
-    localStorage.setItem(PENDING_INVITE_KEY, trimmed)
+    localStorage.setItem(PENDING_INVITE_KEY, normalized)
   } catch {
     // ignore storage failures
   }
@@ -37,7 +39,7 @@ export function setPendingInviteCode(code: string) {
 
 export function getPendingInviteCode(): string | null {
   try {
-    return localStorage.getItem(PENDING_INVITE_KEY)
+    return normalizeInviteCode(localStorage.getItem(PENDING_INVITE_KEY))
   } catch {
     return null
   }

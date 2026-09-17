@@ -97,3 +97,65 @@ export async function issueWaitlistInvites(payload: InviteIssueRequest): Promise
 
   return data as InviteIssueResponse
 }
+
+// ── Invite codes (shareable codes that grant access without a waitlist approval) ──
+
+export type InviteCode = {
+  id: string
+  code: string
+  type: "beta" | "waitlist_invite" | "special"
+  is_active: boolean
+  max_uses: number | null
+  current_uses: number
+  expires_at: string | null
+  created_at: string
+  metadata: { label?: string | null; issued_by?: string | null; shared_at?: string | null } | null
+}
+
+export type InviteCodeBulkOp = "activate" | "deactivate" | "mark_shared" | "unmark_shared"
+
+export type CreateInviteCodesRequest = {
+  count: number
+  maxUses: number
+  expiresInDays: number | null   // null = never expires
+  label?: string
+  customCode?: string            // vanity code; when set, count is ignored
+}
+
+// Fixed error text per server code so the UI never shows a raw upstream message.
+const CREATE_ERRORS: Record<string, string> = {
+  CODE_TAKEN: "That code already exists.",
+  INVALID_CODE: "Custom codes: 4–24 letters, digits or dashes.",
+  INVALID_COUNT: "Count must be between 1 and 200.",
+  INVALID_MAX_USES: "Max uses must be at least 1.",
+  INVALID_EXPIRY: "Expiry must be a positive number of days.",
+}
+
+async function invokeAdmin<T>(body: Record<string, unknown>): Promise<T> {
+  const { data, error } = await supabase.functions.invoke("admin-issue-invites", { body })
+  if (error) {
+    // supabase-js hides the JSON body on non-2xx; read it back to map the server's error code.
+    const ctx = (error as { context?: Response }).context
+    const serverError = ctx ? await ctx.clone().json().then((b) => b?.error).catch(() => null) : null
+    throw new Error(CREATE_ERRORS[serverError] ?? error.message)
+  }
+  return data as T
+}
+
+export async function listInviteCodes(): Promise<InviteCode[]> {
+  const res = await invokeAdmin<{ codes?: InviteCode[] }>({ action: "codes_list" })
+  return res?.codes ?? []
+}
+
+export async function createInviteCodes(req: CreateInviteCodesRequest): Promise<InviteCode[]> {
+  const res = await invokeAdmin<{ codes?: InviteCode[] }>({ action: "codes_create", ...req })
+  return res?.codes ?? []
+}
+
+export async function setInviteCodeActive(id: string, isActive: boolean): Promise<void> {
+  await invokeAdmin<{ ok: boolean }>({ action: "codes_set_active", id, isActive })
+}
+
+export async function bulkUpdateInviteCodes(ids: string[], op: InviteCodeBulkOp): Promise<void> {
+  await invokeAdmin<{ ok: boolean }>({ action: "codes_bulk", ids, op })
+}

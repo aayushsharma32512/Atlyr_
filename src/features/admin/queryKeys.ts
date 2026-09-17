@@ -5,4 +5,5 @@ export const adminKeys = {
   issueInvites: () => [...adminKeys.all, "issue-invites"] as const,
   waitlist: () => [...adminKeys.all, "waitlist"] as const,
   waitlistTab: (tab: WaitlistTab) => [...adminKeys.waitlist(), tab] as const,
+  inviteCodes: () => [...adminKeys.all, "invite-codes"] as const,
 }

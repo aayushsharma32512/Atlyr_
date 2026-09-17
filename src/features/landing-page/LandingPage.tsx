@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { LandingHeader } from "./components/LandingHeader";
 import { LandingGate } from "./components/LandingGate";
+import { normalizeInviteCode } from "@/features/auth/inviteCode";
 import { HeroSection } from "./components/HeroSection";
 import { HeroPreview } from "./components/HeroPreview";
 import { AISection } from "./components/AISection";
@@ -103,6 +104,7 @@ export default function LandingPage() {
   // LandingHeader were unreachable until now.
 
   const isAuthenticated = Boolean(user);
+  const inviteCode = useMemo(() => normalizeInviteCode(searchParams.get("invite")), [searchParams]);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const topSentinelRef = useRef<HTMLDivElement>(null);
   const [isScrollable, setIsScrollable] = useState(false);
@@ -164,6 +166,7 @@ export default function LandingPage() {
             onWaitlistScroll={handleWaitlistScroll}
             onSignInClick={handleSignInClick}
             onEnterApp={() => navigate("/app")}
+            inviteCode={inviteCode}
           />
         </section>
 

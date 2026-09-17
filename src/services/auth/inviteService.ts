@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client"
+import { normalizeInviteCode } from "@/features/auth/inviteCode"
 
 export type InviteCodeType = "beta" | "waitlist_invite" | "special"
 
@@ -16,12 +17,15 @@ export type RedeemInviteResult = {
 }
 
 async function validateInviteCode(code: string): Promise<InviteValidationResult> {
-  const trimmed = code.trim()
-  if (!trimmed) {
+  if (!code.trim()) {
     return { valid: false, error: "INVITE_REQUIRED" }
   }
+  const normalized = normalizeInviteCode(code)
+  if (!normalized) {
+    return { valid: false, error: "INVITE_INVALID_FORMAT" }
+  }
 
-  const { data, error } = await supabase.rpc("validate_invite_code", { p_code: trimmed })
+  const { data, error } = await supabase.rpc("validate_invite_code", { p_code: normalized })
   if (error) {
     throw new Error(error.message)
   }
@@ -35,12 +39,12 @@ async function validateInviteCode(code: string): Promise<InviteValidationResult>
 }
 
 async function redeemInvite(code: string): Promise<RedeemInviteResult> {
-  const trimmed = code.trim()
-  if (!trimmed) {
-    return { success: false, error: "INVITE_REQUIRED" }
+  const normalized = normalizeInviteCode(code)
+  if (!normalized) {
+    return { success: false, error: code.trim() ? "INVITE_INVALID_FORMAT" : "INVITE_REQUIRED" }
   }
 
-  const { data, error } = await supabase.rpc("redeem_invite", { p_code: trimmed })
+  const { data, error } = await supabase.rpc("redeem_invite", { p_code: normalized })
   if (error) {
     throw new Error(error.message)
   }

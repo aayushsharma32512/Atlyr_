@@ -61,6 +61,7 @@ const FigurePreview = lazy(() => import("./pages/FigurePreview.tsx"));
 const AdminHome = lazy(() => import("./pages/admin/AdminHome.tsx"));
 const LoginPage = lazy(() => import("./pages/LoginPage.tsx"));
 const AuthCallback = lazy(() => import("./pages/AuthCallback.tsx"));
+const InviteCodePage = lazy(() => import("./pages/InviteCodePage.tsx"));
 const VisualSearchTestScreen = lazy(() => import("@/features/visual-search/VisualSearchTestScreen"));
 const InspirationImport = lazy(() => import("@/pages/InspirationImport"));
 
@@ -206,6 +207,7 @@ const App = () => (
                     <Route path="/auth/login" element={<LoginPage />} />
                     <Route path="/auth/signup" element={<LoginPage />} />
                     <Route path="/auth/callback" element={<AuthCallback />} />
+                    <Route path="/auth/invite" element={<InviteCodePage />} />
                     <Route path="/visual-search-test" element={<VisualSearchTestScreen />} />
                     <Route
                       path="/inspiration-import/:importId?"

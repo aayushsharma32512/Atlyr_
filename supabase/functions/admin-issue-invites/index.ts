@@ -13,9 +13,18 @@ function parseEmails(raw: string[]) {
   )
 }
 
+// Short, typeable codes: no 0/O/1/I so a code read out over the phone survives.
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 function generateInviteCode() {
-  const suffix = crypto.randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()
-  return `ATLYR_${suffix}`
+  const bytes = crypto.getRandomValues(new Uint8Array(6))
+  const suffix = Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("")
+  return `ATLYR-${suffix}`
+}
+
+// Admin-typed vanity codes: uppercase letters, digits and dashes only, 4-24 chars.
+function normalizeCustomCode(raw: unknown) {
+  const code = String(raw ?? "").trim().toUpperCase()
+  return /^[A-Z0-9-]{4,24}$/.test(code) ? code : null
 }
 
 function json(body: unknown, status = 200) {
@@ -141,6 +150,92 @@ serve(async (req) => {
       results.push({ email: em, status: error ? "update_failed" : "invited", ...(error ? { reason: error.message } : {}) })
     }
     return json({ ok: true, action, results }, 200)
+  }
+
+  // ── Invite-code actions: list / create / activate-deactivate ─────────────
+  if (action === "codes_list") {
+    const { data, error } = await ctx.adminClient
+      .from("invite_codes")
+      .select("id,code,type,is_active,max_uses,current_uses,expires_at,created_at,metadata")
+      .order("created_at", { ascending: false })
+      .limit(500)
+    if (error) return json({ error: "LIST_FAILED", detail: error.message }, 500)
+    return json({ codes: data ?? [] }, 200)
+  }
+  if (action === "codes_create") {
+    const customCode = payload?.customCode != null && String(payload.customCode).trim() !== ""
+      ? normalizeCustomCode(payload.customCode)
+      : undefined
+    if (customCode === null) return json({ error: "INVALID_CODE" }, 400)
+    const count = customCode ? 1 : Math.floor(Number(payload?.count ?? 1))
+    if (!Number.isFinite(count) || count < 1 || count > 200) return json({ error: "INVALID_COUNT" }, 400)
+    const maxUses = payload?.maxUses == null ? 1 : Math.floor(Number(payload.maxUses))
+    if (!Number.isFinite(maxUses) || maxUses < 1) return json({ error: "INVALID_MAX_USES" }, 400)
+    // null expiresInDays = never expires; otherwise a positive number of days.
+    const expiresInDays = payload?.expiresInDays == null ? null : Number(payload.expiresInDays)
+    if (expiresInDays !== null && (!Number.isFinite(expiresInDays) || expiresInDays <= 0)) {
+      return json({ error: "INVALID_EXPIRY" }, 400)
+    }
+    const label = String(payload?.label ?? "").trim().slice(0, 80) || null
+    const expiresAt = expiresInDays === null ? null : new Date(Date.now() + expiresInDays * 86400000).toISOString()
+
+    const created = []
+    for (let i = 0; i < count; i++) {
+      // A random collision is a one-in-a-billion event; retry once instead of failing the batch.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const code = customCode ?? generateInviteCode()
+        const { data, error } = await ctx.adminClient
+          .from("invite_codes")
+          .insert({
+            code,
+            type: "beta",
+            is_active: true,
+            max_uses: maxUses,
+            expires_at: expiresAt,
+            created_by: ctx.userId,
+            metadata: { label, issued_by: email },
+          })
+          .select("id,code,type,is_active,max_uses,current_uses,expires_at,created_at,metadata")
+          .single()
+        if (!error) { created.push(data); break }
+        if (error.code === "23505" && customCode) return json({ error: "CODE_TAKEN" }, 409)
+        if (error.code !== "23505" || attempt === 1) return json({ error: "CREATE_FAILED", detail: error.message, created }, 500)
+      }
+    }
+    return json({ codes: created }, 200)
+  }
+  if (action === "codes_bulk") {
+    const ids = Array.isArray(payload?.ids) ? payload.ids.map(String).filter(Boolean).slice(0, 500) : []
+    const op = payload?.op
+    if (!ids.length) return json({ error: "INVALID_IDS" }, 400)
+    if (op === "activate" || op === "deactivate") {
+      const { error } = await ctx.adminClient
+        .from("invite_codes").update({ is_active: op === "activate" }).in("id", ids)
+      if (error) return json({ error: "UPDATE_FAILED", detail: error.message }, 500)
+      return json({ ok: true, count: ids.length }, 200)
+    }
+    if (op === "mark_shared" || op === "unmark_shared") {
+      // metadata is jsonb; merge per row so other keys (label, issued_by) survive.
+      const { data: rows, error } = await ctx.adminClient.from("invite_codes").select("id,metadata").in("id", ids)
+      if (error) return json({ error: "UPDATE_FAILED", detail: error.message }, 500)
+      for (const row of rows ?? []) {
+        const metadata = { ...(row.metadata ?? {}), shared_at: op === "mark_shared" ? new Date().toISOString() : null }
+        const { error: updateError } = await ctx.adminClient.from("invite_codes").update({ metadata }).eq("id", row.id)
+        if (updateError) return json({ error: "UPDATE_FAILED", detail: updateError.message }, 500)
+      }
+      return json({ ok: true, count: rows?.length ?? 0 }, 200)
+    }
+    return json({ error: "INVALID_OP" }, 400)
+  }
+  if (action === "codes_set_active") {
+    const id = String(payload?.id ?? "")
+    if (!id) return json({ error: "INVALID_ID" }, 400)
+    const { error } = await ctx.adminClient
+      .from("invite_codes")
+      .update({ is_active: Boolean(payload?.isActive) })
+      .eq("id", id)
+    if (error) return json({ error: "UPDATE_FAILED", detail: error.message }, 500)
+    return json({ ok: true }, 200)
   }
 
   const mode = payload?.mode
