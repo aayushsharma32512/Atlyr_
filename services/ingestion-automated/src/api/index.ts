@@ -47,7 +47,8 @@ export async function buildApp(boss: BossHandle) {
   const app = Fastify({ logger: false, bodyLimit: 25 * 1024 * 1024 });
 
   await app.register(fastifyCors, {
-    origin: ['https://atlyr.app', 'http://localhost:8080'],
+    // Any localhost port: Vite picks the next free port when 8080 is busy.
+    origin: ['https://atlyr.app', /^http:\/\/localhost:\d+$/],
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
