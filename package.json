@@ -63,8 +63,10 @@
     "@radix-ui/react-toggle-group": "^1.1.0",
     "@radix-ui/react-tooltip": "^1.1.4",
     "@supabase/supabase-js": "^2.52.1",
+    "@tanstack/query-sync-storage-persister": "5.90.10",
     "@tanstack/react-query": "^5.83.0",
     "@tanstack/react-query-devtools": "^5.83.0",
+    "@tanstack/react-query-persist-client": "5.90.10",
     "axios": "^1.12.2",
     "browserslist": "^4.28.1",
     "caniuse-lite": "^1.0.30001805",
@@ -134,5 +136,8 @@
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.0.1",
     "vite": "^5.4.1"
+  },
+  "overrides": {
+    "@tanstack/query-core": "5.90.10"
   }
 }
