@@ -112,6 +112,22 @@ export function useImportWebResults(
   }))
 }
 
+export function useInspirationWebRequests() {
+  return useQuery({
+    queryKey: inspirationImportKeys.webRequests(),
+    queryFn: () => inspirationImportService.listWebRequests(),
+    staleTime: 30_000,
+  })
+}
+
+export function useMarkInspirationWebRequest() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { selectionId: string; ingestionJobId: string }) => inspirationImportService.markWebRequestQueued(input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: inspirationImportKeys.webRequests() }),
+  })
+}
+
 export function useAddImportWebSelections(importId: string) {
   const queryClient = useQueryClient()
   return useMutation({

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Download, Loader2, UploadCloud } from 'lucide-react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -36,14 +36,17 @@ const EMPTY: SubmitJobBody = {
 type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Prefills the single-item form each time the dialog opens. */
+  initial?: Partial<SubmitJobBody>
   onSuccess: (jobId: string) => void
   onDuplicate: (existingJobId: string) => void
   /** Called as a bulk run progresses so the queue behind the dialog stays current. */
   onProgress?: () => void
 }
 
-export function AddItemDialog({ open, onOpenChange, onSuccess, onDuplicate, onProgress }: Props) {
-  const [form, setForm] = useState<SubmitJobBody>(EMPTY)
+export function AddItemDialog({ open, onOpenChange, initial, onSuccess, onDuplicate, onProgress }: Props) {
+  const [form, setForm] = useState<SubmitJobBody>({ ...EMPTY, ...initial })
+  useEffect(() => { if (open) setForm({ ...EMPTY, ...initial }) }, [open, initial])
   const [loading, setLoading] = useState(false)
   const { toast } = useToast()
   const { notify, dialog } = useNotWiredDialog()
