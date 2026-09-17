@@ -10,7 +10,7 @@ export interface ProductTileProps {
   /** `small` drops the footer. The pin follows `mark` either way. */
   size?: "default" | "small"
   saved?: boolean
-  /** Already worn — 2px ink outline, nothing else; does not respond to taps. */
+  /** Already worn — 2px ink outline. A tap still fires `onSelect` so the caller can take it off. */
   worn?: boolean
   /** Show the pin. Default true. */
   mark?: boolean
@@ -62,7 +62,7 @@ export function ProductTile({
   bottomLeftOverlay,
 }: ProductTileProps) {
   const small = size === "small"
-  const interactive = Boolean(onSelect) && !worn
+  const interactive = Boolean(onSelect)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const longPressFired = useRef(false)
 

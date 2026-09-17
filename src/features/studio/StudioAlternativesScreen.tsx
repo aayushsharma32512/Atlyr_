@@ -938,6 +938,38 @@ export function StudioAlternativesView() {
         return
       }
 
+      // Tapping the worn tile takes the piece off — the same hide as the × on the Studio row.
+      if (resolvedOutfitId && !hiddenSlots[slot] && product.id === activeSlotIds[slot]) {
+        const nextHiddenSlots = { ...parsedParams.hiddenSlots, [slot]: true }
+        setPendingStudioComboChange({ change_type: "hide_slot", slot })
+        setSearchParams(
+          buildStudioSearchParams({
+            outfitId: resolvedOutfitId,
+            slot,
+            slotIds: activeSlotIds,
+            productId: product.id,
+            share: parsedParams.share,
+            hiddenSlots: nextHiddenSlots,
+            source,
+          }),
+          { replace: true },
+        )
+        recordChange({
+          outfitId: resolvedOutfitId,
+          slotIds: {
+            top: activeSlotIds.top ?? null,
+            bottom: activeSlotIds.bottom ?? null,
+            shoes: activeSlotIds.shoes ?? null,
+          },
+          hiddenSlots: {
+            top: Boolean(nextHiddenSlots.top),
+            bottom: Boolean(nextHiddenSlots.bottom),
+            shoes: Boolean(nextHiddenSlots.shoes),
+          },
+        })
+        return
+      }
+
       if (
         !Number.isFinite(product.placementX) ||
         !Number.isFinite(product.placementY) ||
@@ -1006,6 +1038,7 @@ export function StudioAlternativesView() {
     },
     [
       activeSlotIds,
+      hiddenSlots,
       isViewOnly,
       isAdminMode,
       recordChange,

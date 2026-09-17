@@ -32,3 +32,18 @@ export function useProfileUpdateMutation() {
     },
   })
 }
+
+/** Auth emits USER_UPDATED after the upload, so the new photo reaches `useAuth().user` on its own. */
+export function useProfilePhotoMutation() {
+  const { user } = useAuth()
+
+  return useMutation({
+    mutationKey: profileKeys.photo(user?.id ?? null),
+    mutationFn: (file: File) => {
+      if (!user?.id) {
+        throw new Error("Cannot upload a photo without an authenticated user")
+      }
+      return profileService.uploadProfilePhoto(user.id, file)
+    },
+  })
+}
