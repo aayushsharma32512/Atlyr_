@@ -37,7 +37,7 @@ import { useStudioResolvedSlots } from "@/features/studio/hooks/useStudioResolve
 import { isPlaceableOnMannequin, shouldFilterSlotByPlacement } from "@/features/studio/utils/placementSupport"
 import { mapTrayItemToStudioRenderedItem } from "@/features/studio/mappers/renderedItemMapper"
 import { isDressTop, STUDIO_BASE_ITEMS_ENABLED, usePlaceholderItems } from "@/features/studio/hooks/usePlaceholderItems"
-import { mapTrayItemToProductDetail } from "@/services/studio/studioService"
+import { mapTrayItemToAlternative, mapTrayItemToProductDetail } from "@/services/studio/studioService"
 import { useSaveOutfit } from "@/features/outfits/hooks/useSaveOutfit"
 import { useCreateDraftOutfit } from "@/features/outfits/hooks/useCreateDraftOutfit"
 import { useFindOutfitByItems } from "@/features/outfits/hooks/useFindOutfitByItems"
@@ -233,6 +233,8 @@ export function StudioAlternativesView() {
     setSearchProductId(currentSlotProductId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slot]) // Intentionally NOT including currentSlotProductId — only re-lock on slot change
+  // The worn piece seeds the rack once per slot; picking an alternative must not re-run it.
+  const seededImageRef = useRef<Partial<Record<StudioProductTraySlot, string>>>({})
 
   // Cold start: no outfit exists yet in this session — show product tray immediately
   // so the user can browse and add items to create their first outfit.
@@ -253,17 +255,21 @@ export function StudioAlternativesView() {
   const prevSlotRef = useRef<StudioProductTraySlot>(slot)
   const isInitializedRef = useRef(false)
 
-  // --- INITIALIZATION FLOW: Auto-search on mount or tab change ---
+  // --- INITIALIZATION FLOW: the worn piece's image seeds a similarity search on mount or tab change ---
   useEffect(() => {
-    // Auto image-similarity (embedding) search is disabled for now — we always seed with no image so
-    // the grid shows all products for the slot (fallback query) instead of the "N results for image
-    // search" set. Re-enable later by passing `currentSlotImageUrl` again. Manual text search still works.
     if (prevSlotRef.current !== slot) {
-      search.resetForSlot(slot, null, isAdminMode)
+      search.resetForSlot(slot, currentSlotImageUrl, isAdminMode)
       prevSlotRef.current = slot
     } else if (!isInitializedRef.current) {
       isInitializedRef.current = true
-      search.resetForSlot(slot, null, isAdminMode)
+      search.resetForSlot(slot, currentSlotImageUrl, isAdminMode)
+    } else if (currentSlotImageUrl && !seededImageRef.current[slot] && !search.hasActiveSearch && !isAdminMode) {
+      // The outfit resolved after the slot was initialised empty: seed it now.
+      setSearchProductId(currentSlotProductId)
+      search.handleForceSearch(currentSlotImageUrl)
+    }
+    if (currentSlotImageUrl && !seededImageRef.current[slot]) {
+      seededImageRef.current[slot] = currentSlotImageUrl
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slot, currentSlotImageUrl, isAdminMode])
@@ -280,10 +286,7 @@ export function StudioAlternativesView() {
     allowEmptySearch: isAdminMode || isColdStart, // Allow fetching all items on cold start or in admin mode
   })
 
-  /**
-   * Whatever the search returned, in that order. No sort and no pinning the
-   * worn piece to the front — it is marked in place instead.
-   */
+  /** Whatever the search returned, in that order; the worn piece is pinned to the front below. */
   const alternativeProducts = useMemo(
     () =>
       selectRackProducts({
@@ -355,14 +358,24 @@ export function StudioAlternativesView() {
         : items
     }
 
-    return shouldFilterSlotByPlacement(slot)
+    const products = shouldFilterSlotByPlacement(slot)
       ? filteredAlternativeProducts.filter((product) => isPlaceableOnMannequin(product, mannequin))
       : filteredAlternativeProducts
+
+    // The worn piece leads the rack, injected from the tray when the search left it out.
+    const wornId = hiddenSlots[slot] ? null : activeSlotIds[slot] ?? null
+    if (!wornId) return products
+    const wornTrayItem = resolvedTrayItems.find((item) => item.slot === slot && item.productId === wornId)
+    const worn = products.find((product) => product.id === wornId) ?? (wornTrayItem ? mapTrayItemToAlternative(wornTrayItem) : null)
+    return worn ? [worn, ...products.filter((product) => product.id !== wornId)] : products
   }, [
+    activeSlotIds,
     adminGender,
     filteredAlternativeProducts,
     gender,
+    hiddenSlots,
     outfitData?.avatarGender,
+    resolvedTrayItems,
     savesAlternativesQuery.data,
     slot,
     source,
@@ -1278,10 +1291,12 @@ export function StudioAlternativesView() {
   const queryLine = useMemo(() => {
     if (search.committedText) return `"${search.committedText}"`
     if (search.committedImageUrl) {
-      return search.committedImageUrl === currentSlotImageUrl ? "Similar to this item" : "Similar to your photo"
+      const isSeededByWornPiece =
+        search.committedImageUrl === currentSlotImageUrl || search.committedImageUrl === seededImageRef.current[slot]
+      return isSeededByWornPiece ? "Similar to this item" : "Similar to your photo"
     }
     return null
-  }, [currentSlotImageUrl, search.committedImageUrl, search.committedText])
+  }, [currentSlotImageUrl, search.committedImageUrl, search.committedText, slot])
 
   const emptyLabel =
     source === "wardrobe"
@@ -1313,9 +1328,11 @@ export function StudioAlternativesView() {
           avatarHeightCm={outfitData?.avatarHeightCm ?? 170}
           cardClassName="h-full w-full"
           allowEmptyMannequin={isAdminMode || !STUDIO_BASE_ITEMS_ENABLED}
-          // A tap on a garment opens the focus view — Studio's, with the rack collapsed.
+          // A garment tap switches the rack to that slot; only inside the focus view does it move the zoom.
           onItemSelect={(item) => {
-            if (isStudioSlot(item.type)) enterFocus(item.type)
+            if (!isStudioSlot(item.type)) return
+            if (focus) enterFocus(item.type)
+            else handleCategoryChange(item.type)
           }}
           onAvatarReady={setAvatarReady}
           avatarRef={snapshotRef}
@@ -1334,7 +1351,9 @@ export function StudioAlternativesView() {
           cardClassName="h-full w-full"
           allowEmptyMannequin
           onItemSelect={(item) => {
-            if (isStudioSlot(item.type)) enterFocus(item.type)
+            if (!isStudioSlot(item.type)) return
+            if (focus) enterFocus(item.type)
+            else handleCategoryChange(item.type)
           }}
           onSlotSelect={(nextSlot) => handleCategoryChange(nextSlot)}
           onAvatarReady={setAvatarReady}
