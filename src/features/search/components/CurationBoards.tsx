@@ -6,14 +6,14 @@ import type { SearchBrowseCollection } from "@/services/search/searchService"
 
 /** Studio's frame, fitted by height, keeps each figure head to toe in its cell. */
 const FIGURE_FRAME_ASPECT = `${CANONICAL_HERO_RENDER_BOX.width} / ${CANONICAL_HERO_RENDER_BOX.height}`
+/** Two frames side by side, so the portrait cover fits both figures exactly. */
+const COVER_STYLE = { aspectRatio: `${CANONICAL_HERO_RENDER_BOX.width * 2} / ${CANONICAL_HERO_RENDER_BOX.height}` }
 const CARD = "w-[112px] shrink-0"
 
 type Gender = "male" | "female"
 
 interface CurationBoardCardProps {
   board: SearchBrowseCollection
-  /** 2 = two tall figures side by side (the rail); 4 = the 2x2 collage (the page). */
-  cells: 2 | 4
   gender: Gender
   heightCm: number
   onSelect: () => void
@@ -21,17 +21,17 @@ interface CurationBoardCardProps {
 }
 
 /**
- * A curation as a board: a collage of its first looks, then its name and count
- * — the same card the Boards tab draws for a moodboard, so a curation reads as
- * a board you could save to. Empty cells are the ground: no grey, no gridlines.
+ * A curation as a board: its first two looks side by side, then its name and
+ * count — the same card the Boards tab draws for a moodboard, so a curation
+ * reads as a board you could save to. An empty cell is the ground: no grey.
  */
-function CurationBoardCard({ board, cells, gender, heightCm, onSelect, className }: CurationBoardCardProps) {
-  const looks = board.outfits.slice(0, cells)
-  const fillers = Array.from({ length: Math.max(0, cells - looks.length) })
+function CurationBoardCard({ board, gender, heightCm, onSelect, className }: CurationBoardCardProps) {
+  const looks = board.outfits.slice(0, 2)
+  const fillers = Array.from({ length: Math.max(0, 2 - looks.length) })
   return (
     <button type="button" role="listitem" onClick={onSelect} className={cn("flex flex-col gap-1.5 text-left", className)}>
-      <div className="relative aspect-square w-full overflow-hidden rounded-lg border border-hairline bg-background">
-        <div className={cn("absolute inset-0 grid grid-cols-2 bg-background", cells === 4 ? "grid-rows-2" : "grid-rows-1")}>
+      <div className="relative w-full overflow-hidden rounded-lg border border-hairline bg-background" style={COVER_STYLE}>
+        <div className="absolute inset-0 grid grid-cols-2 bg-background">
           {looks.map((entry) => (
             <div key={entry.id} className="flex min-h-0 min-w-0 items-center justify-center overflow-hidden bg-background">
               <div className="h-full" style={{ aspectRatio: FIGURE_FRAME_ASPECT }}>
@@ -68,7 +68,7 @@ interface CurationBoardsProps {
   onOpenBoard: (board: SearchBrowseCollection) => void
 }
 
-/** The Search rail: 112px cards, two tall looks per cover. */
+/** The Search rail: 112px portrait cards, two tall looks per cover. */
 export function CurationBoards({ title, boards, isLoading, gender, heightCm, onOpenList, onOpenBoard }: CurationBoardsProps) {
   const isEmpty = !isLoading && boards.length === 0
 
@@ -89,13 +89,12 @@ export function CurationBoards({ title, boards, isLoading, gender, heightCm, onO
         <div className="flex gap-2 overflow-x-auto py-0.5 scrollbar-hide" role="list" aria-label={title}>
           {isLoading
             ? Array.from({ length: 3 }).map((_, i) => (
-                <span key={i} role="listitem" className={`skeleton-shimmer aspect-square rounded-lg ${CARD}`} />
+                <span key={i} role="listitem" className={`skeleton-shimmer rounded-lg ${CARD}`} style={COVER_STYLE} />
               ))
             : boards.map((board) => (
                 <CurationBoardCard
                   key={board.categoryId}
                   board={board}
-                  cells={2}
                   gender={gender}
                   heightCm={heightCm}
                   onSelect={() => onOpenBoard(board)}
@@ -129,7 +128,7 @@ export function CurationBoardsPage({ boards, isLoading, gender, heightCm, onBack
         <button type="button" aria-label="Back" onClick={onBack} className="flex h-10 w-10 items-center justify-center text-ink">
           <Icons.carouselPrev className="h-5 w-5" aria-hidden="true" />
         </button>
-        <h1 className="min-w-0 flex-1 truncate font-display text-title font-medium text-ink">Atlyr curations</h1>
+        <h1 className="min-w-0 flex-1 truncate font-display text-title font-medium text-ink">Curations</h1>
         <span className="pr-2 text-chip text-taupe">this week</span>
       </header>
       <SectionHeader
@@ -140,13 +139,12 @@ export function CurationBoardsPage({ boards, isLoading, gender, heightCm, onBack
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4" role="list" aria-label="Curations">
         {isLoading
           ? Array.from({ length: 4 }).map((_, i) => (
-              <span key={i} role="listitem" className="skeleton-shimmer aspect-square w-full rounded-lg" />
+              <span key={i} role="listitem" className="skeleton-shimmer w-full rounded-lg" style={COVER_STYLE} />
             ))
           : boards.map((board) => (
               <CurationBoardCard
                 key={board.categoryId}
                 board={board}
-                cells={4}
                 gender={gender}
                 heightCm={heightCm}
                 onSelect={() => onOpenBoard(board)}

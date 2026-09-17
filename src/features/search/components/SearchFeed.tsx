@@ -19,7 +19,7 @@ interface SearchFeedProps {
   handlers: FeedHandlers
 }
 
-/** Hot Styles · Atlyr Curations · For You, for the active scope. */
+/** Hot Styles · Curations · For You, for the active scope. */
 export function SearchFeed({ sections, heightCm, onOpenList, onOpenBoard, onPersonalise, handlers }: SearchFeedProps) {
   const { forYou } = sections
   const sentinelRef = useRef<HTMLDivElement | null>(null)
@@ -42,7 +42,7 @@ export function SearchFeed({ sections, heightCm, onOpenList, onOpenBoard, onPers
         {/* Curations are boards here, not loose looks. Tapping a board opens
             its looks; the per-curation deep-dive page is parked. */}
         <CurationBoards
-          title="Atlyr curations"
+          title="Curations"
           boards={sections.boards}
           isLoading={sections.boardsLoading}
           gender={sections.gender}
@@ -54,7 +54,7 @@ export function SearchFeed({ sections, heightCm, onOpenList, onOpenBoard, onPers
     ) : (
       <>
         <SearchRail kind="pieces" title="Hot styles" section={sections.hot} heightCm={heightCm} onOpenList={() => onOpenList("hot")} handlers={handlers} />
-        <SearchRail kind="pieces" title="Atlyr curations" section={sections.curations} heightCm={heightCm} onOpenList={() => onOpenList("curations")} handlers={handlers} />
+        <SearchRail kind="pieces" title="Curations" section={sections.curations} heightCm={heightCm} onOpenList={() => onOpenList("curations")} handlers={handlers} />
       </>
     )
 
