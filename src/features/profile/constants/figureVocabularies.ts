@@ -20,11 +20,11 @@ export interface HeightBand extends PickTile {
 }
 
 export const HEIGHT_BANDS: HeightBand[] = [
-  { id: "h_lt152", label: "< 5'0\"", sublabel: "<152 cm", cm: 148, minCm: 0, maxCm: 151 },
-  { id: "h_152_160", label: "5'0\"–5'3\"", sublabel: "152–160", cm: 156, minCm: 152, maxCm: 160 },
-  { id: "h_161_168", label: "5'4\"–5'6\"", sublabel: "161–168", cm: 165, minCm: 161, maxCm: 168 },
-  { id: "h_169_176", label: "5'7\"–5'9\"", sublabel: "169–176", cm: 173, minCm: 169, maxCm: 176 },
-  { id: "h_177p", label: "5'10\"+", sublabel: "177+", cm: 180, minCm: 177, maxCm: Number.MAX_SAFE_INTEGER },
+  { id: "h_lt152", label: "<5'0", sublabel: "<152 cm", cm: 148, minCm: 0, maxCm: 151 },
+  { id: "h_152_160", label: "5'0–5'3", sublabel: "152–160", cm: 156, minCm: 152, maxCm: 160 },
+  { id: "h_161_168", label: "5'4–5'6", sublabel: "161–168", cm: 165, minCm: 161, maxCm: 168 },
+  { id: "h_169_176", label: "5'7–5'9", sublabel: "169–176", cm: 173, minCm: 169, maxCm: 176 },
+  { id: "h_177p", label: "5'10+", sublabel: "177+", cm: 180, minCm: 177, maxCm: Number.MAX_SAFE_INTEGER },
 ]
 
 /**
@@ -59,7 +59,6 @@ export const SIZES: PickTile[] = [
   { id: "l", label: "L" },
   { id: "xl", label: "XL" },
   { id: "xxl", label: "XXL" },
-  { id: "unknown", label: "not sure", dashed: true },
 ]
 
 export const GENDERS: PickTile[] = [
