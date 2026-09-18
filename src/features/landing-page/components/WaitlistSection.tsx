@@ -3,13 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { gsap } from "gsap";
-import {
-  getCountries,
-  getCountryCallingCode,
-  parsePhoneNumberFromString,
-  type CountryCode,
-} from "libphonenumber-js";
+import type { CountryCode } from "libphonenumber-js";
 import { CheckCircle, AlertCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -24,20 +18,26 @@ import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
 import { cn } from "@/lib/utils";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { useToast } from "@/hooks/use-toast";
 import { setPendingInviteCode } from "@/features/auth/inviteStorage";
 import { useValidateInviteMutation } from "@/features/auth/hooks/useInviteAccess";
 import { useWaitlistSubmissionMutation } from "@/features/auth/hooks/useWaitlist";
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext";
 
 const EYEBROW = "By invitation, for now";
+type PhoneLib = typeof import("libphonenumber-js");
+let phoneLib: PhoneLib | null = null;
+let phoneLibPromise: Promise<PhoneLib> | null = null;
+// The phone library is a third of this page's chunk and only matters once someone types a number.
+const loadPhoneLib = () => (phoneLibPromise ??= import("libphonenumber-js").then((lib) => (phoneLib = lib)));
+
 const HEADLINE_LEAD = "Get in";
 const HEADLINE_ACCENT = "early";
 const SUBLINE =
   "Atlyr opens in small circles. Leave your details and we will reach out on WhatsApp when your spot is ready.";
 const CARD_TITLE = "Your details";
 const SUBMIT_LABEL = "Join the waitlist";
-const SUCCESS_HEADLINE = "You are on the list.";
+const SUCCESS_LEAD = "Added to";
+const SUCCESS_ACCENT = "waitlist";
 const SUCCESS_LINE = "We will message you on WhatsApp when your spot opens.";
 
 const waitlistSchema = z
@@ -51,8 +51,8 @@ const waitlistSchema = z
     phoneNumber: z.string().min(1, "Enter a phone number"),
   })
   .superRefine((values, ctx) => {
-    if (!values.phoneCountry || !values.phoneNumber) return;
-    const phone = parsePhoneNumberFromString(
+    if (!values.phoneCountry || !values.phoneNumber || !phoneLib) return;
+    const phone = phoneLib.parsePhoneNumberFromString(
       values.phoneNumber,
       values.phoneCountry as CountryCode,
     );
@@ -91,7 +91,6 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
   const [searchParams] = useSearchParams();
   const analytics = useEngagementAnalytics();
 
-  const [formMessage, setFormMessage] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showInviteInput, setShowInviteInput] = useState(false);
@@ -100,22 +99,25 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
   const [inviteChecking, setInviteChecking] = useState(false);
   const [completionState, setCompletionState] = useState<"success" | "already" | null>(null);
   const formContainerRef = useRef<HTMLDivElement>(null);
-  const successRef = useRef<HTMLDivElement>(null);
-  const resetTimerRef = useRef<number | null>(null);
-  const hasShownCompletion = useRef(false);
-  const { toast } = useToast();
-  const successCopy = "Waitlist confirmed. Beta invites start rolling out in ~1–2 weeks - watch your WhatsApp for updates.";
+  // The card keeps the form's height once it converts, so the centred screen does not shift.
+  const [lockedHeight, setLockedHeight] = useState<number | null>(null);
   const alreadyRegisteredCopy = "You're already on the waitlist. We'll reach out with updates soon.";
+  const [lib, setLib] = useState<PhoneLib | null>(phoneLib);
+  useEffect(() => {
+    void loadPhoneLib().then(setLib);
+  }, []);
   const countryOptions = useMemo(() => {
+    if (!lib) return [{ code: "IN" as CountryCode, name: "India", callingCode: "91" }];
     const formatter = new Intl.DisplayNames(["en"], { type: "region" });
-    return getCountries()
+    return lib
+      .getCountries()
       .map((code) => ({
         code,
         name: formatter.of(code) ?? code,
-        callingCode: getCountryCallingCode(code),
+        callingCode: lib.getCountryCallingCode(code),
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, []);
+  }, [lib]);
 
   const form = useForm<WaitlistFormValues>({
     resolver: zodResolver(waitlistSchema),
@@ -134,35 +136,13 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
   const inviteValidation = useValidateInviteMutation();
 
   const showCompletionScreen = (state: "success" | "already") => {
-    if (resetTimerRef.current) {
-      window.clearTimeout(resetTimerRef.current);
-    }
-
-    if (formContainerRef.current) {
-      gsap.to(formContainerRef.current, {
-        opacity: 0,
-        y: 12,
-        duration: 0.35,
-        ease: "power2.inOut",
-        onComplete: () => {
-          setCompletionState(state);
-          gsap.set(formContainerRef.current, { opacity: 1, y: 0 });
-        },
-      });
-    } else {
-      setCompletionState(state);
-    }
-
-    resetTimerRef.current = window.setTimeout(() => {
-      setCompletionState(null);
-      setFormMessage(null);
-    }, 4500);
+    setLockedHeight(formContainerRef.current?.offsetHeight ?? null);
+    setCompletionState(state);
   };
 
   // The field messages and red borders carry the feedback; focus jumps to the first problem.
   const handleInvalid = () => {
     setFormError(null);
-    setFormMessage(null);
     const first = Object.keys(form.formState.errors)[0] as keyof WaitlistFormValues | undefined;
     if (first) form.setFocus(first);
   };
@@ -170,9 +150,9 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
   const handleFormSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFormError(null);
-    setFormMessage(null);
 
     try {
+      await loadPhoneLib();
       const isValid = await form.trigger();
       if (!isValid) {
         handleInvalid();
@@ -191,9 +171,8 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
   const handleSubmit = async (values: WaitlistFormValues) => {
     setIsSubmitting(true);
     setFormError(null);
-    setFormMessage(null);
 
-    const phone = parsePhoneNumberFromString(
+    const phone = (await loadPhoneLib()).parsePhoneNumberFromString(
       values.phoneNumber,
       values.phoneCountry as CountryCode,
     );
@@ -244,13 +223,7 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
 
       analytics.capture("waitlist_submitted", { result: "success", waitlist_source: waitlistSource });
 
-      setFormMessage("We'll reachout to you when the next cohort opens.");
       form.reset();
-      toast({
-        title: "You're on the list!",
-        description: successCopy,
-      });
-
       showCompletionScreen("success");
     } catch (err) {
       console.error("Unexpected waitlist error", err);
@@ -300,33 +273,6 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
     }
   };
 
-  useEffect(() => {
-    if (completionState && successRef.current) {
-      hasShownCompletion.current = true;
-      gsap.fromTo(
-        successRef.current,
-        { opacity: 0, y: 12, scale: 0.98 },
-        { opacity: 1, y: 0, scale: 1, duration: 0.45, ease: "power3.out" },
-      );
-    }
-
-    if (!completionState && hasShownCompletion.current && formContainerRef.current) {
-      gsap.fromTo(
-        formContainerRef.current,
-        { opacity: 0, y: 8 },
-        { opacity: 1, y: 0, duration: 0.35, ease: "power3.out" },
-      );
-    }
-  }, [completionState]);
-
-  useEffect(() => {
-    return () => {
-      if (resetTimerRef.current) {
-        window.clearTimeout(resetTimerRef.current);
-      }
-    };
-  }, []);
-
   return (
     <section
       id="waitlist-form"
@@ -345,7 +291,7 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
 
         <Card className="w-full overflow-hidden rounded-2xl border border-hairline bg-card text-left shadow-sm">
           <CardContent className="p-5 sm:p-7">
-            <div className="relative min-h-[260px]">
+            <div className="relative" style={{ minHeight: lockedHeight ?? 260 }}>
               {!completionState && (
                 <div ref={formContainerRef}>
                   <Form {...form}>
@@ -412,7 +358,7 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
                                           {getFlagEmoji(selectedCountry?.code ?? "IN")}
                                         </span>
                                         <span className="text-sm font-medium">
-                                          +{selectedCountry?.callingCode ?? getCountryCallingCode("IN")}
+                                          +{selectedCountry?.callingCode ?? (countryOptions.find((c) => c.code === "IN")?.callingCode ?? "")}
                                         </span>
                                       </span>
                                     </SelectTrigger>
@@ -472,18 +418,21 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
               )}
 
               {completionState && (
-                <div
-                  ref={successRef}
-                  className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center"
-                >
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center animate-in fade-in duration-300">
                   {completionState === "success" ? (
                     <CheckCircle className="h-9 w-9 text-violet" />
                   ) : (
                     <AlertCircle className="h-9 w-9 text-muted-foreground" />
                   )}
                   <div className="space-y-1.5">
-                    <p className="font-display text-xl font-medium text-foreground">
-                      {completionState === "success" ? SUCCESS_HEADLINE : "You're already on the waitlist"}
+                    <p className="font-display text-2xl font-medium text-foreground">
+                      {completionState === "success" ? (
+                        <>
+                          {SUCCESS_LEAD} <span className="font-display italic text-violet">{SUCCESS_ACCENT}</span>!
+                        </>
+                      ) : (
+                        "You're already on the waitlist"
+                      )}
                     </p>
                     <p className="text-sm text-muted-foreground">
                       {completionState === "success" ? SUCCESS_LINE : alreadyRegisteredCopy}
@@ -493,11 +442,6 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
               )}
             </div>
 
-            {formMessage && (
-              <Alert className="mt-5 border-hairline bg-background text-foreground">
-                <AlertDescription className="text-sm">{formMessage}</AlertDescription>
-              </Alert>
-            )}
             {formError && (
               <Alert variant="destructive" className="mt-5">
                 <AlertDescription className="text-sm">{formError}</AlertDescription>
