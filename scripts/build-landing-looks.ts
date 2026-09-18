@@ -2,8 +2,11 @@
  * Bundles optimised local copies of the garment cut-outs behind the landing page's ten curated
  * looks (the tops and bottoms referenced by LANDING_LOOKS, plus the shoes), so the landing page
  * renders those looks from src/assets/landing-looks/ instead of fetching full-res product images
- * at runtime. Re-run it whenever LANDING_LOOKS/LANDING_TOPS/LANDING_BOTTOMS/LANDING_SHOES change
- * in landingInventory.ts, or a referenced product's image is replaced in the catalog.
+ * at runtime. It also bakes the raw database rows the opening look needs (its products, the
+ * default female mannequin, and the active female hair styles) into first-look.json, so that look
+ * can render with zero Supabase round-trips. Re-run it whenever
+ * LANDING_LOOKS/LANDING_TOPS/LANDING_BOTTOMS/LANDING_SHOES change in landingInventory.ts, or a
+ * referenced product's image is replaced in the catalog.
  *
  *   bun scripts/build-landing-looks.ts
  *
@@ -16,9 +19,11 @@ import {
   LANDING_BOTTOMS,
   LANDING_SHOES,
   LANDING_LOOKS,
+  LANDING_FIRST_LOOK_IDS,
 } from "../src/features/landing-page/landingInventory.ts"
 
 const OUT_DIR = path.join(process.cwd(), "src", "assets", "landing-looks")
+const FIRST_LOOK_JSON = path.join(OUT_DIR, "first-look.json")
 /** Longer edge of the emitted canvas; product cut-outs are laid out at well under this on the landing page. */
 const LONG_EDGE = 1024
 
@@ -29,6 +34,50 @@ function requireEnv(name: string): string {
 }
 
 type Row = { id: string; image_url: string | null }
+
+/** Fetches one Supabase REST endpoint and returns the parsed JSON rows, failing loudly on a non-2xx response. */
+async function fetchRows(url: string, anonKey: string): Promise<unknown[]> {
+  const res = await fetch(url, { headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}` } })
+  if (!res.ok) throw new Error(`Supabase REST fetch failed: ${res.status} ${await res.text()}`)
+  return (await res.json()) as unknown[]
+}
+
+/** Bakes the opening look's product rows, default female mannequin, and active female hair styles into first-look.json. */
+async function buildFirstLookJson(supabaseUrl: string, anonKey: string) {
+  const productsUrl =
+    `${supabaseUrl}/rest/v1/products?select=id,product_name,brand,price,image_url,thumbnail_url,` +
+    `product_url,gender,type,type_category,placement_x,placement_y,image_length,placement,size,` +
+    `currency,color,fit,feel,vibes,color_group,material_type,body_parts_visible` +
+    `&id=in.(${LANDING_FIRST_LOOK_IDS.join(",")})`
+  const productRows = (await fetchRows(productsUrl, anonKey)) as { id: string }[]
+  const byId = new Map(productRows.map((r) => [r.id, r]))
+  const missing = LANDING_FIRST_LOOK_IDS.filter((id) => !byId.has(id))
+  if (missing.length > 0) throw new Error(`first-look.json: no product row for ids: ${missing.join(", ")}`)
+  // Preserve LANDING_FIRST_LOOK_IDS order; Supabase's `in.()` filter does not guarantee row order.
+  const products = LANDING_FIRST_LOOK_IDS.map((id) => byId.get(id)!)
+
+  const mannequinUrl =
+    `${supabaseUrl}/rest/v1/mannequin?select=id,gender,body_type,height_cm,default_scale,` +
+    `segment_config,is_default,created_at,updated_at&gender=eq.female` +
+    `&order=is_default.desc,updated_at.desc&limit=1`
+  const mannequinRows = await fetchRows(mannequinUrl, anonKey)
+  if (mannequinRows.length === 0) throw new Error("first-look.json: no default female mannequin row found")
+  const mannequin = mannequinRows[0]
+
+  const hairStylesUrl =
+    `${supabaseUrl}/rest/v1/avatar_hair_styles?select=id,gender,style_key,asset_url,length_pct,` +
+    `y_offset_pct,x_offset_pct,z_index,is_default,is_active,sort_order&gender=eq.female` +
+    `&is_active=eq.true&order=sort_order.asc`
+  const hairStyles = await fetchRows(hairStylesUrl, anonKey)
+
+  fs.mkdirSync(path.dirname(FIRST_LOOK_JSON), { recursive: true })
+  fs.writeFileSync(FIRST_LOOK_JSON, JSON.stringify({ products, mannequin, hairStyles }, null, 2))
+
+  console.log(
+    `first-look.json: ${products.length} products, ${hairStyles.length} hair styles, ` +
+      `mannequin id=${(mannequin as { id: string }).id}`,
+  )
+}
 
 async function main() {
   const supabaseUrl = requireEnv("VITE_SUPABASE_URL")
@@ -98,6 +147,7 @@ async function main() {
   // Stale files from a previous inventory (a swapped-out look, a removed garment) would otherwise
   // linger in the folder and get bundled for nothing.
   const keep = new Set(idList.map((id) => `${id}.webp`))
+  keep.add(path.basename(FIRST_LOOK_JSON))
   for (const file of fs.readdirSync(OUT_DIR)) {
     if (!keep.has(file)) fs.rmSync(path.join(OUT_DIR, file))
   }
@@ -126,6 +176,8 @@ async function main() {
       fmt(totalAfter).padStart(11),
   )
   console.log(`${rowsOut.length} files written to ${OUT_DIR}`)
+
+  await buildFirstLookJson(supabaseUrl, anonKey)
 }
 
 main().catch((err) => {

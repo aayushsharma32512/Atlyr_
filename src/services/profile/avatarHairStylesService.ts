@@ -62,5 +62,6 @@ export async function fetchAvatarHairStylesByGender(gender: AvatarHairGender): P
 }
 
 export const avatarHairStylesService = {
+  mapRow,
   fetchAvatarHairStylesByGender,
 }

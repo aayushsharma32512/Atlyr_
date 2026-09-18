@@ -56,7 +56,9 @@ export function prefetchLandingStudio(queryClient: QueryClient) {
     const url = bundledGarmentUrl(id)
     if (url) fetch(url, { mode: "cors" }).then((res) => res.blob()).catch(() => {})
   }
-  void queryClient.prefetchQuery(firstLookOptions)
+  // Data seeded at boot carries updatedAt 0, so the live rows must be fetched past the infinite staleTime.
+  const seeded = queryClient.getQueryState(landingKeys.firstLook())?.dataUpdatedAt === 0
+  void (seeded ? queryClient.fetchQuery({ ...firstLookOptions, staleTime: 0 }).catch(() => {}) : queryClient.prefetchQuery(firstLookOptions))
   void queryClient.prefetchQuery(inventoryOptions)
   void queryClient.prefetchQuery(getAvatarHairStylesQueryOptions("female"))
   void queryClient.prefetchQuery(mannequinOptions).then(() => {

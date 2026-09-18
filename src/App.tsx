@@ -28,6 +28,7 @@ const LoadingSpinner = () => (
   </div>
 );
 import { ErrorBoundary } from "@/components/ui/error-boundary";
+import { bootLanding, LANDING_PATHS } from "@/features/landing-page/boot";
 
 // Lazy load components for code splitting
 const LandingPage = lazy(() => import("./pages/Landing.tsx"));
@@ -99,6 +100,11 @@ try {
         PERSISTED_QUERY_KEY_PREFIXES.includes(query.queryKey[0] as string),
     },
   });
+
+// The landing's opening look starts loading before React mounts, off the baked data.
+if (typeof window !== "undefined" && LANDING_PATHS.has(window.location.pathname)) {
+  bootLanding(queryClient);
+}
 } catch {
   // localStorage unavailable (private mode, disabled storage) — cache just won't persist.
 }
