@@ -1,6 +1,10 @@
 import { useEffect, useMemo } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+import { setAuthIntent } from "@/features/auth/authIntentStorage";
+import { normalizeInviteCode } from "@/features/auth/inviteCode";
+import { setPendingInviteCode } from "@/features/auth/inviteStorage";
 import { LandingHeader } from "./components/LandingHeader";
 import { HeroSection } from "./components/HeroSection";
 import { HeroPreview } from "./components/HeroPreview";
@@ -9,10 +13,10 @@ import { WaitlistSection } from "./components/WaitlistSection";
 import { scrollToWaitlist } from "./scrollToWaitlist";
 
 export default function LandingPage() {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { toast } = useToast();
   // Not awaited: the page is the same for everyone, only the header button changes once a session resolves.
-  const { user } = useAuth();
+  const { user, signInWithGoogle } = useAuth();
 
   const utmParams = useMemo(() => {
     const entries: Record<string, string> = {};
@@ -30,8 +34,20 @@ export default function LandingPage() {
     }
   }, [searchParams]);
 
-  const handleSignInClick = () => {
-    navigate(`/auth/login?next=${encodeURIComponent("/app")}`);
+  const inviteCode = useMemo(() => normalizeInviteCode(searchParams.get("invite")), [searchParams]);
+
+  // An invite link parks its code here; the auth callback redeems it once Google returns.
+  useEffect(() => {
+    if (!inviteCode) return;
+    setPendingInviteCode(inviteCode);
+    toast({ title: "Invite ready", description: "Log in with Google to use it." });
+  }, [inviteCode, toast]);
+
+  // Straight to Google, no interstitial; a new account is sent to the invite code page by the callback.
+  const handleSignInClick = async () => {
+    setAuthIntent(inviteCode ? "signup" : "login");
+    const { error } = await signInWithGoogle(`${window.location.origin}/auth/callback?next=${encodeURIComponent("/app")}`);
+    if (error) toast({ title: "Could not start Google sign-in", description: "Please try again." });
   };
 
   return (
@@ -40,7 +56,7 @@ export default function LandingPage() {
         <LandingHeader
           isAuthenticated={Boolean(user)}
           onWaitlistScroll={scrollToWaitlist}
-          onSignInClick={handleSignInClick}
+          onSignInClick={() => void handleSignInClick()}
         />
 
         {/* The studio itself is the opener: two lines of copy under the fixed header, the frame takes the rest. */}
@@ -57,7 +73,7 @@ export default function LandingPage() {
         </section>
 
         <section className="relative h-[100dvh] snap-start snap-always">
-          <WaitlistSection utmParams={utmParams} onSignInClick={handleSignInClick} />
+          <WaitlistSection utmParams={utmParams} onSignInClick={() => void handleSignInClick()} />
         </section>
       </div>
     </div>
