@@ -82,7 +82,7 @@ const getFlagEmoji = (countryCode: string) => {
 const fieldInputClass = (hasError: boolean) =>
   cn(
     "h-11 rounded-control border-hairline bg-background px-4 text-sm shadow-none focus-visible:ring-1 focus-visible:ring-violet",
-    hasError && "border-destructive focus-visible:ring-destructive",
+    hasError && "border-violet focus-visible:ring-violet",
   );
 
 export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionProps) {
@@ -367,7 +367,7 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
                                   aria-invalid={Boolean(fieldState.error)}
                                 />
                               </FormControl>
-                              <FormMessage className="text-xs" />
+                              <FormMessage className="text-xs text-violet" />
                             </FormItem>
                           )}
                         />
@@ -380,13 +380,13 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
                                 <Input
                                   type="email"
                                   {...field}
-                                  placeholder="Gmail address"
+                                  placeholder="Email address"
                                   disabled={isSubmitting}
                                   className={fieldInputClass(Boolean(fieldState.error))}
                                   aria-invalid={Boolean(fieldState.error)}
                                 />
                               </FormControl>
-                              <FormMessage className="text-xs" />
+                              <FormMessage className="text-xs text-violet" />
                             </FormItem>
                           )}
                         />
@@ -431,7 +431,7 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
                                     </SelectContent>
                                   </Select>
                                 </FormControl>
-                                <FormMessage className="text-xs" />
+                                <FormMessage className="text-xs text-violet" />
                               </FormItem>
                             )}
                           />
@@ -452,7 +452,7 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
                                     aria-invalid={Boolean(fieldState.error)}
                                   />
                                 </FormControl>
-                                <FormMessage className="text-xs" />
+                                <FormMessage className="text-xs text-violet" />
                               </FormItem>
                             )}
                           />
