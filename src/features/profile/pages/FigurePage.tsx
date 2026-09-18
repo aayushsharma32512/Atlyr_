@@ -8,6 +8,8 @@ import { REVEAL_CLASS, revealDelay, useIsFirstRunCompact } from "@/features/prof
 import type { HeadAvatarHairStyle } from "@/features/profile/components/MannequinHeadAvatar"
 import { PickRow } from "@/features/profile/components/PickRow"
 import { ONBOARDING_ABOUT_PATH } from "@/features/profile/constants/firstRun"
+import { PROFILE_DETAILS_PATH, PROFILE_PATH } from "@/features/profile/constants/profilePaths"
+import type { ProfileStepMode } from "@/features/profile/pages/UserDetailsPage"
 import { useAvatarHairStyles } from "@/features/profile/hooks/useAvatarHairStyles"
 import { useProfileUpdateMutation } from "@/features/profile/hooks/useProfileQuery"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
@@ -24,25 +26,38 @@ import type { ProfileRecord, ProfileUpdateInput } from "@/services/profile/profi
 const AFTER_ONBOARDING_PATH = "/collection"
 
 /**
- * First run, step 2 of 2 — the figure. A default mannequin for the chosen
- * figure is already standing; skin tone and hair are tune-ups, and the whole
- * step can be left untouched. Finishing clears the onboarding gate.
+ * The figure: a default mannequin for the chosen gender is already standing,
+ * skin tone and hair are tune-ups, and the step can be left untouched. Step 2
+ * of first run, and the same screen edits the figure from Profile. Saving
+ * always sets the onboarding flag, so a repaired profile never bounces back
+ * into first run.
  */
-export function OnboardingFigurePage() {
+export function FigurePage({ mode = "onboarding" }: { mode?: ProfileStepMode } = {}) {
   const { profile, isLoading } = useProfileContext()
 
   if (isLoading) return null
 
   const gender: MannequinGender | null =
     profile?.gender === "male" || profile?.gender === "female" ? profile.gender : null
-  // The figure needs a gender, and step 1 is where it is chosen.
-  if (!profile || !gender) return <Navigate to={ONBOARDING_ABOUT_PATH} replace />
+  // The figure needs a gender, and the basics screen is where it is chosen.
+  if (!profile || !gender) {
+    return <Navigate to={mode === "edit" ? PROFILE_DETAILS_PATH : ONBOARDING_ABOUT_PATH} replace />
+  }
 
-  return <FigureStep profile={profile} gender={gender} />
+  return <FigureStep profile={profile} gender={gender} mode={mode} />
 }
 
-function FigureStep({ profile, gender }: { profile: ProfileRecord; gender: MannequinGender }) {
+function FigureStep({
+  profile,
+  gender,
+  mode,
+}: {
+  profile: ProfileRecord
+  gender: MannequinGender
+  mode: ProfileStepMode
+}) {
   const navigate = useNavigate()
+  const isEdit = mode === "edit"
   const { toast } = useToast()
   const isCompact = useIsFirstRunCompact()
   const updateProfile = useProfileUpdateMutation()
@@ -71,7 +86,7 @@ function FigureStep({ profile, gender }: { profile: ProfileRecord; gender: Manne
     setIsSaving(true)
     try {
       await updateProfile.mutateAsync({ ...updates, onboarding_complete: true })
-      navigate(AFTER_ONBOARDING_PATH, { replace: true })
+      navigate(isEdit ? PROFILE_PATH : AFTER_ONBOARDING_PATH, { replace: true })
     } catch (error) {
       console.error("Failed to finish onboarding", error)
       toast({ title: "Couldn't save", description: "Please try again.", variant: "destructive" })
@@ -103,7 +118,7 @@ function FigureStep({ profile, gender }: { profile: ProfileRecord; gender: Manne
       step={2}
       eyebrow="Step 2 of 2"
       lede="Tune skin tone and hair."
-      onBack={() => navigate(ONBOARDING_ABOUT_PATH)}
+      onBack={() => navigate(isEdit ? PROFILE_DETAILS_PATH : ONBOARDING_ABOUT_PATH)}
       backLabel="Back"
       footer={
         <Button
@@ -111,7 +126,7 @@ function FigureStep({ profile, gender }: { profile: ProfileRecord; gender: Manne
           disabled={isSaving}
           className="h-auto w-full rounded-control py-4 text-base font-bold text-primary-foreground"
         >
-          {isSaving ? "Saving…" : "Enter Atlyr"}
+          {isSaving ? "Saving…" : isEdit ? "Save" : "Enter Atlyr"}
         </Button>
       }
       pane={figure}
@@ -158,4 +173,4 @@ function FigureStep({ profile, gender }: { profile: ProfileRecord; gender: Manne
   )
 }
 
-export default OnboardingFigurePage
+export default FigurePage

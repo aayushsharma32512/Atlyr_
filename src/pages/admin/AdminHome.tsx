@@ -52,12 +52,6 @@ const GROUPS: Group[] = [
         to: "/admin/design-system/taste",
         blurb: "Five rows, multi-pick. Built but skipped from the first-run flow.",
       },
-      {
-        ref: "6c2",
-        label: "Figure setup",
-        to: "/admin/design-system/figure",
-        blurb: "First-run chrome forced, so an onboarded account still sees it.",
-      },
     ],
   },
   {

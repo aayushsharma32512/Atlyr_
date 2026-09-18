@@ -56,11 +56,9 @@ const IngestionAutomatedDashboard = lazy(() => import("./pages/admin/IngestionAu
 const PlacementDashboard = lazy(() => import("./pages/admin/PlacementDashboard.tsx"));
 const ShoesDashboard = lazy(() => import("./pages/admin/ShoesDashboard.tsx"));
 const AvatarPreview = lazy(() => import("./pages/AvatarPreview.tsx"));
-const UserDetailsPreview = lazy(() => import("./pages/UserDetailsPreview.tsx"));
-const OnboardingAboutPage = lazy(() => import("./features/profile/pages/onboarding/OnboardingAboutPage.tsx"));
-const OnboardingFigurePage = lazy(() => import("./features/profile/pages/onboarding/OnboardingFigurePage.tsx"));
+const UserDetailsPage = lazy(() => import("./features/profile/pages/UserDetailsPage.tsx"));
+const FigurePage = lazy(() => import("./features/profile/pages/FigurePage.tsx"));
 const TastePage = lazy(() => import("@/features/profile/pages/TastePage"));
-const FigurePreview = lazy(() => import("./pages/FigurePreview.tsx"));
 const AdminHome = lazy(() => import("./pages/admin/AdminHome.tsx"));
 const LoginPage = lazy(() => import("./pages/LoginPage.tsx"));
 const AuthCallback = lazy(() => import("./pages/AuthCallback.tsx"));
@@ -283,20 +281,29 @@ const App = () => (
                         </ShareAccessGuard>
                       }
                     />
+                    {/* The profile editor is the two first-run screens in edit mode. */}
                     <Route
                       path="/profile/user-details"
                       element={
                         <ShareAccessGuard>
-                          <UserDetailsPreview />
+                          <UserDetailsPage mode="edit" />
                         </ShareAccessGuard>
                       }
                     />
-                    {/* First run: about you, then the figure. Taste is built but out of the flow. */}
+                    <Route
+                      path="/profile/figure"
+                      element={
+                        <ShareAccessGuard>
+                          <FigurePage mode="edit" />
+                        </ShareAccessGuard>
+                      }
+                    />
+                    {/* First run: the basics, then the figure. Taste is built but out of the flow. */}
                     <Route
                       path="/onboarding/about"
                       element={
                         <ShareAccessGuard>
-                          <OnboardingAboutPage />
+                          <UserDetailsPage />
                         </ShareAccessGuard>
                       }
                     />
@@ -304,7 +311,7 @@ const App = () => (
                       path="/onboarding/figure"
                       element={
                         <ShareAccessGuard>
-                          <OnboardingFigurePage />
+                          <FigurePage />
                         </ShareAccessGuard>
                       }
                     />
@@ -416,20 +423,9 @@ const App = () => (
                       }
                     />
                     <Route path="/design-system/product-card" element={<DesignSystemPreview />} />
-                    {/* Previews of the first-run screens, so the onboarding chrome
-                        can be reviewed without flipping profiles.onboarding_complete.
-                        Admin-only — unlike the older /design-system/* routes these
-                        render real profile data. Under /admin so the guard and the
-                        URL agree; useSurfaceTheme exempts them from the ops palette
-                        so they still preview in the app's own register. */}
-                    <Route
-                      path="/admin/design-system/figure"
-                      element={
-                        <AdminAccessGuard>
-                          <FigurePreview />
-                        </AdminAccessGuard>
-                      }
-                    />
+                    {/* Taste preview. Admin-only: unlike the older /design-system/*
+                        routes it renders real profile data. Under /admin so the guard
+                        and the URL agree. */}
                     <Route
                       path="/admin/design-system/taste"
                       element={

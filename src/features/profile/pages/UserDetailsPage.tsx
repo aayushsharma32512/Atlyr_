@@ -1,476 +1,321 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { ChevronLeft } from "lucide-react"
+import { Camera } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { WordmarkLockup } from "@/design-system/primitives"
-import {
-  FirstRunBrandGround,
-  FirstRunFigure,
-  FirstRunPane,
-} from "@/features/profile/components/FirstRunPreview"
-import { type HeadAvatarHairStyle } from "@/features/profile/components/MannequinHeadAvatar"
-import { DropdownSelector } from "@/features/profile/components/DropdownSelector"
-import { PickRow, type PickTile } from "@/features/profile/components/PickRow"
+import { useAuth } from "@/contexts/AuthContext"
+import { FirstRunShell } from "@/features/profile/components/FirstRunShell"
+import { REVEAL_CLASS, revealDelay } from "@/features/profile/components/firstRunLayout"
+import { PickRow } from "@/features/profile/components/PickRow"
 import {
   GENDERS,
   HEIGHT_BANDS,
   SIZES,
   bandForHeight,
 } from "@/features/profile/constants/figureVocabularies"
-import { TASTE_IN_FIRST_RUN } from "@/features/profile/constants/firstRun"
-import { useProfileUpdateMutation } from "@/features/profile/hooks/useProfileQuery"
-import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
-import { useAvatarHairStyles } from "@/features/profile/hooks/useAvatarHairStyles"
+import { ONBOARDING_FIGURE_PATH } from "@/features/profile/constants/firstRun"
+import { PROFILE_FIGURE_PATH, PROFILE_PATH } from "@/features/profile/constants/profilePaths"
 import {
-  HAIR_COLOR_OPTIONS,
-  buildHairOptions,
-  buildHeightOptions,
-  buildSkinToneOptions,
-} from "@/features/profile/utils/figureOptions"
-import { useIsMobile } from "@/hooks/use-mobile"
+  useProfilePhotoMutation,
+  useProfileUpdateMutation,
+} from "@/features/profile/hooks/useProfileQuery"
+import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
+import { useToast } from "@/hooks/use-toast"
+import { cn } from "@/lib/utils"
 
-/** Tailwind's `lg`. Below this the figure preview moves into a pinned strip. */
-const TWO_PANE_BREAKPOINT = 1024
+const MIN_AGE = 13
+const MAX_AGE = 100
 
-/**
- * Canvas 6c2 — "the figure, roughly right". Second half of first run, and the
- * profile editor for the same fields once onboarding is done. Both modes share
- * the row grammar; only the chrome differs (wordmark + step eyebrow + skip on
- * first run, back button + Save on edit).
- *
- * NOT PERSISTED THIS PASS — body type and size are rendered but have nowhere to
- * go: `profiles` has a `selected_silhouette` column that nothing writes, and no
- * size column at all. Wiring either means adding a key to the mutation below,
- * which was deliberately left out of a UI-only pass. The rows say so on their
- * face rather than pretending. See TODO(wave-3) at the state declarations.
- */
+const INPUT_CLASS =
+  "w-full rounded-control border border-hairline bg-white px-4 py-4 text-base text-foreground placeholder:text-taupe transition-shadow focus:border-violet focus:outline-none focus:ring-1 focus:ring-violet"
 
-export interface UserDetailsPageProps {
-  /**
-   * Render the first-run chrome regardless of profile state. Only for the
-   * /design-system preview route — an onboarded account would otherwise always
-   * see the edit chrome and never the screen as designed.
-   */
-  forceFirstRunChrome?: boolean
+/** First string value among `keys` in the auth metadata Google sign-in fills. */
+function readMeta(meta: Record<string, unknown> | undefined, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = meta?.[key]
+    if (typeof value === "string" && value.trim()) return value.trim()
+  }
+  return null
 }
 
-export function UserDetailsPage({ forceFirstRunChrome = false }: UserDetailsPageProps = {}) {
-  const navigate = useNavigate()
-  const isCompact = useIsMobile(TWO_PANE_BREAKPOINT)
-  const { profile, isLoading } = useProfileContext()
-  const updateProfileMutation = useProfileUpdateMutation()
+export type ProfileStepMode = "onboarding" | "edit"
 
-  const [isSaving, setIsSaving] = useState(false)
+/**
+ * Who you are: name, photo, age, gender, height and size in one pass;
+ * everything but the photo is required. Step 1 of first run, and the same
+ * screen edits those fields from Profile — only the back link and the next
+ * destination differ. Name and photo prefill from Google sign-in when present;
+ * Google does not share age or gender.
+ */
+export function UserDetailsPage({ mode = "onboarding" }: { mode?: ProfileStepMode } = {}) {
+  const navigate = useNavigate()
+  const isEdit = mode === "edit"
+  const { toast } = useToast()
+  const { user } = useAuth()
+  const { profile, isLoading } = useProfileContext()
+  const updateProfile = useProfileUpdateMutation()
+  const uploadPhoto = useProfilePhotoMutation()
+
   const [name, setName] = useState("")
   const [age, setAge] = useState("")
-  const [gender, setGender] = useState("")
-  const [selectedSkinTone, setSelectedSkinTone] = useState<string | null>(null)
-  const [selectedHairStyleId, setSelectedHairStyleId] = useState<string | null>(null)
-  const [selectedHairColorHex, setSelectedHairColorHex] = useState<string | null>(null)
+  const [gender, setGender] = useState<string | null>(null)
   const [heightCm, setHeightCm] = useState<number | null>(null)
-  const [showExactHeight, setShowExactHeight] = useState(false)
-  // TODO(wave-3): size has no home yet — it needs a column, and the handoff
-  // scopes it to the PDP size hint, never a catalog filter. Body type is pulled
-  // from the screen for now; its vocabulary is still in figureVocabularies.
-  const [selectedSize, setSelectedSize] = useState<string | null>(null)
-
+  const [size, setSize] = useState<string | null>(null)
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
   const [hasInitialized, setHasInitialized] = useState(false)
-  const previousGenderRef = useRef<"male" | "female" | null>(null)
-  const resolvedGender = gender === "male" || gender === "female" ? gender : null
-  const hairStylesQuery = useAvatarHairStyles(resolvedGender)
 
-  /**
-   * The 6c2 layout is now the ONLY layout — reaching this page from Profile
-   * used to drop you into a different screen entirely (ScreenHeader, bottom
-   * nav, a 64px head thumbnail instead of the live figure), so the thing you
-   * were editing was barely visible. Same picker, same measure, same figure
-   * pane, whichever door you came through.
-   *
-   * What still varies is only what is TRUE in each case: the eyebrow, the CTA,
-   * and where it takes you. Onboarding has no way back and ends at /home;
-   * editing has a back link and returns to /profile.
-   */
-  const isOnboarding = forceFirstRunChrome || (!isLoading && !profile?.onboarding_complete)
-
-  const resolvedHairStyleForPreview = useMemo(() => {
-    if (!hairStylesQuery.data.length) {
-      return null
-    }
-    if (selectedHairStyleId && hairStylesQuery.byId.has(selectedHairStyleId)) {
-      return hairStylesQuery.byId.get(selectedHairStyleId) ?? null
-    }
-    return hairStylesQuery.defaultStyle
-  }, [
-    hairStylesQuery.byId,
-    hairStylesQuery.data.length,
-    hairStylesQuery.defaultStyle,
-    selectedHairStyleId,
-  ])
+  const metadata = user?.user_metadata as Record<string, unknown> | undefined
+  const existingPhotoUrl = readMeta(metadata, ["avatar_url", "picture"])
 
   useEffect(() => {
-    if (isLoading || hasInitialized) {
-      return
-    }
-
-    if (profile) {
-      const initialName = profile.name === "User" ? "" : profile.name
-      setName(initialName ?? "")
-      setAge(profile.age ? profile.age.toString() : "")
-      setGender(
-        profile.gender === "male" || profile.gender === "female" ? profile.gender : "",
-      )
-      setSelectedSkinTone(profile.selected_skin_tone ?? null)
-      setSelectedHairStyleId(profile.hair_style_id ?? null)
-      setSelectedHairColorHex(profile.hair_color_hex ?? null)
-      setHeightCm(typeof profile.height_cm === "number" ? profile.height_cm : null)
-    }
-
+    if (isLoading || hasInitialized) return
+    // The signup trigger writes "User" when Google sent no name — treat it as empty.
+    const savedName = profile?.name && profile.name !== "User" ? profile.name : null
+    setName(savedName ?? readMeta(metadata, ["full_name", "name"]) ?? "")
+    setAge(profile?.age ? String(profile.age) : "")
+    setGender(profile?.gender === "male" || profile?.gender === "female" ? profile.gender : null)
+    setHeightCm(typeof profile?.height_cm === "number" ? profile.height_cm : null)
+    setSize(profile?.size ?? null)
     setHasInitialized(true)
-  }, [hasInitialized, isLoading, profile])
+  }, [hasInitialized, isLoading, metadata, profile])
 
-  useEffect(() => {
-    if (!resolvedGender) {
-      previousGenderRef.current = null
-      return
-    }
-
-    if (previousGenderRef.current && previousGenderRef.current !== resolvedGender) {
-      setSelectedSkinTone(null)
-      setSelectedHairStyleId(null)
-    }
-    previousGenderRef.current = resolvedGender
-  }, [resolvedGender])
-
-  const skinToneOptions = useMemo(() => buildSkinToneOptions(resolvedGender), [resolvedGender])
-  const hairOptions = useMemo(
-    () => buildHairOptions(resolvedGender, hairStylesQuery.data),
-    [hairStylesQuery.data, resolvedGender],
+  const photoPreviewUrl = useMemo(
+    () => (photoFile ? URL.createObjectURL(photoFile) : null),
+    [photoFile],
   )
-  const hairColorOptions = HAIR_COLOR_OPTIONS
+  useEffect(() => {
+    return () => {
+      if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl)
+    }
+  }, [photoPreviewUrl])
+  const photoUrl = photoPreviewUrl ?? existingPhotoUrl
 
-  const heightOptions = useMemo(() => buildHeightOptions(), [])
-  // Derived, never stored: an existing exact height highlights its band without
-  // being rewritten to the band's representative value.
   const selectedHeightBand = bandForHeight(heightCm)
 
   const trimmedName = name.trim()
   const parsedAge = Number.parseInt(age, 10)
-  const isFormValid =
-    trimmedName.length > 0 &&
-    Number.isFinite(parsedAge) &&
-    parsedAge > 0 &&
-    (gender === "male" || gender === "female")
+  const isAgeValid = Number.isFinite(parsedAge) && parsedAge >= MIN_AGE && parsedAge <= MAX_AGE
+  const isFormValid = Boolean(trimmedName && isAgeValid && gender && heightCm !== null && size)
 
-  const persistableFigure = () => ({
-    ...(trimmedName ? { name: trimmedName } : {}),
-    ...(Number.isFinite(parsedAge) && parsedAge > 0 ? { age: parsedAge } : {}),
-    ...(gender === "male" || gender === "female" ? { gender } : {}),
-    ...(selectedSkinTone ? { selected_skin_tone: selectedSkinTone } : {}),
-    hair_style_id: selectedHairStyleId,
-    hair_color_hex: selectedHairColorHex,
-    ...(typeof heightCm === "number" ? { height_cm: heightCm } : {}),
-  })
-
-  const commit = async (updates: Record<string, unknown>, destination: string) => {
+  const handleContinue = async () => {
+    if (!isFormValid || !gender || !size || heightCm === null) return
     setIsSaving(true)
     try {
-      await updateProfileMutation.mutateAsync(updates)
-      navigate(destination)
+      if (photoFile) {
+        // A failed photo never blocks the flow — it can be added later in Profile.
+        await uploadPhoto.mutateAsync(photoFile).catch(() => {
+          toast({
+            title: "Photo didn't upload",
+            description: "You can add it later from your profile.",
+            variant: "destructive",
+          })
+        })
+      }
+      await updateProfile.mutateAsync({
+        name: trimmedName,
+        age: parsedAge,
+        gender,
+        height_cm: heightCm,
+        size,
+      })
+      navigate(isEdit ? PROFILE_FIGURE_PATH : ONBOARDING_FIGURE_PATH)
     } catch (error) {
-      console.error("Failed to save user details", error)
+      console.error("Failed to save onboarding details", error)
+      toast({ title: "Couldn't save", description: "Please try again.", variant: "destructive" })
     } finally {
       setIsSaving(false)
     }
   }
 
-  // First run never blocks: every row is optional, and so is the whole step.
-  const handleContinue = () =>
-    commit({ ...persistableFigure(), onboarding_complete: true }, "/collection")
+  const initial = trimmedName ? trimmedName.charAt(0).toUpperCase() : null
 
-  // "Use a neutral figure" — take nothing, but still clear the gate so the
-  // AppShellLayout redirect doesn't bounce them straight back here.
-  const handleSkip = () => commit({ onboarding_complete: true }, "/collection")
+  const summary = [
+    isAgeValid ? `${parsedAge}` : null,
+    GENDERS.find((entry) => entry.id === gender)?.label ?? null,
+    HEIGHT_BANDS.find((entry) => entry.id === selectedHeightBand)?.label ?? null,
+    SIZES.find((entry) => entry.id === size)?.label ?? null,
+  ].filter(Boolean)
 
-  const handleSave = () => {
-    if (!isFormValid) return
-    commit({ ...persistableFigure(), onboarding_complete: true }, "/profile")
-  }
-
-  const single = (value: string | null, next: string) => (value === next ? null : next)
-
-  // One value for both preview hosts — the phone strip and the lg+ pane render
-  // the same figure, and only one of them is ever mounted. Annotated because an
-  // un-annotated object literal widens `gender` from the "male" | "female"
-  // union back to plain string.
-  const previewHairStyle: HeadAvatarHairStyle =
-    resolvedGender && resolvedHairStyleForPreview
-      ? { styleKey: resolvedHairStyleForPreview.styleKey, gender: resolvedGender }
-      : null
-
-  // The max-w is the measure, and everything inside hangs off one left axis at
-  // px-[26px] — see the notes in TastePage. In first run this is the left pane
-  // of a flex row; in edit mode it is the only child of AppShellLayout.
-  const screen = (
-    <div className="relative flex min-h-0 w-full max-w-[720px] flex-1 flex-col overflow-hidden bg-background">
-        <header className="shrink-0 pt-6">
-          {/* Onboarding has nowhere to go back TO — the gate would bounce you
-              straight here again. Editing does, and without this the only exit
-              is saving, since the first-run layout has no bottom nav. */}
-          {!isOnboarding && (
-            <button
-              type="button"
-              onClick={() => navigate("/profile")}
-              className="mb-3 flex items-center gap-1 px-[26px] text-fluid-sm font-semibold text-muted-foreground"
-            >
-              <ChevronLeft className="size-4" aria-hidden="true" />
-              Profile
-            </button>
-          )}
-          <WordmarkLockup size="firstRun" className="items-start px-[26px]" />
-          <div className="px-[26px] pt-4">
-            <p className="flex items-center gap-2 text-fluid-sm font-semibold uppercase tracking-[0.22em] text-primary">
-              {isOnboarding
-                ? TASTE_IN_FIRST_RUN
-                  ? "First run · step 2 of 2"
-                  : "First run · 30 seconds"
-                : "Your figure"}
-              {isOnboarding && TASTE_IN_FIRST_RUN && (
-                <span className="flex gap-[3px]" aria-hidden="true">
-                  <span className="h-0.5 w-3 bg-primary" />
-                  <span className="h-0.5 w-3 bg-primary" />
-                </span>
-              )}
-            </p>
-            <h1 className="mb-1 mt-[7px] font-display text-fluid-h1 font-medium leading-[1.08] text-foreground">
-              The figure,
-              <br />
-              roughly right.
-            </h1>
-            <p className="text-fluid-lg leading-[1.5] text-muted-foreground">
-              So looks land on someone shaped like you. Photos come later, in the Studio.
-            </p>
+  return (
+    <FirstRunShell
+      step={1}
+      eyebrow="Step 1 of 2"
+      onBack={isEdit ? () => navigate(PROFILE_PATH) : undefined}
+      backLabel="Profile"
+      footer={
+        <Button
+          onClick={handleContinue}
+          disabled={isSaving || !isFormValid}
+          className="h-auto w-full rounded-control py-4 text-base font-bold text-primary-foreground"
+        >
+          {isSaving ? "Saving…" : "Next"}
+        </Button>
+      }
+      pane={<AboutPreview photoUrl={photoUrl} initial={initial} name={trimmedName} summary={summary} />}
+    >
+      <div className="flex flex-1 flex-col justify-evenly gap-4">
+        <section className={cn("flex flex-col items-center gap-5 px-6", REVEAL_CLASS)} style={revealDelay(3)}>
+          <PhotoWell photoUrl={photoUrl} initial={initial} onPick={setPhotoFile} />
+          <div className="flex w-full gap-2.5">
+            <label className="min-w-0 flex-1">
+              <span className="sr-only">Name</span>
+              <input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Name"
+                autoComplete="name"
+                autoCapitalize="words"
+                className={cn(INPUT_CLASS, "font-voice text-lg font-medium italic placeholder:italic")}
+              />
+            </label>
+            <label className="relative w-28 shrink-0">
+              <span className="sr-only">Age</span>
+              <input
+                value={age}
+                onChange={(event) => setAge(event.target.value.replace(/\D/g, "").slice(0, 3))}
+                inputMode="numeric"
+                placeholder="Age"
+                className={cn(
+                  INPUT_CLASS,
+                  "pr-12 font-voice text-lg font-medium italic placeholder:italic",
+                  age && !isAgeValid && "border-destructive",
+                )}
+              />
+              <span className="pointer-events-none absolute inset-y-0 right-3.5 flex items-center font-voice text-sm font-medium italic text-taupe">
+                {age && !isAgeValid ? `${MIN_AGE}–${MAX_AGE}` : "yrs"}
+              </span>
+            </label>
           </div>
-        </header>
+        </section>
 
-        {/* Deliberately not Radix ScrollArea: its viewport wraps children in a
-            display:table element, which sizes to content. Any row wider than the
-            frame then widened the whole page instead of scrolling inside its
-            rail. A plain block scroller keeps normal width constraints. */}
-        <div className="min-h-0 w-full flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide">
-          <div className="pb-6 pt-4">
-            <section className="px-6 pb-[13px]">
-              <div className="flex items-center gap-2.5">
-                <span className="text-fluid-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  You
-                </span>
-                <span className="h-px flex-1 bg-hairline" aria-hidden="true" />
-              </div>
-              <div className="mt-2 flex gap-2">
-                <label className="flex-1">
-                  <span className="sr-only">Name</span>
-                  <input
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    placeholder="your name"
-                    className="w-full rounded-control border border-hairline bg-white px-3 py-2 text-fluid-md text-foreground placeholder:text-taupe focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </label>
-                <label className="w-20">
-                  <span className="sr-only">Age</span>
-                  <input
-                    value={age}
-                    onChange={(event) => setAge(event.target.value.replace(/\D/g, ""))}
-                    inputMode="numeric"
-                    placeholder="age"
-                    className="w-full rounded-control border border-hairline bg-white px-3 py-2 text-fluid-md text-foreground placeholder:text-taupe focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </label>
-              </div>
-            </section>
-
-            <PickRow
-              label="Figure"
-              hint="pick one"
-              variant="pill"
-              options={GENDERS}
-              selectedIds={gender ? [gender] : []}
-              onToggle={(id) => setGender(gender === id ? "" : id)}
-            />
-
-            {resolvedGender && (
-              <>
-                <PickRow
-                  label="Skin tone"
-                  hint="pick one"
-                  variant="swatch"
-                  options={skinToneOptions}
-                  selectedIds={selectedSkinTone ? [selectedSkinTone] : []}
-                  onToggle={(id) => setSelectedSkinTone(single(selectedSkinTone, id))}
-                />
-
-                <PickRow
-                  label="Hair"
-                  searchable
-                  options={hairOptions}
-                  selectedIds={selectedHairStyleId ? [selectedHairStyleId] : []}
-                  onToggle={(id) => setSelectedHairStyleId(single(selectedHairStyleId, id))}
-                />
-
-                <PickRow
-                  label="Hair colour"
-                  hint="pick one"
-                  variant="swatch"
-                  options={hairColorOptions}
-                  selectedIds={selectedHairColorHex ? [selectedHairColorHex] : []}
-                  onToggle={(id) => setSelectedHairColorHex(single(selectedHairColorHex, id))}
-                />
-              </>
-            )}
-
-            <PickRow
-              label="Height"
-              hint="pick one"
-              variant="pill"
-              options={HEIGHT_BANDS}
-              selectedIds={selectedHeightBand ? [selectedHeightBand] : []}
-              onToggle={(id) => {
-                const band = HEIGHT_BANDS.find((entry) => entry.id === id)
-                if (!band) return
-                setHeightCm(selectedHeightBand === id ? null : band.cm)
-              }}
-            />
-
-            <div className="-mt-2 px-6 pb-[13px]">
-              {showExactHeight ? (
-                <DropdownSelector
-                  title="Exact height"
-                  options={heightOptions}
-                  selectedId={typeof heightCm === "number" ? heightCm.toString() : undefined}
-                  placeholder="Exact height"
-                  onSelect={(id) => {
-                    const parsed = Number.parseInt(id, 10)
-                    setHeightCm(Number.isFinite(parsed) ? parsed : null)
-                  }}
-                />
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setShowExactHeight(true)}
-                  className="text-fluid-xs2 font-medium text-muted-foreground underline underline-offset-2"
-                >
-                  {typeof heightCm === "number"
-                    ? `set exactly — currently ${heightCm} cm`
-                    : "set exactly"}
-                </button>
-              )}
-            </div>
-
-            <PickRow
-              label="Size you usually wear"
-              hint="not saved yet"
-              variant="pill"
-              options={SIZES}
-              selectedIds={selectedSize ? [selectedSize] : []}
-              onToggle={(id) => setSelectedSize(single(selectedSize, id))}
-            />
-
-            {/* The inline 64px preview that used to sit here in edit mode is
-                gone. Both hosts now exist on every entry — pinned below on a
-                phone, in the pane beside at lg+ — so a thumbnail at the bottom
-                of the scroll would be a third copy of the same figure, and the
-                worst-placed one: you had to pass every picker to reach it. */}
-          </div>
+        <div className={REVEAL_CLASS} style={revealDelay(4)}>
+          <PickRow
+            label="Gender"
+            variant="pill"
+            layout="grid"
+            columns={2}
+            options={GENDERS}
+            selectedIds={gender ? [gender] : []}
+            onToggle={(id) => setGender(gender === id ? null : id)}
+          />
         </div>
 
-        {/* Phone: the figure pinned between the scroller and the CTA, so a skin
-            tone or hair pick shows its effect without scrolling. Head crop, not
-            figure — a band this short at the mannequin's 1800x3072 aspect would
-            be about 59px wide. Collapsed entirely until a figure is chosen,
-            rather than pinning an empty band above the CTA. */}
-        {isCompact && resolvedGender && (
-          <div className="flex h-[112px] shrink-0 items-center gap-4 border-t border-hairline bg-background px-[26px]">
-            {/* Boxed, not stretched across the band. The head crop is roughly
-                square, so given the full width it scales to fit the height and
-                leaves a ~100px head marooned in the middle of a wide strip —
-                worst on tablets. A square host on the left axis fills properly
-                at every width. */}
-            <div className="h-full w-[96px] shrink-0 py-2">
-              <FirstRunFigure
-                crop="head"
-                gender={resolvedGender}
-                skinToneHex={selectedSkinTone}
-                hairStyle={previewHairStyle}
-                hairColorHex={selectedHairColorHex}
-              />
-            </div>
-            <p className="text-fluid-base leading-[1.5] text-muted-foreground">
-              Your figure so far — it changes as you pick.
-            </p>
-          </div>
-        )}
+        <div className={REVEAL_CLASS} style={revealDelay(5)}>
+          <PickRow
+            label="Height"
+            variant="pill"
+            layout="grid"
+            columns={5}
+            options={HEIGHT_BANDS}
+            selectedIds={selectedHeightBand ? [selectedHeightBand] : []}
+            onToggle={(id) => {
+              const band = HEIGHT_BANDS.find((entry) => entry.id === id)
+              if (!band) return
+              setHeightCm(selectedHeightBand === id ? null : band.cm)
+            }}
+          />
+        </div>
 
-        {/* Same band, same button, both ways in — only the words and the
-            destination change, because those are the parts that actually
-            differ. Editing keeps "Save details" disabled until the form is
-            valid; onboarding never blocks you, since Skip is the escape. */}
-        <footer className="shrink-0 border-t border-hairline bg-background px-[26px] pb-6 pt-3.5">
-          <p className="mb-2.5 text-fluid-base font-medium text-muted-foreground">
-            Nothing here is a measurement — it picks a starting figure. Edit in Profile → Likeness.
-          </p>
-          <Button
-            onClick={isOnboarding ? handleContinue : handleSave}
-            disabled={isSaving || (!isOnboarding && !isFormValid)}
-            className="h-auto w-full rounded-control py-fluid-btn text-[length:var(--fluid-cta)] font-bold text-primary-foreground"
-          >
-            {isSaving ? "Saving…" : isOnboarding ? "Start exploring →" : "Save details"}
-          </Button>
-          {isOnboarding && (
-            <button
-              type="button"
-              onClick={handleSkip}
-              disabled={isSaving}
-              className="mt-3 w-full text-left text-fluid-md font-medium text-muted-foreground"
-            >
-              Skip — use a neutral figure
-            </button>
-          )}
-        </footer>
-    </div>
+        <div className={REVEAL_CLASS} style={revealDelay(6)}>
+          <PickRow
+            label="Size"
+            variant="pill"
+            layout="grid"
+            columns={SIZES.length}
+            options={SIZES}
+            selectedIds={size ? [size] : []}
+            onToggle={(id) => setSize(size === id ? null : id)}
+          />
+        </div>
+      </div>
+    </FirstRunShell>
   )
+}
 
-  // The page owns the whole viewport either way — no bottom nav.
-  //
-  // In onboarding a nav is a trapdoor: tapping it leaves the flow only for the
-  // AppShellLayout gate to bounce you straight back. When editing there is no
-  // gate, but the shell would cost the figure pane its height and put a nav bar
-  // under a screen whose whole point is the live figure — so the back link in
-  // the header is the way out instead.
-  //
-  // The gutter is 0 until the viewport passes the measure, so 390px is untouched
-  // and only tablets and up stop hugging the left edge.
+function PhotoWell({
+  photoUrl,
+  initial,
+  onPick,
+}: {
+  photoUrl: string | null
+  initial: string | null
+  onPick: (file: File) => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+
   return (
-    <div className="flex h-[100dvh] flex-row bg-background pl-[clamp(0px,(100vw_-_720px)*0.25,160px)]">
-      {screen}
-
-      {/* The whole point of the width: the figure, live, updating as you pick.
-          Until a gender is chosen there is nothing to draw — show the brand
-          ground rather than guessing at a body, since choosing it is what the
-          step is for. */}
-      {!isCompact && (
-        <FirstRunPane>
-          {resolvedGender ? (
-            <FirstRunFigure
-              crop="figure"
-              gender={resolvedGender}
-              skinToneHex={selectedSkinTone}
-              hairStyle={previewHairStyle}
-              hairColorHex={selectedHairColorHex}
-            />
-          ) : (
-            <FirstRunBrandGround caption="Pick a figure and it appears here — skin tone and hair land on it as you go." />
+    <>
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        aria-label={photoUrl ? "Change profile photo" : "Add profile photo"}
+        className="group relative size-[140px] shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet focus-visible:ring-offset-2"
+      >
+        <span
+          className={cn(
+            "flex size-full items-center justify-center overflow-hidden rounded-full border bg-white transition-colors",
+            photoUrl ? "border-hairline" : "border-dashed border-hairline-4 group-hover:border-violet",
           )}
-        </FirstRunPane>
+        >
+          {photoUrl ? (
+            <img src={photoUrl} alt="" decoding="async" className="size-full object-cover" />
+          ) : initial ? (
+            <span className="font-display text-[3rem] leading-none text-muted-foreground">{initial}</span>
+          ) : (
+            <Camera className="size-7 text-taupe" aria-hidden="true" />
+          )}
+        </span>
+        <span className="absolute bottom-1 right-1 flex size-10 items-center justify-center rounded-full border-2 border-white bg-violet text-white shadow-sm transition-transform group-hover:scale-105">
+          <Camera className="size-4" aria-hidden="true" />
+        </span>
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          event.target.value = ""
+          if (file) onPick(file)
+        }}
+      />
+    </>
+  )
+}
+
+/** Desktop pane: the profile card taking shape as the form fills in. */
+function AboutPreview({
+  photoUrl,
+  initial,
+  name,
+  summary,
+}: {
+  photoUrl: string | null
+  initial: string | null
+  name: string
+  summary: string[]
+}) {
+  return (
+    <div className="flex flex-col items-center text-center">
+      <div className="flex size-44 items-center justify-center overflow-hidden rounded-full border border-hairline bg-white shadow-[0_18px_48px_-24px_hsl(var(--ink)/0.45)]">
+        {photoUrl ? (
+          <img src={photoUrl} alt="" decoding="async" className="size-full object-cover" />
+        ) : (
+          <span className="font-display text-[4rem] leading-none text-muted-foreground">{initial ?? "·"}</span>
+        )}
+      </div>
+      <p
+        className={cn(
+          "mt-8 max-w-[18ch] font-display text-[clamp(2rem,2.8vw,3rem)] font-medium leading-[1.05] transition-colors",
+          name ? "text-foreground" : "text-taupe",
+        )}
+      >
+        {name || "Your name"}
+      </p>
+      {summary.length > 0 && (
+        <p className="mt-3 text-fluid-lg text-muted-foreground">{summary.join(" · ")}</p>
       )}
     </div>
   )

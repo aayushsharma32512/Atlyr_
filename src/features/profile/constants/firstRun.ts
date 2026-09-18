@@ -16,9 +16,6 @@ export const FIRST_RUN_ENTRY_PATH: string = ONBOARDING_ABOUT_PATH
 
 const FIRST_RUN_PATHS = [TASTE_PATH, ONBOARDING_ABOUT_PATH, ONBOARDING_FIGURE_PATH]
 
-/** Taste no longer precedes the figure; kept so the legacy figure editor's eyebrow still compiles. */
-export const TASTE_IN_FIRST_RUN: boolean = FIRST_RUN_ENTRY_PATH === TASTE_PATH
-
 export function isFirstRunPath(pathname: string): boolean {
   return FIRST_RUN_PATHS.some((path) => pathname.startsWith(path))
 }
