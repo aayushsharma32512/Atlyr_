@@ -5,13 +5,16 @@ import { useToast } from "@/hooks/use-toast";
 import { getAuthIntent, setAuthIntent } from "@/features/auth/authIntentStorage";
 import { useHasAppAccessQuery } from "@/features/auth/hooks/useInviteAccess";
 import { normalizeInviteCode } from "@/features/auth/inviteCode";
-import { setPendingInviteCode } from "@/features/auth/inviteStorage";
 import { LandingHeader } from "./components/LandingHeader";
-import { HeroSection } from "./components/HeroSection";
+import { LandingScreen } from "./components/LandingScreen";
+import { SectionCopy } from "./components/SectionCopy";
 import { HeroPreview } from "./components/HeroPreview";
 import { ShowcaseSection } from "./components/ShowcaseSection";
 import { WaitlistSection } from "./components/WaitlistSection";
 import { scrollToWaitlist } from "./scrollToWaitlist";
+
+const STUDIO_COPY = ["irl *dress up* game. search by *vibes*", "personalise *inspiration*. curate *wardrobe*"];
+const SHOWCASE_COPY = ["try-on the look on your *Likeness*", "we find the items for your *creation*"];
 
 export default function LandingPage() {
   const navigate = useNavigate();
@@ -46,20 +49,15 @@ export default function LandingPage() {
 
   const inviteCode = useMemo(() => normalizeInviteCode(searchParams.get("invite")), [searchParams]);
 
-  // An invite link parks its code here; the auth callback redeems it once Google returns.
-  useEffect(() => {
-    if (!inviteCode) return;
-    setPendingInviteCode(inviteCode);
-    toast({ title: "Invite ready", description: "Log in with Google to use it." });
-  }, [inviteCode, toast]);
-
   // Straight to Google, no interstitial; a new account is sent to the invite code page by the callback.
   const handleSignInClick = async () => {
-    setAuthIntent(inviteCode ? "signup" : "login");
+    setAuthIntent("login");
     const { error } = await signInWithGoogle(`${window.location.origin}/auth/callback?next=${encodeURIComponent("/app")}`);
     if (error) toast({ title: "Could not start Google sign-in", description: "Please try again." });
   };
 
+  // An invite link goes to the invite screen, which carries the code through Google.
+  if (inviteCode) return <Navigate to={`/auth/invite?code=${encodeURIComponent(inviteCode)}`} replace />;
   // Nothing paints until the session and access are known, so a member never sees the landing flash by.
   if (authLoading || (user && accessQuery.isLoading)) return null;
   // A signed-in member goes straight into the app; the landing is for visitors and unapproved accounts.
@@ -77,18 +75,16 @@ export default function LandingPage() {
           onSignInClick={() => void handleSignInClick()}
         />
 
-        {/* The studio itself is the opener: two lines of copy under the fixed header, the frame takes the rest. */}
-        <section className="relative isolate flex h-[100dvh] flex-col snap-start snap-always">
-          <div className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col items-center px-4 pb-3 pt-[72px] sm:px-8">
-            <HeroSection />
-            <HeroPreview />
-          </div>
-        </section>
+        {/* The studio itself is the opener; the showcase screen repeats its exact layout. */}
+        <LandingScreen>
+          <SectionCopy lines={STUDIO_COPY} />
+          <HeroPreview />
+        </LandingScreen>
 
-        <section className="relative snap-start snap-always">
+        <LandingScreen>
+          <SectionCopy lines={SHOWCASE_COPY} />
           <ShowcaseSection />
-          <div className="absolute bottom-0 left-1/2 h-px w-48 -translate-x-1/2 bg-gradient-to-r from-transparent via-border/50 to-transparent"></div>
-        </section>
+        </LandingScreen>
 
         <section className="relative h-[100dvh] snap-start snap-always">
           <WaitlistSection utmParams={utmParams} onSignInClick={() => void handleSignInClick()} />

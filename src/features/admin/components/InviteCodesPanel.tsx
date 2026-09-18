@@ -29,7 +29,7 @@ function codeState(c: InviteCode): CodeState {
 }
 
 export function inviteLink(code: string) {
-  return `${window.location.origin}/?invite=${encodeURIComponent(code)}`
+  return `${window.location.origin}/auth/invite?code=${encodeURIComponent(code)}`
 }
 
 function formatDate(iso: string | null) {
