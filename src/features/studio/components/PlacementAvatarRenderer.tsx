@@ -7,7 +7,8 @@ import type {
   StudioRenderedZone,
 } from "@/features/studio/types"
 import { mannequinAssetUrl } from "@/components/ingestion-automated/PlacementMeshEditor"
-import { PLACEMENT_HEAD_ANCHOR, headCropRect } from "@/features/studio/constants/mannequinAnchors"
+import { PLACEMENT_HEAD_ANCHOR, bustCropRect,
+  headCropRect } from "@/features/studio/constants/mannequinAnchors"
 import { recolorHair, recolorSkin } from "@/features/studio/utils/recolor"
 
 // Fixed placement canvas — identical to the mesh editor / Modal placement engine
@@ -359,7 +360,7 @@ type Props = {
    * 'figure' (default) frames the whole body. 'head' frames head-and-shoulders, for pickers where
    * the face is what's being chosen and a full figure would render the detail too small.
    */
-  crop?: "figure" | "head"
+  crop?: "figure" | "head" | "bust"
   /**
    * Tap handler per garment. Omit to keep the surface read-only, which is what the studio wants —
    * passing it turns on PIXI hit testing against each garment's real mesh geometry, so taps land on
@@ -524,6 +525,8 @@ export function PlacementAvatarRenderer({
         // Frame either the whole figure or a head-and-shoulders crop.
         const mb = crop === "head"
           ? headCropRect(mannequin)
+          : crop === "bust"
+          ? bustCropRect(mannequin)
           : withHairHeadroom(
               await probeMannequinBounds(mannequinUrl, CANVAS_W, CANVAS_H),
               mannequin,
@@ -646,7 +649,7 @@ export function PlacementAvatarRenderer({
           garment.scale.set(fit * t.scale)
           garment.rotation = (t.rotationDeg * Math.PI) / 180
 
-          if (crop !== "head") {
+          if (crop === "figure") {
             // The garment's alpha-bounds corners through its canvas transform
             // (pre-warp; gb already carries a sample of padding, and warp offsets
             // are folds within the garment, not edge extensions).

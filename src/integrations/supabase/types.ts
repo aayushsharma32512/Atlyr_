@@ -1277,6 +1277,7 @@ export type Database = {
           selected_silhouette: string | null
           selected_skin_tone: string | null
           shoes_staples: string | null
+          size: string | null
           social_handle: string | null
           themes: Json | null
           top_staples: string | null
@@ -1308,6 +1309,7 @@ export type Database = {
           selected_silhouette?: string | null
           selected_skin_tone?: string | null
           shoes_staples?: string | null
+          size?: string | null
           social_handle?: string | null
           themes?: Json | null
           top_staples?: string | null
@@ -1339,6 +1341,7 @@ export type Database = {
           selected_silhouette?: string | null
           selected_skin_tone?: string | null
           shoes_staples?: string | null
+          size?: string | null
           social_handle?: string | null
           themes?: Json | null
           top_staples?: string | null

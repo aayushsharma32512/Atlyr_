@@ -38,6 +38,16 @@ export const PLACEMENT_HEAD_ANCHOR: Record<"male" | "female", HeadAnchor> = {
  * Generous on all sides of the skull: hair rises well above the crown and long styles fall past the
  * shoulders, so a crop tight to the anchor would cut them off.
  */
+/** Head to the shoulder line, nothing of the chest. Same headroom and width as the head crop. */
+export function bustCropRect(mannequin: "male" | "female") {
+  const a = PLACEMENT_HEAD_ANCHOR[mannequin]
+  const headH = a.chin - a.top
+  const top = Math.max(0, a.top - headH * 0.55)
+  const bottom = a.chin + headH * 0.6
+  const halfW = a.width * 1.9
+  return { x: a.cx - halfW, y: top, w: halfW * 2, h: bottom - top }
+}
+
 export function headCropRect(mannequin: "male" | "female") {
   const a = PLACEMENT_HEAD_ANCHOR[mannequin]
   const headH = a.chin - a.top

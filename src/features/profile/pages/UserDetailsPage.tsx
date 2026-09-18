@@ -10,7 +10,7 @@ import {
   FirstRunPane,
 } from "@/features/profile/components/FirstRunPreview"
 import { type HeadAvatarHairStyle } from "@/features/profile/components/MannequinHeadAvatar"
-import { DropdownSelector, type DropdownOption } from "@/features/profile/components/DropdownSelector"
+import { DropdownSelector } from "@/features/profile/components/DropdownSelector"
 import { PickRow, type PickTile } from "@/features/profile/components/PickRow"
 import {
   GENDERS,
@@ -23,14 +23,15 @@ import { useProfileUpdateMutation } from "@/features/profile/hooks/useProfileQue
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { useAvatarHairStyles } from "@/features/profile/hooks/useAvatarHairStyles"
 import {
-  PLACEMENT_CANVAS_WIDTH,
-  headCropRect,
-} from "@/features/studio/constants/mannequinAnchors"
+  HAIR_COLOR_OPTIONS,
+  buildHairOptions,
+  buildHeightOptions,
+  buildSkinToneOptions,
+} from "@/features/profile/utils/figureOptions"
 import { useIsMobile } from "@/hooks/use-mobile"
 
 /** Tailwind's `lg`. Below this the figure preview moves into a pinned strip. */
 const TWO_PANE_BREAKPOINT = 1024
-import { SKIN_TONE_STEPS, skinToneChipColor } from "@/shared/skin/melanin"
 
 /**
  * Canvas 6c2 — "the figure, roughly right". Second half of first run, and the
@@ -44,33 +45,6 @@ import { SKIN_TONE_STEPS, skinToneChipColor } from "@/shared/skin/melanin"
  * which was deliberately left out of a UI-only pass. The rows say so on their
  * face rather than pretending. See TODO(wave-3) at the state declarations.
  */
-
-const HAIR_COLOR_SWATCHES = [
-  "#000000",
-  "#2B1B12",
-  "#4A2F1B",
-  "#6B3F2A",
-  "#8A5A3A",
-  "#A67C52",
-  "#C8A165",
-  "#D9B382",
-  "#E6C79C",
-  "#FFFFFF",
-]
-
-function buildHeightOptions(): DropdownOption[] {
-  const options: DropdownOption[] = []
-  for (let feet = 4; feet <= 7; feet += 1) {
-    const maxInches = feet === 7 ? 0 : 11
-    for (let inches = 0; inches <= maxInches; inches += 1) {
-      const totalInches = feet * 12 + inches
-      const cm = Math.round(totalInches * 2.54)
-      const label = `${feet}'${inches}" (${cm} cm)`
-      options.push({ id: `${cm}`, label, value: label })
-    }
-  }
-  return options
-}
 
 export interface UserDetailsPageProps {
   /**
@@ -168,64 +142,12 @@ export function UserDetailsPage({ forceFirstRunChrome = false }: UserDetailsPage
     previousGenderRef.current = resolvedGender
   }, [resolvedGender])
 
-  /**
-   * Swatches show the MANNEQUIN'S OWN skin retoned, not the raw reference
-   * colour — the reference chips are flat patches measured under controlled
-   * light, so showing them directly means the swatch you pick looks nothing
-   * like the body you get. Pure arithmetic, no image decoding.
-   *
-   * The stored id stays `step.hex` because that is what the renderer's
-   * `projectHexToTone()` is calibrated against. Canvas 6c2 draws a different
-   * six-step ramp; those values are illustrative and would feed unvalidated
-   * hexes into the renderer, so this keeps the canvas's *grammar* (numbered
-   * swatch cards) with the codebase's *values*.
-   */
-  const skinToneOptions = useMemo<PickTile[]>(() => {
-    if (!resolvedGender) return []
-    return SKIN_TONE_STEPS.map((step, index) => ({
-      id: step.hex,
-      label: String(index + 1).padStart(2, "0"),
-      description: step.label,
-      color: skinToneChipColor(resolvedGender, step.tone),
-    }))
-  }, [resolvedGender])
-
-  /**
-   * Thumbnails come from the baked photoreal cutouts in /public/hair-baked,
-   * keyed by styleKey — NOT from `assetUrl`. That asset is a compositing layer
-   * for the mannequin: a flat black silhouette meant to be recoloured and
-   * positioned on a head, which as a standalone thumbnail is an unreadable blob.
-   * A style with no baked cutout falls back to the labelled placeholder.
-   */
-  const hairOptions = useMemo<PickTile[]>(() => {
-    if (!resolvedGender) return []
-    // Baked cutouts are full mannequin canvases, so crop to the head using the
-    // renderer's own rect rather than eyeballing one.
-    const rect = headCropRect(resolvedGender)
-    const crop = {
-      x: rect.x,
-      y: rect.y,
-      w: rect.w,
-      naturalWidth: PLACEMENT_CANVAS_WIDTH,
-    }
-    return (hairStylesQuery.data ?? []).map((style) => ({
-      id: style.id,
-      label: style.styleKey,
-      imageUrl: `/hair-baked/${resolvedGender}/${style.styleKey}.webp`,
-      imageCrop: crop,
-    }))
-  }, [hairStylesQuery.data, resolvedGender])
-
-  const hairColorOptions = useMemo<PickTile[]>(
-    () =>
-      HAIR_COLOR_SWATCHES.map((hex) => ({
-        id: hex,
-        label: "",
-        description: `Hair colour ${hex}`,
-        color: hex,
-      })),
-    [],
+  const skinToneOptions = useMemo(() => buildSkinToneOptions(resolvedGender), [resolvedGender])
+  const hairOptions = useMemo(
+    () => buildHairOptions(resolvedGender, hairStylesQuery.data),
+    [hairStylesQuery.data, resolvedGender],
   )
+  const hairColorOptions = HAIR_COLOR_OPTIONS
 
   const heightOptions = useMemo(() => buildHeightOptions(), [])
   // Derived, never stored: an existing exact height highlights its band without

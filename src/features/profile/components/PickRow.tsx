@@ -41,6 +41,8 @@ export interface PickTile {
   placeholder?: "PHOTO" | "FIGURE"
   /** Dashed outline — the "not sure" escape hatch on an otherwise closed set. */
   dashed?: boolean
+  /** Grid columns this tile spans. Grid layout only. */
+  span?: number
 }
 
 export interface PickRowProps {
@@ -56,6 +58,9 @@ export interface PickRowProps {
   hint?: string
   /** Selected tiles tilt. Taste rows only — never the figure rows. */
   tilt?: boolean
+  /** `rail` scrolls sideways; `grid` wraps into `columns` equal columns that fill the width. */
+  layout?: "rail" | "grid"
+  columns?: number
   className?: string
 }
 
@@ -71,8 +76,8 @@ export interface PickRowProps {
  * on purpose: scaling it too would put the term back in two places.
  */
 const TILE_WIDTHS: Record<NonNullable<PickRowProps["variant"]>, string> = {
-  photo: "clamp(84px, 6vw, 112px)",
-  swatch: "clamp(60px, 4.3vw, 80px)",
+  photo: "clamp(96px, 7vw, 120px)",
+  swatch: "clamp(72px, 5vw, 88px)",
   pill: "auto",
 }
 
@@ -102,6 +107,8 @@ export function PickRow({
   searchable = false,
   hint,
   tilt = false,
+  layout = "rail",
+  columns = 4,
   className,
 }: PickRowProps) {
   const [query, setQuery] = useState("")
@@ -117,7 +124,7 @@ export function PickRow({
   return (
     <section className={cn("px-6 pb-[13px]", className)}>
       <div className="flex items-center gap-2.5">
-        <span className="text-fluid-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+        <span className="font-voice text-lg font-medium italic leading-none text-foreground">
           {label}
         </span>
 
@@ -150,19 +157,27 @@ export function PickRow({
           {
             "--tile-w": TILE_WIDTHS[variant],
             "--face-w": `calc(${TILE_WIDTHS[variant]} - 0.5rem)`,
+            ...(layout === "grid"
+              ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }
+              : {}),
           } as CSSProperties
         }
         className={cn(
-          // min-w-0 matters: without it this grows to fit its tiles and drags
-          // the whole page wider than the viewport instead of scrolling.
-          "mt-2 flex w-full min-w-0 overflow-x-auto scrollbar-hide",
+          "mt-2 w-full min-w-0",
           // Room above the rail for the ✓ badge, which overhangs the tile.
           "pt-1.5",
-          // Bleed past the section's right padding to the screen edge, so an
-          // overflowing rail leaves a tile half-visible. That peek is the only
-          // affordance that the row scrolls — the scrollbar is hidden.
-          "-mr-6 pr-6",
-          variant === "pill" ? "gap-1.5" : "gap-2",
+          layout === "grid"
+            ? "grid gap-2"
+            : cn(
+                // min-w-0 matters: without it this grows to fit its tiles and drags
+                // the whole page wider than the viewport instead of scrolling.
+                "flex overflow-x-auto scrollbar-hide",
+                // Bleed past the section's right padding to the screen edge, so an
+                // overflowing rail leaves a tile half-visible. That peek is the only
+                // affordance that the row scrolls — the scrollbar is hidden.
+                "-mr-6 pr-6",
+                variant === "pill" ? "gap-1.5" : "gap-2",
+              ),
         )}
       >
         {visible.map((option) => {
@@ -178,27 +193,33 @@ export function PickRow({
               aria-checked={mode === "single" ? selected : undefined}
               aria-pressed={mode === "multi" ? selected : undefined}
               onClick={() => onToggle(option.id)}
-              style={angle ? { transform: `rotate(${angle}deg)` } : undefined}
+              style={{
+                ...(angle ? { transform: `rotate(${angle}deg)` } : {}),
+                ...(layout === "grid" && option.span ? { gridColumn: `span ${option.span}` } : {}),
+              }}
               className={cn(
-                "relative shrink-0 rounded-control border bg-card text-left transition-all",
+                "relative shrink-0 rounded-control border text-left transition-all",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-                variant === "photo" && "w-[var(--tile-w)] p-1",
-                variant === "swatch" && "w-[var(--tile-w)] p-1",
+                "bg-white",
+                layout === "grid" && "w-full text-center",
+                variant === "photo" && layout === "rail" && "w-[var(--tile-w)] p-1",
+                variant === "swatch" && layout === "rail" && "w-[var(--tile-w)] p-1",
+                variant !== "pill" && layout === "grid" && "p-1",
                 variant === "pill" &&
-                  (option.sublabel ? "px-2.5 py-[7px]" : "px-3 py-2"),
+                  (layout === "grid" ? "px-1.5 py-4" : option.sublabel ? "px-2.5 py-[7px]" : "px-3 py-2"),
                 option.dashed
                   ? "border-dashed border-hairline-4"
                   : "border-hairline",
                 selected &&
                   (variant === "pill"
-                    ? "border-[1.5px] border-foreground bg-foreground"
-                    : "border-[1.5px] border-foreground shadow-[0_2px_8px_hsl(var(--ink)/0.18)]"),
+                    ? "border-[1.5px] border-violet"
+                    : "border-[1.5px] border-violet shadow-[0_2px_8px_hsl(var(--violet)/0.18)]"),
               )}
             >
               {selected && variant !== "pill" && (
                 <span
                   aria-hidden="true"
-                  className="absolute -right-1 -top-[5px] z-[2] flex size-4 items-center justify-center rounded-full bg-foreground text-[9px] font-bold leading-none text-background"
+                  className="absolute -right-1 -top-[5px] z-[2] flex size-4 items-center justify-center rounded-full bg-violet text-[9px] font-bold leading-none text-white"
                 >
                   ✓
                 </span>
@@ -208,8 +229,9 @@ export function PickRow({
                 <>
                   <span
                     className={cn(
-                      "block text-fluid-xs2 font-semibold",
-                      selected ? "text-background" : "text-ink-body",
+                      "block font-medium",
+                      layout === "grid" ? "text-label leading-tight" : "text-fluid-xs2",
+                      selected ? "text-foreground" : "text-ink-body",
                     )}
                   >
                     {option.label}
@@ -219,8 +241,9 @@ export function PickRow({
                       className={cn(
                         // 7px is below the ramp's floor — the height-band cm
                         // ranges are the only thing this small.
-                        "block text-[clamp(0.438rem,0.24vw+0.379rem,0.625rem)]",
-                        selected ? "text-on-ink-1" : "text-taupe",
+                        "block",
+                        layout === "grid" ? "mt-0.5 text-section" : "text-[clamp(0.438rem,0.24vw+0.379rem,0.625rem)]",
+                        selected ? "text-violet" : "text-taupe",
                       )}
                     >
                       {option.sublabel}
@@ -232,11 +255,10 @@ export function PickRow({
                   <TileFace option={option} variant={variant} />
                   <span
                     className={cn(
-                      "block px-0 pb-0.5 pt-1 text-center",
-                      variant === "swatch" ? "text-fluid-xs" : "text-fluid-sm",
-                      selected
-                        ? "font-semibold text-foreground"
-                        : "font-medium text-ink-body",
+                      "block px-0 pb-1 pt-1.5 text-center",
+                      variant === "swatch" ? "text-xs" : "text-sm",
+                      "font-medium",
+                      selected ? "text-foreground" : "text-ink-body",
                     )}
                   >
                     {option.label}
@@ -296,7 +318,7 @@ function TileFace({
       return (
         <span
           className={cn(
-            "relative block overflow-hidden rounded-control bg-background",
+            "relative block overflow-hidden rounded-control bg-white",
             PHOTO_FACE_ASPECT,
           )}
         >
@@ -319,7 +341,7 @@ function TileFace({
     return (
       <span
         className={cn(
-          "flex items-center justify-center rounded-control bg-background",
+          "flex items-center justify-center rounded-control bg-white",
           PHOTO_FACE_ASPECT,
         )}
       >

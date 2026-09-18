@@ -76,7 +76,7 @@ export interface FirstRunFigureProps {
    * at the mannequin's 1800x3072 aspect would be about 59px wide, which is the
    * case the renderer's own `head` crop exists for.
    */
-  crop?: "figure" | "head"
+  crop?: "figure" | "head" | "bust"
   className?: string
 }
 
