@@ -6,11 +6,15 @@ import { getAuthIntent, setAuthIntent } from "@/features/auth/authIntentStorage"
 import { useHasAppAccessQuery } from "@/features/auth/hooks/useInviteAccess";
 import { normalizeInviteCode } from "@/features/auth/inviteCode";
 import { LandingHeader } from "./components/LandingHeader";
-import { HeroSection } from "./components/HeroSection";
+import { LandingScreen } from "./components/LandingScreen";
+import { SectionCopy } from "./components/SectionCopy";
 import { HeroPreview } from "./components/HeroPreview";
 import { ShowcaseSection } from "./components/ShowcaseSection";
 import { WaitlistSection } from "./components/WaitlistSection";
 import { scrollToWaitlist } from "./scrollToWaitlist";
+
+const STUDIO_COPY = ["irl *dress up* game. search by *vibes*", "personalise *inspiration*. curate *wardrobe*"];
+const SHOWCASE_COPY = ["try-on the look on your *Likeness*", "we find the items for your *creation*"];
 
 export default function LandingPage() {
   const navigate = useNavigate();
@@ -71,18 +75,16 @@ export default function LandingPage() {
           onSignInClick={() => void handleSignInClick()}
         />
 
-        {/* The studio itself is the opener: two lines of copy under the fixed header, the frame takes the rest. */}
-        <section className="relative isolate flex h-[100dvh] flex-col snap-start snap-always">
-          <div className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col items-center px-4 pb-3 pt-[72px] sm:px-8">
-            <HeroSection />
-            <HeroPreview />
-          </div>
-        </section>
+        {/* The studio itself is the opener; the showcase screen repeats its exact layout. */}
+        <LandingScreen>
+          <SectionCopy lines={STUDIO_COPY} />
+          <HeroPreview />
+        </LandingScreen>
 
-        <section className="relative snap-start snap-always">
+        <LandingScreen>
+          <SectionCopy lines={SHOWCASE_COPY} />
           <ShowcaseSection />
-          <div className="absolute bottom-0 left-1/2 h-px w-48 -translate-x-1/2 bg-gradient-to-r from-transparent via-border/50 to-transparent"></div>
-        </section>
+        </LandingScreen>
 
         <section className="relative h-[100dvh] snap-start snap-always">
           <WaitlistSection utmParams={utmParams} onSignInClick={() => void handleSignInClick()} />
