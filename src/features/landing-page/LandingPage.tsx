@@ -56,7 +56,7 @@ export default function LandingPage() {
           <div className="absolute bottom-0 left-1/2 h-px w-48 -translate-x-1/2 bg-gradient-to-r from-transparent via-border/50 to-transparent"></div>
         </section>
 
-        <section className="relative py-2 sm:py-18 pb-0 lg:py-0 lg:pb-0 snap-start snap-always">
+        <section className="relative h-[100dvh] snap-start snap-always">
           <WaitlistSection utmParams={utmParams} onSignInClick={handleSignInClick} />
         </section>
       </div>
