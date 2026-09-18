@@ -1,8 +1,9 @@
 import { useEffect, useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { setAuthIntent } from "@/features/auth/authIntentStorage";
+import { getAuthIntent, setAuthIntent } from "@/features/auth/authIntentStorage";
+import { useHasAppAccessQuery } from "@/features/auth/hooks/useInviteAccess";
 import { normalizeInviteCode } from "@/features/auth/inviteCode";
 import { setPendingInviteCode } from "@/features/auth/inviteStorage";
 import { LandingHeader } from "./components/LandingHeader";
@@ -13,10 +14,19 @@ import { WaitlistSection } from "./components/WaitlistSection";
 import { scrollToWaitlist } from "./scrollToWaitlist";
 
 export default function LandingPage() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
-  // Not awaited: the page is the same for everyone, only the header button changes once a session resolves.
-  const { user, signInWithGoogle } = useAuth();
+  const { user, loading: authLoading, signInWithGoogle } = useAuth();
+  const accessQuery = useHasAppAccessQuery(Boolean(user?.id));
+
+  // A session arriving here with the pre-login intent still set means Google returned to the site
+  // root instead of the callback, so finish the sign-in where it belongs.
+  useEffect(() => {
+    if (user && getAuthIntent()) {
+      navigate(`/auth/callback?next=${encodeURIComponent("/app")}`, { replace: true });
+    }
+  }, [navigate, user]);
 
   const utmParams = useMemo(() => {
     const entries: Record<string, string> = {};
@@ -50,6 +60,11 @@ export default function LandingPage() {
     if (error) toast({ title: "Could not start Google sign-in", description: "Please try again." });
   };
 
+  // Nothing paints until the session and access are known, so a member never sees the landing flash by.
+  if (authLoading || (user && accessQuery.isLoading)) return null;
+  // A signed-in member goes straight into the app; the landing is for visitors and unapproved accounts.
+  if (user && accessQuery.data && !getAuthIntent()) return <Navigate to="/app" replace />;
+
   return (
     // The shell is exactly the visible viewport: any document overflow would let iOS collapse its
     // toolbar mid-scroll, which resizes every full-height section under the finger.
@@ -57,6 +72,7 @@ export default function LandingPage() {
       <div className="h-full overflow-y-scroll overscroll-y-none scroll-smooth snap-y snap-mandatory">
         <LandingHeader
           isAuthenticated={Boolean(user)}
+          hasAccess={Boolean(accessQuery.data)}
           onWaitlistScroll={scrollToWaitlist}
           onSignInClick={() => void handleSignInClick()}
         />
