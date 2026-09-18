@@ -6,12 +6,19 @@ import { WordmarkLockup } from "@/design-system/primitives";
 
 type LandingHeaderProps = {
   isAuthenticated: boolean;
+  /** Approved account: the button enters the app; a signed-in account without access goes to the invite page. */
+  hasAccess: boolean;
   onWaitlistScroll: () => void;
   onSignInClick: () => void;
 };
 
-export function LandingHeader({ isAuthenticated, onWaitlistScroll, onSignInClick }: LandingHeaderProps) {
+export function LandingHeader({ isAuthenticated, hasAccess, onWaitlistScroll, onSignInClick }: LandingHeaderProps) {
   const navigate = useNavigate();
+  const action = !isAuthenticated
+    ? { label: "Log in", onClick: onSignInClick }
+    : hasAccess
+      ? { label: "Enter app", onClick: () => navigate("/app") }
+      : { label: "Enter invite code", onClick: () => navigate("/auth/invite") };
 
   return (
     <motion.header
@@ -52,10 +59,10 @@ export function LandingHeader({ isAuthenticated, onWaitlistScroll, onSignInClick
           <motion.button
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.97 }}
-            onClick={isAuthenticated ? () => navigate('/app') : onSignInClick}
+            onClick={action.onClick}
             className="rounded-control border border-foreground px-6 py-2.5 text-[clamp(0.625rem,0.24vw+0.567rem,0.813rem)] font-medium lowercase text-foreground transition-colors hover:bg-foreground hover:text-background"
           >
-            {isAuthenticated ? "Enter app" : "Log in"}
+            {action.label}
           </motion.button>
         </div>
       </div>
