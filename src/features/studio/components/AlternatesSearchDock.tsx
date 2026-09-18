@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 
 import { Icons } from "@/design-system/icons"
 import { SearchBar } from "@/design-system/primitives"
+import { useKeyboardInset } from "@/design-system/utils/useKeyboardInset"
 import { cn } from "@/lib/utils"
 
 /** Both states hang this far off their container's bottom edge. */
@@ -64,8 +65,6 @@ export interface AlternatesSearchBarProps {
  * where the lens button was.
  *
  * It only moves when a keyboard would cover it, and then only by the overlap.
- * The offset comes from `visualViewport` because a keyboard does not shrink the
- * layout viewport on iOS, so neither `bottom` nor `dvh` sees it (brief §2.6).
  *
  * Blur does not dismiss, though the brief lists it: the reference-image dialog
  * opens from this bar and takes focus, and the picked photo has to land back in
@@ -84,34 +83,20 @@ export function AlternatesSearchBar({
   className,
 }: AlternatesSearchBarProps) {
   const barRef = useRef<HTMLDivElement>(null)
+  const keyboardInset = useKeyboardInset()
   /** How far to lift off the resting spot so the keyboard does not cover it. */
   const [lift, setLift] = useState(0)
 
   useEffect(() => {
-    if (typeof window === "undefined") return
-    const viewport = window.visualViewport
-    if (!viewport) return
-
-    const sync = () => {
-      const el = barRef.current
-      if (!el) return
-      // How much of the layout viewport the keyboard is covering.
-      const covered = window.innerHeight - viewport.height - viewport.offsetTop
-      const rect = el.getBoundingClientRect()
-      setLift((prev) => {
-        // Undo the lift already applied, so this measures the resting spot.
-        const gapBelow = window.innerHeight - (rect.bottom + prev)
-        return Math.max(0, Math.round(covered + RESTING_GAP - gapBelow))
-      })
-    }
-    sync()
-    viewport.addEventListener("resize", sync)
-    viewport.addEventListener("scroll", sync)
-    return () => {
-      viewport.removeEventListener("resize", sync)
-      viewport.removeEventListener("scroll", sync)
-    }
-  }, [])
+    const el = barRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    setLift((prev) => {
+      // Undo the lift already applied, so this measures the resting spot.
+      const gapBelow = window.innerHeight - (rect.bottom + prev)
+      return Math.max(0, Math.round(keyboardInset + RESTING_GAP - gapBelow))
+    })
+  }, [keyboardInset])
 
   return (
     <div

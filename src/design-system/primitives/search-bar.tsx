@@ -1,7 +1,6 @@
 import { useRef, type ChangeEvent, type KeyboardEvent } from "react"
 
 import { Icons } from "@/design-system/icons"
-import { useViewportZoomLockController } from "@/hooks/useViewportZoomLock"
 import { cn } from "@/lib/utils"
 
 export interface SearchBarProps {
@@ -47,7 +46,6 @@ export function SearchBar({
   className,
 }: SearchBarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const { lock, unlock } = useViewportZoomLockController()
   const hasCamera = Boolean(onOpenImagePicker || onPickImage)
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -108,16 +106,11 @@ export function SearchBar({
         placeholder={placeholder}
         onChange={(event) => onValueChange(event.target.value)}
         onKeyDown={handleKeyDown}
-        onFocus={() => {
-          lock()
-          onFocus?.()
-        }}
-        onBlur={() => {
-          unlock()
-          onBlur?.()
-        }}
+        onFocus={onFocus}
+        onBlur={onBlur}
         aria-label="Search"
-        className="min-w-0 flex-1 bg-transparent text-body text-ink outline-none placeholder:text-taupe [&::-webkit-search-cancel-button]:hidden"
+        // Body-large (16px): iOS Safari zooms the page into any focused field set smaller.
+        className="min-w-0 flex-1 bg-transparent text-body-large text-ink outline-none placeholder:text-taupe [&::-webkit-search-cancel-button]:hidden"
       />
 
       <button
