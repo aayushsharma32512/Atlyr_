@@ -12,8 +12,10 @@ export interface StudioPieceRowsProps {
   itemBySlot: Partial<Record<StudioCanvasSlot, StudioProductTrayItem | null>>
   hiddenSlots?: Partial<Record<StudioCanvasSlot, boolean>>
   isReadOnly?: boolean
-  /** Tapping a row opens Focus (the zoomed view) for it. Alternates comes from the figure. */
+  /** Tapping a worn row opens Focus (the zoomed view) for it. Alternates comes from the figure. */
   onOpenFocus: (slot: StudioCanvasSlot) => void
+  /** Tapping an empty row: Focus has nothing to zoom on, so Studio opens Alternates for the slot. */
+  onFill?: (slot: StudioCanvasSlot) => void
   onRemove: (slot: StudioCanvasSlot) => void
   /** Move a row `delta` places up (negative) or down the layer stack. */
   onReorder?: (slot: StudioCanvasSlot, delta: number) => void
@@ -40,6 +42,7 @@ export function StudioPieceRows({
   hiddenSlots = {},
   isReadOnly = false,
   onOpenFocus,
+  onFill,
   onRemove,
   onReorder,
   highlight = false,
@@ -139,7 +142,7 @@ export function StudioPieceRows({
                   }
                 : undefined
             }
-            onSelect={() => onOpenFocus(slot)}
+            onSelect={() => (item ? onOpenFocus(slot) : onFill?.(slot))}
             onRemove={isReadOnly ? undefined : () => onRemove(slot)}
             onOpenAlternatives={isReadOnly ? undefined : () => onOpenFocus(slot)}
           />

@@ -1256,6 +1256,7 @@ export function StudioScreenView() {
               hiddenSlots={hiddenSlots}
               isReadOnly={isViewOnly}
               onOpenFocus={openFocus}
+              onFill={handleOpenAlternates}
               onRemove={(slot) => handleRemoveSlot(toTraySlot(slot))}
               highlight={tour.isHighlighted("slot-rows")}
             />
