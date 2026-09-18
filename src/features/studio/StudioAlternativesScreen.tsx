@@ -21,6 +21,7 @@ import { StudioCanvas } from "./components/StudioCanvas"
 import { AlternatesSearchBar, AlternatesSearchButton } from "./components/AlternatesSearchDock"
 import { ReferenceImageDialog } from "./components/ReferenceImageDialog"
 import { useStudioProductImages } from "./hooks/useStudioProductImages"
+import { useStagedPiece } from "./hooks/useStagedPiece"
 import { toDisplayImages } from "./utils/productImages"
 import { CANVAS_SLOTS, toTraySlot, type StudioCanvasSlot } from "./constants/layering"
 import { selectRackProducts } from "./utils/rackOrder"
@@ -1324,6 +1325,17 @@ export function StudioAlternativesView() {
     [heroImagesQuery.data, heroProduct?.imageUrl, heroProduct?.thumbnailUrl, hiddenSlots, slot],
   )
 
+  // The figure changes at once; the card blanks and reveals the new piece whole — see useStagedPiece.
+  const { piece, isStaging } = useStagedPiece({
+    productId: heroProduct?.productId ?? null,
+    title: heroTitle,
+    images: heroImages,
+    attributes: heroAttributes,
+    saved: heroProduct ? productSaveActions.isSaved(heroProduct.productId) : false,
+    ready: Boolean(heroProduct) && !heroImagesQuery.isPending,
+  })
+  const isCardLoading = isStaging || isHeroLoading
+
   const queryLine = useMemo(() => {
     if (search.committedText) return `"${search.committedText}"`
     if (search.committedImageUrl) {
@@ -1460,11 +1472,12 @@ export function StudioAlternativesView() {
               ) : (
                 <StudioFocusSheet
                   slot={focus}
-                  title={heroTitle}
-                  images={heroImages}
-                  attributes={heroAttributes}
-                  saved={heroProduct ? productSaveActions.isSaved(heroProduct.productId) : false}
-                  isLoading={isHeroLoading}
+                  title={piece.title}
+                  images={piece.images}
+                  attributes={piece.attributes}
+                  saved={piece.saved}
+                  isLoading={isCardLoading}
+                  pieceKey={piece.productId ?? "none"}
                   isReadOnly={isViewOnly}
                   onSave={heroProduct ? () => openProductSave(heroProduct.productId) : undefined}
                   onTryOn={handleTryOn}
@@ -1582,21 +1595,22 @@ export function StudioAlternativesView() {
               )
             ) : (
             <ProductSheet
-              title={heroTitle}
-              images={heroImages}
+              title={piece.title}
+              images={piece.images}
               slot={slot}
-              attributes={heroAttributes}
+              attributes={piece.attributes}
               carousel="left"
               mediaSize={176}
               cropToContent
               corner="similar"
               onCorner={handleSimilarSearch}
               actions={isViewOnly ? "none" : "icons"}
-              saved={heroProduct ? productSaveActions.isSaved(heroProduct.productId) : false}
+              saved={piece.saved}
               onSave={heroProduct ? () => openProductSave(heroProduct.productId) : undefined}
               onTryOn={handleTryOn}
               onFindItems={handleFindItems}
-              isLoading={isHeroLoading}
+              isLoading={isCardLoading}
+              revealKey={piece.productId ?? "none"}
               className="h-[205px]"
             />
             )}
