@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { WordmarkLockup } from "@/design-system/primitives"
 import { FirstRunBrandGround, FirstRunPane } from "@/features/profile/components/FirstRunPreview"
 import { PickRow } from "@/features/profile/components/PickRow"
+import { ONBOARDING_FIGURE_PATH } from "@/features/profile/constants/firstRun"
 import { TASTE_ROWS } from "@/features/profile/constants/tasteVocabularies"
 import { useTastePicks } from "@/features/profile/hooks/useTastePicks"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -11,7 +12,6 @@ import { useIsMobile } from "@/hooks/use-mobile"
 /** Tailwind's `lg`. Below this the screen is a single column, as designed. */
 const TWO_PANE_BREAKPOINT = 1024
 
-const FIGURE_STEP_PATH = "/profile/user-details"
 
 /**
  * Canvas 6c — "your taste, in five strokes". First half of first run: five
@@ -26,7 +26,7 @@ export function TastePage() {
   const isCompact = useIsMobile(TWO_PANE_BREAKPOINT)
   const { picks, toggle, total, rowsTouched } = useTastePicks()
 
-  const goToFigure = () => navigate(FIGURE_STEP_PATH)
+  const goToFigure = () => navigate(ONBOARDING_FIGURE_PATH)
 
   return (
     // First run owns the viewport — no bottom nav (see UserDetailsPage).
