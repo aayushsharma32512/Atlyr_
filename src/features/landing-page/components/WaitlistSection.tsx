@@ -159,18 +159,12 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
     }, 4500);
   };
 
+  // The field messages and red borders carry the feedback; focus jumps to the first problem.
   const handleInvalid = () => {
     setFormError(null);
     setFormMessage(null);
-    const errorMessages = Object.values(form.formState.errors)
-      .map((error) => error?.message)
-      .filter(Boolean);
-
-    toast({
-      title: "Please fix the highlighted fields",
-      description: errorMessages.length > 0 ? errorMessages.join(" • ") : "Check the required fields.",
-      variant: "destructive",
-    });
+    const first = Object.keys(form.formState.errors)[0] as keyof WaitlistFormValues | undefined;
+    if (first) form.setFocus(first);
   };
 
   const handleFormSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
