@@ -12,12 +12,17 @@ function findTrayItemBySlot(trayItems: StudioProductTrayItem[] | undefined, slot
   return trayItems.find((item) => item.slot === slot) ?? null
 }
 
-export function useStudioHeroProduct(outfitId: string | null, slot: StudioProductTraySlot | null, productId?: string | null) {
+export function useStudioHeroProduct(
+  outfitId: string | null,
+  slot: StudioProductTraySlot | null,
+  productId?: string | null,
+  opts?: { enabled?: boolean },
+) {
   const queryClient = useQueryClient()
 
   return useQuery({
     queryKey: [...studioKeys.hero(outfitId, slot), productId ?? "default"],
-    enabled: Boolean((outfitId && slot) || productId),
+    enabled: (opts?.enabled ?? true) && Boolean((outfitId && slot) || productId),
     queryFn: () => {
       if ((!outfitId || !slot) && !productId) {
         return Promise.resolve<StudioProductTrayItem | null>(null)

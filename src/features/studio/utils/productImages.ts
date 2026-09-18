@@ -39,9 +39,25 @@ export function isSegmentedAsset(url: string): boolean {
 }
 
 /**
+ * Retail photos are stored as scraped JPEGs at full size. Storage resizes on request, so the
+ * card asks for a bounding box instead: a 176px box needs 420 to stay sharp on 2× screens, and
+ * the variant lands as a ~20KB webp rather than a ~100KB JPEG.
+ */
+const CARD_PHOTO_EDGE = 420
+const STORAGE_OBJECT_PATH = "/storage/v1/object/public/"
+const STORAGE_RENDER_PATH = "/storage/v1/render/image/public/"
+
+export function toCardPhotoUrl(url: string): string {
+  if (!url.includes(STORAGE_OBJECT_PATH)) return url
+  const rendered = url.replace(STORAGE_OBJECT_PATH, STORAGE_RENDER_PATH)
+  const separator = rendered.includes("?") ? "&" : "?"
+  return `${rendered}${separator}width=${CARD_PHOTO_EDGE}&height=${CARD_PHOTO_EDGE}&resize=contain`
+}
+
+/**
  * The frames a piece card shows: scraped retailer photos only, in the order the
- * service returned them. Falls back to the product's own image when nothing
- * survives, so a card is never blank.
+ * service returned them, sized for the card. Falls back to the product's own
+ * image when nothing survives, so a card is never blank.
  */
 export function toDisplayImages(
   images: StudioProductImage[] | undefined,
@@ -49,7 +65,7 @@ export function toDisplayImages(
 ): string[] {
   const urls = (images ?? [])
     .filter((image) => image.url && !isTryOnRender(image.url) && !isSegmentedAsset(image.url))
-    .map((image) => image.url)
+    .map((image) => toCardPhotoUrl(image.url))
 
   if (urls.length > 0) {
     return urls

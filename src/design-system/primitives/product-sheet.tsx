@@ -42,6 +42,8 @@ export interface ProductSheetProps {
   /** Frame the garment, not the transparent placement canvas around it. */
   cropToContent?: boolean
   isLoading?: boolean
+  /** Changes with the piece: photo, name and chips fade in as one unit while the buttons stay put. */
+  revealKey?: string
   className?: string
 }
 
@@ -102,9 +104,17 @@ export function ProductSheet({
   onOpenAlternatives,
   cropToContent = false,
   isLoading = false,
+  revealKey,
   className,
 }: ProductSheetProps) {
   const [index, setIndex] = useState(0)
+  // A new piece starts on its first photo.
+  const [indexKey, setIndexKey] = useState(revealKey)
+  if (indexKey !== revealKey) {
+    setIndexKey(revealKey)
+    setIndex(0)
+  }
+  const reveal = revealKey !== undefined && "animate-in fade-in duration-200"
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const longPressFired = useRef(false)
 
@@ -217,7 +227,8 @@ export function ProductSheet({
       ) : null}
 
       <div
-        className={cn("flex flex-col", panel ? "w-full flex-none" : "flex-none", carousel === "right" && "order-2")}
+        key={revealKey}
+        className={cn("flex flex-col", panel ? "w-full flex-none" : "flex-none", carousel === "right" && "order-2", reveal)}
         style={panel ? undefined : { width: mediaSize }}
       >
         <div
@@ -282,6 +293,7 @@ export function ProductSheet({
         )}
         onClick={onOpenAlternatives}
       >
+        <div key={revealKey} className={cn("flex min-w-0 flex-none flex-col gap-1.5", reveal)}>
         <p
           className={cn(
             "m-0 line-clamp-2 min-h-[39px] flex-none text-label font-medium leading-[1.3] text-ink",
@@ -312,6 +324,7 @@ export function ProductSheet({
               {label}
             </span>
           ))}
+        </div>
         </div>
 
         {actions !== "none" ? (

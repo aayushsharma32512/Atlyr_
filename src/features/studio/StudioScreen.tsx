@@ -9,6 +9,7 @@ import { StudioCanvas } from "./components/StudioCanvas"
 import { StudioPieceRows } from "./components/StudioPieceRows"
 import { StudioSaveCard } from "./components/StudioSaveCard"
 import { StudioFocusSheet } from "./components/StudioFocusSheet"
+import { useStagedPiece } from "./hooks/useStagedPiece"
 import { useStudioFocus } from "./hooks/useStudioFocus"
 import { useShareLook } from "@/features/share/hooks/useShareLink"
 import { useStudioProductImages } from "./hooks/useStudioProductImages"
@@ -1039,12 +1040,23 @@ export function StudioScreenView() {
   )
   const focusImagesQuery = useStudioProductImages(focusItem?.productId ?? null)
 
+  // The piece's own thumbnail, already in the browser cache, stands in until the retailer photos land.
   const focusImages = useMemo(
-    () => toDisplayImages(focusImagesQuery.data, focusItem?.imageUrl ?? focusItem?.thumbnailUrl),
+    () => toDisplayImages(focusImagesQuery.data, focusItem?.thumbnailUrl ?? focusItem?.imageUrl),
     [focusImagesQuery.data, focusItem?.imageUrl, focusItem?.thumbnailUrl],
   )
 
   const focusAttributes = useMemo(() => getTrayItemTags(focusItem), [focusItem])
+
+  // Stepping between pieces blanks the card and reveals the next one whole — see useStagedPiece.
+  const { piece: focusPiece, isStaging: isFocusStaging } = useStagedPiece({
+    productId: focusItem?.productId ?? null,
+    title: focusItem?.title ?? "",
+    images: focusImages,
+    attributes: focusAttributes,
+    saved: false,
+    ready: Boolean(focusItem) && !focusImagesQuery.isPending,
+  })
 
   // A slot emptied while focused has nothing to show — drop back to the canvas.
   // Not before the look and its slots have loaded: a deep link's focus must survive the fetch.
@@ -1193,10 +1205,11 @@ export function StudioScreenView() {
         {showFocus && focusItem ? (
           <StudioFocusSheet
             slot={focus as StudioCanvasSlot}
-            title={focusItem.title}
-            images={focusImages}
-            attributes={focusAttributes}
-            isLoading={focusImagesQuery.isLoading}
+            title={focusPiece.title}
+            images={focusPiece.images}
+            attributes={focusPiece.attributes}
+            isLoading={isFocusStaging}
+            pieceKey={focusPiece.productId ?? "none"}
             isReadOnly={isViewOnly}
             onSave={() => setIsSaveDrawerOpen(true)}
             onTryOn={handleTryOn}

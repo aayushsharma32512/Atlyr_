@@ -4,11 +4,10 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { studioKeys } from "@/features/studio/queryKeys"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { useStudioContext } from "@/features/studio/context/StudioContext"
-import {
-  studioService,
-  type StudioProductTrayItem,
-  type StudioAlternativeProduct,
-  type StudioProductTraySlot,
+import type {
+  StudioProductTrayItem,
+  StudioAlternativeProduct,
+  StudioProductTraySlot,
 } from "@/services/studio/studioService"
 import type { Outfit } from "@/types"
 import { toTrayItem, upsertTrayItem } from "@/features/studio/utils/trayMutations"
@@ -38,15 +37,8 @@ export function useStudioSwapActions(outfitId: string | null) {
 
   const mutation = useMutation({
     mutationKey: studioKeys.swap(outfitId),
-    // Rack tiles carry no tag fields; the full row fills them in once it lands. A failed
-    // fetch must not roll the swap back, so it resolves to null instead of throwing.
-    mutationFn: async ({ product }: SwapVariables) => {
-      try {
-        return await studioService.getProductById(product.id)
-      } catch {
-        return null
-      }
-    },
+    // A swap is client-only: the tile carries everything the figure and the piece card need.
+    mutationFn: async (variables: SwapVariables) => variables,
     onMutate: async ({ slot, product }) => {
       if (!outfitId) {
         return null
@@ -97,9 +89,6 @@ export function useStudioSwapActions(outfitId: string | null) {
         (prevItems = []) => upsertTrayItem(prevItems, trayItem),
       )
 
-      // The hero query is not seeded: with staleTime Infinity a seeded rack tile would never be
-      // replaced by the full product row, and the tray fallback already covers the fetch gap.
-
       // The rack is deliberately left alone: the worn tile is outlined in place.
       // Removing it and injecting the displaced piece at the front made the
       // list jump under the finger on every wear.
@@ -107,41 +96,6 @@ export function useStudioSwapActions(outfitId: string | null) {
       setSlotProductId(slot, product.id)
 
       return context
-    },
-    onSuccess: (fullItem, { slot }) => {
-      if (!outfitId || !fullItem) {
-        return
-      }
-      // Only the fields the rack tile lacked; render fields stay as the optimistic swap set them.
-      const fill = (item: StudioProductTrayItem) =>
-        item.slot === slot && item.productId === fullItem.productId
-          ? {
-              ...item,
-              fitTags: fullItem.fitTags,
-              feelTags: fullItem.feelTags,
-              vibeTags: fullItem.vibeTags,
-              colorGroup: fullItem.colorGroup ?? null,
-              materialType: fullItem.materialType ?? null,
-              care: fullItem.care ?? null,
-            }
-          : item
-
-      queryClient.setQueryData<StudioOutfitCacheEntry | undefined>(studioKeys.outfit(outfitId), (prev) => {
-        if (!prev) {
-          return prev
-        }
-        const swapped = prev.swappedTrayItems?.[slot]
-        return {
-          ...prev,
-          trayItems: (prev.trayItems ?? []).map(fill),
-          swappedTrayItems: swapped ? { ...prev.swappedTrayItems, [slot]: fill(swapped) } : prev.swappedTrayItems,
-        }
-      })
-
-      queryClient.setQueryData<StudioProductTrayItem[] | undefined>(
-        studioKeys.productTray(outfitId),
-        (prevItems = []) => prevItems.map(fill),
-      )
     },
     onError: (_error, _variables, context) => {
       if (!context || !outfitId) {

@@ -103,6 +103,12 @@ export interface StudioAlternativeProduct {
   bodyPartsVisible?: string[] | null
   /** 3D placement transform, so equipping this alternative keeps its 3D data. */
   placement?: StudioPlacementByMannequin | null
+  /** Parsed tag columns, so wearing a tile fills the piece card without a second fetch. */
+  fitTags?: string[]
+  feelTags?: string[]
+  vibeTags?: string[]
+  colorGroup?: string | null
+  materialType?: string | null
 }
 
 export interface StudioComplementaryProduct {
@@ -731,6 +737,13 @@ function mapProductRowToAlternative(
   const imageLength = row.image_length
 
   const imageSrc = (typeof row.thumbnail_url === "string" && row.thumbnail_url) || row.image_url || ""
+  const tags = {
+    fitTags: parseTagList(row.fit),
+    feelTags: parseTagList(row.feel),
+    vibeTags: parseTagList(row.vibes),
+    colorGroup: row.color_group ?? null,
+    materialType: row.material_type ?? null,
+  }
 
   if (!hasPlacementStats(placementX, placementY, imageLength)) {
     reportStudioDataIssue({
@@ -763,6 +776,7 @@ function mapProductRowToAlternative(
       metadataSource: "default",
       bodyPartsVisible: (Array.isArray(row.body_parts_visible) ? row.body_parts_visible : null) as string[] | null,
       placement: toPlacementTransform(row as unknown as Parameters<typeof toPlacementTransform>[0]),
+      ...tags,
     }
   }
 
@@ -786,6 +800,7 @@ function mapProductRowToAlternative(
     metadataSource: "product",
     bodyPartsVisible: (Array.isArray(row.body_parts_visible) ? row.body_parts_visible : null) as string[] | null,
     placement: toPlacementTransform(row as unknown as Parameters<typeof toPlacementTransform>[0]),
+    ...tags,
   }
 }
 
@@ -801,6 +816,11 @@ function mapSearchResultToAlternative(
   const placementX = result.placementX
   const placementY = result.placementY
   const imageLength = result.imageLength
+  const tags = {
+    fitTags: parseTagList(result.fit),
+    feelTags: parseTagList(result.feel),
+    vibeTags: parseTagList(result.vibes),
+  }
 
   if (!hasPlacementStats(placementX, placementY, imageLength)) {
     reportStudioDataIssue({
@@ -833,6 +853,7 @@ function mapSearchResultToAlternative(
       bodyPartsVisible: result.bodyPartsVisible ?? null,
       imageUrl: result.renderImageSrc || result.imageSrc,
       placement: toPlacementTransform(result),
+      ...tags,
     }
   }
 
@@ -856,6 +877,7 @@ function mapSearchResultToAlternative(
     bodyPartsVisible: result.bodyPartsVisible ?? null,
     imageUrl: result.renderImageSrc || result.imageSrc,
     placement: toPlacementTransform(result),
+    ...tags,
   }
 }
 
@@ -882,6 +904,11 @@ export function mapTrayItemToAlternative(item: StudioProductTrayItem): StudioAlt
     metadataSource: item.metadataSource,
     bodyPartsVisible: item.bodyPartsVisible ?? null,
     placement: item.placement ?? null,
+    fitTags: item.fitTags,
+    feelTags: item.feelTags,
+    vibeTags: item.vibeTags,
+    colorGroup: item.colorGroup ?? null,
+    materialType: item.materialType ?? null,
   }
 }
 
@@ -954,7 +981,7 @@ async function getAlternatives({ slot, gender, limit = 24, filters }: GetAlterna
   let query = supabase
     .from("products")
     .select(
-      "id, product_name, brand, price, image_url, thumbnail_url, product_url, gender, type, type_category, placement_x, placement_y, image_length, placement, size, currency, color, fit, feel, vibes, body_parts_visible",
+      "id, product_name, brand, price, image_url, thumbnail_url, product_url, gender, type, type_category, placement_x, placement_y, image_length, placement, size, currency, color, fit, feel, vibes, color_group, material_type, body_parts_visible",
     )
     .eq("type", itemType)
     .limit(limit)
@@ -1041,7 +1068,7 @@ async function getCollectionAlternatives({
     const { data, error } = await supabase
       .from("products")
       .select(
-        "id, product_name, brand, price, image_url, thumbnail_url, product_url, gender, type, type_category, placement_x, placement_y, image_length, placement, size, currency, color, fit, feel, vibes, body_parts_visible",
+        "id, product_name, brand, price, image_url, thumbnail_url, product_url, gender, type, type_category, placement_x, placement_y, image_length, placement, size, currency, color, fit, feel, vibes, color_group, material_type, body_parts_visible",
       )
       .in("id", productIds)
       .eq("type", itemType)
@@ -1380,7 +1407,7 @@ async function getComplementaryProductsByProductId({
   const query = supabase
     .from("products")
     .select(
-      "id, product_name, brand, price, image_url, thumbnail_url, product_url, gender, type, type_category, placement_x, placement_y, image_length, placement, size, currency, color, fit, feel, vibes, body_parts_visible",
+      "id, product_name, brand, price, image_url, thumbnail_url, product_url, gender, type, type_category, placement_x, placement_y, image_length, placement, size, currency, color, fit, feel, vibes, color_group, material_type, body_parts_visible",
     )
     .in("type", complementarySlots)
     .neq("id", productId)

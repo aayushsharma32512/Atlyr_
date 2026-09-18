@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 
 import { cn } from "@/lib/utils"
 import { garmentCropStyle, shouldCropToContent } from "@/design-system/utils/garment-crop"
@@ -10,12 +10,16 @@ import { probeGarmentBounds, type GarmentBounds } from "@/design-system/utils/im
  * repeated garments pays for each image once rather than once per tile.
  */
 const cache = new Map<string, Promise<GarmentBounds>>()
+// Settled probes, readable during render: an image the rack has already framed is cropped from
+// its first paint here too, instead of one frame later.
+const settled = new Map<string, GarmentBounds>()
 
 function boundsFor(url: string): Promise<GarmentBounds> {
   const hit = cache.get(url)
   if (hit) return hit
   const probe = probeGarmentBounds(url)
   cache.set(url, probe)
+  probe.then((result) => settled.set(url, result)).catch(() => {})
   return probe
 }
 
@@ -53,30 +57,31 @@ export function GarmentImage({
   className,
 }: GarmentImageProps) {
   const frameRef = useRef<HTMLSpanElement | null>(null)
-  const [bounds, setBounds] = useState<GarmentBounds | null>(null)
+  const [probed, setProbed] = useState<{ src: string; bounds: GarmentBounds } | null>(null)
   const [frameAspect, setFrameAspect] = useState(1)
 
   useEffect(() => {
-    if (!cropToContent || !src) {
-      setBounds(null)
-      return
-    }
+    if (!cropToContent || !src || settled.has(src)) return
     let alive = true
     boundsFor(src)
       .then((result) => {
-        if (alive) setBounds(result)
+        if (alive) setProbed({ src, bounds: result })
       })
-      .catch(() => {
-        if (alive) setBounds(null)
-      })
+      .catch(() => {})
     return () => {
       alive = false
     }
   }, [cropToContent, src])
 
+  // Bounds belong to one source. A new source starts uncropped rather than wearing the previous
+  // image's crop until its own probe lands, which zoomed a photo in and then snapped it back.
+  const bounds = cropToContent && src ? (settled.get(src) ?? (probed?.src === src ? probed.bounds : null)) : null
+
   // The frame's own aspect decides the maths; percentages resolve against its
   // width and height separately. No transforms here, so measuring is honest.
-  useEffect(() => {
+  // Measured before the first paint, or a cropped garment paints at a square
+  // frame's size and then jumps to the real one.
+  useLayoutEffect(() => {
     const node = frameRef.current
     if (!cropToContent || !node || typeof ResizeObserver === "undefined") return
     const measure = () => {

@@ -23,6 +23,8 @@ export interface StudioFocusSheetProps {
   onOpenAlternatives?: () => void
   /** +1 = next worn piece, -1 = previous. */
   onStep?: (delta: number) => void
+  /** Changes with the piece, so photo, name and chips fade in as one unit while the buttons stay put. */
+  pieceKey?: string
   className?: string
 }
 
@@ -45,6 +47,7 @@ export function StudioFocusSheet({
   onFindItems,
   onOpenAlternatives,
   onStep,
+  pieceKey,
   className,
 }: StudioFocusSheetProps) {
   const start = useRef<{ x: number; y: number } | null>(null)
@@ -100,6 +103,7 @@ export function StudioFocusSheet({
         onFindItems={onFindItems}
         onOpenAlternatives={onOpenAlternatives}
         isLoading={isLoading}
+        revealKey={pieceKey}
         className="h-[205px]"
       />
     </div>
