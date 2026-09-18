@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils"
  *    decorative gold rule under a wordmark is exactly the usage it forbids.
  *  · App copy is English. The wordmark lives in branding only, never on a control.
  */
-export type WordmarkSize = "header" | "firstRun" | "landing" | "micro"
+export type WordmarkSize = "header" | "landingHeader" | "firstRun" | "landing" | "micro"
 
 export interface WordmarkLockupProps {
   /**
@@ -39,6 +39,7 @@ const MARK = "Atlyr"
 const MARK_SIZE: Record<WordmarkSize, string> = {
   micro: "text-[13px]",
   header: "text-[17px]",
+  landingHeader: "text-[26px]",
   firstRun: "text-fluid-mark-firstrun",
   landing: "text-fluid-mark-landing",
 }
@@ -54,7 +55,7 @@ export function WordmarkLockup({
     <div
       className={cn(
         "flex flex-col items-center",
-        size === "header" && "flex-row",
+        (size === "header" || size === "landingHeader") && "flex-row",
         className,
       )}
     >

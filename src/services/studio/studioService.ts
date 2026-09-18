@@ -1542,6 +1542,30 @@ async function getOutfitsByCategoryPage({
 
 
 
+/** Products in the order the ids were given; ids that no longer exist are dropped. */
+async function getProductsByIds(productIds: string[]): Promise<StudioAlternativeProduct[]> {
+  if (productIds.length === 0) {
+    return []
+  }
+  const { data, error } = await supabase
+    .from("products")
+    .select(
+      "id, product_name, brand, price, image_url, thumbnail_url, product_url, gender, type, type_category, placement_x, placement_y, image_length, placement, size, currency, color, fit, feel, vibes, color_group, material_type, body_parts_visible",
+    )
+    .in("id", productIds)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  const byId = new Map<string, StudioAlternativeProduct>()
+  for (const row of data ?? []) {
+    const alt = mapProductRowToAlternative(row as Database["public"]["Tables"]["products"]["Row"])
+    byId.set(alt.id, alt)
+  }
+  return productIds.map((id) => byId.get(id)).filter((alt): alt is StudioAlternativeProduct => Boolean(alt))
+}
+
 export const studioService = {
   getOutfitById,
   getRandomOutfitByGender,
@@ -1549,6 +1573,7 @@ export const studioService = {
   deriveTrayItemsFromOutfit,
   getAlternatives,
   getCollectionAlternatives,
+  getProductsByIds,
   getProductById,
   getOutfitsByProduct,
   getProductDetail,

@@ -17,6 +17,8 @@ export interface AlternatesRackProps {
   showWebSearch?: boolean
   /** The row's action: Find items in web mode for this slot. */
   onWebSearch?: () => void
+  /** False renders the tiles without their hairline frame. */
+  framedTiles?: boolean
   className?: string
 }
 
@@ -34,6 +36,7 @@ export function AlternatesRack({
   emptyLabel = "Nothing in this slot yet",
   showWebSearch = false,
   onWebSearch,
+  framedTiles = true,
   className,
 }: AlternatesRackProps) {
   return (
@@ -75,6 +78,7 @@ export function AlternatesRack({
                 title={product.title}
                 imageSrc={product.imageSrc ?? product.imageUrl ?? null}
                 worn={product.id === wornProductId}
+                framed={framedTiles}
                 // The save card that opens on tap already covers saving; a second
                 // heart per tile was redundant.
                 mark={false}

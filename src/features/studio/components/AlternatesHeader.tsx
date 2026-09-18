@@ -8,6 +8,51 @@ const SOURCES: Array<{ id: StudioSource; label: string; icon: React.ComponentTyp
   { id: "explore", label: "Explore", icon: Icons.findItems },
 ]
 
+export interface AlternatesSourceTabsProps {
+  source: StudioSource
+  onSourceChange: (source: StudioSource) => void
+  isReadOnly?: boolean
+  className?: string
+}
+
+/** The 195px wardrobe / saves / explore segment, on its own so other frames can host it. */
+export function AlternatesSourceTabs({
+  source,
+  onSourceChange,
+  isReadOnly = false,
+  className,
+}: AlternatesSourceTabsProps) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Source"
+      className={cn("box-border flex h-[52px] w-[195px] flex-none items-end gap-1.5 px-2 pb-[5px]", className)}
+    >
+      {SOURCES.map(({ id, label, icon: Icon }) => {
+        const isActive = id === source
+        return (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            aria-label={label}
+            disabled={isReadOnly}
+            onClick={isReadOnly ? undefined : () => onSourceChange(id)}
+            className={cn(
+              "box-border flex h-control-chip min-w-0 flex-1 items-center justify-center text-ink",
+              "disabled:cursor-not-allowed disabled:opacity-40",
+              isActive ? "border-b-2 border-violet" : "rounded-control",
+            )}
+          >
+            <Icon className="h-4 w-4" />
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export interface AlternatesHeaderProps {
   source: StudioSource
   onSourceChange: (source: StudioSource) => void
@@ -38,34 +83,7 @@ export function AlternatesHeader({
         {/* The screen names itself in the header row, like every screen. */}
         <h1 className="min-w-0 truncate font-display text-title font-medium text-ink">Alternates</h1>
       </div>
-
-      <div
-        role="tablist"
-        aria-label="Source"
-        className="box-border flex h-[52px] w-[195px] flex-none items-end gap-1.5 px-2 pb-[5px]"
-      >
-        {SOURCES.map(({ id, label, icon: Icon }) => {
-          const isActive = id === source
-          return (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              aria-label={label}
-              disabled={isReadOnly}
-              onClick={isReadOnly ? undefined : () => onSourceChange(id)}
-              className={cn(
-                "box-border flex h-control-chip min-w-0 flex-1 items-center justify-center text-ink",
-                "disabled:cursor-not-allowed disabled:opacity-40",
-                isActive ? "border-b-2 border-violet" : "rounded-control",
-              )}
-            >
-              <Icon className="h-4 w-4" />
-            </button>
-          )
-        })}
-      </div>
+      <AlternatesSourceTabs source={source} onSourceChange={onSourceChange} isReadOnly={isReadOnly} />
     </div>
   )
 }

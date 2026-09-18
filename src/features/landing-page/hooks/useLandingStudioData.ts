@@ -1,0 +1,65 @@
+import { useQuery, type QueryClient } from "@tanstack/react-query"
+import {
+  studioService,
+  type StudioAlternativeProduct,
+  type StudioProductTraySlot,
+} from "@/services/studio/studioService"
+import { getMannequinConfigQueryOptions } from "@/features/studio/hooks/useMannequinConfig"
+import { getAvatarHairStylesQueryOptions } from "@/features/profile/hooks/useAvatarHairStyles"
+import type { MannequinConfig } from "@/features/studio/types"
+import { landingKeys } from "../queryKeys"
+import { LANDING_FIRST_LOOK_IDS, LANDING_INVENTORY_IDS } from "../landingInventory"
+
+// Three rows, so the opening look never waits for the whole catalogue's 200KB.
+const firstLookOptions = {
+  queryKey: landingKeys.firstLook(),
+  queryFn: () => studioService.getProductsByIds(LANDING_FIRST_LOOK_IDS),
+  staleTime: Infinity,
+  gcTime: Infinity,
+}
+
+const inventoryOptions = {
+  queryKey: landingKeys.inventory(),
+  queryFn: () => studioService.getProductsByIds(LANDING_INVENTORY_IDS),
+  staleTime: Infinity,
+  gcTime: Infinity,
+}
+
+const mannequinOptions = getMannequinConfigQueryOptions({ gender: "female" })
+
+export function useLandingFirstLook() {
+  return useQuery<StudioAlternativeProduct[]>(firstLookOptions)
+}
+
+/** The fixed demo catalogue. Never goes stale within a visit. */
+export function useLandingInventory() {
+  return useQuery<StudioAlternativeProduct[]>(inventoryOptions)
+}
+
+/** One vibe search for a slot. Same call the in-app rack makes, women's catalogue only. */
+export function useLandingSearch(slot: StudioProductTraySlot, query: string) {
+  return useQuery<StudioAlternativeProduct[]>({
+    queryKey: landingKeys.search(slot, query),
+    queryFn: () => studioService.searchAlternatives({ slot, query, gender: "female" }),
+    enabled: query.trim().length > 0,
+    staleTime: Infinity,
+    gcTime: Infinity,
+    retry: false,
+  })
+}
+
+/** Fired from the page shell, so the data and the mannequin images race the renderer's chunk instead of waiting for it. */
+export function prefetchLandingStudio(queryClient: QueryClient) {
+  void queryClient.prefetchQuery(firstLookOptions)
+  void queryClient.prefetchQuery(inventoryOptions)
+  void queryClient.prefetchQuery(getAvatarHairStylesQueryOptions("female"))
+  void queryClient.prefetchQuery(mannequinOptions).then(() => {
+    const config = queryClient.getQueryData<MannequinConfig | null>(mannequinOptions.queryKey)
+    for (const segment of Object.values(config?.segments ?? {})) {
+      // Same crossOrigin as the renderer's own loader, so the cache entry matches.
+      const image = new Image()
+      image.crossOrigin = "anonymous"
+      image.src = segment.assetUrl
+    }
+  })
+}

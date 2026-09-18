@@ -26,7 +26,6 @@ export function LandingHeader({ isAuthenticated, onWaitlistScroll, onSignInClick
     >
 
       <div className="flex items-center justify-between max-w-7xl mx-auto w-full">
-        {/* Left: the mark. Small here — the gate below carries the full lockup. */}
         <div className="flex items-center">
           <Link
             to="/"
@@ -37,7 +36,7 @@ export function LandingHeader({ isAuthenticated, onWaitlistScroll, onSignInClick
             }}
           >
             <WordmarkLockup
-              size="header"
+              size="landingHeader"
               className="transition-opacity duration-300 group-hover:opacity-70"
             />
           </Link>
