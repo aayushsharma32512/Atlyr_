@@ -51,8 +51,10 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="relative min-h-screen bg-background">
-      <div className="h-[100dvh] overflow-y-scroll scroll-smooth snap-y snap-mandatory">
+    // The shell is exactly the visible viewport: any document overflow would let iOS collapse its
+    // toolbar mid-scroll, which resizes every full-height section under the finger.
+    <div className="relative h-[100dvh] overflow-hidden bg-background">
+      <div className="h-full overflow-y-scroll overscroll-y-none scroll-smooth snap-y snap-mandatory">
         <LandingHeader
           isAuthenticated={Boolean(user)}
           onWaitlistScroll={scrollToWaitlist}
