@@ -57,6 +57,8 @@ const PlacementDashboard = lazy(() => import("./pages/admin/PlacementDashboard.t
 const ShoesDashboard = lazy(() => import("./pages/admin/ShoesDashboard.tsx"));
 const AvatarPreview = lazy(() => import("./pages/AvatarPreview.tsx"));
 const UserDetailsPreview = lazy(() => import("./pages/UserDetailsPreview.tsx"));
+const OnboardingAboutPage = lazy(() => import("./features/profile/pages/onboarding/OnboardingAboutPage.tsx"));
+const OnboardingFigurePage = lazy(() => import("./features/profile/pages/onboarding/OnboardingFigurePage.tsx"));
 const TastePage = lazy(() => import("@/features/profile/pages/TastePage"));
 const FigurePreview = lazy(() => import("./pages/FigurePreview.tsx"));
 const AdminHome = lazy(() => import("./pages/admin/AdminHome.tsx"));
@@ -289,8 +291,23 @@ const App = () => (
                         </ShareAccessGuard>
                       }
                     />
-                    {/* First run, step 1 of 2 — taste (6c). Step 2 is the
-                        figure at /profile/user-details (6c2). */}
+                    {/* First run: about you, then the figure. Taste is built but out of the flow. */}
+                    <Route
+                      path="/onboarding/about"
+                      element={
+                        <ShareAccessGuard>
+                          <OnboardingAboutPage />
+                        </ShareAccessGuard>
+                      }
+                    />
+                    <Route
+                      path="/onboarding/figure"
+                      element={
+                        <ShareAccessGuard>
+                          <OnboardingFigurePage />
+                        </ShareAccessGuard>
+                      }
+                    />
                     <Route
                       path="/onboarding/taste"
                       element={
