@@ -1,0 +1,1314 @@
+{
+  "products": [
+    {
+      "id": "20ee45a8e9ab6100cb39a813a582fb7ec7bd5165",
+      "product_name": "Ribbed High Neck Halter Top",
+      "brand": "LULU & SKY",
+      "price": 3198,
+      "image_url": "https://hhqnvjxnsbwhmrldohbz.supabase.co/storage/v1/object/public/ingested_inventory/processed/ghost_mannequins/9def166c-28c8-46c1-b46b-5e7d2f924281/front/1769279698774-hehefront1.png",
+      "thumbnail_url": "https://hhqnvjxnsbwhmrldohbz.supabase.co/storage/v1/object/public/ingested_inventory/processed/ghost_mannequins/9def166c-28c8-46c1-b46b-5e7d2f924281/front/1769279698774-hehefront1.webp",
+      "product_url": "https://www.myntra.com/tops/lulu+%26+sky/lulu--sky-top/37777568/buy",
+      "gender": "female",
+      "type": "top",
+      "type_category": "top",
+      "placement_x": 0,
+      "placement_y": 0.98,
+      "image_length": 57.28,
+      "placement": {
+        "female:bodytype1": {
+          "tx": 0,
+          "ty": -564,
+          "refH": 2048,
+          "refW": 1300,
+          "warp": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": -0.5066159963607788,
+              "y": 0
+            },
+            {
+              "x": -0.7652415633201599,
+              "y": 0
+            },
+            {
+              "x": -0.5066159963607788,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0.5066158175468445,
+              "y": 0
+            },
+            {
+              "x": 0.7652415633201599,
+              "y": 0
+            },
+            {
+              "x": 0.5066160559654236,
+              "y": 0
+            },
+            {
+              "x": -2.0768349170684814,
+              "y": 0
+            },
+            {
+              "x": -3.1370513439178467,
+              "y": 0
+            },
+            {
+              "x": -2.0768349170684814,
+              "y": 0
+            },
+            {
+              "x": -0.6026190519332886,
+              "y": 0
+            },
+            {
+              "x": 0.6026188135147095,
+              "y": 0
+            },
+            {
+              "x": 2.076834201812744,
+              "y": 0
+            },
+            {
+              "x": 3.1370513439178467,
+              "y": 0
+            },
+            {
+              "x": 2.0768353939056396,
+              "y": 0
+            },
+            {
+              "x": -6.222494602203369,
+              "y": 0
+            },
+            {
+              "x": -9.399054527282715,
+              "y": 0
+            },
+            {
+              "x": -6.222494602203369,
+              "y": 0
+            },
+            {
+              "x": -1.8055328130722046,
+              "y": 0
+            },
+            {
+              "x": 1.8055320978164673,
+              "y": 0
+            },
+            {
+              "x": 6.222492218017578,
+              "y": 0
+            },
+            {
+              "x": 9.399054527282715,
+              "y": 0
+            },
+            {
+              "x": 6.2224955558776855,
+              "y": 0
+            },
+            {
+              "x": -13.62592887878418,
+              "y": 0
+            },
+            {
+              "x": -20.5819149017334,
+              "y": 0
+            },
+            {
+              "x": -13.62592887878418,
+              "y": 0
+            },
+            {
+              "x": -3.4509143829345703,
+              "y": 0
+            },
+            {
+              "x": 3.4509124755859375,
+              "y": 0
+            },
+            {
+              "x": 13.625924110412598,
+              "y": 0
+            },
+            {
+              "x": 20.5819149017334,
+              "y": 0
+            },
+            {
+              "x": 13.625932693481445,
+              "y": 0
+            },
+            {
+              "x": -21.807567596435547,
+              "y": 0
+            },
+            {
+              "x": -32.940250396728516,
+              "y": 0
+            },
+            {
+              "x": -21.807567596435547,
+              "y": 0
+            },
+            {
+              "x": -5.523003101348877,
+              "y": 0
+            },
+            {
+              "x": 5.5229997634887695,
+              "y": 0
+            },
+            {
+              "x": 21.807559967041016,
+              "y": 0
+            },
+            {
+              "x": 32.940250396728516,
+              "y": 0
+            },
+            {
+              "x": 21.807571411132812,
+              "y": 0
+            },
+            {
+              "x": -25.50865364074707,
+              "y": 0
+            },
+            {
+              "x": -38.530723571777344,
+              "y": 0
+            },
+            {
+              "x": -25.50865364074707,
+              "y": 0
+            },
+            {
+              "x": -6.460342884063721,
+              "y": 0
+            },
+            {
+              "x": 6.460339546203613,
+              "y": 0
+            },
+            {
+              "x": 25.508644104003906,
+              "y": 0
+            },
+            {
+              "x": 38.530723571777344,
+              "y": 0
+            },
+            {
+              "x": 25.508657455444336,
+              "y": 0
+            },
+            {
+              "x": -21.80756187438965,
+              "y": 0
+            },
+            {
+              "x": -32.940242767333984,
+              "y": 0
+            },
+            {
+              "x": -21.80756187438965,
+              "y": 0
+            },
+            {
+              "x": -5.5230021476745605,
+              "y": 0
+            },
+            {
+              "x": 5.522998809814453,
+              "y": 0
+            },
+            {
+              "x": 21.80755615234375,
+              "y": 0
+            },
+            {
+              "x": 32.940242767333984,
+              "y": 0
+            },
+            {
+              "x": 21.807567596435547,
+              "y": 0
+            }
+          ],
+          "scale": 0.31,
+          "rotationDeg": 0
+        }
+      },
+      "size": "M",
+      "currency": "INR",
+      "color": "Off white",
+      "fit": "fitted",
+      "feel": "ribbed, soft",
+      "vibes": "clean girl, minimalist, everyday basics",
+      "color_group": "off white",
+      "material_type": "knit blend",
+      "body_parts_visible": [
+        "head",
+        "neck",
+        "torso",
+        "arm_left",
+        "arm_right",
+        "legs",
+        "feet"
+      ]
+    },
+    {
+      "id": "3c34a8a071fca71ceb454696cfa49350ab3ce193",
+      "product_name": "Draped Suede Wrap Mini Skirt",
+      "brand": "Littlebox India",
+      "price": 649,
+      "image_url": "https://hhqnvjxnsbwhmrldohbz.supabase.co/storage/v1/object/public/ingestion-automated/segmentation/0df2cae7-cb36-4bee-ab68-c8adb0515e20/final.png",
+      "thumbnail_url": "https://hhqnvjxnsbwhmrldohbz.supabase.co/storage/v1/object/public/ingestion-automated/segmentation/0df2cae7-cb36-4bee-ab68-c8adb0515e20/final.webp",
+      "product_url": "https://littleboxindia.com/collections/all/products/high-waist-draped-wrap-mini-skirt-in-dark-brown",
+      "gender": "female",
+      "type": "bottom",
+      "type_category": "mini skirt",
+      "placement_x": null,
+      "placement_y": null,
+      "image_length": null,
+      "placement": {
+        "female:bodytype1": {
+          "tx": -0.5314590736040827,
+          "ty": -4.237314279651855,
+          "refH": 2752,
+          "refW": 1536,
+          "warp": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            }
+          ],
+          "scale": 0.98,
+          "rotationDeg": -0.01682760601311249
+        }
+      },
+      "size": "Unavailable",
+      "currency": "INR",
+      "color": "brown",
+      "fit": "mini, wrap",
+      "feel": "suede, soft",
+      "vibes": "date night, clean girl, night luxe",
+      "color_group": "brown",
+      "material_type": "faux suede",
+      "body_parts_visible": null
+    },
+    {
+      "id": "7232736b519171050e87bd010512299da362720a",
+      "product_name": "Braided Toe Ring Flat Sandals",
+      "brand": "Anouk",
+      "price": 471,
+      "image_url": "https://hhqnvjxnsbwhmrldohbz.supabase.co/storage/v1/object/public/ingestion-automated/manual_shoes/segmented/38205213_anouk.png",
+      "thumbnail_url": "https://hhqnvjxnsbwhmrldohbz.supabase.co/storage/v1/object/public/ingestion-automated/manual_shoes/segmented/38205213_anouk.webp",
+      "product_url": "https://www.myntra.com/sandals/anouk/anouk-women-ethnic-comfort-sandals/38205213/buy",
+      "gender": "female",
+      "type": "shoes",
+      "type_category": "sandals",
+      "placement_x": 0,
+      "placement_y": 85,
+      "image_length": 14.5,
+      "placement": {
+        "female:bodytype1": {
+          "tx": 0,
+          "ty": 1296,
+          "refH": 247,
+          "refW": 383,
+          "warp": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 0,
+              "y": 0
+            }
+          ],
+          "scale": 0.22,
+          "rotationDeg": 0
+        }
+      },
+      "size": "M",
+      "currency": "INR",
+      "color": "Brown",
+      "fit": null,
+      "feel": null,
+      "vibes": null,
+      "color_group": "brown",
+      "material_type": "Rubber",
+      "body_parts_visible": [
+        "legs"
+      ]
+    }
+  ],
+  "mannequin": {
+    "id": "bba3abfd-e178-4a42-a5ed-d68c456f4125",
+    "gender": "female",
+    "body_type": "bodytype1",
+    "height_cm": 163,
+    "default_scale": 0.8,
+    "segment_config": {
+      "feet": {
+        "z_index": 1,
+        "asset_url": "https://hhqnvjxnsbwhmrldohbz.supabase.co/storage/v1/object/public/mannequin/female/bodytype1/feet.svg",
+        "length_pct": 15.82,
+        "placement_y_pct": 76.1
+      },
+      "head": {
+        "z_index": 3,
+        "asset_url": "https://hhqnvjxnsbwhmrldohbz.supabase.co/storage/v1/object/public/mannequin/female/bodytype1/head.svg",
+        "length_pct": 15.15,
+        "placement_y_pct": -13.7
+      },
+      "legs": {
+        "z_index": 1,
+        "asset_url": "https://hhqnvjxnsbwhmrldohbz.supabase.co/storage/v1/object/public/mannequin/female/bodytype1/legs.svg",
+        "length_pct": 54.98,
+        "placement_y_pct": 25.3
+      },
+      "neck": {
+        "z_index": 3,
+        "asset_url": "https://hhqnvjxnsbwhmrldohbz.supabase.co/storage/v1/object/public/mannequin/female/bodytype1/neck.svg",
+        "length_pct": 5.79,
+        "placement_y_pct": -1.3
+      },
+      "torso": {
+        "z_index": 1,
+        "asset_url": "https://hhqnvjxnsbwhmrldohbz.supabase.co/storage/v1/object/public/mannequin/female/bodytype1/torso.svg",
+        "length_pct": 42.73,
+        "placement_y_pct": 0.7
+      },
+      "arm_left": {
+        "z_index": 1,
+        "asset_url": "https://hhqnvjxnsbwhmrldohbz.supabase.co/storage/v1/object/public/mannequin/female/bodytype1/arm_left.svg",
+        "length_pct": 32.21,
+        "x_offset_pct": -0.442,
+        "placement_y_pct": 14.3
+      },
+      "arm_right": {
+        "z_index": 1,
+        "asset_url": "https://hhqnvjxnsbwhmrldohbz.supabase.co/storage/v1/object/public/mannequin/female/bodytype1/arm_right.svg",
+        "length_pct": 32.21,
+        "x_offset_pct": 0.442,
+        "placement_y_pct": 14.3
+      }
+    },
+    "is_default": true,
+    "created_at": "2025-11-25T19:01:23.972315+00:00",
+    "updated_at": "2025-11-26T13:43:46.330762+00:00"
+  },
+  "hairStyles": [
+    {
+      "id": "b1e1a71d-4060-4910-8e89-5cfb0ee74a94",
+      "gender": "female",
+      "style_key": "fringe",
+      "asset_url": "https://hhqnvjxnsbwhmrldohbz.supabase.co/storage/v1/object/public/mannequin/female/hairtype/fringe.svg",
+      "length_pct": 22.4,
+      "y_offset_pct": -15.7,
+      "x_offset_pct": -2.1,
+      "z_index": 7,
+      "is_default": false,
+      "is_active": true,
+      "sort_order": 1
+    },
+    {
+      "id": "773125ff-6e92-4781-92fd-9a15520895ac",
+      "gender": "female",
+      "style_key": "bob",
+      "asset_url": "https://hhqnvjxnsbwhmrldohbz.supabase.co/storage/v1/object/public/mannequin/female/hairtype/bob.svg",
+      "length_pct": 15,
+      "y_offset_pct": -15,
+      "x_offset_pct": 2.2,
+      "z_index": 7,
+      "is_default": false,
+      "is_active": true,
+      "sort_order": 2
+    },
+    {
+      "id": "5211c152-2bfb-42ec-8ad6-b64974fed7e3",
+      "gender": "female",
+      "style_key": "pixie",
+      "asset_url": "https://hhqnvjxnsbwhmrldohbz.supabase.co/storage/v1/object/public/mannequin/female/hairtype/pixie.svg",
+      "length_pct": 10.17,
+      "y_offset_pct": -15,
+      "x_offset_pct": -1.9,
+      "z_index": 7,
+      "is_default": false,
+      "is_active": true,
+      "sort_order": 3
+    },
+    {
+      "id": "1661332f-f324-45f4-8d63-b7da06599899",
+      "gender": "female",
+      "style_key": "curly",
+      "asset_url": "https://hhqnvjxnsbwhmrldohbz.supabase.co/storage/v1/object/public/mannequin/female/hairtype/curly.svg",
+      "length_pct": 22,
+      "y_offset_pct": -15.6,
+      "x_offset_pct": 5.8,
+      "z_index": 7,
+      "is_default": false,
+      "is_active": true,
+      "sort_order": 4
+    },
+    {
+      "id": "1ff8c25a-d2fc-4b0c-bd76-0356cf936ec4",
+      "gender": "female",
+      "style_key": "bangs",
+      "asset_url": "https://hhqnvjxnsbwhmrldohbz.supabase.co/storage/v1/object/public/mannequin/female/hairtype/bangs.svg",
+      "length_pct": 22.12,
+      "y_offset_pct": -15.2,
+      "x_offset_pct": 0.9,
+      "z_index": 7,
+      "is_default": false,
+      "is_active": true,
+      "sort_order": 5
+    },
+    {
+      "id": "a1b6d5fc-0d85-4c8c-ade0-dfa0228d5474",
+      "gender": "female",
+      "style_key": "straight",
+      "asset_url": "https://hhqnvjxnsbwhmrldohbz.supabase.co/storage/v1/object/public/mannequin/female/hairtype/straight.svg",
+      "length_pct": 21.9,
+      "y_offset_pct": -15.4,
+      "x_offset_pct": 2.3,
+      "z_index": 7,
+      "is_default": true,
+      "is_active": true,
+      "sort_order": 6
+    }
+  ]
+}
