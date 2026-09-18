@@ -235,11 +235,11 @@ export function StudioAlternativesView() {
     setSearchProductId(currentSlotProductId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slot]) // Intentionally NOT including currentSlotProductId — only re-lock on slot change
-  // A mannequin tap seeds the rack with the piece worn at that moment; a rack tap never does.
+  // The piece card's ⟳ seeds the rack with the piece worn at that moment; a rack tap never does.
   const seedRef = useRef<
     Partial<Record<StudioProductTraySlot, { imageUrl: string; productId: string; product: StudioAlternativeProduct | null }>>
   >({})
-  const pendingSimilarSlotRef = useRef<StudioProductTraySlot | null>(parsedParams.similar ? slot : null)
+  const pendingSimilarSlotRef = useRef<StudioProductTraySlot | null>(null)
 
   // Cold start: no outfit exists yet in this session — show product tray immediately
   // so the user can browse and add items to create their first outfit.
@@ -279,7 +279,7 @@ export function StudioAlternativesView() {
     search.forceSearchForSlot(slot, currentSlotImageUrl)
   }, [currentSlotImageUrl, currentSlotProductId, hiddenSlots, isViewOnly, resolvedTrayItems, search, slot])
 
-  // --- INITIALIZATION FLOW: resume or initialise the slot's search; only a mannequin tap seeds it ---
+  // --- INITIALIZATION FLOW: resume or initialise the slot's search; only the piece card's ⟳ seeds it ---
   useEffect(() => {
     if (prevSlotRef.current !== slot) {
       search.resetForSlot(slot, null, isAdminMode)
@@ -380,7 +380,7 @@ export function StudioAlternativesView() {
       ? filteredAlternativeProducts.filter((product) => isPlaceableOnMannequin(product, mannequin))
       : filteredAlternativeProducts
 
-    // The mannequin-tapped piece leads its similarity results; a later pick keeps its own place.
+    // The seeding piece leads its similarity results; a later pick keeps its own place.
     const seed = seedRef.current[slot]
     if (!seed || search.committedImageUrl !== seed.imageUrl) return products
     const seedProduct = products.find((product) => product.id === seed.productId) ?? seed.product
@@ -1227,15 +1227,13 @@ export function StudioAlternativesView() {
     },
     [handleCategoryChange, openFocus, slot],
   )
-  // Same slot: seed now. Another slot: switch, and the init effect seeds once it resolves.
+  // A garment tap only selects its slot; similarity stays behind the piece card's ⟳.
   const handleMannequinTap = useCallback(
     (tapped: StudioProductTraySlot) => {
       if (isViewOnly) return
-      pendingSimilarSlotRef.current = tapped
-      if (tapped === slot) seedPendingSimilar()
-      else handleCategoryChange(tapped)
+      if (tapped !== slot) handleCategoryChange(tapped)
     },
-    [handleCategoryChange, isViewOnly, seedPendingSimilar, slot],
+    [handleCategoryChange, isViewOnly, slot],
   )
   const handleStepFocus = useCallback(
     (delta: number) => {

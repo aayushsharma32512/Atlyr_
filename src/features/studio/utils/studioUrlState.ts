@@ -16,8 +16,6 @@ export interface StudioUrlState {
   /** Studio focus zoom. Null is the un-zoomed canvas. */
   focus?: StudioCanvasSlot | null
   source?: StudioSource | null
-  /** Set by a mannequin tap: Alternates opens on a similarity search seeded by the worn piece. */
-  similar?: boolean
 }
 
 export function isStudioSource(value: string | null): value is StudioSource {
@@ -45,7 +43,6 @@ export function parseStudioSearchParams(searchParams: URLSearchParams): StudioUr
     slot,
     productId: searchParams.get("productId"),
     share: searchParams.get("share") === "1",
-    similar: searchParams.get("similar") === "1",
     hiddenSlots: {
       top: searchParams.get("topHidden") === "1",
       bottom: searchParams.get("bottomHidden") === "1",
@@ -82,9 +79,6 @@ export function buildStudioSearchParams(state: Partial<StudioUrlState>): URLSear
   }
   if (state.share) {
     params.set("share", "1")
-  }
-  if (state.similar) {
-    params.set("similar", "1")
   }
   if (state.hiddenSlots) {
     if (state.hiddenSlots.top) {

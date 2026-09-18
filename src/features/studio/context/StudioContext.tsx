@@ -56,7 +56,7 @@ interface StudioContextValue {
   openScrollUp: () => void
   closeScrollUp: () => void
   openAlternatives: (item: OutfitItem, options?: { outfitId?: string | null }) => void
-  openAlternativesSplit: (defaultSlot?: StudioSlot, options?: { forceSlot?: boolean; similar?: boolean }) => void
+  openAlternativesSplit: (defaultSlot?: StudioSlot, options?: { forceSlot?: boolean }) => void
   openProduct: (productId: string, options?: { initialProduct?: StudioProductDetail | null }) => void
   openSimilarItems: (productId: string, options?: { initialProduct?: StudioProductDetail | null }) => void
   reset: () => void
