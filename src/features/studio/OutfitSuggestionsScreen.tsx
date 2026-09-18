@@ -22,6 +22,7 @@ import {
   useSaveToCollection,
 } from "@/features/collections/hooks/useMoodboards"
 import { useSaveTray } from "@/features/collections/providers/SaveTrayProvider"
+import { useKeyboardInset } from "@/design-system/utils/useKeyboardInset"
 import { useToast } from "@/hooks/use-toast"
 import { supabase } from "@/integrations/supabase/client"
 import { isStudioSlot } from "@/features/studio/utils/studioUrlState"
@@ -43,6 +44,7 @@ export function OutfitSuggestionsView() {
   const [searchTerm, setSearchTerm] = useState("")
   const [activeFilter, setActiveFilter] = useState<"products" | "outfits">("outfits")
   const [isSearchFocused, setIsSearchFocused] = useState(false)
+  const keyboardInset = useKeyboardInset()
   const [isUploading, setIsUploading] = useState(false)
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | undefined>(undefined)
   const [layoutMode] = useState<OutfitGridLayoutMode>("balanced")
@@ -391,7 +393,7 @@ export function OutfitSuggestionsView() {
         </div>
       </div>
 
-      <div className="pointer-events-none fixed inset-x-0 bottom-[3rem] z-10">
+      <div className="pointer-events-none fixed inset-x-0 z-10" style={{ bottom: keyboardInset || "3rem" }}>
         <div className="pointer-events-auto mx-auto w-full max-w-[24.5rem] px-2 md:max-w-[34rem]">
           <FilterSearchBar
             className="rounded-t-3xl"

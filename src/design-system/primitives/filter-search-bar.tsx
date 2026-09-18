@@ -10,7 +10,6 @@ import {
 import { type ChangeEvent, type KeyboardEvent, type ReactNode, useState, useMemo, useCallback, useRef } from "react"
 
 import { cn } from "@/lib/utils"
-import { useViewportZoomLockController } from "@/hooks/useViewportZoomLock"
 import {
   Select,
   SelectContent,
@@ -133,8 +132,6 @@ export function FilterSearchBar({
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const { lock: lockViewportZoom, unlock: unlockViewportZoom } = useViewportZoomLockController()
-  
   const [internalSortValue, setInternalSortValue] = useState<string | undefined>(defaultSortValue || "similarity")
   const isSortControlled = sortValue !== undefined
   const currentSortValue = isSortControlled ? sortValue : internalSortValue
@@ -203,7 +200,6 @@ export function FilterSearchBar({
   }
 
   const handleInputFocus = () => {
-    lockViewportZoom()
     onFocus?.()
   }
 
@@ -214,15 +210,6 @@ export function FilterSearchBar({
       })
     }
     onBlur?.()
-    requestAnimationFrame(() => {
-      if (document.activeElement !== inputRef.current) {
-        unlockViewportZoom()
-      }
-    })
-  }
-
-  const handleInputPointerDown = () => {
-    lockViewportZoom()
   }
 
   const handleCameraClick = () => {
@@ -466,7 +453,6 @@ export function FilterSearchBar({
           className="flex-1 min-w-0 bg-transparent pl-2 pr-1 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
           type="search"
           onKeyDown={handleInputKeyDown}
-          onPointerDown={handleInputPointerDown}
           onFocus={handleInputFocus}
           onBlur={handleInputBlur}
         />

@@ -109,7 +109,6 @@ export function SearchBar({
         onFocus={onFocus}
         onBlur={onBlur}
         aria-label="Search"
-        // Body-large (16px): iOS Safari zooms the page into any focused field set smaller.
         className="min-w-0 flex-1 bg-transparent text-body-large text-ink outline-none placeholder:text-taupe [&::-webkit-search-cancel-button]:hidden"
       />
 
