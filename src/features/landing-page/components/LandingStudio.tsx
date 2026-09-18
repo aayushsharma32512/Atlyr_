@@ -12,6 +12,8 @@ import { StudioCanvas } from "@/features/studio/components/StudioCanvas"
 import { isDressTop } from "@/features/studio/hooks/usePlaceholderItems"
 import { mapTrayItemToStudioRenderedItem } from "@/features/studio/mappers/renderedItemMapper"
 import { toTrayItem } from "@/features/studio/utils/trayMutations"
+import { uploadSearchImage } from "@/services/storage/publicFilesService"
+import { downscaleImage } from "@/utils/downscaleImage"
 import type { StudioSource } from "@/features/studio/utils/studioUrlState"
 import type { StudioRenderedItem } from "@/features/studio/types"
 import type { StudioAlternativeProduct, StudioProductTraySlot } from "@/services/studio/studioService"
@@ -24,6 +26,7 @@ const SEARCH_USED_KEY = "atlyr_landing_search_used_v1"
 const SWIPE_MIN_PX = 40
 
 type Look = Record<StudioProductTraySlot, StudioAlternativeProduct | null>
+type Committed = { text: string; imageUrl: string | null }
 
 function readSearchUsed(): boolean {
   try {
@@ -89,7 +92,11 @@ export function LandingStudio() {
   const [slot, setSlot] = useState<StudioProductTraySlot>("top")
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [draft, setDraft] = useState("")
-  const [committed, setCommitted] = useState<Partial<Record<StudioProductTraySlot, string>>>({})
+  // The photo shows in the bar at once from a local URL while its upload runs; submit awaits the upload.
+  const [draftThumb, setDraftThumb] = useState<string | null>(null)
+  const pendingUpload = useRef<Promise<string> | null>(null)
+  const [isAwaitingUpload, setIsAwaitingUpload] = useState(false)
+  const [committed, setCommitted] = useState<Partial<Record<StudioProductTraySlot, Committed>>>({})
   // The figure stays hidden until its first composite: a bare mannequin must never show.
   const [hasRendered, setHasRendered] = useState(false)
 
@@ -106,13 +113,14 @@ export function LandingStudio() {
       .filter((item): item is StudioRenderedItem => Boolean(item))
   }, [top, bottom, shoes])
 
-  const query = committed[slot] ?? ""
-  const search = useLandingSearch(slot, query)
+  const active = committed[slot] ?? { text: "", imageUrl: null }
+  const hasSearch = Boolean(active.text || active.imageUrl)
+  const search = useLandingSearch(slot, active.text, active.imageUrl)
   const rackProducts = useMemo(
-    () => (query ? (search.data ?? []) : (inventory.data ?? []).filter((product) => product.itemType === slot)),
-    [inventory.data, query, search.data, slot],
+    () => (hasSearch ? (search.data ?? []) : (inventory.data ?? []).filter((product) => product.itemType === slot)),
+    [hasSearch, inventory.data, search.data, slot],
   )
-  const isRackLoading = query ? search.isLoading : inventory.isLoading
+  const isRackLoading = isAwaitingUpload || (hasSearch ? search.isLoading : inventory.isLoading)
 
   // Every look's thumbnails go into PIXI's own cache, so a step composites at once and only the
   // full-res upgrade streams in behind it, as in the app.
@@ -166,14 +174,38 @@ export function LandingStudio() {
     setIsSearchOpen(true)
   }
 
-  const submitSearch = () => {
-    const text = draft.trim()
-    if (!text) return
-    markSearchUsed()
-    setCommitted((prev) => ({ ...prev, [slot]: text }))
+  const clearDraftImage = () => {
+    if (draftThumb) URL.revokeObjectURL(draftThumb)
+    setDraftThumb(null)
+    pendingUpload.current = null
   }
 
-  const clearQuery = () => setCommitted((prev) => ({ ...prev, [slot]: "" }))
+  const handlePickImage = (file: File) => {
+    clearDraftImage()
+    setDraftThumb(URL.createObjectURL(file))
+    const upload = downscaleImage(file).then((small) => uploadSearchImage({ file: small }))
+    upload.catch(() => {
+      toast({ title: "That photo could not be used", description: "Try another one." })
+      clearDraftImage()
+    })
+    pendingUpload.current = upload
+  }
+
+  const submitSearch = async () => {
+    const text = draft.trim()
+    const upload = pendingUpload.current
+    if (!text && !upload) return
+    markSearchUsed()
+    setIsAwaitingUpload(Boolean(upload))
+    const imageUrl = upload ? await upload.catch(() => null) : null
+    setIsAwaitingUpload(false)
+    if (!text && !imageUrl) return
+    setDraft("")
+    clearDraftImage()
+    setCommitted((prev) => ({ ...prev, [slot]: { text, imageUrl } }))
+  }
+
+  const clearQuery = () => setCommitted((prev) => ({ ...prev, [slot]: { text: "", imageUrl: null } }))
 
   // A horizontal swipe on the figure steps the look; a tap toggles the rack.
   const touchStart = useRef<{ x: number; y: number } | null>(null)
@@ -315,7 +347,7 @@ export function LandingStudio() {
               products={rackProducts}
               isLoading={isRackLoading}
               wornProductId={look[slot]?.id ?? null}
-              queryLine={query ? `“${query}”` : null}
+              queryLine={active.text ? `“${active.text}”` : active.imageUrl ? "like your photo" : null}
               onClearQuery={clearQuery}
               onSelect={wear}
               emptyLabel="Nothing found for that"
@@ -328,10 +360,13 @@ export function LandingStudio() {
           <AlternatesSearchBar
             value={draft}
             onValueChange={setDraft}
-            onSubmit={submitSearch}
+            onSubmit={() => void submitSearch()}
             onClose={() => setIsSearchOpen(false)}
             onClear={() => setDraft("")}
             placeholder={`Search ${slot === "shoes" ? "shoes" : `${slot}s`} by vibe`}
+            thumbSrc={draftThumb}
+            onClearThumb={clearDraftImage}
+            onPickImage={handlePickImage}
           />
         ) : (
           <button

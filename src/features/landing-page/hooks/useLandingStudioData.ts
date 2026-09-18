@@ -36,12 +36,12 @@ export function useLandingInventory() {
   return useQuery<StudioAlternativeProduct[]>(inventoryOptions)
 }
 
-/** One vibe search for a slot. Same call the in-app rack makes, women's catalogue only. */
-export function useLandingSearch(slot: StudioProductTraySlot, query: string) {
+/** One vibe search for a slot, by text, a photo, or both. Same call the in-app rack makes, women's catalogue only. */
+export function useLandingSearch(slot: StudioProductTraySlot, query: string, imageUrl: string | null) {
   return useQuery<StudioAlternativeProduct[]>({
-    queryKey: landingKeys.search(slot, query),
-    queryFn: () => studioService.searchAlternatives({ slot, query, gender: "female" }),
-    enabled: query.trim().length > 0,
+    queryKey: landingKeys.search(slot, query, imageUrl),
+    queryFn: () => studioService.searchAlternatives({ slot, query, imageUrl: imageUrl ?? undefined, gender: "female" }),
+    enabled: query.trim().length > 0 || Boolean(imageUrl),
     staleTime: Infinity,
     gcTime: Infinity,
     retry: false,
