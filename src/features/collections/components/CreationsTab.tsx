@@ -16,6 +16,7 @@ import type { Creation, TryOn } from "@/services/collections/collectionsService"
 import type { StudioProductTraySlot } from "@/services/studio/studioService"
 
 import { useCreations } from "../hooks/useMoodboards"
+import { useOpenRandomLook } from "../hooks/useOpenRandomLook"
 
 const PAGE_SIZE = 6
 const SLOT_ORDER: StudioProductTraySlot[] = ["top", "bottom", "shoes"]
@@ -39,6 +40,7 @@ export function CreationsTab() {
   const { toast } = useToast()
   const analytics = useEngagementAnalytics()
   const startLikenessFlow = useStartLikenessFlow()
+  const openRandomLook = useOpenRandomLook()
 
   const [currentSlide, setCurrentSlide] = useState(0)
   const [isExpanded, setIsExpanded] = useState(false)
@@ -289,8 +291,16 @@ export function CreationsTab() {
 
   if (!totalSlides) {
     return (
-      <div className={cn(frameClass, "items-center justify-center px-4 text-center")}>
+      <div className={cn(frameClass, "items-center justify-center gap-4 px-4 text-center")}>
         <p className="text-body text-taupe">Nothing made yet. Build a look in Studio.</p>
+        <button
+          type="button"
+          onClick={() => void openRandomLook()}
+          className="box-border flex h-control-primary items-center justify-center gap-2 rounded-control bg-primary px-5 text-label font-semibold text-primary-foreground"
+        >
+          <Icons.studio className="h-5 w-5" aria-hidden="true" />
+          go to studio
+        </button>
       </div>
     )
   }

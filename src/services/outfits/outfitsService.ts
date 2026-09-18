@@ -291,6 +291,21 @@ export async function findOutfitByItems(input: FindOutfitByItemsInput): Promise<
   return data ?? null
 }
 
+/** One random feed-visible outfit, for the user's gender when known. Null when there is none. */
+export async function fetchRandomOutfitId(gender: "male" | "female" | null): Promise<string | null> {
+  let query = supabase
+    .from("outfits")
+    .select("id")
+    .eq("visible_in_feed", true)
+    .eq("is_private", false)
+    .not("top_id", "is", null)
+    .limit(40)
+  if (gender) query = query.eq("gender", gender)
+  const { data, error } = await query
+  if (error || !data?.length) return null
+  return data[Math.floor(Math.random() * data.length)].id
+}
+
 /**
  * Fetch a starter outfit for the given gender.
  * Used by admin studio to load a default outfit when no outfitId is in URL.

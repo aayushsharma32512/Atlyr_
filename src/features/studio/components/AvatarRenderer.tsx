@@ -20,6 +20,7 @@ import { DEFAULT_VISIBLE_SEGMENTS, MANNEQUIN_SKIN_HEXES } from "@/features/studi
 import {
   PlacementAvatarRenderer,
   probeGarment,
+  type FigureCapture,
 } from "@/features/studio/components/PlacementAvatarRenderer"
 import {
   applyHairColorToSvg,
@@ -135,6 +136,8 @@ interface AvatarRendererProps {
   onReady?: (ready: boolean) => void
   /** Ref to the avatar container element for snapshot capture */
   avatarRef?: React.Ref<HTMLDivElement>
+  /** Receives a function that returns the figure as drawn, for a still of it. */
+  captureRef?: React.MutableRefObject<FigureCapture | null>
   /** Hint to the browser for image loading priority */
   fetchPriority?: "high" | "low" | "auto"
   /**
@@ -205,6 +208,7 @@ export function AvatarRenderer(props: AvatarRendererProps) {
         zoneOrder={props.slotOrder}
         itemOpacity={props.itemOpacity}
         avatarRef={props.avatarRef}
+        captureRef={props.captureRef}
         onReady={props.onReady}
         fetchPriority={props.fetchPriority}
         textureQuality={props.textureQuality}

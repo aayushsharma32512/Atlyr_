@@ -334,6 +334,9 @@ type PlacementHairStyle = {
   gender: "male" | "female"
 }
 
+/** Returns the figure as drawn on screen, or null while nothing is drawn. */
+export type FigureCapture = () => HTMLCanvasElement | null
+
 type Props = {
   items: StudioRenderedItem[]
   gender?: "male" | "female"
@@ -343,6 +346,8 @@ type Props = {
   zoneOrder?: StudioRenderedZone[]
   itemOpacity?: number
   avatarRef?: React.Ref<HTMLDivElement>
+  /** Receives a function that returns the composite as drawn, for a still of the figure. */
+  captureRef?: React.MutableRefObject<FigureCapture | null>
   onReady?: (ready: boolean) => void
   fetchPriority?: "high" | "low" | "auto"
   /**
@@ -388,6 +393,7 @@ export function PlacementAvatarRenderer({
   zoneOrder,
   itemOpacity = 1,
   avatarRef,
+  captureRef,
   onReady,
   hairStyle = null,
   hairColorHex = null,
@@ -755,18 +761,19 @@ export function PlacementAvatarRenderer({
         // full-res swap still needs to draw into it. That holds a context exactly as long as the
         // pre-progressive code did, which also waited on the full-res load with the app already
         // initialised — the difference is only that something is on screen for that stretch.
+        const snapshot = () => app.renderer.extract.canvas({
+          target: app.stage,
+          frame: new Rectangle(0, 0, containerWidth, containerHeight),
+          resolution: app.renderer.resolution,
+        }) as HTMLCanvasElement
         const present = (final: boolean) => {
           if (interactive) return
-          const snapshot = app.renderer.extract.canvas({
-            target: app.stage,
-            frame: new Rectangle(0, 0, containerWidth, containerHeight),
-            resolution: app.renderer.resolution,
-          }) as HTMLCanvasElement
+          const still = snapshot()
           if (disposed) return
-          snapshot.style.width = "100%"
-          snapshot.style.height = "100%"
-          snapshot.style.display = "block"
-          host.replaceChildren(snapshot)
+          still.style.width = "100%"
+          still.style.height = "100%"
+          still.style.display = "block"
+          host.replaceChildren(still)
           if (!final) return
           released = true
           appRef.current = null
@@ -779,6 +786,8 @@ export function PlacementAvatarRenderer({
         const upgradable = loaded.some((l) => !l.isFull)
         present(!upgradable)
         shown = true
+        // Set before the previous build retires, so a capture never lands in the gap between two outfits.
+        if (captureRef) captureRef.current = () => { try { return snapshot() } catch { return null } }
         retireRef.current?.()
         retireRef.current = null
         // Ready on the FIRST visible composite, not on the upgrade: the full-res texture lands on an
@@ -837,7 +846,8 @@ export function PlacementAvatarRenderer({
   useEffect(() => () => {
     retireRef.current?.()
     retireRef.current = null
-  }, [])
+    if (captureRef) captureRef.current = null
+  }, [captureRef])
 
   return (
     <div

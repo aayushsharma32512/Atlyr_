@@ -4,6 +4,7 @@ import { Redo2, RotateCcw, Undo2 } from "lucide-react"
 
 import { Icons } from "@/design-system/icons"
 import { useOutfitSnapshot } from "@/features/outfits/hooks/useOutfitSnapshot"
+import { useFigureCapture } from "./hooks/useFigureCapture"
 
 import {
   FilterDrawer,
@@ -234,11 +235,11 @@ export function StudioAlternativesView() {
     setSearchProductId(currentSlotProductId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slot]) // Intentionally NOT including currentSlotProductId — only re-lock on slot change
-  // A mannequin tap seeds the rack with the piece worn at that moment; a rack tap never does.
+  // The piece card's ⟳ seeds the rack with the piece worn at that moment; a rack tap never does.
   const seedRef = useRef<
     Partial<Record<StudioProductTraySlot, { imageUrl: string; productId: string; product: StudioAlternativeProduct | null }>>
   >({})
-  const pendingSimilarSlotRef = useRef<StudioProductTraySlot | null>(parsedParams.similar ? slot : null)
+  const pendingSimilarSlotRef = useRef<StudioProductTraySlot | null>(null)
 
   // Cold start: no outfit exists yet in this session — show product tray immediately
   // so the user can browse and add items to create their first outfit.
@@ -278,7 +279,7 @@ export function StudioAlternativesView() {
     search.forceSearchForSlot(slot, currentSlotImageUrl)
   }, [currentSlotImageUrl, currentSlotProductId, hiddenSlots, isViewOnly, resolvedTrayItems, search, slot])
 
-  // --- INITIALIZATION FLOW: resume or initialise the slot's search; only a mannequin tap seeds it ---
+  // --- INITIALIZATION FLOW: resume or initialise the slot's search; only the piece card's ⟳ seeds it ---
   useEffect(() => {
     if (prevSlotRef.current !== slot) {
       search.resetForSlot(slot, null, isAdminMode)
@@ -379,7 +380,7 @@ export function StudioAlternativesView() {
       ? filteredAlternativeProducts.filter((product) => isPlaceableOnMannequin(product, mannequin))
       : filteredAlternativeProducts
 
-    // The mannequin-tapped piece leads its similarity results; a later pick keeps its own place.
+    // The seeding piece leads its similarity results; a later pick keeps its own place.
     const seed = seedRef.current[slot]
     if (!seed || search.committedImageUrl !== seed.imageUrl) return products
     const seedProduct = products.find((product) => product.id === seed.productId) ?? seed.product
@@ -761,6 +762,8 @@ export function StudioAlternativesView() {
   const { snapshotRef, setAvatarReady, captureSnapshot } = useOutfitSnapshot({
     userId: user?.id ?? null,
   })
+  // Find items opens over a still of the figure, so its scan runs on the look the user is seeing.
+  const { captureRef, navigateWithFigure } = useFigureCapture()
 
   const handleSaveOutfit = useCallback(
     async (data: {
@@ -1203,21 +1206,17 @@ export function StudioAlternativesView() {
   }, [seedPendingSimilar, slot])
 
   /**
-   * Product-level Find items, seeded with the worn piece's cutout. The rack's
-   * web-search row asks for web results directly. Kicks are not a detector
-   * category, so they take the blank import.
+   * Product-level Find items, seeded with the worn piece's cutout; it opens on
+   * web results, so the rack's web-search row shares it. Kicks are not a
+   * detector category, so they take the blank import.
    */
-  const findItemsUrl = useCallback(
-    (results: "inventory" | "web") => {
-      const image = heroProduct?.imageUrl ?? heroProduct?.thumbnailUrl
-      if (slot === "shoes" || !image) return "/inspiration-import"
-      const params = new URLSearchParams({ source: image, slot })
-      if (results === "web") params.set("results", "web")
-      return `/inspiration-import?${params.toString()}`
-    },
-    [heroProduct?.imageUrl, heroProduct?.thumbnailUrl, slot],
-  )
-  const handleFindItems = useCallback(() => navigate(findItemsUrl("inventory")), [findItemsUrl, navigate])
+  const handleFindItems = useCallback(() => {
+    const image = heroProduct?.imageUrl ?? heroProduct?.thumbnailUrl
+    const url = slot === "shoes" || !image
+      ? "/inspiration-import"
+      : `/inspiration-import?${new URLSearchParams({ source: image, slot }).toString()}`
+    void navigateWithFigure(url)
+  }, [heroProduct?.imageUrl, heroProduct?.thumbnailUrl, navigateWithFigure, slot])
 
   // A garment tap: zoom to that slot and show its rack state. Same slot → only
   // the zoom changes; a different slot → slot and zoom in one query write.
@@ -1228,15 +1227,13 @@ export function StudioAlternativesView() {
     },
     [handleCategoryChange, openFocus, slot],
   )
-  // Same slot: seed now. Another slot: switch, and the init effect seeds once it resolves.
+  // A garment tap only selects its slot; similarity stays behind the piece card's ⟳.
   const handleMannequinTap = useCallback(
     (tapped: StudioProductTraySlot) => {
       if (isViewOnly) return
-      pendingSimilarSlotRef.current = tapped
-      if (tapped === slot) seedPendingSimilar()
-      else handleCategoryChange(tapped)
+      if (tapped !== slot) handleCategoryChange(tapped)
     },
-    [handleCategoryChange, isViewOnly, seedPendingSimilar, slot],
+    [handleCategoryChange, isViewOnly, slot],
   )
   const handleStepFocus = useCallback(
     (delta: number) => {
@@ -1245,7 +1242,6 @@ export function StudioAlternativesView() {
     },
     [enterFocus, slot],
   )
-  const handleWebSearch = useCallback(() => navigate(findItemsUrl("web")), [findItemsUrl, navigate])
 
   /** The query line's × — back to the whole slot. */
   const handleClearQuery = useCallback(() => {
@@ -1384,6 +1380,7 @@ export function StudioAlternativesView() {
           }}
           onAvatarReady={setAvatarReady}
           avatarRef={snapshotRef}
+          captureRef={captureRef}
         />
       ) : (isAdminMode && !resolvedOutfitId) ? (
         <OutfitInspirationTile
@@ -1406,6 +1403,7 @@ export function StudioAlternativesView() {
           onSlotSelect={(nextSlot) => handleCategoryChange(nextSlot)}
           onAvatarReady={setAvatarReady}
           avatarRef={snapshotRef}
+          captureRef={captureRef}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center px-3 text-center text-body text-taupe">
@@ -1519,8 +1517,9 @@ export function StudioAlternativesView() {
                 queryLine={queryLine}
                 onClearQuery={handleClearQuery}
                 emptyLabel={emptyLabel}
+                onAddToWardrobe={source === "wardrobe" ? () => navigate("/inspiration-import?intent=wardrobe") : undefined}
                 showWebSearch={source === "explore"}
-                onWebSearch={handleWebSearch}
+                onWebSearch={handleFindItems}
                 onSelect={isViewOnly ? undefined : (product) => void handleAlternativeSelect(product)}
               />
 

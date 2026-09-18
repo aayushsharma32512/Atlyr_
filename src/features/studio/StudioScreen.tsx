@@ -61,6 +61,7 @@ import { useStarterOutfit } from "@/features/outfits/hooks/useStarterOutfit"
 import { useStudioShareMode } from "@/features/studio/hooks/useStudioShareMode"
 import { mergeOutfitItemsWithTray } from "@/features/studio/utils/mergeOutfitItemsWithTray"
 import { useOutfitSnapshot } from "@/features/outfits/hooks/useOutfitSnapshot"
+import { useFigureCapture } from "./hooks/useFigureCapture"
 import { useOptionalAdminGender } from "@/features/admin/providers/AdminGenderContext"
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
 import { setPendingStudioComboChange, useStudioCombinationTracking } from "@/integrations/posthog/engagementTracking/studio/studioTracking"
@@ -162,6 +163,8 @@ export function StudioScreenView() {
       console.error("[StudioScreen] Snapshot capture failed:", error)
     },
   })
+  // Find items opens over a still of the figure, so its scan runs on the look the user is seeing.
+  const { captureRef, navigateWithFigure } = useFigureCapture()
 
   const resolvedOutfitId = outfitId ?? studioAvatar?.id ?? null
   const syncOutfitId = outfitId ?? selectedOutfitId ?? null
@@ -497,7 +500,7 @@ export function StudioScreenView() {
         })
       }
 
-      openAlternativesSplit(slot, { forceSlot: true, similar: true })
+      openAlternativesSplit(slot, { forceSlot: true })
     },
     [
       gender,
@@ -999,8 +1002,8 @@ export function StudioScreenView() {
       params.append("source", image)
       params.append("slot", traySlot)
     }
-    navigate(params.has("source") ? `/inspiration-import?${params.toString()}` : "/inspiration-import")
-  }, [hiddenSlots, itemBySlot, navigate])
+    void navigateWithFigure(params.has("source") ? `/inspiration-import?${params.toString()}` : "/inspiration-import")
+  }, [hiddenSlots, itemBySlot, navigateWithFigure])
 
   const handleFindItemsFor = useCallback(
     (slot: StudioCanvasSlot, item: StudioProductTrayItem) => {
@@ -1010,9 +1013,9 @@ export function StudioScreenView() {
         handleFindItems()
         return
       }
-      navigate(`/inspiration-import?source=${encodeURIComponent(image)}&slot=${traySlot}`)
+      void navigateWithFigure(`/inspiration-import?source=${encodeURIComponent(image)}&slot=${traySlot}`)
     },
-    [handleFindItems, navigate],
+    [handleFindItems, navigateWithFigure],
   )
 
   const focusItem = focus ? itemBySlot[focus] ?? null : null
@@ -1186,6 +1189,7 @@ export function StudioScreenView() {
                   onSlotSelect={isAdminMode && !isViewOnly ? (slot) => openAlternativesSplit(slot) : undefined}
                   onAvatarReady={setAvatarReady}
                   avatarRef={snapshotRef}
+                  captureRef={captureRef}
                 />
               </div>
             ) : (
@@ -1252,6 +1256,7 @@ export function StudioScreenView() {
               hiddenSlots={hiddenSlots}
               isReadOnly={isViewOnly}
               onOpenFocus={openFocus}
+              onFill={handleOpenAlternates}
               onRemove={(slot) => handleRemoveSlot(toTraySlot(slot))}
               highlight={tour.isHighlighted("slot-rows")}
             />

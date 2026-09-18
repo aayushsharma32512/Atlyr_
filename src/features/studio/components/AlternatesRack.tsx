@@ -13,6 +13,8 @@ export interface AlternatesRackProps {
   onClearQuery?: () => void
   onSelect?: (product: StudioAlternativeProduct) => void
   emptyLabel?: string
+  /** A violet ＋ under the empty label. Only the wardrobe passes it: it is the one rack the user fills themselves. */
+  onAddToWardrobe?: () => void
   /** Only the catalogue rack ends with it — see the note by the button. */
   showWebSearch?: boolean
   /** The row's action: Find items in web mode for this slot. */
@@ -34,6 +36,7 @@ export function AlternatesRack({
   onClearQuery,
   onSelect,
   emptyLabel = "Nothing in this slot yet",
+  onAddToWardrobe,
   showWebSearch = false,
   onWebSearch,
   framedTiles = true,
@@ -67,7 +70,19 @@ export function AlternatesRack({
             ))}
           </div>
         ) : products.length === 0 ? (
-          <p className="px-2 py-6 text-center text-body text-taupe">{emptyLabel}</p>
+          <div className="flex flex-col items-center gap-3 px-2 py-6">
+            <p className="text-center text-body text-taupe">{emptyLabel}</p>
+            {onAddToWardrobe ? (
+              <button
+                type="button"
+                aria-label="Add to wardrobe"
+                onClick={onAddToWardrobe}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-dashed border-violet text-violet"
+              >
+                <Icons.add className="h-4 w-4" aria-hidden="true" />
+              </button>
+            ) : null}
+          </div>
         ) : (
           <div className="grid grid-cols-2 content-start gap-1.5">
             {products.map((product) => (

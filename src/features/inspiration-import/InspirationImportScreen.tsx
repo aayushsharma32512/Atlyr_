@@ -75,17 +75,26 @@ function ImportHeader({ title, meta, onBack }: { title: string; meta?: string; o
 type DetectionProgressProps = {
   sourceUrl: string | null
   error?: string | null
+  meta?: string
+  voice?: string
   onBack: () => void
   /** Hands the job to the floating hub and leaves — it is tracked, so it lands in Notifications. */
   onMinimise?: () => void
 }
 
 /** Detecting: the photo on the ground with a violet scan line, the voice saying what is happening. */
-function DetectionProgress({ sourceUrl, error, onBack, onMinimise }: DetectionProgressProps) {
+function DetectionProgress({
+  sourceUrl,
+  error,
+  meta = "detecting…",
+  voice = "Finding the pieces in your photo…",
+  onBack,
+  onMinimise,
+}: DetectionProgressProps) {
   return (
     <AppShellLayout>
       <div className="flex flex-col overflow-hidden bg-background text-foreground" style={{ height: "calc(100dvh - 55px)" }}>
-        <ImportHeader title="Find items" meta={error ? undefined : "detecting…"} onBack={onBack} />
+        <ImportHeader title="Find items" meta={error ? undefined : meta} onBack={onBack} />
         <div className="relative min-h-0 flex-1 px-4 py-3">
           <div className="relative flex h-full items-center justify-center overflow-hidden rounded-control" aria-busy={!error}>
             {sourceUrl ? (
@@ -111,7 +120,7 @@ function DetectionProgress({ sourceUrl, error, onBack, onMinimise }: DetectionPr
             </div>
           ) : (
             <p className="font-voice text-body italic text-charcoal" aria-live="polite">
-              Finding the pieces in your photo…
+              {voice}
             </p>
           )}
           {!error && onMinimise ? (
@@ -135,9 +144,8 @@ export default function InspirationImportScreen() {
   // Boards' "+" card sends ?intent=wardrobe; the copy changes, the flow does not.
   const intent: InspirationIntent = new URLSearchParams(location.search).get("intent") === "wardrobe" ? "wardrobe" : "inspiration"
   // Seeded entry: ?source=<cutout url>&slot=top|bottom, once for the globe on a
-  // piece, twice (top then bottom) for Studio's Find items; plus &results=web
-  // from the rack's "web search" row. The cutouts are seeded as the selected
-  // candidates and the screen opens straight on the rack.
+  // piece, twice (top then bottom) for Studio's Find items. The cutouts are seeded
+  // as the selected candidates and the screen opens on the rack's web results.
   const seedParams = useMemo(() => {
     const params = new URLSearchParams(location.search)
     const sources = params.getAll("source")
@@ -147,9 +155,7 @@ export default function InspirationImportScreen() {
       const slot: InspirationCategory = slotParam === "bottom" ? "bottom" : slotParam === "top" ? "top" : index === 0 ? "top" : "bottom"
       return { source, slot }
     })
-    return pieces.length
-      ? { pieces, results: params.get("results") === "web" ? ("web" as const) : ("inventory" as const) }
-      : null
+    return pieces.length ? { pieces } : null
   }, [location.search])
   const { user } = useAuth()
   const { profile, gender } = useProfileContext()
@@ -171,7 +177,7 @@ export default function InspirationImportScreen() {
   const [pickError, setPickError] = useState<string | null>(null)
   const [activeCandidateId, setActiveCandidateId] = useState<string | null>(null)
   // Each garment remembers its own rail, so switching tabs returns to where the user left off.
-  // Inventory first: it's already preloaded; Web is preloaded too (see the webQueries hook below).
+  // Both rails preload (see the webQueries hook below); the default rail is chosen at resultsSource.
   const [railByCandidate, setRailByCandidate] = useState<Record<string, "inventory" | "web">>({})
   const setCandidateRail = (candidateId: string, source: "inventory" | "web") =>
     setRailByCandidate((current) => current[candidateId] === source ? current : { ...current, [candidateId]: source })
@@ -188,10 +194,11 @@ export default function InspirationImportScreen() {
       mountedRef.current = false
     }
   }, [])
-  const autoRef = useRef<{ slot: InspirationCategory | null; results: "inventory" | "web" } | null>(null)
   const [isSeeding, setIsSeeding] = useState(false)
-  // A Studio-seeded import has no photo to detect on, so it never shows the detection screens.
+  // A Studio-seeded import has no photo to detect on: its scan runs over the still of the figure
+  // that Find items handed over, until the first online answer is in.
   const [seededFlow, setSeededFlow] = useState(false)
+  const [figureUrl] = useState(() => (location.state as { figure?: string } | null)?.figure ?? null)
   const openedDraftRef = useRef<{ signature: string; outfitId: string } | null>(null)
 
   useEffect(() => {
@@ -209,7 +216,6 @@ export default function InspirationImportScreen() {
     // Runs exactly once per seeded URL: no cleanup flag, because a re-render
     // (which setIsSeeding itself causes) must not orphan the in-flight fetch.
     seededRef.current = true
-    autoRef.current = { slot: seedParams.pieces[0]?.slot ?? null, results: seedParams.results }
     setIsSeeding(true)
     setSeededFlow(true)
     console.log("[find-items] 0/5 seeding", seedParams)
@@ -230,7 +236,6 @@ export default function InspirationImportScreen() {
       .catch((error: unknown) => {
         console.error("[find-items] FAILED", error)
         if (!mountedRef.current) return
-        autoRef.current = null
         setValidationError(error instanceof Error ? error.message : "Couldn't load this piece's image.")
       })
       .finally(() => {
@@ -267,7 +272,9 @@ export default function InspirationImportScreen() {
   // starting the search from zero.
   const webQueries = useImportWebResults(importId ?? "", selectedCandidates)
   const webQuery = webQueries.find((query) => query.candidateId === selectedCandidate?.id)
-    ?? { candidateId: null, data: undefined, error: null, isFetching: false, isError: false }
+    ?? { candidateId: null, data: undefined, error: null, isFetching: false, isPending: false, isError: false, refetch: () => undefined }
+  // The Studio scan covers the arrival only: the piece the rack opens on. Other tabs show their own spinner.
+  const landingWebQuery = webQueries.find((query) => query.candidateId === record?.selectedCandidateIds[0])
   const catalogueSearches = useImportCatalogueResults(record)
   const activeCatalogueSearch = catalogueSearches.find(({ candidate }) => candidate.id === selectedCandidate?.id)
   const catalogueResults = activeCatalogueSearch?.results ?? []
@@ -339,7 +346,10 @@ export default function InspirationImportScreen() {
       : record.selectedCandidateIds[0] ?? null)
   }, [record])
 
-  const resultsSource = (selectedCandidate ? railByCandidate[selectedCandidate.id] : undefined) ?? "inventory"
+  // Studio's Find items lands on web results, unless that search failed or found nothing.
+  const webUsable = !webQuery.isError && (webQuery.data === undefined || webResults.length > 0)
+  const resultsSource = (selectedCandidate ? railByCandidate[selectedCandidate.id] : undefined)
+    ?? (seededFlow && webUsable ? "web" : "inventory")
   const setResultsSource = (source: "inventory" | "web") => {
     if (selectedCandidate) setCandidateRail(selectedCandidate.id, source)
   }
@@ -579,15 +589,15 @@ export default function InspirationImportScreen() {
     )
   }
 
-  const seededLoader = (
-    <main className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <Loader2 className="mx-auto size-6 animate-spin text-ink" />
-        <p className="mt-3 text-chip text-taupe">Finding items…</p>
-      </div>
-    </main>
+  const seededScan = (
+    <DetectionProgress
+      sourceUrl={figureUrl ?? sourcePreviewUrl}
+      meta="searching…"
+      voice="Looking for these pieces online…"
+      onBack={exitImport}
+    />
   )
-  if (!importId && seedParams && !primaryError) return seededLoader
+  if (!importId && seedParams && !primaryError) return seededScan
 
   if (!importId) {
     return (
@@ -632,7 +642,7 @@ export default function InspirationImportScreen() {
         </main>
       )
     }
-    if (seededFlow) return seededLoader
+    if (seededFlow) return seededScan
     return sourcePreviewUrl ? (
       <DetectionProgress sourceUrl={sourcePreviewUrl} onBack={returnToSource} onMinimise={() => navigate("/collection")} />
     ) : (
@@ -646,7 +656,7 @@ export default function InspirationImportScreen() {
   }
 
   if (record.import.status === "detecting" || record.import.status === "source_ready") {
-    if (seededFlow) return seededLoader
+    if (seededFlow) return seededScan
     return (
       <DetectionProgress
         sourceUrl={record.sourceUrl ?? sourcePreviewUrl}
@@ -655,6 +665,8 @@ export default function InspirationImportScreen() {
       />
     )
   }
+
+  if (seededFlow && landingWebQuery?.isPending) return seededScan
 
   const isChoosingCandidate = !selectedCandidate || choosingCandidate
   const foundCategories = new Set(record.candidates.map((candidate) => candidate.category)).size
@@ -674,10 +686,9 @@ export default function InspirationImportScreen() {
                 : `${catalogueResults.length} matches`
           }
           onBack={() => {
-            // Rack → Pieces only when there is a garment to re-pick. A seeded product
-            // import has the one candidate, so its back leaves instead of bouncing
-            // between the two views forever.
-            if (!isChoosingCandidate && record.candidates.length > 1) setChoosingCandidate(true)
+            // Rack → Pieces only when there is a photo to re-pick from. A Studio-seeded
+            // import's candidates are the worn pieces themselves, so its back leaves.
+            if (!isChoosingCandidate && !seededFlow && record.candidates.length > 1) setChoosingCandidate(true)
             else exitImport()
           }}
         />
@@ -771,7 +782,7 @@ export default function InspirationImportScreen() {
                   </div>
                 ) : (
                   <p className="px-4 py-8 text-center text-body text-taupe">
-                    {webQuery.isError ? "Online search failed — try inventory." : "No online matches for this piece."}
+                    {webQuery.isError ? "Online search failed." : "No online matches for this piece."}
                   </p>
                 )
               ) : activeCatalogueSearch?.isLoading ? (
@@ -800,6 +811,15 @@ export default function InspirationImportScreen() {
             <p className="min-w-0 text-chip text-destructive">{primaryError}</p>
             {record.import.status === "failed" ? (
               <button type="button" className={cn(TOGGLE, "h-9")} onClick={() => detectMutation.mutate()} disabled={detectMutation.isPending}>
+                <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" /> retry
+              </button>
+            ) : webQuery.isError ? (
+              <button
+                type="button"
+                className={cn(TOGGLE, "h-9")}
+                onClick={() => { setResultsSource("web"); void webQuery.refetch() }}
+                disabled={webQuery.isFetching}
+              >
                 <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" /> retry
               </button>
             ) : null}
