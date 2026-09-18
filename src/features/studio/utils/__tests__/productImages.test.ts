@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 
-import { isSegmentedAsset, isTryOnRender, toDisplayImages } from "../productImages"
+import { isSegmentedAsset, isTryOnRender, toCardPhotoUrl, toDisplayImages } from "../productImages"
 import type { StudioProductImage } from "@/services/studio/productImagesService"
 
 const B = "https://x.supabase.co/storage/v1/object/public"
@@ -71,6 +71,24 @@ describe("isSegmentedAsset", () => {
   })
 })
 
+describe("toCardPhotoUrl", () => {
+  it("asks storage for a card-sized variant of a public object", () => {
+    expect(toCardPhotoUrl(SCRAPED_RAW)).toBe(
+      "https://x.supabase.co/storage/v1/render/image/public/ingested_inventory/raw/e7b648cb/2.jpg?width=420&height=420&resize=contain",
+    )
+  })
+
+  it("keeps an existing query string", () => {
+    expect(toCardPhotoUrl(`${B}/a/b.jpg?v=1`)).toBe(
+      "https://x.supabase.co/storage/v1/render/image/public/a/b.jpg?v=1&width=420&height=420&resize=contain",
+    )
+  })
+
+  it("leaves a photo hosted elsewhere alone", () => {
+    expect(toCardPhotoUrl("https://offduty.in/cdn/shop/files/top.jpg")).toBe("https://offduty.in/cdn/shop/files/top.jpg")
+  })
+})
+
 describe("toDisplayImages", () => {
   it("keeps scraped photos and drops every segmented cutout", () => {
     const out = toDisplayImages([
@@ -79,16 +97,16 @@ describe("toDisplayImages", () => {
       img("detail", SCRAPED_AUTO),
       img("ghost", GHOST_STAGING),
     ])
-    expect(out).toEqual([SCRAPED_RAW, SCRAPED_AUTO])
+    expect(out).toEqual([SCRAPED_RAW, SCRAPED_AUTO].map(toCardPhotoUrl))
   })
 
   it("hides the mannequin try-on even though it is stored as kind=model", () => {
     const out = toDisplayImages([img("model", TRYON), img("model", SCRAPED_RAW)])
-    expect(out).toEqual([SCRAPED_RAW])
+    expect(out).toEqual([toCardPhotoUrl(SCRAPED_RAW)])
   })
 
   it("hides a vton job render", () => {
-    expect(toDisplayImages([img("model", VTON_JOB), img("model", SCRAPED_RAW)])).toEqual([SCRAPED_RAW])
+    expect(toDisplayImages([img("model", VTON_JOB), img("model", SCRAPED_RAW)])).toEqual([toCardPhotoUrl(SCRAPED_RAW)])
   })
 
   it("shows the Air Jordan's scraped photo, not the cutout or the mannequin", () => {
@@ -98,7 +116,7 @@ describe("toDisplayImages", () => {
       img("model", VTON_MANUAL),
       img("model", SCRAPED_AUTO),
     ])
-    expect(out).toEqual([SCRAPED_AUTO])
+    expect(out).toEqual([toCardPhotoUrl(SCRAPED_AUTO)])
   })
 
   it("falls back to the product image when only cutouts exist", () => {
@@ -109,7 +127,7 @@ describe("toDisplayImages", () => {
 
   it("preserves the order the service returned", () => {
     const out = toDisplayImages([img("detail", SCRAPED_AUTO), img("model", SCRAPED_RAW)])
-    expect(out).toEqual([SCRAPED_AUTO, SCRAPED_RAW])
+    expect(out).toEqual([SCRAPED_AUTO, SCRAPED_RAW].map(toCardPhotoUrl))
   })
 
   it("falls back to the product image when only a try-on render exists", () => {
@@ -127,6 +145,6 @@ describe("toDisplayImages", () => {
   })
 
   it("skips rows with an empty url", () => {
-    expect(toDisplayImages([img("model", ""), img("model", SCRAPED_RAW)])).toEqual([SCRAPED_RAW])
+    expect(toDisplayImages([img("model", ""), img("model", SCRAPED_RAW)])).toEqual([toCardPhotoUrl(SCRAPED_RAW)])
   })
 })
