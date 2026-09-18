@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { cn } from "@/lib/utils"
 import type { InspirationCandidate, InspirationCategory } from "@/services/inspirationImport/types"
 
@@ -12,6 +13,30 @@ type Props = {
 
 const SLOT_LABEL: Record<InspirationCategory, string> = { top: "tops", bottom: "lowers" }
 const SLOTS: InspirationCategory[] = ["top", "bottom"]
+
+/** The source photo clipped to a detection box, so the slot shows the real crop, not the background-removed cutout. */
+export function SourceCrop({ sourceUrl, bbox, alt }: { sourceUrl: string; bbox: InspirationCandidate["bbox"]; alt: string }) {
+  const [imageRatio, setImageRatio] = useState(1)
+  const aspect = (bbox.w * imageRatio) / bbox.h
+  return (
+    <div className="flex h-full w-full items-center justify-center" style={{ containerType: "size" }}>
+      <div className="relative overflow-hidden" style={{ aspectRatio: aspect, height: `min(100%, calc(100cqw / ${aspect}))` }}>
+        <img
+          src={sourceUrl}
+          alt={alt}
+          onLoad={(event) => setImageRatio(event.currentTarget.naturalWidth / event.currentTarget.naturalHeight)}
+          className="absolute max-w-none"
+          style={{
+            width: `${100 / bbox.w}%`,
+            height: `${100 / bbox.h}%`,
+            left: `${(-bbox.l / bbox.w) * 100}%`,
+            top: `${(-bbox.t / bbox.h) * 100}%`,
+          }}
+        />
+      </div>
+    </div>
+  )
+}
 
 /**
  * V2 Find items · Pieces: the source photo with 1px detection boxes — dashed
@@ -81,7 +106,7 @@ export function CandidatePicker({ sourceUrl, candidates, selectedIds, error, onS
               className="relative flex min-h-0 items-center justify-center overflow-hidden rounded-chip border border-hairline bg-background disabled:cursor-default"
             >
               {pick ? (
-                <img src={pick.retrievalCropUrl} alt={pick.label ?? SLOT_LABEL[category]} className="h-full w-full object-contain" />
+                <SourceCrop sourceUrl={sourceUrl} bbox={pick.bbox} alt={pick.label ?? SLOT_LABEL[category]} />
               ) : null}
               <span className="absolute left-2 top-2 text-chip text-taupe">{SLOT_LABEL[category]}</span>
             </button>
