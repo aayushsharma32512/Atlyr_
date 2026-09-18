@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefCallback } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefCallback } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { supabase } from "@/integrations/supabase/client"
@@ -1085,17 +1085,32 @@ export function HomeScreenView() {
     [navigate],
   )
 
-  const renderResultPlaceholder = (message: string, variant: "default" | "error" = "default") => (
+  const renderResultPlaceholder = (message: string, variant: "default" | "error" = "default", action?: ReactNode) => (
     <div
       className={cn(
-        "flex min-h-[220px] items-center justify-center rounded-frame border border-hairline px-4 py-10 text-center text-sm",
+        "flex min-h-[220px] flex-col items-center justify-center gap-4 rounded-frame border border-hairline px-4 py-10 text-center text-sm",
         variant === "error"
           ? "border-destructive/40 bg-destructive/5 text-destructive"
           : "border-dashed border-muted-foreground/30 bg-muted/10 text-muted-foreground",
       )}
     >
       {message}
+      {action}
     </div>
+  )
+
+  /** An empty board: a dashed ＋ that leads to where its items come from. */
+  const renderAddItemsPlaceholder = (label: string, to: string) => (
+    <button
+      type="button"
+      onClick={() => navigate(to)}
+      className="flex flex-1 flex-col items-center justify-center gap-2 rounded-frame border border-dashed border-hairline-dashed bg-card/40 px-4 py-6 text-sm text-muted-foreground transition-colors hover:bg-editorial/30"
+    >
+      <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-dashed border-muted-foreground/40">
+        <span className="text-xl font-light">+</span>
+      </div>
+      <span>{label}</span>
+    </button>
   )
 
   const renderTryOnsContent = () => {
@@ -1121,7 +1136,15 @@ export function HomeScreenView() {
     }
 
     if (tryOnItems.length === 0) {
-      return renderResultPlaceholder("No try-ons yet. Generate a look to see it here.")
+      // A bare /studio reopens the user's last look, so no lookup is needed here.
+      return renderResultPlaceholder(
+        "No try-ons yet. Generate a look to see it here.",
+        "default",
+        <Button size="sm" onClick={() => navigate("/studio")}>
+          <Icons.studio className="h-4 w-4" aria-hidden="true" />
+          go to studio
+        </Button>,
+      )
     }
 
     return (
@@ -1422,20 +1445,9 @@ export function HomeScreenView() {
       )
     }
     if (moodboardItems.length === 0) {
-      return (
-        <button
-          type="button"
-          onClick={() =>
-            navigate(isWardrobeActive ? "/inspiration-import?intent=wardrobe" : "/search")
-          }
-          className="flex flex-1 flex-col items-center justify-center gap-2 rounded-frame border border-dashed border-hairline-dashed bg-card/40 px-4 py-6 text-sm text-muted-foreground transition-colors hover:bg-editorial/30"
-        >
-          <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-dashed border-muted-foreground/40">
-            <span className="text-xl font-light">+</span>
-          </div>
-          <span>{isWardrobeActive ? "Add wardrobe item" : "Add items"}</span>
-        </button>
-      )
+      return isWardrobeActive
+        ? renderAddItemsPlaceholder("Add wardrobe item", "/inspiration-import?intent=wardrobe")
+        : renderAddItemsPlaceholder("Add items", "/search")
     }
 
     // A leading "+" tile on the wardrobe board only — the wardrobe's items come
@@ -1533,7 +1545,7 @@ export function HomeScreenView() {
       )
     }
     if (favoritesItems.length === 0) {
-      return renderResultPlaceholder("No favorites yet.")
+      return renderAddItemsPlaceholder("Add items", "/search")
     }
 
     return (
