@@ -9,6 +9,7 @@ import { getAvatarHairStylesQueryOptions } from "@/features/profile/hooks/useAva
 import type { MannequinConfig } from "@/features/studio/types"
 import { landingKeys } from "../queryKeys"
 import { LANDING_FIRST_LOOK_IDS, LANDING_INVENTORY_IDS } from "../landingInventory"
+import { bundledGarmentUrl } from "../landingLookAssets"
 
 // Three rows, so the opening look never waits for the whole catalogue's 200KB.
 const firstLookOptions = {
@@ -50,6 +51,11 @@ export function useLandingSearch(slot: StudioProductTraySlot, query: string, ima
 
 /** Fired from the page shell, so the data and the mannequin images race the renderer's chunk instead of waiting for it. */
 export function prefetchLandingStudio(queryClient: QueryClient) {
+  // The opening look's bundled garments, fetched the way the renderer fetches them so the cache entry matches.
+  for (const id of LANDING_FIRST_LOOK_IDS) {
+    const url = bundledGarmentUrl(id)
+    if (url) fetch(url, { mode: "cors" }).then((res) => res.blob()).catch(() => {})
+  }
   void queryClient.prefetchQuery(firstLookOptions)
   void queryClient.prefetchQuery(inventoryOptions)
   void queryClient.prefetchQuery(getAvatarHairStylesQueryOptions("female"))

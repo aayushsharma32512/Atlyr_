@@ -18,6 +18,7 @@ import type { StudioSource } from "@/features/studio/utils/studioUrlState"
 import type { StudioRenderedItem } from "@/features/studio/types"
 import type { StudioAlternativeProduct, StudioProductTraySlot } from "@/services/studio/studioService"
 import { LANDING_BOTTOMS, LANDING_LOOKS, LANDING_SHOES, LANDING_TOPS } from "../landingInventory"
+import { withBundledGarment } from "../landingLookAssets"
 import { useLandingFirstLook, useLandingInventory, useLandingSearch } from "../hooks/useLandingStudioData"
 import { scrollToWaitlist } from "../scrollToWaitlist"
 
@@ -78,9 +79,9 @@ export function LandingStudio() {
   const curatedLooks = useMemo<Look[]>(
     () =>
       LANDING_LOOKS.map(([topIndex, bottomIndex]) => ({
-        top: byId.get(LANDING_TOPS[topIndex].id) ?? null,
-        bottom: byId.get(LANDING_BOTTOMS[bottomIndex].id) ?? null,
-        shoes: byId.get(LANDING_SHOES.id) ?? null,
+        top: withBundledGarment(byId.get(LANDING_TOPS[topIndex].id) ?? null),
+        bottom: withBundledGarment(byId.get(LANDING_BOTTOMS[bottomIndex].id) ?? null),
+        shoes: withBundledGarment(byId.get(LANDING_SHOES.id) ?? null),
       })),
     [byId],
   )
@@ -136,13 +137,11 @@ export function LandingStudio() {
     void Assets.backgroundLoad(rackProducts.flatMap((p) => thumbnailOf(p) ?? []))
   }, [isRackOpen, rackProducts])
 
-  // Only after the current look is on screen: the next look's full-res, one step ahead.
+  // Only after the current look is on screen: every look's garment, so each chevron step is instant.
   useEffect(() => {
-    const count = curatedLooks.length
-    if (!hasRendered || !count) return
-    const next = curatedLooks[(lookIndex + 1) % count]
-    for (const s of SLOTS) warmFullRes(next[s]?.imageUrl)
-  }, [curatedLooks, hasRendered, lookIndex])
+    if (!hasRendered) return
+    for (const look of curatedLooks) for (const s of SLOTS) warmFullRes(look[s]?.imageUrl)
+  }, [curatedLooks, hasRendered])
 
   const stepLook = (delta: number) => {
     const count = curatedLooks.length
