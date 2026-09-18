@@ -10,6 +10,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { encode as base64Encode } from "https://deno.land/std@0.168.0/encoding/base64.ts"
 import { OUTFIT_SEARCH_PROMPT, renderPrompt } from "./prompt.ts"
+import { anonLimiter, callerRole, type CallerRole } from "../_shared/anonLimit.ts"
 
 console.log("🚀 Search Outfits V3 Function Up!")
 
@@ -30,6 +31,12 @@ const DEFAULT_MAX_PER_DESCRIPTION = 3 // 0 = no cap
 const PER_LIST_COUNT = 100
 const RESULT_COUNT = 50
 
+// Logged-out visitors reach this function from the landing page with the public anon key,
+// so anon callers get a low request cap and fewer results; signed-in callers are unaffected.
+const ANON_RATE_LIMIT = { windowMs: 60 * 60 * 1000, max: 10 }
+const ANON_RESULT_CAP = 24
+const anonSearchLimiter = anonLimiter(ANON_RATE_LIMIT)
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -48,12 +55,18 @@ class EmbedError extends HttpError { constructor(m: string) { super(502, 'embed_
 // --------------------------------------------------------------- server ----
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
+  const role = callerRole(req)
+  if (role === 'anon' && !anonSearchLimiter.allow(req)) {
+    return new Response(JSON.stringify({ error: 'rate_limited' }), {
+      status: 429, headers: { 'Content-Type': 'application/json', ...CORS },
+    })
+  }
   const t0 = Date.now()
   try {
     let body: any
     try { body = await req.json() } catch (e: any) { throw new BadRequestError(`invalid JSON body: ${e?.message || e}`) }
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-    const result = await handle(body, supabase, t0)
+    const result = await handle(body, supabase, t0, role)
     return new Response(JSON.stringify(result), { headers: { 'Content-Type': 'application/json', ...CORS } })
   } catch (err: any) {
     console.error('❌ search-outfits-v3 error:', err?.message || err)
@@ -375,8 +388,9 @@ async function hydrateProducts(supabase: any, ids: string[]): Promise<Map<string
 }
 
 // ------------------------------------------------------------------ handle --
-async function handle(body: any, supabase: any, t0: number) {
+async function handle(body: any, supabase: any, t0: number, role: CallerRole) {
   const req = parseRequest(body)
+  const resultCount = role === 'anon' ? Math.min(RESULT_COUNT, ANON_RESULT_CAP) : RESULT_COUNT
   const hasText = Boolean(req.q)
 
   let descriptions: (string | null)[] = [null]
@@ -408,7 +422,7 @@ async function handle(body: any, supabase: any, t0: number) {
   const lists = await Promise.all(vectors.map((v) => matchOutfits(supabase, v, filters, PER_LIST_COUNT)))
   const searchMs = Date.now() - searchStart
 
-  const merged = mergeBuckets(lists, descriptions, RESULT_COUNT, req.maxPerDescription)
+  const merged = mergeBuckets(lists, descriptions, resultCount, req.maxPerDescription)
 
   const fieldsMap = req.debug
     ? await hydrateOutfitsFull(supabase, merged.map((m) => m.id))

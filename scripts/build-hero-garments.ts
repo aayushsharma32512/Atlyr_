@@ -21,8 +21,8 @@
  * slot allows.
  *
  * Trimming and padding are safe here only because nothing is composited onto a mannequin: no
- * placement transform or warp lattice is measured against these pixels, unlike the worn garments in
- * landingMockProducts, which must keep their original dimensions.
+ * placement transform or warp lattice is measured against these pixels, unlike the garments worn on
+ * the mannequin, which must keep their original dimensions.
  *
  * Env: SUPABASE_URL (or VITE_SUPABASE_URL) and SUPABASE_SERVICE_ROLE_KEY.
  */

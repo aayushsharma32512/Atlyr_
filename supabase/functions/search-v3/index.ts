@@ -12,6 +12,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { encode as base64Encode } from "https://deno.land/std@0.168.0/encoding/base64.ts"
 import { PRODUCT_SEARCH_PROMPT, renderPrompt } from "./prompt.ts"
+import { anonLimiter, callerRole, type CallerRole } from "../_shared/anonLimit.ts"
 
 console.log("🚀 Search V3 Function Up!")
 
@@ -34,6 +35,12 @@ const RESOLVER_TIMEOUT_MS = 6000
 const IMAGE_BYTE_CAP = 4_000_000
 const PER_LIST_COUNT = 100
 const RESULT_COUNT = 50
+
+// Logged-out visitors reach this function from the landing page with the public anon key,
+// so anon callers get a low request cap and fewer results; signed-in callers are unaffected.
+const ANON_RATE_LIMIT = { windowMs: 60 * 60 * 1000, max: 10 }
+const ANON_RESULT_CAP = 24
+const anonSearchLimiter = anonLimiter(ANON_RATE_LIMIT)
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -66,12 +73,18 @@ const CLIENT_MESSAGE: Record<string, string> = {
 // --------------------------------------------------------------- server ----
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
+  const role = callerRole(req)
+  if (role === 'anon' && !anonSearchLimiter.allow(req)) {
+    return new Response(JSON.stringify({ error: 'rate_limited' }), {
+      status: 429, headers: { 'Content-Type': 'application/json', ...CORS },
+    })
+  }
   const t0 = Date.now()
   try {
     let body: any
     try { body = await req.json() } catch (e: any) { throw new BadRequestError(`invalid JSON body: ${e?.message || e}`) }
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-    const result = await handle(body, supabase, t0)
+    const result = await handle(body, supabase, t0, role)
     return new Response(JSON.stringify(result), { headers: { 'Content-Type': 'application/json', ...CORS } })
   } catch (err: any) {
     const status = err instanceof HttpError ? err.status : 500
@@ -381,8 +394,9 @@ function mergeBuckets(lists: MatchRow[][], descriptions: (string | null)[], limi
 }
 
 // ------------------------------------------------------------------ handle --
-async function handle(body: any, supabase: any, t0: number) {
+async function handle(body: any, supabase: any, t0: number, role: CallerRole) {
   const req = parseRequest(body)
+  const resultCount = role === 'anon' ? Math.min(RESULT_COUNT, ANON_RESULT_CAP) : RESULT_COUNT
   const hasText = Boolean(req.q)
 
   let anchor: { image_vector: number[]; image_url: string | null } | null = null
@@ -422,7 +436,7 @@ async function handle(body: any, supabase: any, t0: number) {
   const searchMs = Date.now() - searchStart
 
   // Ranking strategy. mergeRounds is the alternative.
-  const results = mergeBuckets(lists, descriptions, RESULT_COUNT)
+  const results = mergeBuckets(lists, descriptions, resultCount)
   const timings = { resolver_ms: resolverMs, embed_ms: embedMs, search_ms: searchMs, total_ms: Date.now() - t0 }
 
   const response: any = {

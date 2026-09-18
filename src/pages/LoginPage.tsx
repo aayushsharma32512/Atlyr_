@@ -6,22 +6,8 @@ import { useAuth } from "@/contexts/AuthContext"
 import { Loader2 } from "lucide-react"
 import { setAuthIntent } from "@/features/auth/authIntentStorage"
 
-/**
- * Canvas 6b — "sign in, one door". The charcoal room: signing in is structural,
- * not promotional, so there is no marketing here and no second action.
- *
- * Two deliberate departures from the canvas art:
- *
- *  · It draws the eyebrow "INVITE ACCEPTED" and the headline "Come in, you're on
- *    the list." Nothing is known about approval at this point — access is checked
- *    only after Google returns, in AuthCallback via has_app_access(). Telling
- *    someone they're on the list and then signing them back out on the next
- *    screen is precisely the kind of promise the voice rules forbid, so the copy
- *    states the invitation model without asserting an outcome.
- *
- *  · The guest-mode link is dropped. signInAsGuest() exists but its only caller
- *    is the unrouted AuthScreen, so the link would have been decorative.
- */
+// Nothing is known about approval here — access is checked only after Google
+// returns, in AuthCallback via has_app_access() — so copy never promises entry.
 export function LoginPage() {
   const location = useLocation()
   const [searchParams] = useSearchParams()
@@ -57,33 +43,16 @@ export function LoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center bg-ink px-6 py-12">
-      {/* The weave, at low contrast — the room is a surface, not a poster. */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 opacity-[0.45]"
-        style={{
-          backgroundImage:
-            "linear-gradient(hsl(var(--ink-line)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--ink-line)) 1px, transparent 1px)",
-          backgroundSize: "22px 22px",
-        }}
-      />
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6 py-12">
+      <div className="w-full max-w-sm">
+        <WordmarkLockup size="landing" />
 
-      <div className="relative z-10 w-full max-w-[clamp(330px,32vw,460px)]">
-        <WordmarkLockup size="firstRun" onDark />
-
-        <p className="mt-8 text-center text-fluid-sm font-semibold uppercase tracking-[0.22em] text-primary">
-          By invitation
-        </p>
-        <h1 className="mt-[7px] text-center font-display text-fluid-h1 font-medium leading-[1.12] text-background">
-          Come in.
+        <h1 className="mt-8 text-center font-display text-4xl font-medium leading-[1.12] text-foreground sm:text-5xl">
+          Come <span className="font-display italic text-violet">in</span>.
         </h1>
 
         {error && (
-          <p
-            role="alert"
-            className="mt-5 rounded-control bg-destructive/15 px-3 py-2 text-center text-fluid-md text-destructive-foreground"
-          >
+          <p role="alert" className="mt-5 rounded-control border border-hairline bg-card px-3 py-2 text-center text-sm text-destructive">
             {error}
           </p>
         )}
@@ -92,7 +61,7 @@ export function LoginPage() {
           type="button"
           onClick={handleGoogleSignIn}
           disabled={loading}
-          className="mt-7 h-auto w-full rounded-control bg-secondary py-fluid-btn text-fluid-cta font-bold text-foreground hover:bg-secondary/90"
+          className="mt-7 h-12 w-full rounded-control bg-foreground text-background hover:bg-foreground/90"
         >
           {loading ? (
             <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -119,19 +88,24 @@ export function LoginPage() {
           {isSignup ? "Continue with Google" : "Sign in with Google"}
         </Button>
 
-        <p className="mt-4 text-center text-fluid-base leading-[1.6] text-on-ink-1">
+        <p className="mt-4 text-center text-sm leading-[1.6] text-muted-foreground">
           One account: likeness, boards, try-ons.
-          <br />
-          Photos stay private — delete anytime.
         </p>
 
-        <p className="mt-8 text-center text-fluid-xs2 leading-[1.6] text-on-ink-1/70">
+        <p className="mt-2 text-center text-sm leading-[1.6] text-muted-foreground">
+          New here?{" "}
+          <Link to="/?waitlist=1" className="font-medium text-foreground underline underline-offset-2">
+            Join the waitlist
+          </Link>
+        </p>
+
+        <p className="mt-8 text-center text-xs leading-[1.6] text-muted-foreground">
           By continuing, you agree to our{" "}
-          <Link to="/terms" className="underline underline-offset-2 hover:text-on-ink-2">
+          <Link to="/terms" className="underline underline-offset-2 hover:text-foreground">
             Terms of Service
           </Link>{" "}
           and{" "}
-          <Link to="/privacy" className="underline underline-offset-2 hover:text-on-ink-2">
+          <Link to="/privacy" className="underline underline-offset-2 hover:text-foreground">
             Privacy Policy
           </Link>
           .

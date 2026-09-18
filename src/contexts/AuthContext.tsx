@@ -66,7 +66,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       provider: 'google',
       options: {
         redirectTo:
-          redirectTo ?? `${window.location.origin}/auth/callback?next=${encodeURIComponent("/app")}`
+          redirectTo ?? `${window.location.origin}/auth/callback?next=${encodeURIComponent("/app")}`,
+        // Always show Google's account chooser; without it a browser with one Google session signs in silently.
+        queryParams: { prompt: "select_account" },
       }
     });
     return { error };
@@ -74,7 +76,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     const { error } = await supabase.auth.signOut();
-    return { error };
+    if (error) {
+      // A failed server revoke leaves the session in storage, so the browser would stay signed in.
+      await supabase.auth.signOut({ scope: "local" }).catch(() => null);
+      localStorage.removeItem((supabase.auth as unknown as { storageKey: string }).storageKey);
+      setSession(null);
+      setUser(null);
+    }
+    return { error: null };
   };
 
   const value = {

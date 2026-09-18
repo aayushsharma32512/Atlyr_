@@ -57,6 +57,8 @@ export interface AlternatesSearchBarProps {
   onClearThumb?: () => void
   /** Opens the reference-image dialog. */
   onOpenImagePicker?: () => void
+  /** Without a dialog, the camera opens the bar's own file picker. */
+  onPickImage?: (file: File) => void
   className?: string
 }
 
@@ -80,6 +82,7 @@ export function AlternatesSearchBar({
   thumbSrc,
   onClearThumb,
   onOpenImagePicker,
+  onPickImage,
   className,
 }: AlternatesSearchBarProps) {
   const barRef = useRef<HTMLDivElement>(null)
@@ -124,6 +127,7 @@ export function AlternatesSearchBar({
         thumbSrc={thumbSrc}
         onClearThumb={onClearThumb}
         onOpenImagePicker={onOpenImagePicker}
+        onPickImage={onPickImage}
       />
     </div>
   )

@@ -30,6 +30,8 @@ export interface ProductTileProps {
   price?: string
   brand?: string
   className?: string
+  /** False drops the hairline frame; the worn ring still shows. */
+  framed?: boolean
   /**
    * Rendered bottom-left inside the image box, mirroring the pin's top-right
    * corner slot. Anchoring it here — not on a wrapper around the whole tile —
@@ -60,6 +62,7 @@ export function ProductTile({
   brand,
   className,
   bottomLeftOverlay,
+  framed = true,
 }: ProductTileProps) {
   const small = size === "small"
   const interactive = Boolean(onSelect)
@@ -109,7 +112,7 @@ export function ProductTile({
       <div
         className={cn(
           "relative aspect-square w-full overflow-hidden rounded-lg bg-background",
-          worn ? "border-[1.5px] border-violet" : "border border-hairline",
+          worn ? "border-[1.5px] border-violet" : framed && "border border-hairline",
         )}
       >
         {imageSrc ? (

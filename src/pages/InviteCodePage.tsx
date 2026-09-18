@@ -4,9 +4,11 @@ import { useQueryClient } from "@tanstack/react-query"
 import { Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Icons } from "@/design-system/icons"
 import { WordmarkLockup } from "@/design-system/primitives"
 import { useAuth } from "@/contexts/AuthContext"
 import { useHasAppAccessQuery, useRedeemInviteMutation } from "@/features/auth/hooks/useInviteAccess"
+import { setAuthIntent } from "@/features/auth/authIntentStorage"
 import { inviteErrorText } from "@/features/auth/inviteCode"
 import { clearPendingInviteCode, clearReturningMarker, setReturningMarker } from "@/features/auth/inviteStorage"
 import { authKeys } from "@/features/auth/queryKeys"
@@ -17,7 +19,7 @@ export function InviteCodePage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const queryClient = useQueryClient()
-  const { user, loading, signOut } = useAuth()
+  const { user, loading, signInWithGoogle } = useAuth()
   const accessQuery = useHasAppAccessQuery(Boolean(user?.id))
   const redeem = useRedeemInviteMutation()
 
@@ -47,26 +49,32 @@ export function InviteCodePage() {
     }
   }
 
+  // Straight to Google's chooser; the callback replaces the session, so no sign-out and no login page in between.
   const switchAccount = async () => {
     clearPendingInviteCode()
     clearReturningMarker()
-    await signOut().catch(() => null)
-    navigate("/auth/login", { replace: true })
+    setAuthIntent("login")
+    const { error } = await signInWithGoogle(`${window.location.origin}/auth/callback?next=${encodeURIComponent("/app")}`)
+    if (error) setError("Could not start Google sign-in. Please try again.")
   }
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center bg-ink px-6 py-12">
-      <div className="relative z-10 w-full max-w-[clamp(330px,32vw,460px)]">
-        <WordmarkLockup size="firstRun" onDark />
+    <div className="relative flex min-h-screen flex-col items-center justify-center bg-background px-6 py-12">
+      <Link
+        to="/"
+        aria-label="Back to Atlyr"
+        className="absolute left-4 top-4 flex h-10 w-10 items-center justify-center text-ink"
+      >
+        <Icons.carouselPrev className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
+      </Link>
+      <div className="w-full max-w-sm">
+        <WordmarkLockup size="landing" />
 
-        <p className="mt-8 text-center text-fluid-sm font-semibold uppercase tracking-[0.22em] text-primary">
-          By invitation
-        </p>
-        <h1 className="mt-[7px] text-center font-display text-fluid-h1 font-medium leading-[1.12] text-background">
-          Enter your invite code.
+        <h1 className="mt-8 text-center font-display text-4xl font-medium leading-[1.12] text-foreground sm:text-5xl">
+          Enter your <span className="font-display italic text-violet">invite code</span>.
         </h1>
-        <p className="mt-4 text-center text-fluid-base leading-[1.6] text-on-ink-1">
-          Signed in as <span className="font-medium text-background">{user.email}</span>.
+        <p className="mt-4 text-center text-sm leading-[1.6] text-muted-foreground">
+          Signed in as <span className="font-medium text-foreground">{user.email}</span>.
           <br />
           This account isn't approved yet.
         </p>
@@ -81,29 +89,30 @@ export function InviteCodePage() {
             spellCheck={false}
             aria-label="Invite code"
             aria-invalid={Boolean(error)}
-            className="w-full rounded-control border border-on-ink-1/30 bg-transparent px-4 py-3 text-center font-mono text-fluid-md uppercase tracking-[0.12em] text-background outline-none focus:border-primary"
+            className="h-12 w-full rounded-control border border-hairline bg-card text-center font-mono uppercase tracking-[0.2em] text-foreground outline-none focus:border-violet"
           />
           {error && (
-            <p role="alert" className="rounded-control bg-destructive/15 px-3 py-2 text-center text-fluid-md text-destructive-foreground">
+            <p role="alert" className="rounded-control border border-hairline bg-card px-3 py-2 text-center text-sm text-destructive">
               {error}
             </p>
           )}
           <Button
             type="submit"
             disabled={redeem.isPending || !code.trim()}
-            className="h-auto w-full rounded-control bg-secondary py-fluid-btn text-fluid-cta font-bold text-foreground hover:bg-secondary/90"
+            className="h-12 w-full rounded-control bg-foreground text-background hover:bg-foreground/90"
           >
             {redeem.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : "Continue"}
           </Button>
         </form>
 
-        <p className="mt-8 text-center text-fluid-xs2 leading-[1.8] text-on-ink-1/70">
-          No code?{" "}
-          <Link to="/?waitlist=1" className="underline underline-offset-2 hover:text-on-ink-2">
-            Join the waitlist
-          </Link>
-          <br />
-          <button type="button" onClick={switchAccount} className="underline underline-offset-2 hover:text-on-ink-2">
+        <p className="mt-8 flex flex-col items-center gap-1.5 text-center text-sm text-muted-foreground">
+          <span>
+            No code?{" "}
+            <Link to="/?waitlist=1" className="underline underline-offset-2 hover:text-foreground">
+              Join the waitlist
+            </Link>
+          </span>
+          <button type="button" onClick={switchAccount} className="underline underline-offset-2 hover:text-foreground">
             Use a different account
           </button>
         </p>

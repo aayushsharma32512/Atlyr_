@@ -1,36 +1,37 @@
 import { motion } from "framer-motion";
-import { useNavigate } from "react-router-dom";
+
+type Phrase = [lead: string, accent: string, tail?: string];
+
+// Two phrases a line, so the copy stays two lines on a phone and leaves the frame the screen. Violet is the accent.
+const ROWS: Phrase[][] = [
+  [
+    ["play", "irl dress up", "game"],
+    ["search by", "pure vibes"],
+  ],
+  [
+    ["personalise", "any inspiration"],
+    ["curate", "your wardrobe"],
+  ],
+];
 
 export function HeroSection() {
-  const navigate = useNavigate();
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.8, ease: "easeOut" }}
-      className="flex max-w-5xl flex-col items-center gap-2 text-center sm:gap-8 max-h-[90vh] overflow-y-hidden"
+      transition={{ duration: 0.6, ease: "easeOut" }}
+      className="flex w-full flex-col items-center gap-1 pb-3 text-center text-[clamp(0.8rem,3.6vw,1.25rem)] leading-snug text-muted-foreground"
     >
-
-
-      <motion.p
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, delay: 0.2 }}
-        className="mt-8 max-w-xl text-lg sm:text-xl lg:text-2xl text-muted-foreground"
-      >
-        {/* Emphasis is the gate's tagline treatment — Bodoni italic in
-            terracotta — so these lines read as the same system as the lockup
-            scrolled just above them. This was Pacifico, which predated the
-            rebrand and was the last thing holding that font in the page's
-            font request. */}
-        Personalise outfits in our <span className="px-1 font-display italic text-terracotta">style studio</span> <br />
-        <span className="px-1 font-display italic text-terracotta">build virtual looks</span> with lifelike precision <br />
-        collaborate with friends & <span className="px-1 font-display italic text-terracotta">co-create fits</span> <br />
-        <span className="px-1 font-display italic text-terracotta">experiment</span> and remix your wardrobe <br />
-      </motion.p>
-
-
+      {ROWS.map((row, index) => (
+        <p key={index} className="flex flex-wrap justify-center gap-x-5 whitespace-nowrap">
+          {row.map(([lead, accent, tail]) => (
+            <span key={accent}>
+              {lead} <span className="px-0.5 font-display italic text-violet">{accent}</span>
+              {tail ? ` ${tail}` : null}
+            </span>
+          ))}
+        </p>
+      ))}
     </motion.div>
   );
 }
-

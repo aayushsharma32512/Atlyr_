@@ -10,8 +10,7 @@ import {
   parsePhoneNumberFromString,
   type CountryCode,
 } from "libphonenumber-js";
-import { Linkedin, Facebook, Instagram, Twitter, CheckCircle, AlertCircle } from "lucide-react";
-import { WordmarkLockup } from "@/design-system/primitives";
+import { CheckCircle, AlertCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
@@ -29,9 +28,17 @@ import { useToast } from "@/hooks/use-toast";
 import { setPendingInviteCode } from "@/features/auth/inviteStorage";
 import { useValidateInviteMutation } from "@/features/auth/hooks/useInviteAccess";
 import { useWaitlistSubmissionMutation } from "@/features/auth/hooks/useWaitlist";
-import { Separator } from "@/components/ui/separator";
-import Magnet from "../reactbits-components/Magnet";
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext";
+
+const EYEBROW = "By invitation, for now";
+const HEADLINE_LEAD = "Get in";
+const HEADLINE_ACCENT = "early";
+const SUBLINE =
+  "Atlyr opens in small circles. Leave your details and we will reach out on WhatsApp when your spot is ready.";
+const CARD_TITLE = "Your details";
+const SUBMIT_LABEL = "Join the waitlist";
+const SUCCESS_HEADLINE = "You are on the list.";
+const SUCCESS_LINE = "We will message you on WhatsApp when your spot opens.";
 
 const waitlistSchema = z
   .object({
@@ -72,6 +79,12 @@ const getFlagEmoji = (countryCode: string) => {
     .replace(/[A-Z]/g, (char) => String.fromCodePoint(char.charCodeAt(0) + 127397));
 };
 
+const fieldInputClass = (hasError: boolean) =>
+  cn(
+    "h-11 rounded-control border-hairline bg-background px-4 text-sm shadow-none focus-visible:ring-1 focus-visible:ring-violet",
+    hasError && "border-destructive focus-visible:ring-destructive",
+  );
+
 export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -86,9 +99,6 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteChecking, setInviteChecking] = useState(false);
   const [completionState, setCompletionState] = useState<"success" | "already" | null>(null);
-  const leftRef = useRef<HTMLDivElement>(null);
-  const rightRef = useRef<HTMLDivElement>(null);
-  const formRef = useRef<HTMLFormElement>(null);
   const formContainerRef = useRef<HTMLDivElement>(null);
   const successRef = useRef<HTMLDivElement>(null);
   const resetTimerRef = useRef<number | null>(null);
@@ -297,34 +307,6 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
   };
 
   useEffect(() => {
-    if (!leftRef.current || !rightRef.current || !formRef.current) return;
-
-    const formFields = formRef.current.querySelectorAll('[class*="space-y"]');
-
-    const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
-
-    // Animate left panel
-    tl.from(leftRef.current, {
-      opacity: 0,
-      x: -30,
-      duration: 0.6,
-    })
-      // Animate right panel
-      .from(rightRef.current, {
-        opacity: 0,
-        x: 30,
-        duration: 0.6,
-      }, "-=0.4")
-      // Animate form elements
-      .from(formFields, {
-        opacity: 0,
-        y: 8,
-        duration: 0.3,
-        stagger: 0.1,
-      }, "-=0.3");
-  }, []);
-
-  useEffect(() => {
     if (completionState && successRef.current) {
       hasShownCompletion.current = true;
       gsap.fromTo(
@@ -354,313 +336,193 @@ export function WaitlistSection({ utmParams, onSignInClick }: WaitlistSectionPro
   return (
     <section
       id="waitlist-form"
-      className="relative flex min-h-screen w-full flex-col items-center bg-background"
+      className="relative flex h-full w-full flex-col items-center justify-center bg-background px-4 pb-6 pt-16 sm:px-6"
     >
-      <div className="mx-auto w-full max-w-5xl px-5 pb-6 pt-16 sm:px-4 sm:pb-14 lg:px-4 lg:pb-20">
-        <div ref={rightRef} className="mx-auto flex w-full max-w-lg items-center">
-          <Card className="w-full overflow-hidden rounded-none border-0 shadow-none sm:border-l-1 sm:border-border">
-            <CardContent className="p-2 sm:p-3 lg:p-4">
-              <div className="space-y-2">
-                <h3 className="font-display text-2xl font-medium text-foreground sm:text-3xl">Join the waitlist</h3>
-                <p className="text-sm text-muted-foreground">Be the first to know when we launch</p>
-              </div>
+      <div className="flex w-full max-w-md flex-col items-center gap-5 text-center sm:max-w-lg sm:gap-6">
+        <div className="space-y-2 sm:space-y-3">
+          <p className="text-xs font-medium uppercase tracking-[0.3em] text-muted-foreground">
+            {EYEBROW}
+          </p>
+          <h2 className="font-display text-4xl font-medium tracking-tight text-foreground sm:text-5xl">
+            {HEADLINE_LEAD} <span className="font-display italic text-violet">{HEADLINE_ACCENT}</span>.
+          </h2>
+          <p className="mx-auto max-w-sm text-sm text-muted-foreground sm:text-base">{SUBLINE}</p>
+        </div>
 
-              <div className="relative mt-6 min-h-[420px]">
-                {!completionState && (
-                  <div ref={formContainerRef} className="space-y-5">
-                    <div className="rounded-xl border border-border/60 bg-background/60 p-4 shadow-sm sm:p-5">
-                      <Form {...form}>
-                        <form
-                          ref={formRef}
-                          className="space-y-4 sm:space-y-5"
-                          onSubmit={handleFormSubmit}
-                        >
-                          <div className="space-y-1">
-                            <p className="text-sm font-medium text-foreground">Your details</p>
-                            <p className="text-xs text-muted-foreground">
-                              We will reach out once the beta is ready.
-                            </p>
-                          </div>
+        <Card className="w-full overflow-hidden rounded-2xl border border-hairline bg-card text-left shadow-sm">
+          <CardContent className="p-5 sm:p-7">
+            <div className="relative min-h-[260px]">
+              {!completionState && (
+                <div ref={formContainerRef}>
+                  <Form {...form}>
+                    <form className="space-y-4" onSubmit={handleFormSubmit}>
+                      <p className="text-sm font-medium text-foreground">{CARD_TITLE}</p>
 
-                          <div className="space-y-3">
-                            <FormField
-                              control={form.control}
-                              name="name"
-                              render={({ field, fieldState }) => (
-                                <FormItem className="space-y-2">
-                                  <FormControl>
-                                    <Input
-                                      {...field}
-                                      placeholder="Your Name"
-                                      disabled={isSubmitting}
-                                      className={cn(
-                                        "h-10 rounded-lg text-sm border-border bg-background/80 shadow-sm focus-visible:ring-1 focus-visible:ring-ring",
-                                        fieldState.error && "border-destructive focus-visible:ring-destructive",
-                                      )}
+                      <div className="space-y-3">
+                        <FormField
+                          control={form.control}
+                          name="name"
+                          render={({ field, fieldState }) => (
+                            <FormItem className="space-y-1.5">
+                              <FormControl>
+                                <Input
+                                  {...field}
+                                  placeholder="Name"
+                                  disabled={isSubmitting}
+                                  className={fieldInputClass(Boolean(fieldState.error))}
+                                  aria-invalid={Boolean(fieldState.error)}
+                                />
+                              </FormControl>
+                              <FormMessage className="text-xs" />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="email"
+                          render={({ field, fieldState }) => (
+                            <FormItem className="space-y-1.5">
+                              <FormControl>
+                                <Input
+                                  type="email"
+                                  {...field}
+                                  placeholder="Gmail address"
+                                  disabled={isSubmitting}
+                                  className={fieldInputClass(Boolean(fieldState.error))}
+                                  aria-invalid={Boolean(fieldState.error)}
+                                />
+                              </FormControl>
+                              <FormMessage className="text-xs" />
+                            </FormItem>
+                          )}
+                        />
+                        <div className="flex gap-2">
+                          <FormField
+                            control={form.control}
+                            name="phoneCountry"
+                            render={({ field, fieldState }) => (
+                              <FormItem className="w-24">
+                                <FormControl>
+                                  <Select
+                                    value={field.value}
+                                    onValueChange={field.onChange}
+                                    disabled={isSubmitting}
+                                  >
+                                    <SelectTrigger
+                                      className={fieldInputClass(Boolean(fieldState.error))}
                                       aria-invalid={Boolean(fieldState.error)}
-                                    />
-                                  </FormControl>
-                                  <FormMessage className="text-xs" />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name="email"
-                              render={({ field, fieldState }) => (
-                                <FormItem className="space-y-2">
-                                  <FormControl>
-                                    <Input
-                                      type="email"
-                                      {...field}
-                                      placeholder="Enter your gmail account"
-                                      disabled={isSubmitting}
-                                      className={cn(
-                                        "h-10 rounded-lg text-sm border-border bg-background/80 shadow-sm focus-visible:ring-1 focus-visible:ring-ring",
-                                        fieldState.error && "border-destructive focus-visible:ring-destructive",
-                                      )}
-                                      aria-invalid={Boolean(fieldState.error)}
-                                    />
-                                  </FormControl>
-                                  <FormMessage className="text-xs" />
-                                </FormItem>
-                              )}
-                            />
-                          </div>
-
-                          <div className="space-y-3">
-                            <div className="flex gap-2">
-                              <FormField
-                                control={form.control}
-                                name="phoneCountry"
-                                render={({ field, fieldState }) => (
-                                  <FormItem className="w-22">
-                                    <FormControl>
-                                      <Select
-                                        value={field.value}
-                                        onValueChange={field.onChange}
-                                        disabled={isSubmitting}
-                                      >
-                                        <SelectTrigger
-                                          className={cn(
-                                            "h-10 rounded-lg text-sm border-border bg-background/80 shadow-sm focus-visible:ring-1 focus-visible:ring-ring",
-                                            fieldState.error && "border-destructive focus-visible:ring-destructive",
-                                          )}
-                                          aria-invalid={Boolean(fieldState.error)}
-                                          aria-label="Country calling code"
-                                        >
+                                      aria-label="Country calling code"
+                                    >
+                                      <span className="flex items-center gap-2">
+                                        <span aria-hidden="true">
+                                          {getFlagEmoji(selectedCountry?.code ?? "IN")}
+                                        </span>
+                                        <span className="text-sm font-medium">
+                                          +{selectedCountry?.callingCode ?? getCountryCallingCode("IN")}
+                                        </span>
+                                      </span>
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {countryOptions.map((country) => (
+                                        <SelectItem key={country.code} value={country.code}>
                                           <span className="flex items-center gap-2">
-                                            <span aria-hidden="true">
-                                              {getFlagEmoji(selectedCountry?.code ?? "IN")}
-                                            </span>
-                                            <span className="text-sm font-medium">
-                                              +{selectedCountry?.callingCode ?? getCountryCallingCode("IN")}
+                                            <span aria-hidden="true">{getFlagEmoji(country.code)}</span>
+                                            <span className="flex-1">{country.name}</span>
+                                            <span className="text-muted-foreground">
+                                              +{country.callingCode}
                                             </span>
                                           </span>
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {countryOptions.map((country) => (
-                                            <SelectItem key={country.code} value={country.code}>
-                                              <span className="flex items-center gap-2">
-                                                <span aria-hidden="true">{getFlagEmoji(country.code)}</span>
-                                                <span className="flex-1">{country.name}</span>
-                                                <span className="text-muted-foreground">
-                                                  +{country.callingCode}
-                                                </span>
-                                              </span>
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                    </FormControl>
-                                    <FormMessage className="text-xs" />
-                                  </FormItem>
-                                )}
-                              />
-                              <FormField
-                                control={form.control}
-                                name="phoneNumber"
-                                render={({ field, fieldState }) => (
-                                  <FormItem className="flex-1">
-                                    <FormControl>
-                                      <Input
-                                        type="tel"
-                                        {...field}
-                                        placeholder="WhatsApp number preferred"
-                                        disabled={isSubmitting}
-                                        className={cn(
-                                          "h-10 rounded-lg text-sm border-border bg-background/80 shadow-sm focus-visible:ring-1 focus-visible:ring-ring",
-                                          fieldState.error && "border-destructive focus-visible:ring-destructive",
-                                        )}
-                                        inputMode="tel"
-                                        autoComplete="tel"
-                                        aria-invalid={Boolean(fieldState.error)}
-                                      />
-                                    </FormControl>
-                                    <FormMessage className="text-xs" />
-                                  </FormItem>
-                                )}
-                              />
-                            </div>
-                          </div>
-
-                          <Button
-                            type="submit"
-                            disabled={isSubmitting}
-                            className="mt-2 h-10 w-full rounded-lg font-semibold shadow-sm hover:bg-primary/90"
-                          >
-                            {isSubmitting ? <LoadingSpinner size="sm" /> : "Join waitlist"}
-                          </Button>
-                        </form>
-                      </Form>
-                    </div>
-                  </div>
-                )}
-
-                {completionState && (
-                  <div
-                    ref={successRef}
-                    className="absolute inset-0 flex flex-col items-center justify-start gap-4 rounded-lg bg-background px-4 text-center"
-                  >
-                    <div className="flex h-32 w-32 items-center justify-center">
-                      {completionState === "success" ? (
-                        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 text-primary shadow-lg">
-                          <CheckCircle className="h-12 w-12" />
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </FormControl>
+                                <FormMessage className="text-xs" />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name="phoneNumber"
+                            render={({ field, fieldState }) => (
+                              <FormItem className="flex-1">
+                                <FormControl>
+                                  <Input
+                                    type="tel"
+                                    {...field}
+                                    placeholder="WhatsApp number"
+                                    disabled={isSubmitting}
+                                    className={fieldInputClass(Boolean(fieldState.error))}
+                                    inputMode="tel"
+                                    autoComplete="tel"
+                                    aria-invalid={Boolean(fieldState.error)}
+                                  />
+                                </FormControl>
+                                <FormMessage className="text-xs" />
+                              </FormItem>
+                            )}
+                          />
                         </div>
-                      ) : (
-                        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-muted text-foreground shadow-lg">
-                          <AlertCircle className="h-12 w-12" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="max-w-md space-y-2">
-                      <p className="text-lg font-semibold text-foreground">
-                        {completionState === "success"
-                          ? "Successfully joined the waitlist!"
-                          : "You're already on the waitlist"}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {completionState === "success" ? successCopy : alreadyRegisteredCopy}
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
+                      </div>
 
-              {formMessage && (
-                <Alert className="mt-6 border-primary/20 bg-primary/5 text-foreground">
-                  <AlertDescription className="text-sm">{formMessage}</AlertDescription>
-                </Alert>
+                      <Button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="h-11 w-full rounded-control bg-foreground font-semibold text-background shadow-none hover:bg-foreground/90"
+                      >
+                        {isSubmitting ? <LoadingSpinner size="sm" /> : SUBMIT_LABEL}
+                      </Button>
+                    </form>
+                  </Form>
+                </div>
               )}
-              {formError && (
-                <Alert variant="destructive" className="mt-6">
-                  <AlertDescription className="text-sm">{formError}</AlertDescription>
-                </Alert>
+
+              {completionState && (
+                <div
+                  ref={successRef}
+                  className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center"
+                >
+                  {completionState === "success" ? (
+                    <CheckCircle className="h-9 w-9 text-violet" />
+                  ) : (
+                    <AlertCircle className="h-9 w-9 text-muted-foreground" />
+                  )}
+                  <div className="space-y-1.5">
+                    <p className="font-display text-xl font-medium text-foreground">
+                      {completionState === "success" ? SUCCESS_HEADLINE : "You're already on the waitlist"}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {completionState === "success" ? SUCCESS_LINE : alreadyRegisteredCopy}
+                    </p>
+                  </div>
+                </div>
               )}
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+
+            {formMessage && (
+              <Alert className="mt-5 border-hairline bg-background text-foreground">
+                <AlertDescription className="text-sm">{formMessage}</AlertDescription>
+              </Alert>
+            )}
+            {formError && (
+              <Alert variant="destructive" className="mt-5">
+                <AlertDescription className="text-sm">{formError}</AlertDescription>
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
+
+        <p className="text-sm text-muted-foreground">
+          Already invited?{" "}
+          <button
+            type="button"
+            onClick={onSignInClick}
+            className="font-medium text-foreground underline-offset-4 hover:underline"
+          >
+            Log in →
+          </button>
+        </p>
       </div>
-      <footer className="bg-primary text-background w-full">
-        <div className="mx-auto max-w-7xl px-6 py-16 sm:px-8 lg:py-20">
-          <div className="flex flex-col lg:flex-row items-start justify-between w-full gap-1">
-
-            {/* Brand + Tagline */}
-            <div className="flex flex-col items-start w-full lg:w-auto">
-              {/* A lockup position, so it takes the real mark rather than the
-                  name set in a letterspaced sans. onDark because this footer
-                  sits on ink. */}
-              <WordmarkLockup size="firstRun" onDark />
-              <div className="lg:block mt-2">
-                <p
-                  // Bodoni italic, as everywhere else on the page. Emphasis here
-                  // stays white rather than terracotta — on ink the white is
-                  // already the stronger signal, and two accents would muddle it.
-                  className="font-display italic text-sm text-background/90 text-left leading-normal max-w-xs"
-                >
-                  discover your
-                  <span className="block text-white ">personal style</span>
-                </p>
-              </div>
-            </div>
-
-            {/* Social Links Section (left on mobile, right on desktop) */}
-            <div className="flex flex-col items-start lg:items-end w-full lg:w-auto mt-2 lg:mt-0">
-              <div className="flex items-center gap-4">
-                <Magnet
-                  padding={45}
-                  magnetStrength={5}
-                  activeTransition="transform 0.2s ease-out"
-                  inactiveTransition="transform 0.4s ease-in-out"
-                >
-                  <a
-                    href="#"
-                    className="group relative flex items-center justify-center w-9 h-9 rounded-full border border-white/20 hover:border-white/50 transition-all duration-300 hover:bg-white/10"
-                    aria-label="Instagram"
-                  >
-                    <Instagram className="h-4 w-4 text-white/70 group-hover:text-white transition-all duration-300 group-hover:scale-125 group-hover:rotate-[-8deg]" />
-                    <span className="absolute inset-0 rounded-full bg-white/0 group-hover:bg-white/10 blur-md transition-all duration-300"></span>
-                  </a>
-                </Magnet>
-                <Magnet
-                  padding={45}
-                  magnetStrength={4}
-                  activeTransition="transform 0.1s ease-out"
-                  inactiveTransition="transform 0.4s ease-in-out"
-                >
-                  <a
-                    href="#"
-                    className="group relative flex items-center justify-center w-9 h-9 rounded-full border border-white/20 hover:border-white/50 transition-all duration-300 hover:bg-white/10"
-                    aria-label="Twitter"
-                  >
-                    <Twitter className="h-4 w-4 text-white/70 group-hover:text-white transition-all duration-300 group-hover:scale-125 group-hover:rotate-[-8deg]" />
-                    <span className="absolute inset-0 rounded-full bg-white/0 group-hover:bg-white/10 blur-md transition-all duration-300"></span>
-                  </a>
-                </Magnet>
-                <Magnet
-                  padding={45}
-                  magnetStrength={5}
-                  activeTransition="transform 0.2s ease-out"
-                  inactiveTransition="transform 0.4s ease-in-out"
-                >
-                  <a
-                    href="#"
-                    className="group relative flex items-center justify-center w-9 h-9 rounded-full border border-white/20 hover:border-white/50 transition-all duration-300 hover:bg-white/10"
-                    aria-label="Facebook"
-                  >
-                    <Facebook className="h-4 w-4 text-white/70 group-hover:text-white transition-all duration-300 group-hover:scale-125 group-hover:rotate-[-8deg]" />
-                    <span className="absolute inset-0 rounded-full bg-white/0 group-hover:bg-white/10 blur-md transition-all duration-300"></span>
-                  </a>
-                </Magnet>
-                <Magnet
-                  padding={45}
-                  magnetStrength={5}
-                  activeTransition="transform 0.2s ease-out"
-                  inactiveTransition="transform 0.4s ease-in-out"
-                >
-                  <a
-                    href="#"
-                    className="group relative flex items-center justify-center w-9 h-9 rounded-full border border-white/20 hover:border-white/50 transition-all duration-300 hover:bg-white/10"
-                    aria-label="LinkedIn"
-                  >
-                    <Linkedin className="h-4 w-4 text-white/70 group-hover:text-white transition-all duration-300 group-hover:scale-125 group-hover:rotate-[-8deg]" />
-                    <span className="absolute inset-0 rounded-full bg-white/0 group-hover:bg-white/10 blur-md transition-all duration-300"></span>
-                  </a>
-                </Magnet>
-              </div>
-            </div>
-          </div>
-
-          {/* Bottom Copyright Section */}
-          <div className="mt-6 pt-8 border-t border-white/10 mb-6">
-            <div className="flex justify-start">
-              <span className="text-xs text-white/50 tracking-wider text-left">
-                DESIGN BY ATLYR • COPYRIGHT © {new Date().getFullYear()}. ALL RIGHTS RESERVED
-              </span>
-            </div>
-          </div>
-        </div>
-      </footer>
     </section>
   );
 }

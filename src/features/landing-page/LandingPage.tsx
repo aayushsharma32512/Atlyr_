@@ -1,75 +1,22 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { LandingHeader } from "./components/LandingHeader";
-import { LandingGate } from "./components/LandingGate";
+import { useToast } from "@/hooks/use-toast";
+import { setAuthIntent } from "@/features/auth/authIntentStorage";
 import { normalizeInviteCode } from "@/features/auth/inviteCode";
+import { setPendingInviteCode } from "@/features/auth/inviteStorage";
+import { LandingHeader } from "./components/LandingHeader";
 import { HeroSection } from "./components/HeroSection";
 import { HeroPreview } from "./components/HeroPreview";
-import { AISection } from "./components/AISection";
-import { AboutSection } from "./components/AboutSection";
-import { GallerySection } from "./components/GallerySection";
 import { ShowcaseSection } from "./components/ShowcaseSection";
 import { WaitlistSection } from "./components/WaitlistSection";
-import { LandingFooter } from "./components/LandingFooter";
-import { motion } from "framer-motion";
-
-// Helper function to get CSS variable value as hex color
-function getCSSVariableAsHex(variable: string): string {
-  if (typeof window === "undefined") return "#000000";
-
-  const root = document.documentElement;
-  const value = getComputedStyle(root).getPropertyValue(variable).trim();
-
-  if (!value) return "#000000";
-
-  // If it's in HSL format (e.g., "12 6.4935% 15.0980%"), convert to hex
-  if (value.includes(" ")) {
-    const hslMatch = value.match(/(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)%/);
-    if (hslMatch) {
-      const h = parseFloat(hslMatch[1]);
-      const s = parseFloat(hslMatch[2]) / 100;
-      const l = parseFloat(hslMatch[3]) / 100;
-
-      // Convert HSL to RGB
-      const c = (1 - Math.abs(2 * l - 1)) * s;
-      const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-      const m = l - c / 2;
-
-      let r = 0, g = 0, b = 0;
-
-      if (h >= 0 && h < 60) {
-        r = c; g = x; b = 0;
-      } else if (h >= 60 && h < 120) {
-        r = x; g = c; b = 0;
-      } else if (h >= 120 && h < 180) {
-        r = 0; g = c; b = x;
-      } else if (h >= 180 && h < 240) {
-        r = 0; g = x; b = c;
-      } else if (h >= 240 && h < 300) {
-        r = x; g = 0; b = c;
-      } else if (h >= 300 && h < 360) {
-        r = c; g = 0; b = x;
-      }
-
-      const rgb = {
-        r: Math.round((r + m) * 255),
-        g: Math.round((g + m) * 255),
-        b: Math.round((b + m) * 255),
-      };
-
-      return `#${rgb.r.toString(16).padStart(2, "0")}${rgb.g.toString(16).padStart(2, "0")}${rgb.b.toString(16).padStart(2, "0")}`;
-    }
-  }
-
-  return value;
-}
+import { scrollToWaitlist } from "./scrollToWaitlist";
 
 export default function LandingPage() {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user, loading: authLoading } = useAuth();
+  const { toast } = useToast();
+  // Not awaited: the page is the same for everyone, only the header button changes once a session resolves.
+  const { user, signInWithGoogle } = useAuth();
 
   const utmParams = useMemo(() => {
     const entries: Record<string, string> = {};
@@ -83,142 +30,52 @@ export default function LandingPage() {
 
   useEffect(() => {
     if (searchParams.get("waitlist") === "1") {
-      const formElement = document.getElementById("waitlist-form");
-      formElement?.scrollIntoView({ behavior: "smooth" });
+      scrollToWaitlist();
     }
   }, [searchParams]);
 
-  // "/" renders "/". There used to be two automatic bounces here — a live
-  // session went to /app, and a stale `atlyr_returning_v1` marker punted you to
-  // /auth/login even while signed out. Both were written when this page was a
-  // marketing pitch a returning user had no reason to re-read. It is now the
-  // gate (6a) — the wordmark, the tagline, the invitation line — so the people
-  // most likely to type the bare domain were the only ones who never saw it.
-  // The marker one was the worse of the two: signing out doesn't clear it, so it
-  // fired forever, and it sent signed-out users to a login screen they hadn't
-  // asked for.
-  //
-  // Nothing is lost. The gate offers "Already invited? Sign in →" to signed-out
-  // visitors and "Enter the studio →" once a session exists, and /app is still
-  // directly linkable. Those authenticated branches in LandingGate and
-  // LandingHeader were unreachable until now.
-
-  const isAuthenticated = Boolean(user);
   const inviteCode = useMemo(() => normalizeInviteCode(searchParams.get("invite")), [searchParams]);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const topSentinelRef = useRef<HTMLDivElement>(null);
-  const [isScrollable, setIsScrollable] = useState(false);
 
-  // Switch overflow to scroll when the container hits the top of the viewport
+  // An invite link parks its code here; the auth callback redeems it once Google returns.
   useEffect(() => {
-    const sentinel = topSentinelRef.current;
-    const container = scrollContainerRef.current;
-    if (!sentinel || !container) return;
+    if (!inviteCode) return;
+    setPendingInviteCode(inviteCode);
+    toast({ title: "Invite ready", description: "Log in with Google to use it." });
+  }, [inviteCode, toast]);
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        // When the sentinel leaves the viewport, the container has reached/passed the top
-        setIsScrollable(!entry.isIntersecting);
-      },
-      {
-        root: null,
-        threshold: 0,
-      },
-    );
-
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, []);
-
-  const handleWaitlistScroll = () => {
-    document.getElementById("waitlist-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  // Straight to Google, no interstitial; a new account is sent to the invite code page by the callback.
+  const handleSignInClick = async () => {
+    setAuthIntent(inviteCode ? "signup" : "login");
+    const { error } = await signInWithGoogle(`${window.location.origin}/auth/callback?next=${encodeURIComponent("/app")}`);
+    if (error) toast({ title: "Could not start Google sign-in", description: "Please try again." });
   };
-
-  const handleSignInClick = () => {
-    navigate(`/auth/login?next=${encodeURIComponent("/app")}`);
-  };
-
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <LoadingSpinner size="lg" />
-      </div>
-    );
-  }
 
   return (
     <div className="relative min-h-screen bg-background">
-      <div
-        ref={scrollContainerRef}
-        className={`max-h-[100vh] overflow-y-scroll scroll-smooth snap-y snap-mandatory`}
-      >
-        {/* 6a — the gate. The wordmark stands in for a headline; everything
-            else on the page scrolls underneath it. */}
-        <section className="snap-start snap-always">
-          <LandingHeader
-            isAuthenticated={isAuthenticated}
-            onWaitlistScroll={handleWaitlistScroll}
-            onSignInClick={handleSignInClick}
-          />
+      <div className="h-[100dvh] overflow-y-scroll scroll-smooth snap-y snap-mandatory">
+        <LandingHeader
+          isAuthenticated={Boolean(user)}
+          onWaitlistScroll={scrollToWaitlist}
+          onSignInClick={() => void handleSignInClick()}
+        />
 
-          <LandingGate
-            isAuthenticated={isAuthenticated}
-            onWaitlistScroll={handleWaitlistScroll}
-            onSignInClick={handleSignInClick}
-            onEnterApp={() => navigate("/app")}
-            inviteCode={inviteCode}
-          />
-        </section>
-
-        {/* Hero Content */}
-        <section className="relative isolate min-h-screen flex flex-col justify-center snap-start snap-always ">
-          <div className="mx-auto flex w-full max-w-7xl flex-col items-center gap-1 px-6 pb-16 pt-8 sm:px-8 lg:gap-16 lg:pb-20">
+        {/* The studio itself is the opener: two lines of copy under the fixed header, the frame takes the rest. */}
+        <section className="relative isolate flex h-[100dvh] flex-col snap-start snap-always">
+          <div className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col items-center px-4 pb-3 pt-[72px] sm:px-8">
             <HeroSection />
             <HeroPreview />
           </div>
         </section>
 
-        {/* Showcase Section */}
         <section className="relative snap-start snap-always">
           <ShowcaseSection />
           <div className="absolute bottom-0 left-1/2 h-px w-48 -translate-x-1/2 bg-gradient-to-r from-transparent via-border/50 to-transparent"></div>
         </section>
 
-        {/* AI Section
-        <section className="relative">
-          <AISection />
-          <div className="absolute bottom-0 left-1/2 h-px w-48 -translate-x-1/2 bg-gradient-to-r from-transparent via-border/50 to-transparent"></div>
-        </section> */}
-
-        {/* About Section */}
-        {/* <section className="relative">
-          <AboutSection />
-          <div className="absolute bottom-0 left-1/2 h-px w-48 -translate-x-1/2 bg-gradient-to-r from-transparent via-border/50 to-transparent"></div>
-        </section> */}
-
-        {/* Gallery Section */}
-        {/* <section className="relative">
-          <GallerySection />
-          <div className="absolute bottom-0 left-1/2 h-px w-48 -translate-x-1/2 bg-gradient-to-r from-transparent via-border/50 to-transparent"></div>
-        </section> */}
-
-        {/* Showcase Section */}
-        {/* <section className="relative">
-          <ShowcaseSection />
-          <div className="absolute bottom-0 left-1/2 h-px w-48 -translate-x-1/2 bg-gradient-to-r from-transparent via-border/50 to-transparent"></div>
-        </section> */}
-
-        {/* Waitlist Section */}
-        <section className="relative py-2 sm:py-18 pb-0 lg:py-0 lg:pb-0 snap-start snap-always ">
-            <WaitlistSection utmParams={utmParams} onSignInClick={handleSignInClick} />
+        <section className="relative h-[100dvh] snap-start snap-always">
+          <WaitlistSection utmParams={utmParams} onSignInClick={() => void handleSignInClick()} />
         </section>
-
-        {/* Footer */}
-        {/* <footer className="relative mt-16 border-t border-border/50 snap-start snap-always">
-          <LandingFooter />
-        </footer> */}
       </div>
     </div>
   );
 }
-

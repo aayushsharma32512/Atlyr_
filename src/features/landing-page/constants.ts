@@ -18,8 +18,8 @@ import type { HeroGarment } from "./types";
  * right-hand garments collided.
  *
  * Safe to trim and pad only because nothing here is composited onto a mannequin -- no placement
- * transform or warp lattice is measured against these pixels, unlike the worn garments in
- * landingMockProducts. 26.9MB of source PNGs became 377KB.
+ * transform or warp lattice is measured against these pixels, unlike the garments worn on the
+ * mannequin. 26.9MB of source PNGs became 377KB.
  */
 export const heroGarments: HeroGarment[] = [
   {
