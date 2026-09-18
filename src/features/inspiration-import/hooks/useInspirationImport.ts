@@ -108,7 +108,9 @@ export function useImportWebResults(
     data: queries[index]?.data,
     error: queries[index]?.error ?? null,
     isFetching: queries[index]?.isFetching ?? false,
+    isPending: queries[index]?.isPending ?? false,
     isError: queries[index]?.isError ?? false,
+    refetch: () => queries[index]?.refetch(),
   }))
 }
 

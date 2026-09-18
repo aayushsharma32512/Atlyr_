@@ -4,6 +4,7 @@ import type { CSSProperties } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 
 import { AvatarRenderer } from "@/features/studio/components/AvatarRenderer"
+import type { FigureCapture } from "@/features/studio/components/PlacementAvatarRenderer"
 import { useMannequinConfig } from "@/features/studio/hooks/useMannequinConfig"
 import { useOutfitProducts } from "@/features/studio/hooks/useOutfitProducts"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
@@ -65,6 +66,8 @@ interface OutfitInspirationCardProps {
   onSlotSelect?: (slot: "top" | "bottom" | "shoes") => void
   /** Ref to the avatar container for snapshot capture */
   avatarRef?: React.Ref<HTMLDivElement>
+  /** Receives a function that returns the figure as drawn, for a still of it. */
+  captureRef?: React.MutableRefObject<FigureCapture | null>
   /** Kalagriha feed treatment: white card, hairline frame, warp/weft avatar ground. */
   framed?: boolean
   /** Home-feed scrapbook variety: red pin on some, dark charcoal ground on some.
@@ -139,6 +142,7 @@ export function OutfitInspirationCard({
   avatarOffsetY = 0,
   onSlotSelect,
   avatarRef,
+  captureRef,
   framed = false,
   variety = false,
 }: OutfitInspirationCardProps) {
@@ -539,6 +543,7 @@ export function OutfitInspirationCard({
                 onReady={onAvatarReady}
                 onItemBoundsChange={onItemBoundsChange}
                 avatarRef={avatarRef}
+                captureRef={captureRef}
                 fetchPriority={isHighPriority ? "high" : "low"}
                 placementMode={avatarPlacementMode}
                 textureQuality={textureQuality}
@@ -571,6 +576,7 @@ export function OutfitInspirationCard({
               onReady={onAvatarReady}
               onItemBoundsChange={onItemBoundsChange}
               avatarRef={avatarRef}
+              captureRef={captureRef}
               fetchPriority={isHighPriority ? "high" : "low"}
               placementMode={avatarPlacementMode}
                 textureQuality={textureQuality}

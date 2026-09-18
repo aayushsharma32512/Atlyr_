@@ -4,6 +4,7 @@ import { Redo2, RotateCcw, Undo2 } from "lucide-react"
 
 import { Icons } from "@/design-system/icons"
 import { useOutfitSnapshot } from "@/features/outfits/hooks/useOutfitSnapshot"
+import { useFigureCapture } from "./hooks/useFigureCapture"
 
 import {
   FilterDrawer,
@@ -761,6 +762,8 @@ export function StudioAlternativesView() {
   const { snapshotRef, setAvatarReady, captureSnapshot } = useOutfitSnapshot({
     userId: user?.id ?? null,
   })
+  // Find items opens over a still of the figure, so its scan runs on the look the user is seeing.
+  const { captureRef, navigateWithFigure } = useFigureCapture()
 
   const handleSaveOutfit = useCallback(
     async (data: {
@@ -1203,21 +1206,17 @@ export function StudioAlternativesView() {
   }, [seedPendingSimilar, slot])
 
   /**
-   * Product-level Find items, seeded with the worn piece's cutout. The rack's
-   * web-search row asks for web results directly. Kicks are not a detector
-   * category, so they take the blank import.
+   * Product-level Find items, seeded with the worn piece's cutout; it opens on
+   * web results, so the rack's web-search row shares it. Kicks are not a
+   * detector category, so they take the blank import.
    */
-  const findItemsUrl = useCallback(
-    (results: "inventory" | "web") => {
-      const image = heroProduct?.imageUrl ?? heroProduct?.thumbnailUrl
-      if (slot === "shoes" || !image) return "/inspiration-import"
-      const params = new URLSearchParams({ source: image, slot })
-      if (results === "web") params.set("results", "web")
-      return `/inspiration-import?${params.toString()}`
-    },
-    [heroProduct?.imageUrl, heroProduct?.thumbnailUrl, slot],
-  )
-  const handleFindItems = useCallback(() => navigate(findItemsUrl("inventory")), [findItemsUrl, navigate])
+  const handleFindItems = useCallback(() => {
+    const image = heroProduct?.imageUrl ?? heroProduct?.thumbnailUrl
+    const url = slot === "shoes" || !image
+      ? "/inspiration-import"
+      : `/inspiration-import?${new URLSearchParams({ source: image, slot }).toString()}`
+    void navigateWithFigure(url)
+  }, [heroProduct?.imageUrl, heroProduct?.thumbnailUrl, navigateWithFigure, slot])
 
   // A garment tap: zoom to that slot and show its rack state. Same slot → only
   // the zoom changes; a different slot → slot and zoom in one query write.
@@ -1245,7 +1244,6 @@ export function StudioAlternativesView() {
     },
     [enterFocus, slot],
   )
-  const handleWebSearch = useCallback(() => navigate(findItemsUrl("web")), [findItemsUrl, navigate])
 
   /** The query line's × — back to the whole slot. */
   const handleClearQuery = useCallback(() => {
@@ -1384,6 +1382,7 @@ export function StudioAlternativesView() {
           }}
           onAvatarReady={setAvatarReady}
           avatarRef={snapshotRef}
+          captureRef={captureRef}
         />
       ) : (isAdminMode && !resolvedOutfitId) ? (
         <OutfitInspirationTile
@@ -1406,6 +1405,7 @@ export function StudioAlternativesView() {
           onSlotSelect={(nextSlot) => handleCategoryChange(nextSlot)}
           onAvatarReady={setAvatarReady}
           avatarRef={snapshotRef}
+          captureRef={captureRef}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center px-3 text-center text-body text-taupe">
@@ -1520,7 +1520,7 @@ export function StudioAlternativesView() {
                 onClearQuery={handleClearQuery}
                 emptyLabel={emptyLabel}
                 showWebSearch={source === "explore"}
-                onWebSearch={handleWebSearch}
+                onWebSearch={handleFindItems}
                 onSelect={isViewOnly ? undefined : (product) => void handleAlternativeSelect(product)}
               />
 
