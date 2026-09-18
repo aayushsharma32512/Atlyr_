@@ -24,6 +24,7 @@ import { useStudioProductImages } from "./hooks/useStudioProductImages"
 import { toDisplayImages } from "./utils/productImages"
 import { CANVAS_SLOTS, toTraySlot, type StudioCanvasSlot } from "./constants/layering"
 import { selectRackProducts } from "./utils/rackOrder"
+import { toTrayItem } from "./utils/trayMutations"
 import { useStudioContext } from "./context/StudioContext"
 import { useStudioOutfit } from "@/features/studio/hooks/useStudioOutfit"
 import { useStudioHeroProduct } from "@/features/studio/hooks/useStudioHeroProduct"
@@ -190,11 +191,6 @@ export function StudioAlternativesView() {
 
   const { swapSlot } = useStudioSwapActions(resolvedOutfitId)
   const { data: outfitData, isLoading: isOutfitLoading } = useStudioOutfit(resolvedOutfitId)
-  // A removed slot has no worn piece: the detail card must not keep showing
-  // the one that was taken off. The figure and the rows already honour this.
-  const heroProductId = hiddenSlots[slot] ? null : (parsedParams.productId ?? slotProductIds[slot] ?? null)
-  const heroProductQuery = useStudioHeroProduct(resolvedOutfitId, slot, heroProductId)
-  
   // The rack's default source: the whole catalogue for this slot.
   const fallbackAlternativesQuery = useStudioAlternatives(resolvedOutfitId, slot)
 
@@ -399,6 +395,20 @@ export function StudioAlternativesView() {
     wardrobeAlternativesQuery.data,
   ])
 
+  // The worn piece is already in memory — the tray item the swap wrote, or the rack tile that
+  // was tapped — so the card changes in the same render as the figure. Only a deep link with
+  // neither goes to the network. A removed slot has no worn piece: the card must not keep
+  // showing the one that was taken off.
+  const heroProductId = hiddenSlots[slot] ? null : (parsedParams.productId ?? slotProductIds[slot] ?? null)
+  const localHero = useMemo(() => {
+    if (!heroProductId) return null
+    const worn = resolvedTrayItems.find((item) => item.slot === slot && item.productId === heroProductId)
+    if (worn) return worn
+    const tile = rackProducts.find((product) => product.id === heroProductId)
+    return tile ? toTrayItem(slot, tile) : null
+  }, [heroProductId, rackProducts, resolvedTrayItems, slot])
+  const heroProductQuery = useStudioHeroProduct(resolvedOutfitId, slot, heroProductId, { enabled: !localHero })
+
   // --- FILTER OPTIONS ---
   const { data: filterOptions, isLoading: isFilterOptionsLoading, error: filterOptionsError } = useProductFilterOptions({
     typeFilters: [slot] as Database["public"]["Enums"]["item_type"][],
@@ -588,7 +598,8 @@ export function StudioAlternativesView() {
   // A removed slot has nothing to show. Gating the id is not enough: with no
   // id the hero hook falls back to the outfit's own piece for the slot, which
   // is exactly the one that was taken off.
-  const heroProduct = hiddenSlots[slot] ? null : (heroProductQuery.data ?? null)
+  const heroProduct = hiddenSlots[slot] ? null : (localHero ?? heroProductQuery.data ?? null)
+  const isHeroLoading = !heroProduct && heroProductQuery.isLoading
   const heroImagesQuery = useStudioProductImages(heroProduct?.productId ?? null)
   
   const outfitItems = useMemo(
@@ -1304,11 +1315,12 @@ export function StudioAlternativesView() {
 
   const heroAttributes = useMemo(() => getTrayItemTags(heroProduct), [heroProduct])
 
+  // The tile's own thumbnail, already in the browser cache, stands in until the retailer photos land.
   const heroImages = useMemo(
     () =>
       hiddenSlots[slot]
         ? []
-        : toDisplayImages(heroImagesQuery.data, heroProduct?.imageUrl ?? heroProduct?.thumbnailUrl),
+        : toDisplayImages(heroImagesQuery.data, heroProduct?.thumbnailUrl ?? heroProduct?.imageUrl),
     [heroImagesQuery.data, heroProduct?.imageUrl, heroProduct?.thumbnailUrl, hiddenSlots, slot],
   )
 
@@ -1452,7 +1464,7 @@ export function StudioAlternativesView() {
                   images={heroImages}
                   attributes={heroAttributes}
                   saved={heroProduct ? productSaveActions.isSaved(heroProduct.productId) : false}
-                  isLoading={heroProductQuery.isLoading}
+                  isLoading={isHeroLoading}
                   isReadOnly={isViewOnly}
                   onSave={heroProduct ? () => openProductSave(heroProduct.productId) : undefined}
                   onTryOn={handleTryOn}
@@ -1584,7 +1596,7 @@ export function StudioAlternativesView() {
               onSave={heroProduct ? () => openProductSave(heroProduct.productId) : undefined}
               onTryOn={handleTryOn}
               onFindItems={handleFindItems}
-              isLoading={heroProductQuery.isLoading}
+              isLoading={isHeroLoading}
               className="h-[205px]"
             />
             )}

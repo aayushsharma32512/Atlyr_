@@ -1039,8 +1039,9 @@ export function StudioScreenView() {
   )
   const focusImagesQuery = useStudioProductImages(focusItem?.productId ?? null)
 
+  // The piece's own thumbnail, already in the browser cache, stands in until the retailer photos land.
   const focusImages = useMemo(
-    () => toDisplayImages(focusImagesQuery.data, focusItem?.imageUrl ?? focusItem?.thumbnailUrl),
+    () => toDisplayImages(focusImagesQuery.data, focusItem?.thumbnailUrl ?? focusItem?.imageUrl),
     [focusImagesQuery.data, focusItem?.imageUrl, focusItem?.thumbnailUrl],
   )
 
