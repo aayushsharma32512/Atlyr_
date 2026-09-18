@@ -107,6 +107,7 @@ export async function fetchMannequinConfig({
 }
 
 export const mannequinService = {
+  mapRowToConfig,
   fetchMannequinConfig,
 }
 

@@ -197,3 +197,6 @@ Atlyr App Design System Creativity Focus/
 
 # Vite writes this beside vite.config.ts while loading it
 vite.config.ts.timestamp-*.mjs
+
+# The landing's baked opening-look data ships with the app.
+!src/assets/landing-looks/first-look.json

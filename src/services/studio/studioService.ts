@@ -1574,6 +1574,7 @@ export const studioService = {
   getAlternatives,
   getCollectionAlternatives,
   getProductsByIds,
+  mapProductRowToAlternative,
   getProductById,
   getOutfitsByProduct,
   getProductDetail,
