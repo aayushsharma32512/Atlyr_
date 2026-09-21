@@ -23,7 +23,6 @@ import {
 import type { OutfitItem } from "@/types"
 import { getOutfitTagsFromItems, getTrayItemTags } from "@/utils/productTags"
 import { StudioLayout } from "./StudioLayout"
-import { useStudioTourContext } from "./context/StudioTourContext"
 import { useStudioContext } from "./context/StudioContext"
 import { useStudioOutfit } from "@/features/studio/hooks/useStudioOutfit"
 import { useStudioProductTray } from "@/features/studio/hooks/useStudioProductTray"
@@ -78,7 +77,6 @@ const isHttpUrl = (value?: string | null) => Boolean(value && /^https?:\/\//i.te
 
 export function StudioScreenView() {
   const navigate = useNavigate()
-  const tour = useStudioTourContext()
   const [searchParams, setSearchParams] = useSearchParams()
   const location = useLocation()
   const navigationType = useNavigationType()
@@ -337,7 +335,7 @@ export function StudioScreenView() {
   // Starts after page loads so it doesn't block initial paint, but data ready
   // if user opens alternatives panel and searches.
   useEffect(() => {
-    if (!resolvedOutfitId || !studioAvatar || tour.isActive) return
+    if (!resolvedOutfitId || !studioAvatar) return
 
     const slots: StudioProductTraySlot[] = ["top", "bottom", "shoes"]
 
@@ -365,7 +363,7 @@ export function StudioScreenView() {
     }, 0) // Schedule after initial render
 
     return () => clearTimeout(timeoutId)
-  }, [resolvedOutfitId, studioAvatar, queryClient, tour.isActive, adminGender, gender])
+  }, [resolvedOutfitId, studioAvatar, queryClient, adminGender, gender])
 
   useEffect(() => {
     if (!hasHydratedFromUrl || !syncOutfitId) {
@@ -475,9 +473,6 @@ export function StudioScreenView() {
   /** Tapping a garment on the figure opens Alternates for it; the rows open Focus. */
   const handleAvatarItemSelect = useCallback(
     (item: OutfitItem) => {
-      if (tour.isHighlighted("mannequin")) {
-        tour.nextStep()
-      }
       if (isViewOnly) {
         return
       }
@@ -510,17 +505,8 @@ export function StudioScreenView() {
       queryClient,
       resolvedTrayItems,
       syncOutfitId,
-      tour,
     ],
   )
-
-  useEffect(() => {
-    // 'full-screen' used to share this branch; it was a step with no consumer
-    // and has been dropped, so only 'alternatives' drives the split view now.
-    if (tour.isActive && tour.getCurrentStep()?.id === "alternatives") {
-      openAlternativesSplit("top")
-    }
-  }, [tour.isActive, tour.currentStepIndex, openAlternativesSplit, tour])
 
 
   const baseAvatarItems = useMemo(() => {
@@ -1099,7 +1085,6 @@ export function StudioScreenView() {
       label: "Undo",
       icon: Undo2,
       disabled: isViewOnly || !canUndo,
-      highlight: tour.isHighlighted("undo-redo"),
       onClick: () => {
         setPendingStudioComboChange({ change_type: "undo" })
         undo()
@@ -1116,7 +1101,6 @@ export function StudioScreenView() {
       icon: RotateCcw,
       disabled: isViewOnly,
       active: checkpointActive,
-      highlight: tour.isHighlighted("checkpoint"),
       onClick: () => {
         setPendingStudioComboChange({ change_type: "checkpoint" })
         toggleCheckpoint()
@@ -1127,7 +1111,6 @@ export function StudioScreenView() {
       label: "Share this look",
       icon: Share,
       disabled: !shareOutfitId,
-      highlight: tour.isHighlighted("share-button"),
       onClick: shareOutfitId ? handleShare : undefined,
     },
   ]
@@ -1202,7 +1185,6 @@ export function StudioScreenView() {
           onStepFocus={handleStepFocus}
           historyControls={historyControls}
           lookControls={lookControls}
-          highlight={tour.isHighlighted("mannequin")}
           className="border-y border-hairline"
         />
 
@@ -1258,7 +1240,6 @@ export function StudioScreenView() {
               onOpenFocus={openFocus}
               onFill={handleOpenAlternates}
               onRemove={(slot) => handleRemoveSlot(toTraySlot(slot))}
-              highlight={tour.isHighlighted("slot-rows")}
             />
             <StudioActionBar
               isReadOnly={isViewOnly}
@@ -1266,9 +1247,6 @@ export function StudioScreenView() {
               onSave={() => setIsSaveDrawerOpen(true)}
               onTryOn={handleTryOn}
               onFindItems={handleFindItems}
-              highlightSave={tour.isHighlighted("save-button")}
-              highlightTryOn={tour.isHighlighted("tryon-button")}
-              highlightFindItems={tour.isHighlighted("find-items")}
             />
               </>
             )}

@@ -74,7 +74,6 @@ export interface StudioCanvasProps {
   lookControls?: CanvasControlItem[]
   /** Focus only — step to the previous/next zone. +1 is down the figure. */
   onStepFocus?: (delta: number) => void
-  highlight?: boolean
   /** Alternates packs the control stacks tighter against a half-width figure. */
   compact?: boolean
   className?: string
@@ -91,15 +90,13 @@ export function StudioCanvas({
   historyControls,
   lookControls,
   onStepFocus,
-  highlight = false,
   compact = false,
   className,
 }: StudioCanvasProps) {
   return (
     <div
       className={cn(
-        "relative min-h-0 w-full flex-1 overflow-hidden bg-background",
-        highlight ? "z-[75]" : "z-0",
+        "relative z-0 min-h-0 w-full flex-1 overflow-hidden bg-background",
         className,
       )}
     >

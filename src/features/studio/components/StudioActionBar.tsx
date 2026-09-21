@@ -11,13 +11,8 @@ export interface StudioActionBarProps {
   onSave?: () => void
   onTryOn?: () => void
   onFindItems?: () => void
-  highlightSave?: boolean
-  highlightTryOn?: boolean
-  highlightFindItems?: boolean
   className?: string
 }
-
-const RING = "relative z-[75] ring-2 ring-primary ring-offset-2 ring-offset-background"
 
 export function StudioActionBar({
   isReadOnly = false,
@@ -25,9 +20,6 @@ export function StudioActionBar({
   onSave,
   onTryOn,
   onFindItems,
-  highlightSave = false,
-  highlightTryOn = false,
-  highlightFindItems = false,
   className,
 }: StudioActionBarProps) {
   return (
@@ -43,7 +35,6 @@ export function StudioActionBar({
           "rounded-control border border-hairline bg-white",
           saved ? "text-violet" : "text-ink",
           "disabled:cursor-not-allowed disabled:opacity-60",
-          highlightSave && RING,
         )}
       >
         <Icons.save className="h-5 w-5" fill={saved ? "currentColor" : "none"} aria-hidden="true" />
@@ -57,7 +48,6 @@ export function StudioActionBar({
           "box-border flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control",
           "bg-primary text-label font-semibold text-primary-foreground",
           "disabled:cursor-not-allowed disabled:opacity-60",
-          highlightTryOn && RING,
         )}
       >
         <Icons.tryOn className="h-5 w-5" aria-hidden="true" />
@@ -72,7 +62,6 @@ export function StudioActionBar({
           "box-border flex h-control-primary flex-1 items-center justify-center gap-2 rounded-control",
           "border border-hairline bg-white text-label font-semibold text-ink",
           "disabled:cursor-not-allowed disabled:opacity-60",
-          highlightFindItems && RING,
         )}
       >
         <Icons.findItems className="h-5 w-5" aria-hidden="true" />

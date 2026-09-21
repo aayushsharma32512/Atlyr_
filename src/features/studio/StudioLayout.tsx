@@ -7,8 +7,6 @@ import { isStudioProductPath, rememberStudioLastPath } from "@/features/studio/c
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { useStudioShareMode } from "@/features/studio/hooks/useStudioShareMode"
 import { useStudioFocus } from "@/features/studio/hooks/useStudioFocus"
-import { StudioTourProvider } from "./context/StudioTourContext"
-import { StudioTour } from "./components/StudioTour"
 
 interface StudioLayoutProps {
   children?: ReactNode
@@ -36,12 +34,10 @@ export function StudioLayout({ children }: StudioLayoutProps) {
   }, [gender, location.pathname, location.search])
 
   return (
-    <StudioTourProvider>
-      <StudioContextProvider>
-        <AppShellLayout hideNav={isAlternatesPath(location.pathname) || Boolean(focus)}>
-          {children ?? <Outlet />}
-          <StudioTour />
-          {isViewOnly ? (
+    <StudioContextProvider>
+      <AppShellLayout hideNav={isAlternatesPath(location.pathname) || Boolean(focus)}>
+        {children ?? <Outlet />}
+        {isViewOnly ? (
           <div className="fixed inset-x-0 bottom-0 z-30 px-4 pb-1">
             <div className="mx-auto flex w-full max-w-5xl flex-col gap-1 rounded-2xl border border-border/60 bg-card/95 p-1 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-col gap-1 text-sm">
@@ -69,7 +65,6 @@ export function StudioLayout({ children }: StudioLayoutProps) {
         ) : null}
       </AppShellLayout>
     </StudioContextProvider>
-  </StudioTourProvider>
   )
 }
 
