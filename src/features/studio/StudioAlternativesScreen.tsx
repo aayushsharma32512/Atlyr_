@@ -79,7 +79,6 @@ import { useEngagementAnalytics } from "@/integrations/posthog/engagementTrackin
 import { canonicalizeProductSearchFilters } from "@/integrations/posthog/engagementTracking/searchCanonical"
 import { setPendingStudioComboChange, useStudioCombinationTracking } from "@/integrations/posthog/engagementTracking/studio/studioTracking"
 import { trackTryonFlowStarted } from "@/integrations/posthog/engagementTracking/tryon/tryonTracking"
-import { useStudioTourContext } from "./context/StudioTourContext"
 
 /** WEARING · {SLOT} on the 7c worn-piece card. */
 const SLOT_DISPLAY_LABELS: Record<StudioProductTraySlot, string> = {
@@ -108,23 +107,9 @@ export function StudioAlternativesView() {
   const { recordChange } = studioHistory
   const { isViewOnly } = useStudioShareMode()
   const productSaveActions = useProductSaveActions()
-  const tour = useStudioTourContext()
 
   const { selectedOutfitId, focusedItem, openProduct, openStudio, slotProductIds, setSlotProductId } = useStudioContext()
 
-  // Sync tour step
-  useEffect(() => {
-    if (!tour.isActive) return 
-    const stepId = tour.getCurrentStep()?.id
-
-    // On this screen the tour should be on 'alternatives'. Stepping back to
-    // 'mannequin' means the user belongs in the studio again.
-    // ('full-screen' and 'product-details' used to appear here — neither is a
-    // real step id any more; 'product-details' never was one at all.)
-    if (stepId === "mannequin") {
-      openStudio()
-    }
-  }, [tour, openStudio])
   const startLikenessFlow = useStartLikenessFlow()
   const resolvedOutfitId = routeOutfitId ?? selectedOutfitId
   const decodedReturnTo = useMemo(() => {

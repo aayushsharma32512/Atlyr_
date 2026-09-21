@@ -19,7 +19,6 @@ export interface StudioPieceRowsProps {
   onRemove: (slot: StudioCanvasSlot) => void
   /** Move a row `delta` places up (negative) or down the layer stack. */
   onReorder?: (slot: StudioCanvasSlot, delta: number) => void
-  highlight?: boolean
   className?: string
 }
 
@@ -45,7 +44,6 @@ export function StudioPieceRows({
   onFill,
   onRemove,
   onReorder,
-  highlight = false,
   className,
 }: StudioPieceRowsProps) {
   const [drag, setDrag] = useState<Drag | null>(null)
@@ -100,7 +98,7 @@ export function StudioPieceRows({
   }
 
   return (
-    <div className={cn("flex flex-col gap-0.5", highlight && "isolate z-[75]", className)}>
+    <div className={cn("flex flex-col gap-0.5", className)}>
       {slots.map((slot, index) => {
         const item = hiddenSlots[slot] ? null : itemBySlot[slot] ?? null
         const lifted = drag?.slot === slot

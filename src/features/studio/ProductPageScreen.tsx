@@ -10,7 +10,6 @@ import { getTrayItemTags } from "@/utils/productTags"
 
 import { BASE_DELIVERY_SPECS, BASE_PRIMARY_SPECS } from "./constants/specs"
 import { useStudioContext } from "./context/StudioContext"
-import { useStudioTourContext } from "./context/StudioTourContext"
 import { StudioLayout } from "./StudioLayout"
 import { useStudioProduct } from "@/features/studio/hooks/useStudioProduct"
 import { useStudioSimilarProducts } from "@/features/studio/hooks/useStudioSimilarProducts"
@@ -52,7 +51,6 @@ export function ProductPageView() {
   const { productId } = useParams<{ productId?: string }>()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const tour = useStudioTourContext()
   const { openProduct, openStudio, openSimilarItems, selectedProductId, setSelectedProductId } = useStudioContext()
   const { user } = useAuth()
   const { profile, gender } = useProfileContext()
@@ -389,7 +387,6 @@ export function ProductPageView() {
                 layout="panel"
                 corner="close"
                 onCorner={handleClose}
-                highlightCorner={tour.isHighlighted("return-from-product")}
                 title={title}
                 images={sheetImages}
                 cropToContent

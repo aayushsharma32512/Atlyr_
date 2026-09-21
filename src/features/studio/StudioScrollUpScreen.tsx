@@ -30,7 +30,6 @@ import { ScrollUpActionRow } from "./components/ScrollUpActionRow"
 import { BASE_DELIVERY_SPECS, BASE_PRIMARY_SPECS } from "./constants/specs"
 import { StudioLayout } from "./StudioLayout"
 import { useStudioContext } from "./context/StudioContext"
-import { useStudioTourContext } from "./context/StudioTourContext"
 import { mapLegacyOutfitItemsToStudioItems, mapTrayItemToStudioRenderedItem } from "@/features/studio/mappers/renderedItemMapper"
 import type { StudioRenderedItem } from "@/features/studio/types"
 import { useStartLikenessFlow } from "@/features/likeness/hooks/useStartLikenessFlow"
@@ -64,7 +63,6 @@ export function StudioScrollUpView() {
     closeScrollUp,
     openProduct,
   } = useStudioContext()
-  const tour = useStudioTourContext()
   const [searchParams] = useSearchParams()
   const location = useLocation()
   const navigate = useNavigate()
@@ -387,7 +385,7 @@ export function StudioScrollUpView() {
       return
     }
     closeScrollUp()
-  }, [closeScrollUp, decodedReturnTo, navigate, tour])
+  }, [closeScrollUp, decodedReturnTo, navigate])
   const handleSimilar = useCallback(() => {
     if (typeof window !== "undefined") {
       window.sessionStorage.setItem("home:activeMoodboard", "for-you")

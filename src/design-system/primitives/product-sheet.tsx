@@ -27,8 +27,6 @@ export interface ProductSheetProps {
   mediaSize?: number
   corner?: ProductSheetCorner
   onCorner?: () => void
-  /** Ring the corner control — the product tour points at it. */
-  highlightCorner?: boolean
   actions?: ProductSheetActions
   saved?: boolean
   onSave?: () => void
@@ -93,7 +91,6 @@ export function ProductSheet({
   mediaSize = 176,
   corner = "none",
   onCorner,
-  highlightCorner = false,
   actions = "icons",
   saved = false,
   onSave,
@@ -219,7 +216,6 @@ export function ProductSheet({
             // Stacked, the corner lands on the image itself — back it so it stays
             // legible over a photo. Docked, it sits on the sheet's own ground.
             panel ? "right-1 top-1 bg-card/80 backdrop-blur-[2px]" : "right-0 top-0",
-            highlightCorner && "z-[60] ring-2 ring-primary ring-offset-2 ring-offset-card",
           )}
         >
           <cornerControl.Icon className="h-5 w-5" strokeWidth={corner === "close" ? 2 : 1.8} aria-hidden="true" />
