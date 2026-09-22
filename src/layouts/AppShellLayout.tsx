@@ -118,7 +118,12 @@ function getActiveNavId(pathname: string, search: string) {
 
 // /home has no tab any more, so it reports no active id. The route still works.
 function matchNavId(pathname: string) {
-  if (pathname.startsWith("/collection") || pathname.startsWith("/design-system/collection")) {
+  if (
+    pathname.startsWith("/collection")
+    || pathname.startsWith("/design-system/collection")
+    // Add to wardrobe fills a board, so it keeps the Collections tab lit.
+    || pathname.startsWith("/wardrobe")
+  ) {
     return "collections"
   }
 

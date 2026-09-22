@@ -8,6 +8,8 @@ type Props = {
   selectedIds: string[]
   /** Inline error under the slots — "one top at a time". */
   error?: string | null
+  /** Optional line above the slots, e.g. a count of what was detected. */
+  heading?: string
   onSelect: (candidateId: string) => void
 }
 
@@ -44,7 +46,7 @@ export function SourceCrop({ sourceUrl, bbox, alt }: { sourceUrl: string; bbox: 
  * it, tops and lowers, each labelled inside its box. A filled slot shows the
  * crop with a hairline; no tick, no fill. No shoes detection.
  */
-export function CandidatePicker({ sourceUrl, candidates, selectedIds, error, onSelect }: Props) {
+export function CandidatePicker({ sourceUrl, candidates, selectedIds, error, heading, onSelect }: Props) {
   const selectedSet = new Set(selectedIds)
   const pickFor = (category: InspirationCategory) =>
     candidates.find((candidate) => selectedSet.has(candidate.id) && candidate.category === category) ?? null
@@ -92,8 +94,17 @@ export function CandidatePicker({ sourceUrl, candidates, selectedIds, error, onS
         </div>
       </div>
 
+      {heading ? (
+        <p className="flex-none border-t border-hairline px-4 pt-3 text-body font-medium text-ink">{heading}</p>
+      ) : null}
+
       {/* The two slots. Tapping a filled slot clears it. */}
-      <div className="grid h-[192px] flex-none grid-cols-2 gap-3 border-t border-hairline px-4 py-3">
+      <div
+        className={cn(
+          "grid h-[192px] flex-none grid-cols-2 gap-3 px-4 py-3",
+          heading ? undefined : "border-t border-hairline",
+        )}
+      >
         {SLOTS.map((category) => {
           const pick = pickFor(category)
           return (
