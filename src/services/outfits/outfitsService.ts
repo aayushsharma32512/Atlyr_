@@ -338,19 +338,25 @@ export async function findOutfitByItems(input: FindOutfitByItemsInput): Promise<
   return data ?? null
 }
 
-/** One random feed-visible outfit, for the user's gender when known. Null when there is none. */
+/** An original, not a user's copy of another look. Copies show only in their owner's boards. */
+export function isOriginalOutfit(row: { id: string; source_outfit_id?: string | null }): boolean {
+  return !row.source_outfit_id || row.source_outfit_id === row.id
+}
+
+/** One random feed-visible original, for the user's gender when known. Null when there is none. */
 export async function fetchRandomOutfitId(gender: "male" | "female" | null): Promise<string | null> {
   let query = supabase
     .from("outfits")
-    .select("id")
+    .select("id,source_outfit_id")
     .eq("visible_in_feed", true)
     .eq("is_private", false)
     .not("top_id", "is", null)
     .limit(40)
   if (gender) query = query.eq("gender", gender)
   const { data, error } = await query
-  if (error || !data?.length) return null
-  return data[Math.floor(Math.random() * data.length)].id
+  const originals = (data ?? []).filter(isOriginalOutfit)
+  if (error || !originals.length) return null
+  return originals[Math.floor(Math.random() * originals.length)].id
 }
 
 /**

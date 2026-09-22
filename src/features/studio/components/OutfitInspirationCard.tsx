@@ -264,12 +264,14 @@ export function OutfitInspirationCard({
     }
     return []
   }, [hasExplicitRenderedItems, hookDerivedItems, renderedItems])
-  // No caller order: the worn top's kind decides (a bodysuit goes under the bottom).
+  // The caller's order, else the row's stored one when this card fetched the look itself, else
+  // the worn top's kind decides (a bodysuit goes under the bottom).
   const resolvedSlotOrder = useMemo(() => {
     if (slotOrder) return slotOrder
+    if (outfitProducts.layerOrder) return outfitProducts.layerOrder
     const top = resolvedRenderedItems.find((item) => item.zone === "top")
     return defaultLayerOrder({ typeCategory: top?.typeCategory, productName: top?.productName })
-  }, [resolvedRenderedItems, slotOrder])
+  }, [outfitProducts.layerOrder, resolvedRenderedItems, slotOrder])
   // AvatarRenderer normally decides from placement data. Dedicated preview surfaces can override
   // that choice via allowEmptyMannequin (Studio's base-items toggle is the current user of this).
   const visibleSegments = useMemo(() => {

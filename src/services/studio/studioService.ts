@@ -10,6 +10,7 @@ import { isOutfitFullyPlaceable } from "@/features/studio/utils/placementSupport
 import { mapDbOutfitToOutfit } from "@/services/shared/transformers/outfitTransformers"
 import { reportStudioDataIssue } from "@/features/studio/utils/reportDataIssue"
 import { searchService, type ProductSearchFilters, type ProductSearchResult } from "@/services/search/searchService"
+import { isOriginalOutfit } from "@/services/outfits/outfitsService"
 
 type DbOutfitRow = Database["public"]["Tables"]["outfits"]["Row"] & {
   occasion: Database["public"]["Tables"]["occasions"]["Row"] | null
@@ -145,6 +146,7 @@ const OUTFIT_SELECT = `
   created_by,
   user_id,
   layer_order,
+  source_outfit_id,
   occasion:occasions!occasion(
     id,
     name,
@@ -563,7 +565,8 @@ async function getRandomOutfitByGender({
     throw new Error(error.message)
   }
 
-  const rows = (data as DbOutfitRow[] | null) ?? []
+  // Copies show only in their owner's boards; the feed functions apply the same rule in SQL.
+  const rows = ((data as DbOutfitRow[] | null) ?? []).filter(isOriginalOutfit)
   if (rows.length === 0) {
     return { outfit: null, studioOutfit: null, trayItems: [] }
   }
@@ -1248,7 +1251,7 @@ async function getOutfitsByProduct({
     throw new Error(error.message)
   }
 
-  return (data ?? []).map((row) => ({
+  return ((data ?? []) as DbOutfitRow[]).filter(isOriginalOutfit).map((row) => ({
     outfit: mapDbOutfitToOutfit(row as DbOutfitRow),
     studioOutfit: mapDbOutfitToStudioOutfit(row as any),
   }))
@@ -1531,7 +1534,7 @@ async function getOutfitsByCategoryPage({
     throw new Error(error.message)
   }
 
-  const rows = (data ?? []) as DbOutfitRow[]
+  const rows = ((data ?? []) as DbOutfitRow[]).filter(isOriginalOutfit)
   const results = rows.map((row) => ({
     outfit: mapDbOutfitToOutfit(row as DbOutfitRow),
     studioOutfit: mapDbOutfitToStudioOutfit(row as any),

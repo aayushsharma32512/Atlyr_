@@ -62,6 +62,7 @@ const OUTFIT_SELECT = `
   created_by,
   user_id,
   layer_order,
+  source_outfit_id,
   occasion:occasions!occasion(
     id,
     name,
