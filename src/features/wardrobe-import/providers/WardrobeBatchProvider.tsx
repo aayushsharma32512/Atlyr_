@@ -26,6 +26,9 @@ import type {
   WardrobeDetectionStatus,
   WardrobePhoto,
   WardrobePhotoStep,
+  WardrobePieceSelection,
+  WardrobePieceType,
+  WardrobeRailSource,
 } from "@/features/wardrobe-import/types"
 import { useToast } from "@/hooks/use-toast"
 
@@ -35,12 +38,19 @@ type WardrobeBatchValue = {
   addFiles: (files: File[]) => void
   removePhoto: (photoId: string) => void
   startIdentify: () => void
+  setStage: (stage: WardrobeBatch["stage"]) => void
   setImportId: (photoId: string, importId: string) => void
   setDetectionStatus: (photoId: string, status: WardrobeDetectionStatus, previewUrl?: string | null) => void
   setActivePhoto: (photoId: string) => void
   setConfirmedPieces: (photoId: string, candidateIds: string[]) => void
   applyDefaultPieces: (photoId: string, candidateIds: string[]) => void
   setStep: (photoId: string, step: WardrobePhotoStep) => void
+  setSelection: (
+    photoId: string,
+    pieceType: WardrobePieceType,
+    selection: WardrobePieceSelection | null,
+  ) => void
+  setPieceSource: (photoId: string, candidateId: string, source: WardrobeRailSource) => void
   retryPhoto: (photoId: string) => void
   reset: () => void
 }
@@ -109,6 +119,7 @@ export function WardrobeBatchProvider({ children }: { children: ReactNode }) {
     addFiles,
     removePhoto,
     startIdentify: () => dispatch({ type: "startIdentify" }),
+    setStage: (stage) => dispatch({ type: "setStage", stage }),
     setImportId: (photoId, importId) => dispatch({ type: "setImportId", photoId, importId }),
     setDetectionStatus: (photoId, status, previewUrl) =>
       dispatch({ type: "setDetectionStatus", photoId, status, previewUrl }),
@@ -118,6 +129,10 @@ export function WardrobeBatchProvider({ children }: { children: ReactNode }) {
     applyDefaultPieces: (photoId, candidateIds) =>
       dispatch({ type: "applyDefaultPieces", photoId, candidateIds }),
     setStep: (photoId, step) => dispatch({ type: "setStep", photoId, step }),
+    setSelection: (photoId, pieceType, selection) =>
+      dispatch({ type: "setSelection", photoId, pieceType, selection }),
+    setPieceSource: (photoId, candidateId, source) =>
+      dispatch({ type: "setPieceSource", photoId, candidateId, source }),
     retryPhoto: (photoId) => dispatch({ type: "retryPhoto", photoId }),
     reset,
   }), [addFiles, batch, removePhoto, reset])

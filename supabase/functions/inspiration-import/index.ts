@@ -14,6 +14,10 @@ type AnyClient = Awaited<ReturnType<typeof requireUser>>["admin"]
 type ImportRow = Record<string, any>
 const MIME_EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" }
 const DEFAULT_DETECTION_TIMEOUT_SECONDS = 180
+const DEFAULT_IMPORT_INTENT = "inspiration"
+const IMPORT_INTENTS = new Set([DEFAULT_IMPORT_INTENT, "wardrobe"])
+// A web pick must stay redeemable across a whole multi-photo session, not one hour of it.
+const WEB_SELECTION_TTL_SECONDS = 24 * 60 * 60
 
 function queryError(error: { message: string } | null, message: string) {
   if (error) throw new Error(`${message}: ${error.message}`)
@@ -69,10 +73,15 @@ async function createImport(context: Awaited<ReturnType<typeof requireUser>>, bo
   const mimeType = requiredString(body, "mimeType")
   const extension = MIME_EXT[mimeType]
   if (!extension) throw new HttpError(415, "invalid_image_type", "Choose a JPEG, PNG or WebP image")
+  const intent = optionalString(body, "intent") ?? DEFAULT_IMPORT_INTENT
+  if (!IMPORT_INTENTS.has(intent)) {
+    throw new HttpError(400, "invalid_intent", "Intent must be inspiration or wardrobe")
+  }
   const importId = crypto.randomUUID()
   const uploadPath = `${context.userId}/${importId}/source/original.${extension}`
   const { error } = await context.admin.from("inspiration_imports").insert({
     id: importId, user_id: context.userId, source_kind: "image", source_path: uploadPath, status: "created",
+    intent,
   })
   queryError(error, "Unable to create import")
   return { importId, uploadPath }
@@ -435,7 +444,7 @@ async function normalizeLens(
     Array.isArray(payload.visual_matches) ? payload.visual_matches as Record<string, unknown>[] : [],
   )
   const seen = new Set<string>()
-  const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60
+  const expiresAt = Math.floor(Date.now() / 1000) + WEB_SELECTION_TTL_SECONDS
   const results = matches.flatMap((raw, index) => {
     const listingUrl = safeHttpUrl(raw.link)
     const imageUrl = safeHttpUrl(raw.image) ?? safeHttpUrl(raw.thumbnail)
@@ -596,7 +605,7 @@ async function adminListWebRequests(context: Awaited<ReturnType<typeof requireUs
       .in("id", unique(rows.map((row) => row.web_result_id))),
     context.admin.from("inspiration_import_candidates").select("id,category,retrieval_crop_path")
       .in("id", unique(rows.map((row) => row.candidate_id))),
-    context.admin.from("inspiration_imports").select("id,user_id")
+    context.admin.from("inspiration_imports").select("id,user_id,intent")
       .in("id", unique(rows.map((row) => row.import_id))),
   ])
   queryError(webResults.error, "Unable to read online results")
@@ -639,12 +648,14 @@ async function adminListWebRequests(context: Awaited<ReturnType<typeof requireUs
   const requests = await Promise.all(rows.map(async (row) => {
     const web = webById.get(row.web_result_id) ?? {}
     const candidate = candidateById.get(row.candidate_id) ?? {}
-    const userId = importById.get(row.import_id)?.user_id ?? null
+    const importRow = importById.get(row.import_id)
+    const userId = importRow?.user_id ?? null
     const live = liveStatus(row)
     return {
       id: row.id, importId: row.import_id, status: live.status, jobState: live.jobState, createdAt: row.created_at,
       ingestionJobId: row.ingestion_job_id ?? null, ingestedProductId: live.productId,
       category: candidate.category ?? null,
+      intent: importRow?.intent ?? DEFAULT_IMPORT_INTENT,
       cropUrl: await signedUrl(context.admin, candidate.retrieval_crop_path ?? null),
       title: web.title ?? "", merchantDomain: web.merchant_domain ?? "",
       listingUrl: safeHttpUrl(web.listing_url) ?? "", imageUrl: safeHttpUrl(web.image_url) ?? "",

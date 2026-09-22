@@ -2,6 +2,7 @@ import { supabase } from "@/integrations/supabase/client"
 import { searchService } from "@/services/search/searchService"
 import type {
   InspirationImport,
+  InspirationImportIntent,
   InspirationOpenStudioInput,
   InspirationOpenStudioResult,
   InspirationAddWebSelectionsInput,
@@ -49,9 +50,9 @@ async function invokeImport<T>(
   throw new Error(error.message)
 }
 
-async function createImport(file: File) {
+async function createImport(file: File, intent?: InspirationImportIntent) {
   return invokeImport<{ importId: string; uploadPath: string }>({
-    action: "create", sourceKind: "image", mimeType: file.type,
+    action: "create", sourceKind: "image", mimeType: file.type, ...(intent ? { intent } : {}),
   })
 }
 
@@ -71,8 +72,11 @@ async function detectCandidates(importId: string) {
   return invokeImport({ action: "detect", importId })
 }
 
-async function startImageImport(file: File): Promise<{ importId: string }> {
-  const created = await createImport(file)
+async function startImageImport(
+  file: File,
+  intent?: InspirationImportIntent,
+): Promise<{ importId: string }> {
+  const created = await createImport(file, intent)
   try {
     await uploadSource(created.uploadPath, file)
     await markSourceReady(created.importId, file)
@@ -194,7 +198,11 @@ async function addWebSelections(
 
 async function listWebRequests(): Promise<InspirationWebRequest[]> {
   const { requests } = await invokeImport<{ requests: InspirationWebRequest[] }>({ action: "admin-list-web-requests" })
-  return requests
+  // Requests made before the flow was tagged carry no intent; those are inspiration.
+  return requests.map((request) => ({
+    ...request,
+    intent: request.intent === "wardrobe" ? "wardrobe" : "inspiration",
+  }))
 }
 
 async function markWebRequestQueued(input: { selectionId: string; ingestionJobId: string }) {

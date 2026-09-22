@@ -14,7 +14,7 @@ const DETECTION_POLL_INTERVAL_MS = 3_000
 export function useStartInspirationImport() {
   const { addJob } = useJobs()
   return useMutation({
-    mutationFn: inspirationImportService.startImageImport,
+    mutationFn: (file: File) => inspirationImportService.startImageImport(file),
     // The detect step runs in the background; tracking it as a job is what
     // lets the hub and Notifications say "pieces found" after you leave.
     onSuccess: ({ importId }) =>
@@ -51,11 +51,16 @@ export function useSelectImportCandidates(importId: string) {
   })
 }
 
+/**
+ * One catalogue search per chosen candidate. `candidateIds` lets a caller whose
+ * choice lives in memory search without first writing that choice to the row.
+ */
 export function useImportCatalogueResults(
   importRecord: InspirationImport | undefined,
+  candidateIds?: string[],
 ) {
   const { gender, isLoading: isProfileLoading } = useProfileContext()
-  const selectedIds = new Set(importRecord?.selectedCandidateIds ?? [])
+  const selectedIds = new Set(candidateIds ?? importRecord?.selectedCandidateIds ?? [])
   const selectedCandidates = (importRecord?.candidates ?? [])
     .filter((candidate) => selectedIds.has(candidate.id))
     .sort((left, right) => left.category.localeCompare(right.category))
@@ -98,8 +103,8 @@ export function useImportWebResults(
         inspirationImportService.searchWeb(importId, candidate.id, signal),
       enabled: Boolean(importId && candidate.id),
       retry: false,
-      staleTime: 60 * 60 * 1000,
-      gcTime: 60 * 60 * 1000,
+      staleTime: 24 * 60 * 60 * 1000,
+      gcTime: 24 * 60 * 60 * 1000,
     })),
   })
 

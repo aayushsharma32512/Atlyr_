@@ -3,6 +3,9 @@ import type {
   WardrobeDetectionStatus,
   WardrobePhoto,
   WardrobePhotoStep,
+  WardrobePieceSelection,
+  WardrobePieceType,
+  WardrobeRailSource,
 } from "./types"
 
 export const MAX_WARDROBE_PHOTOS = 10
@@ -13,12 +16,20 @@ export type WardrobeBatchAction =
   | { type: "addPhotos"; photos: WardrobePhoto[] }
   | { type: "removePhoto"; photoId: string }
   | { type: "startIdentify" }
+  | { type: "setStage"; stage: WardrobeBatch["stage"] }
   | { type: "setImportId"; photoId: string; importId: string }
   | { type: "setDetectionStatus"; photoId: string; status: WardrobeDetectionStatus; previewUrl?: string | null }
   | { type: "setActivePhoto"; photoId: string }
   | { type: "setConfirmedPieces"; photoId: string; candidateIds: string[] }
   | { type: "applyDefaultPieces"; photoId: string; candidateIds: string[] }
   | { type: "setStep"; photoId: string; step: WardrobePhotoStep }
+  | {
+      type: "setSelection"
+      photoId: string
+      pieceType: WardrobePieceType
+      selection: WardrobePieceSelection | null
+    }
+  | { type: "setPieceSource"; photoId: string; candidateId: string; source: WardrobeRailSource }
   | { type: "retryPhoto"; photoId: string }
   | { type: "restore"; photos: WardrobePhoto[] }
   | { type: "reset" }
@@ -34,7 +45,18 @@ export function createWardrobePhoto(file: File, previewUrl: string): WardrobePho
     piecesDefaulted: false,
     step: "pieces",
     selections: {},
+    railByPiece: {},
   }
+}
+
+/** Drops the matches of pieces the user has since taken off the photo. */
+function keptSelections(
+  selections: WardrobePhoto["selections"],
+  candidateIds: string[],
+): WardrobePhoto["selections"] {
+  const entries = Object.entries(selections) as [WardrobePieceType, WardrobePieceSelection][]
+  const kept = entries.filter(([, selection]) => candidateIds.includes(selection.candidateId))
+  return kept.length === entries.length ? selections : Object.fromEntries(kept)
 }
 
 function withPhoto(
@@ -79,6 +101,14 @@ export function wardrobeBatchReducer(state: WardrobeBatch, action: WardrobeBatch
       return { ...state, stage: "identify", activePhotoId: state.activePhotoId ?? state.photos[0].id }
     }
 
+    case "setStage": {
+      if (state.stage === action.stage) return state
+      // Every stage past the first needs photos; the active one is kept so a
+      // return from review lands back on the photo the user left.
+      if (action.stage !== "add" && !state.photos.length) return state
+      return { ...state, stage: action.stage }
+    }
+
     case "setImportId":
       return withPhoto(state, action.photoId, (photo) => (
         photo.importId === action.importId ? photo : { ...photo, importId: action.importId }
@@ -101,6 +131,7 @@ export function wardrobeBatchReducer(state: WardrobeBatch, action: WardrobeBatch
         ...photo,
         confirmedPieceIds: action.candidateIds,
         piecesDefaulted: true,
+        selections: keptSelections(photo.selections, action.candidateIds),
       }))
 
     case "applyDefaultPieces":
@@ -113,6 +144,22 @@ export function wardrobeBatchReducer(state: WardrobeBatch, action: WardrobeBatch
     case "setStep":
       return withPhoto(state, action.photoId, (photo) => (
         photo.step === action.step ? photo : { ...photo, step: action.step }
+      ))
+
+    case "setSelection":
+      return withPhoto(state, action.photoId, (photo) => {
+        if (!action.selection && !photo.selections[action.pieceType]) return photo
+        const selections = { ...photo.selections }
+        if (action.selection) selections[action.pieceType] = action.selection
+        else delete selections[action.pieceType]
+        return { ...photo, selections }
+      })
+
+    case "setPieceSource":
+      return withPhoto(state, action.photoId, (photo) => (
+        photo.railByPiece[action.candidateId] === action.source
+          ? photo
+          : { ...photo, railByPiece: { ...photo.railByPiece, [action.candidateId]: action.source } }
       ))
 
     case "retryPhoto":

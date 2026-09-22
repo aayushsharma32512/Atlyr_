@@ -39,7 +39,7 @@ export function useStartWardrobeBatch() {
           return
         }
         setDetectionStatus(photo.id, "uploading")
-        const { importId } = await inspirationImportService.startImageImport(photo.file)
+        const { importId } = await inspirationImportService.startImageImport(photo.file, "wardrobe")
         setImportId(photo.id, importId)
         setDetectionStatus(photo.id, "detecting")
       } catch (error) {

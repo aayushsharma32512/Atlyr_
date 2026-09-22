@@ -1,6 +1,7 @@
 import { AlertTriangle, Check, Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { photoProgress } from "@/features/wardrobe-import/photoProgress"
 import type { WardrobePhoto } from "@/features/wardrobe-import/types"
 
 type Props = {
@@ -12,6 +13,8 @@ type Props = {
 
 function StatusBadge({ photo }: { photo: WardrobePhoto }) {
   if (photo.detectionStatus === "complete") {
+    // The tick means the photo is finished, not merely read, so it waits for the matches.
+    if (!photoProgress(photo).complete) return null
     return (
       <span className="absolute bottom-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-violet text-white">
         <Check className="h-2.5 w-2.5" aria-hidden="true" />

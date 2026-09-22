@@ -5,9 +5,14 @@ import { Icons } from "@/design-system/icons"
 import { cn } from "@/lib/utils"
 import { AddItemDialog } from "@/components/ingestion-automated/AddItemDialog"
 import { useInspirationWebRequests, useMarkInspirationWebRequest } from "@/features/inspiration-import/hooks/useInspirationImport"
-import type { InspirationWebRequest, InspirationWebRequestStatus } from "@/services/inspirationImport/types"
+import type {
+  InspirationImportIntent,
+  InspirationWebRequest,
+  InspirationWebRequestStatus,
+} from "@/services/inspirationImport/types"
 
 type Filter = "pending" | "queued" | "done" | "failed" | "all"
+type IntentFilter = InspirationImportIntent | "all"
 
 const FILTERS: Array<{ id: Filter; label: string; statuses: InspirationWebRequestStatus[] | null }> = [
   { id: "pending", label: "pending", statuses: ["selected_for_ingestion"] },
@@ -16,6 +21,8 @@ const FILTERS: Array<{ id: Filter; label: string; statuses: InspirationWebReques
   { id: "failed", label: "failed", statuses: ["failed"] },
   { id: "all", label: "all", statuses: null },
 ]
+
+const INTENT_FILTERS: IntentFilter[] = ["all", "wardrobe", "inspiration"]
 
 const STATUS_LABEL: Record<InspirationWebRequestStatus, string> = {
   selected_for_ingestion: "pending review",
@@ -45,6 +52,15 @@ function RequestCard({ request, onSend }: { request: InspirationWebRequest; onSe
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-start gap-2">
           <p className="min-w-0 flex-1 truncate text-card font-medium text-ink">{request.title || "untitled listing"}</p>
+          <span
+            className={cn(
+              CHIP,
+              "flex-none",
+              request.intent === "wardrobe" ? "border-violet text-violet" : "border-hairline text-taupe",
+            )}
+          >
+            {request.intent}
+          </span>
           <span className={cn(CHIP, "flex-none border-hairline text-taupe")}>{STATUS_LABEL[request.status]}</span>
         </div>
         <p className="text-chip text-taupe">
@@ -81,6 +97,7 @@ function RequestCard({ request, onSend }: { request: InspirationWebRequest; onSe
 
 export default function InspirationRequestsDashboard() {
   const [filter, setFilter] = useState<Filter>("pending")
+  const [intentFilter, setIntentFilter] = useState<IntentFilter>("all")
   const [target, setTarget] = useState<InspirationWebRequest | null>(null)
   const requestsQuery = useInspirationWebRequests()
   const markRequest = useMarkInspirationWebRequest()
@@ -92,14 +109,18 @@ export default function InspirationRequestsDashboard() {
     if (target) markRequest.mutate({ selectionId: target.id, ingestionJobId: jobId })
   }
   const requests = requestsQuery.data ?? []
+  // The status tabs count within the chosen flow, so the two filters read together.
+  const scoped = intentFilter === "all"
+    ? requests
+    : requests.filter((request) => request.intent === intentFilter)
   const counts = FILTERS.map(({ id, statuses }) => ({
     id,
-    count: statuses ? requests.filter((request) => statuses.includes(request.status)).length : requests.length,
+    count: statuses ? scoped.filter((request) => statuses.includes(request.status)).length : scoped.length,
   }))
   const active = FILTERS.find((item) => item.id === filter) ?? FILTERS[0]
   const visible = active.statuses
-    ? requests.filter((request) => active.statuses?.includes(request.status))
-    : requests
+    ? scoped.filter((request) => active.statuses?.includes(request.status))
+    : scoped
 
   return (
     <AppShellLayout hideNav>
@@ -119,6 +140,20 @@ export default function InspirationRequestsDashboard() {
               className={cn(CHIP, filter === id ? "border-ink bg-ink text-white" : "border-hairline bg-white text-ink")}
             >
               {label} · {counts.find((item) => item.id === id)?.count ?? 0}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap justify-center gap-1.5" role="tablist" aria-label="Flow">
+          {INTENT_FILTERS.map((id) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={intentFilter === id}
+              onClick={() => setIntentFilter(id)}
+              className={cn(CHIP, intentFilter === id ? "border-ink bg-ink text-white" : "border-hairline bg-white text-ink")}
+            >
+              {id}
             </button>
           ))}
         </div>

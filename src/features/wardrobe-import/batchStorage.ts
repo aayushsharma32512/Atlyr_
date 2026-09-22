@@ -52,5 +52,6 @@ export function restoredWardrobePhoto(stored: StoredWardrobePhoto): WardrobePhot
     piecesDefaulted: false,
     step: "pieces",
     selections: {},
+    railByPiece: {},
   }
 }

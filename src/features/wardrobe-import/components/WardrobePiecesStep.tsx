@@ -4,6 +4,7 @@ import { Loader2, RotateCcw } from "lucide-react"
 import { Icons } from "@/design-system/icons"
 import { cn } from "@/lib/utils"
 import { CandidatePicker } from "@/features/inspiration-import/components/CandidatePicker"
+import { useSelectImportCandidates } from "@/features/inspiration-import/hooks/useInspirationImport"
 import {
   useStartWardrobeBatch,
   useWardrobePhotoImport,
@@ -26,6 +27,8 @@ export function WardrobePiecesStep({ photo, onAdvance }: Props) {
   const { setConfirmedPieces, setStep } = useWardrobeBatch()
   const { candidates, sourceUrl, errorMessage } = useWardrobePhotoImport(photo)
   const startBatch = useStartWardrobeBatch()
+  // The web search only runs on candidates the row marks selected, so confirm them there first.
+  const selectMutation = useSelectImportCandidates(photo.importId ?? "")
   const [pickError, setPickError] = useState<string | null>(null)
 
   const imageUrl = photo.previewUrl || sourceUrl
@@ -50,25 +53,6 @@ export function WardrobePiecesStep({ photo, onAdvance }: Props) {
       return
     }
     setConfirmedPieces(photo.id, [...photo.confirmedPieceIds, candidateId])
-  }
-
-  if (photo.step === "matches") {
-    return (
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center">
-        <p className="font-display text-title font-medium text-ink">Matches come in sprint 2</p>
-        <p className="text-body text-taupe">
-          {confirmedCount} piece{confirmedCount === 1 ? "" : "s"} kept from this photo.
-        </p>
-        <button
-          type="button"
-          onClick={() => setStep(photo.id, "pieces")}
-          className={cn(WARDROBE_TOGGLE, "h-9")}
-        >
-          <Icons.carouselPrev className="h-3.5 w-3.5" aria-hidden="true" />
-          back to pieces
-        </button>
-      </div>
-    )
   }
 
   if (photo.detectionStatus === "failed") {
@@ -117,7 +101,7 @@ export function WardrobePiecesStep({ photo, onAdvance }: Props) {
           sourceUrl={imageUrl}
           candidates={candidates}
           selectedIds={photo.confirmedPieceIds}
-          error={pickError}
+          error={pickError ?? selectMutation.error?.message ?? null}
           heading={`Detected pieces (${confirmedCount})`}
           onSelect={togglePiece}
         />
@@ -129,8 +113,15 @@ export function WardrobePiecesStep({ photo, onAdvance }: Props) {
 
       <div className="flex h-[76px] flex-none items-center gap-3 border-t border-hairline bg-background px-4 pb-2">
         {confirmedCount ? (
-          <button type="button" className={WARDROBE_PRIMARY} onClick={() => setStep(photo.id, "matches")}>
-            <Icons.search className="h-[18px] w-[18px]" aria-hidden="true" />
+          <button
+            type="button"
+            className={WARDROBE_PRIMARY}
+            disabled={selectMutation.isPending}
+            onClick={() => selectMutation.mutate(photo.confirmedPieceIds, { onSuccess: () => setStep(photo.id, "matches") })}
+          >
+            {selectMutation.isPending
+              ? <Loader2 className="h-[18px] w-[18px] animate-spin" aria-hidden="true" />
+              : <Icons.search className="h-[18px] w-[18px]" aria-hidden="true" />}
             find matches · {confirmedCount}
           </button>
         ) : (

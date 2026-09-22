@@ -18,6 +18,8 @@ type CatalogueProps = {
   selectedId: string | null
   isFavorite: (id: string) => boolean
   isSaving?: boolean
+  /** Adds a violet tick over the chosen tile, for racks where the border alone is too quiet. */
+  markSelected?: boolean
   onSelect: (result: InspirationCatalogueResult) => void
   onToggleFavorite: (id: string, nextSaved: boolean, position: number) => void
 }
@@ -34,22 +36,32 @@ type WebProps = {
 
 export function ImportRack(props: CatalogueProps | WebProps) {
   if (props.kind === "catalogue") {
-    const { results, selectedId, isFavorite, onSelect, onToggleFavorite } = props
+    const { results, selectedId, isFavorite, markSelected, onSelect, onToggleFavorite } = props
     return (
       <div className="grid grid-cols-2 content-start gap-2 px-4 pt-2">
         {results.map((result, position) => {
           const favorite = isFavorite(result.id)
+          const selected = selectedId === result.id
           return (
-            <ProductTile
-              key={result.id}
-              size="small"
-              title={result.title}
-              imageSrc={result.thumbnailSrc}
-              worn={selectedId === result.id}
-              saved={favorite}
-              onSelect={() => onSelect(result)}
-              onToggleSave={() => onToggleFavorite(result.id, !favorite, position)}
-            />
+            <div key={result.id} className="relative">
+              <ProductTile
+                size="small"
+                title={result.title}
+                imageSrc={result.thumbnailSrc}
+                worn={selected}
+                saved={favorite}
+                onSelect={() => onSelect(result)}
+                onToggleSave={() => onToggleFavorite(result.id, !favorite, position)}
+              />
+              {markSelected && selected ? (
+                // Taps still reach the heart beneath it, so the tick costs no action.
+                <span className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-violet text-white">
+                    <Icons.check className="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
+                </span>
+              ) : null}
+            </div>
           )
         })}
       </div>

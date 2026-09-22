@@ -2,6 +2,9 @@ import type { ProductSearchResult } from "@/services/search/searchService"
 
 export type InspirationCategory = "top" | "bottom"
 
+/** Which flow started an import: the inspiration board, or the wardrobe builder. */
+export type InspirationImportIntent = "inspiration" | "wardrobe"
+
 export type InspirationCandidate = {
   id: string
   category: InspirationCategory
@@ -67,6 +70,7 @@ export type InspirationWebRequest = {
   ingestionJobId: string | null
   ingestedProductId: string | null
   category: InspirationCategory | null
+  intent: InspirationImportIntent
   cropUrl: string | null
   title: string
   merchantDomain: string

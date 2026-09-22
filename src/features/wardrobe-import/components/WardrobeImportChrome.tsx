@@ -1,3 +1,5 @@
+import type { ReactNode } from "react"
+
 import { Icons } from "@/design-system/icons"
 
 export const WARDROBE_PRIMARY =
@@ -9,10 +11,13 @@ export const WARDROBE_TOGGLE =
 export function WardrobeImportHeader({
   title,
   meta,
+  action,
   onBack,
 }: {
   title: string
   meta?: string
+  /** Sits after the meta line, for a shortcut out of the stage. */
+  action?: ReactNode
   onBack: () => void
 }) {
   return (
@@ -27,6 +32,7 @@ export function WardrobeImportHeader({
       </button>
       <h1 className="min-w-0 flex-1 truncate font-display text-title font-medium text-ink">{title}</h1>
       {meta ? <span className="flex-none text-chip tabular-nums text-taupe">{meta}</span> : null}
+      {action}
     </header>
   )
 }

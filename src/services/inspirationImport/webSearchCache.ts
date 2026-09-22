@@ -2,7 +2,8 @@ import type { InspirationWebResult } from "./types"
 import { hasValidWebResultUrls } from "./webResults"
 
 const CACHE_PREFIX = "atlyr:inspiration-web-search:v1:"
-const CACHE_TTL_MS = 60 * 60 * 1000
+// Matches the life of a web selection token, so a cached result is never one the server has expired.
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000
 
 type CacheEntry = {
   expiresAt: number

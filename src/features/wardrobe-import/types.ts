@@ -12,8 +12,10 @@ export type WardrobeDetectionStatus =
 
 export type WardrobePhotoStep = "pieces" | "matches"
 
+export type WardrobeRailSource = "inventory" | "web"
+
 export type WardrobePieceSelection = {
-  source: "inventory" | "web"
+  source: WardrobeRailSource
   productId?: string
   listingUrl?: string
   title: string
@@ -36,6 +38,8 @@ export type WardrobePhoto = {
   piecesDefaulted: boolean
   step: WardrobePhotoStep
   selections: Partial<Record<WardrobePieceType, WardrobePieceSelection>>
+  /** Which rail each piece was last looking at, keyed by candidate id. */
+  railByPiece: Partial<Record<string, WardrobeRailSource>>
 }
 
 export type WardrobeBatch = {
