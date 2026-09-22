@@ -435,6 +435,14 @@ export function StudioScreenView() {
   })
 
   const [isSaveDrawerOpen, setIsSaveDrawerOpen] = useState(false)
+  // Bumped on open: the card mounts fresh for each look and stays put while a save is in flight,
+  // even though the look id and its tags change underneath it during that save.
+  const [saveCardKey, setSaveCardKey] = useState(0)
+  const [isSavingLook, setIsSavingLook] = useState(false)
+  const openSaveCard = useCallback(() => {
+    setSaveCardKey((key) => key + 1)
+    setIsSaveDrawerOpen(true)
+  }, [])
 
   const { trayItems: resolvedTrayItems, isResolving: slotsResolving } = useStudioResolvedSlots({
     outfitId: resolvedOutfitId,
@@ -624,9 +632,9 @@ export function StudioScreenView() {
   const isOwnOutfit = Boolean(studioAvatar && user?.id && studioAvatar.user_id === user.id)
 
   // Re-saving an already-persisted outfit with no item changes updates it in
-  // place instead of spinning off a new copy — swapping an item still makes
-  // a fresh derived look, which is the existing/correct behavior.
-  const isEditingExistingOutfit = Boolean(resolvedOutfitId && isOwnOutfit && !hasSlotOverrides)
+  // place instead of spinning off a new copy — swapping an item, or changing
+  // the stacking, makes a fresh derived look: a different picture is a different outfit.
+  const isEditingExistingOutfit = Boolean(resolvedOutfitId && isOwnOutfit && !hasSlotOverrides && !orderChanged)
 
   // Saved state (heart, boards, tags) keys on the combo on screen, not the URL's base look.
   const { currentLookId } = useCurrentLookId({
@@ -785,6 +793,11 @@ export function StudioScreenView() {
             layerOrder: layerOrderToSave,
           })
           outfitId = saved.id
+          // Stand on the saved look from now on: the row holds the pieces and the stacking, so no
+          // overrides, no `layers`, and a second save updates this row instead of copying again.
+          if (saved.id !== resolvedOutfitId) {
+            navigate(buildStudioUrl(basePath, "studio", { outfitId: saved.id }), { replace: true })
+          }
         }
 
         const selectedMoodboardSlugs = data.moodboardIds ?? []
@@ -876,6 +889,8 @@ export function StudioScreenView() {
       resolvedOutfitId,
       hasSlotOverrides,
       layerOrderToSave,
+      basePath,
+      navigate,
       saveOutfitMutation,
       saveToCollectionMutation,
       studioAvatar?.backgroundId,
@@ -887,6 +902,8 @@ export function StudioScreenView() {
 
   const handleSaveFromCard = useCallback(
     async (data: { name: string; tags: string[]; boardSlugs: string[] }) => {
+      if (isSavingLook) return
+      setIsSavingLook(true)
       try {
         await handleSaveOutfit({
           outfitName: data.name,
@@ -899,9 +916,11 @@ export function StudioScreenView() {
         setIsSaveDrawerOpen(false)
       } catch {
         // handleSaveOutfit has already toasted; keep the card open to retry.
+      } finally {
+        setIsSavingLook(false)
       }
     },
-    [handleSaveOutfit, studioAvatar?.category, studioAvatar?.occasion?.id],
+    [handleSaveOutfit, isSavingLook, studioAvatar?.category, studioAvatar?.occasion?.id],
   )
 
   const currentSlotIds = useMemo(
@@ -1239,7 +1258,7 @@ export function StudioScreenView() {
             isLoading={isFocusStaging}
             pieceKey={focusPiece.productId ?? "none"}
             isReadOnly={isViewOnly}
-            onSave={() => setIsSaveDrawerOpen(true)}
+            onSave={openSaveCard}
             onTryOn={handleTryOn}
             onFindItems={() => handleFindItemsFor(focus as StudioCanvasSlot, focusItem)}
             onOpenAlternatives={() => handleOpenAlternates(focus as StudioCanvasSlot)}
@@ -1250,7 +1269,8 @@ export function StudioScreenView() {
             {isSaveDrawerOpen ? (
               // Same 170 as the rows it replaces, so the canvas — and the figure — never move.
               <StudioSaveCard
-                key={`look:${currentLookId ?? ""}:${getOutfitTagsFromItems(resolvedTrayItems).join("|")}:${lookInitialTags.join("|")}`}
+                key={saveCardKey}
+                isSaving={isSavingLook}
                 compact
                 className="h-full"
                 defaultName={
@@ -1298,7 +1318,7 @@ export function StudioScreenView() {
             <StudioActionBar
               isReadOnly={isViewOnly}
               saved={currentOutfitMoodboardSlugs.length > 0}
-              onSave={() => setIsSaveDrawerOpen(true)}
+              onSave={openSaveCard}
               onTryOn={handleTryOn}
               onFindItems={handleFindItems}
             />

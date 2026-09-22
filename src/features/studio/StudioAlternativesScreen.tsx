@@ -146,6 +146,9 @@ export function StudioAlternativesView() {
   const { user } = useAuth()
   const { profile, gender } = useProfileContext()
   const [isSaveDrawerOpen, setIsSaveDrawerOpen] = useState(false)
+  // Bumped on open: the card mounts fresh for each look and stays put while a save is in flight.
+  const [saveCardKey, setSaveCardKey] = useState(0)
+  const [isSavingLook, setIsSavingLook] = useState(false)
   /** The product a pin opened the save card for; null when the card isn't up. */
   const [productSaveId, setProductSaveId] = useState<string | null>(null)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
@@ -641,9 +644,9 @@ export function StudioAlternativesView() {
   const isOwnOutfit = Boolean(outfitData?.outfit && user?.id && outfitData.outfit.user_id === user.id)
 
   // Re-saving an already-persisted outfit with no item changes updates it in
-  // place instead of spinning off a new copy — swapping an item still makes
-  // a fresh derived look, which is the existing/correct behavior.
-  const isEditingExistingOutfit = Boolean(resolvedOutfitId && isOwnOutfit && !hasSlotOverrides)
+  // place instead of spinning off a new copy — swapping an item, or changing
+  // the stacking, makes a fresh derived look: a different picture is a different outfit.
+  const isEditingExistingOutfit = Boolean(resolvedOutfitId && isOwnOutfit && !hasSlotOverrides && !orderChanged)
 
   // Saved state (heart, boards, tags) keys on the combo on screen, not the URL's base look.
   const { currentLookId } = useCurrentLookId({
@@ -814,6 +817,10 @@ export function StudioAlternativesView() {
             layerOrder: layerOrderToSave,
           })
           outfitId = saved.id
+          // Stand on the saved look from now on; the row holds the pieces and the stacking.
+          if (saved.id !== resolvedOutfitId) {
+            setSearchParams(buildStudioSearchParams({ outfitId: saved.id, slot, source, share: parsedParams.share }), { replace: true })
+          }
         }
 
         const selectedMoodboardSlugs = data.moodboardIds ?? []
@@ -897,6 +904,11 @@ export function StudioAlternativesView() {
       removeFromCollectionMutation,
       resolvedOutfitId,
       hasSlotOverrides,
+      layerOrderToSave,
+      parsedParams.share,
+      setSearchParams,
+      slot,
+      source,
       selectableMoodboards,
       outfitData?.avatarGender,
       outfitData?.outfit?.backgroundId,
@@ -915,6 +927,8 @@ export function StudioAlternativesView() {
   /** The card has no category or occasion fields, so carry the outfit's own. */
   const handleSaveFromCard = useCallback(
     async (data: { name: string; tags: string[]; boardSlugs: string[] }) => {
+      if (isSavingLook) return
+      setIsSavingLook(true)
       try {
         await handleSaveOutfit({
           outfitName: data.name,
@@ -927,9 +941,11 @@ export function StudioAlternativesView() {
         setIsSaveDrawerOpen(false)
       } catch {
         // handleSaveOutfit has already toasted; keep the card open to retry.
+      } finally {
+        setIsSavingLook(false)
       }
     },
-    [handleSaveOutfit, outfitData?.outfit?.category, outfitData?.outfit?.occasion?.id],
+    [handleSaveOutfit, isSavingLook, outfitData?.outfit?.category, outfitData?.outfit?.occasion?.id],
   )
 
   /** Product pins open the same card, boards and tags both. */
@@ -1304,6 +1320,7 @@ export function StudioAlternativesView() {
       filled: currentOutfitMoodboardSlugs.length > 0,
       onClick: () => {
         setProductSaveId(null)
+        setSaveCardKey((key) => key + 1)
         setIsSaveDrawerOpen(true)
       },
     },
@@ -1565,7 +1582,8 @@ export function StudioAlternativesView() {
             {isSaveDrawerOpen || productSaveId ? (
               isSaveDrawerOpen ? (
               <StudioSaveCard
-                key={`look:${currentLookId ?? ""}:${getOutfitTagsFromItems(resolvedTrayItems).join("|")}:${lookInitialTags.join("|")}`}
+                key={saveCardKey}
+                isSaving={isSavingLook}
                 className="h-full"
                 defaultName={
                   outfitData?.outfit?.name?.startsWith("draft-look-")

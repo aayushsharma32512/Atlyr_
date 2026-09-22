@@ -175,6 +175,39 @@ export async function saveOutfit(input: SaveOutfitInput) {
 
   const createdBy = input.isPrivate ? "ATLYR" : normalizeText(input.createdByName) ?? "ATLYR"
 
+  // Idempotent: a repeat tap, or a re-save of the same pieces and stacking, reuses the user's own
+  // row and refreshes its details instead of adding a copy.
+  let lookup = supabase.from("outfits").select().eq("user_id", input.userId)
+  lookup = input.topId ? lookup.eq("top_id", input.topId) : lookup.is("top_id", null)
+  lookup = input.bottomId ? lookup.eq("bottom_id", input.bottomId) : lookup.is("bottom_id", null)
+  lookup = input.shoesId ? lookup.eq("shoes_id", input.shoesId) : lookup.is("shoes_id", null)
+  lookup = input.layerOrder
+    ? lookup.filter("layer_order", "eq", `{${input.layerOrder.join(",")}}`)
+    : lookup.is("layer_order", null)
+  const { data: existing } = await lookup.order("created_at", { ascending: true }).limit(1).maybeSingle()
+  if (existing) {
+    const { data, error } = await supabase
+      .from("outfits")
+      .update({
+        name: input.name,
+        category: input.categoryId,
+        occasion: input.occasionId,
+        background_id: input.backgroundId ?? null,
+        is_private: input.isPrivate,
+        visible_in_feed: true,
+        created_by: createdBy,
+        tags: normalizeTags(input.tags),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", existing.id)
+      .select()
+      .single()
+    if (error) {
+      throw new Error(error.message)
+    }
+    return data
+  }
+
   const newId = crypto.randomUUID()
   const payload: OutfitInsert = {
     id: newId,
