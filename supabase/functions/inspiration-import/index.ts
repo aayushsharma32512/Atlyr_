@@ -665,6 +665,67 @@ async function adminListWebRequests(context: Awaited<ReturnType<typeof requireUs
   return { requests }
 }
 
+// The caller's own wardrobe requests, with the same live pipeline state the team's list shows.
+async function myWebRequests(context: Awaited<ReturnType<typeof requireUser>>) {
+  const { data: imports, error: importsError } = await context.admin.from("inspiration_imports")
+    .select("id").eq("user_id", context.userId).eq("intent", "wardrobe")
+    .order("created_at", { ascending: false }).limit(200)
+  queryError(importsError, "Unable to read imports")
+  const importIds = (imports ?? []).map((row: ImportRow) => row.id)
+  if (!importIds.length) return { requests: [] }
+
+  const { data: selections, error } = await context.admin.from("inspiration_import_selections")
+    .select("id,import_id,candidate_id,web_result_id,status,ingestion_job_id,ingested_product_id,created_at")
+    .eq("source", "web").in("import_id", importIds)
+    .order("created_at", { ascending: false }).limit(50)
+  queryError(error, "Unable to read requests")
+  const rows = (selections ?? []) as ImportRow[]
+  if (!rows.length) return { requests: [] }
+
+  const unique = (values: unknown[]) => [...new Set(values.filter(Boolean))] as string[]
+  const { data: webResults, error: webError } = await context.admin.from("inspiration_import_web_results")
+    .select("id,title,merchant_domain,listing_url,image_url")
+    .in("id", unique(rows.map((row) => row.web_result_id)))
+  queryError(webError, "Unable to read online results")
+  const webById = new Map((webResults ?? []).map((row: ImportRow) => [row.id, row]))
+
+  const jobById = new Map<string, ImportRow>()
+  const verdictByProductId = new Map<string, string>()
+  const jobIds = unique(rows.map((row) => row.ingestion_job_id))
+  if (jobIds.length) {
+    const { data: jobs, error: jobsError } = await context.admin.from("ingestion_pipeline_jobs")
+      .select("job_id,current_state,ingested_product_id").in("job_id", jobIds)
+    queryError(jobsError, "Unable to read ingestion jobs")
+    for (const job of (jobs ?? []) as ImportRow[]) jobById.set(job.job_id, job)
+    const productIds = unique((jobs ?? []).map((job: ImportRow) => job.ingested_product_id))
+    if (productIds.length) {
+      const { data: products, error: productsError } = await context.admin.from("ingested_products")
+        .select("id,verdict").in("id", productIds)
+      queryError(productsError, "Unable to read ingested products")
+      for (const product of (products ?? []) as ImportRow[]) verdictByProductId.set(product.id, product.verdict)
+    }
+  }
+
+  const requests = rows.map((row) => {
+    const web = webById.get(row.web_result_id) ?? {}
+    const job = row.ingestion_job_id ? jobById.get(row.ingestion_job_id) : null
+    let status = row.status
+    if (job) {
+      const productId = job.ingested_product_id ?? null
+      if (productId && verdictByProductId.get(productId) === "approved") status = "ingested"
+      else if (["failed", "discarded", "cancelled"].includes(job.current_state)) status = "failed"
+      else status = "ingesting"
+    }
+    return {
+      selectionId: row.id, importId: row.import_id, candidateId: row.candidate_id, status,
+      createdAt: row.created_at,
+      title: web.title ?? "", merchantDomain: web.merchant_domain ?? "",
+      listingUrl: safeHttpUrl(web.listing_url) ?? "", imageUrl: safeHttpUrl(web.image_url) ?? "",
+    }
+  })
+  return { requests }
+}
+
 async function adminMarkWebRequest(context: Awaited<ReturnType<typeof requireUser>>, body: Record<string, unknown>) {
   await requireAdmin(context)
   const selectionId = requiredString(body, "selectionId")
@@ -726,6 +787,7 @@ serve(async (req) => {
       "add-web-selections": () => addWebSelections(context, body),
       // Older app builds still send this name; remove once every client uses add-web-selections.
       "stage-selections": () => addWebSelections(context, body),
+      "my-web-requests": () => myWebRequests(context),
       "admin-list-web-requests": () => adminListWebRequests(context),
       "admin-mark-web-request": () => adminMarkWebRequest(context, body),
       "open-studio": () => openStudio(context, body),

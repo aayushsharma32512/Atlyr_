@@ -7,6 +7,7 @@ import type {
   InspirationOpenStudioResult,
   InspirationAddWebSelectionsInput,
   InspirationAddWebSelectionsResult,
+  InspirationMyWebRequest,
   InspirationWebRequest,
   InspirationWebResult,
 } from "./types"
@@ -205,6 +206,11 @@ async function listWebRequests(): Promise<InspirationWebRequest[]> {
   }))
 }
 
+async function listMyWebRequests(): Promise<InspirationMyWebRequest[]> {
+  const { requests } = await invokeImport<{ requests: InspirationMyWebRequest[] }>({ action: "my-web-requests" })
+  return requests
+}
+
 async function markWebRequestQueued(input: { selectionId: string; ingestionJobId: string }) {
   return invokeImport<{ id: string; status: "queued"; ingestionJobId: string }>({ action: "admin-mark-web-request", ...input })
 }
@@ -225,5 +231,6 @@ export const inspirationImportService = {
   addWebSelections,
   openInStudio,
   listWebRequests,
+  listMyWebRequests,
   markWebRequestQueued,
 }

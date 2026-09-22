@@ -55,6 +55,7 @@ import { fetchMoodboardItems, fetchMoodboardItemsBatch } from "@/services/collec
 import { buildStudioUrl } from "@/features/studio/utils/studioUrlState"
 import { useToast } from "@/hooks/use-toast"
 import { MixedMasonryGrid } from "@/features/collections/components/MixedMasonryGrid"
+import { WardrobePendingStrip } from "@/features/wardrobe-import/components/WardrobePendingStrip"
 import { resolveOutfitAttribution } from "@/utils/outfitAttribution"
 import { getOutfitChips } from "@/utils/outfitChips"
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
@@ -1708,7 +1709,10 @@ export function HomeScreenView() {
                 ) : null}
               </>
             ) : isItemMoodboardActive ? (
-              renderMoodboardItemsContent()
+              <>
+                <WardrobePendingStrip slug={activeMoodboardId} />
+                {renderMoodboardItemsContent()}
+              </>
             ) : (
               <>
                 {filteredCuratedItems.length >= 2 ? (

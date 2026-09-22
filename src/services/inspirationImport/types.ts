@@ -80,6 +80,19 @@ export type InspirationWebRequest = {
   userName: string | null
 }
 
+/** One of the caller's own online requests, as the pending strip shows it. */
+export type InspirationMyWebRequest = {
+  selectionId: string
+  importId: string
+  candidateId: string
+  status: InspirationWebRequestStatus
+  createdAt: string
+  title: string
+  merchantDomain: string
+  listingUrl: string
+  imageUrl: string
+}
+
 export type InspirationAddWebSelectionsResult = {
   addedCount: number
   skippedCount: number

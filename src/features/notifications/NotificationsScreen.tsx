@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react"
 import { format, formatDistanceToNowStrict, isThisWeek, isToday } from "date-fns"
+import { useNavigate } from "react-router-dom"
 
 import { Icons } from "@/design-system/icons"
 import { AppShellLayout } from "@/layouts/AppShellLayout"
@@ -10,6 +11,7 @@ import { useOpenJobResult } from "@/features/progress/openJobResult"
 import { useRetryJob } from "@/features/progress/retryJob"
 import { cn } from "@/lib/utils"
 
+import { useMarkNotificationRead, useUserNotifications } from "./hooks/useUserNotifications"
 import { useNotices, type Notice } from "./notices"
 
 /**
@@ -17,10 +19,12 @@ import { useNotices, type Notice } from "./notices"
  * (today · earlier), each a 36px icon well + title + line + time, unread
  * marked by a violet tint on the well and a violet dot under the time.
  *
- * Two sources feed one list. Background jobs (try-on, likeness, find items)
- * come from JobsContext. Everything else — a piece saved, a curation that
+ * Three sources feed one list. Background jobs (try-on, likeness, find items)
+ * come from JobsContext. Client-derived news — a piece saved, a curation that
  * appeared, the daily quota renewing — comes from the notices store, emitted
- * where those things happen. Read state is per device, in localStorage.
+ * where those things happen; read state for both is per device, in
+ * localStorage. Server rows, written when work lands outside this device (a
+ * wardrobe request the team approved), carry their own read stamp instead.
  */
 
 const READ_KEY = "atlyr:notifications:readIds"
@@ -92,7 +96,7 @@ function timeLabel(ms: number) {
   return format(date, "d MMM")
 }
 
-/** One shape for both sources, so the list sorts and groups without caring which is which. */
+/** One shape for every source, so the list sorts and groups without caring which is which. */
 type Row = {
   id: string
   title: string
@@ -102,6 +106,8 @@ type Row = {
   processing: boolean
   failed: boolean
   onSelect?: () => void
+  /** Server rows carry their own read stamp; local rows fall back to this device's list. */
+  unread?: boolean
 }
 
 /** A saved piece names itself lazily — the save only knew the product id. */
@@ -114,6 +120,9 @@ function SavedPieceLine({ productId, line }: { productId: string; line: string }
 export function NotificationsScreen() {
   const { jobs } = useJobs()
   const notices = useNotices()
+  const navigate = useNavigate()
+  const serverNotifications = useUserNotifications()
+  const { mutate: markNotificationRead } = useMarkNotificationRead()
   const openResult = useOpenJobResult()
   const retryJob = useRetryJob()
 
@@ -168,21 +177,41 @@ export function NotificationsScreen() {
         onSelect: () => markRead(notice.id),
       }
     })
-    return [...fromJobs, ...fromNotices].sort((a, b) => b.at - a.at)
-  }, [handleJob, jobs, markRead, notices])
+    const fromServer: Row[] = (serverNotifications.data ?? []).map((notification) => ({
+      id: notification.id,
+      title: notification.title,
+      line: notification.body ?? "",
+      at: Date.parse(notification.createdAt),
+      Icon: Icons.sourceWardrobe,
+      processing: false,
+      failed: false,
+      unread: notification.readAt === null,
+      onSelect: () => {
+        markNotificationRead(notification.id)
+        if (notification.href) navigate(notification.href)
+      },
+    }))
+    return [...fromJobs, ...fromNotices, ...fromServer].sort((a, b) => b.at - a.at)
+  }, [handleJob, jobs, markNotificationRead, markRead, navigate, notices, serverNotifications.data])
 
   const today = useMemo(() => rows.filter((row) => isToday(new Date(row.at))), [rows])
   const earlier = useMemo(() => rows.filter((row) => !isToday(new Date(row.at))), [rows])
 
   // A running job is not news yet; only landed work can be unread.
-  const isUnread = useCallback((row: Row) => !row.processing && !readIds.has(row.id), [readIds])
+  const isUnread = useCallback(
+    (row: Row) => !row.processing && (row.unread ?? !readIds.has(row.id)),
+    [readIds],
+  )
   const unreadCount = rows.filter(isUnread).length
 
   const markAllRead = useCallback(() => {
     const next = new Set(rows.map((row) => row.id))
     saveReadIds(next)
     setReadIds(next)
-  }, [rows])
+    for (const notification of serverNotifications.data ?? []) {
+      if (notification.readAt === null) markNotificationRead(notification.id)
+    }
+  }, [markNotificationRead, rows, serverNotifications.data])
 
   const isEmpty = rows.length === 0
 
