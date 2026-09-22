@@ -61,6 +61,7 @@ import { useStudioShareMode } from "@/features/studio/hooks/useStudioShareMode"
 import { mergeOutfitItemsWithTray } from "@/features/studio/utils/mergeOutfitItemsWithTray"
 import { useOutfitSnapshot } from "@/features/outfits/hooks/useOutfitSnapshot"
 import { useFigureCapture } from "./hooks/useFigureCapture"
+import { defaultLayerOrder } from "./utils/layerOrder"
 import { useOptionalAdminGender } from "@/features/admin/providers/AdminGenderContext"
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
 import { setPendingStudioComboChange, useStudioCombinationTracking } from "@/integrations/posthog/engagementTracking/studio/studioTracking"
@@ -416,20 +417,24 @@ export function StudioScreenView() {
     hiddenSlots,
   })
 
-  const defaultSlotOrder = useMemo<StudioProductTraySlot[]>(() => ["top", "bottom", "shoes"], [])
-
   const [isSaveDrawerOpen, setIsSaveDrawerOpen] = useState(false)
-  const [slotOrder, setSlotOrder] = useState<StudioProductTraySlot[]>(defaultSlotOrder)
-
-  useEffect(() => {
-    setSlotOrder(defaultSlotOrder)
-  }, [defaultSlotOrder, resolvedOutfitId])
 
   const { trayItems: resolvedTrayItems, isResolving: slotsResolving } = useStudioResolvedSlots({
     outfitId: resolvedOutfitId,
     baseOutfitItems: productTrayItems,
     requestedSlotIds,
   })
+
+  // The worn top's kind decides the default stacking (a bodysuit goes under the bottom). Keyed on
+  // the resulting order, so a swap that keeps the same stacking keeps a dragged order too.
+  const wornTop = hiddenSlots.top ? null : resolvedTrayItems.find((item) => item.slot === "top")
+  const defaultOrderKey = defaultLayerOrder({ typeCategory: wornTop?.typeCategory, productName: wornTop?.title }).join(",")
+  const defaultSlotOrder = useMemo(() => defaultOrderKey.split(",") as StudioProductTraySlot[], [defaultOrderKey])
+  const [slotOrder, setSlotOrder] = useState<StudioProductTraySlot[]>(defaultSlotOrder)
+
+  useEffect(() => {
+    setSlotOrder(defaultSlotOrder)
+  }, [defaultSlotOrder, resolvedOutfitId])
 
   const normalizeSlot = useCallback((type: OutfitItem["type"]): StudioProductTraySlot | null => {
     if (type === "top" || type === "bottom" || type === "shoes") {
@@ -549,7 +554,7 @@ export function StudioScreenView() {
         const baseItem = baseByZone.get(zone)
         // hiddenSlots only tracks an explicit ×; a zone that never had an item (a saved
         // dress-only look has no bottom entry at all) is just as empty and needs the same
-        // stand-in, or the bare mannequin's own baked-in underwear shows through instead.
+        // stand-in, or the figure is bare there.
         if (hiddenSlots[zone] || (!trayItem && !baseItem)) {
           return zone === "top" ? placeholderTop : zone === "bottom" && !topIsDress ? placeholderBottom : null
         }

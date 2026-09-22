@@ -31,6 +31,7 @@ export type SupabaseProductLike =
   | {
       id: string
       type?: Database["public"]["Enums"]["item_type"] | null
+      type_category?: string | null
       brand?: string | null
       product_name?: string | null
       description?: string | null

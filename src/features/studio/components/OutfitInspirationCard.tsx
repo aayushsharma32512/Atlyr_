@@ -19,6 +19,7 @@ import type {
   MannequinSegmentName,
 } from "@/features/studio/types"
 import { computeOutfitVisibleSegments, studioRenderedItemToOutfitItem } from "@/features/studio/mappers/renderedItemMapper"
+import { defaultLayerOrder } from "@/features/studio/utils/layerOrder"
 
 interface OutfitInspirationCardProps {
   renderedItems?: StudioRenderedItem[]
@@ -263,6 +264,12 @@ export function OutfitInspirationCard({
     }
     return []
   }, [hasExplicitRenderedItems, hookDerivedItems, renderedItems])
+  // No caller order: the worn top's kind decides (a bodysuit goes under the bottom).
+  const resolvedSlotOrder = useMemo(() => {
+    if (slotOrder) return slotOrder
+    const top = resolvedRenderedItems.find((item) => item.zone === "top")
+    return defaultLayerOrder({ typeCategory: top?.typeCategory, productName: top?.productName })
+  }, [resolvedRenderedItems, slotOrder])
   // AvatarRenderer normally decides from placement data. Dedicated preview surfaces can override
   // that choice via allowEmptyMannequin (Studio's base-items toggle is the current user of this).
   const visibleSegments = useMemo(() => {
@@ -538,7 +545,7 @@ export function OutfitInspirationCard({
                 visibleSegments={visibleSegments}
                 onItemSelect={handleRenderedItemSelect}
                 onSegmentSelect={handleSegmentSelect}
-                slotOrder={slotOrder}
+                slotOrder={resolvedSlotOrder}
                 animatingZone={animatingZone}
                 onReady={onAvatarReady}
                 onItemBoundsChange={onItemBoundsChange}
@@ -571,7 +578,7 @@ export function OutfitInspirationCard({
               hairColorHex={hairColorHex}
               visibleSegments={visibleSegments}
               onItemSelect={handleRenderedItemSelect}
-              slotOrder={slotOrder}
+              slotOrder={resolvedSlotOrder}
               animatingZone={animatingZone}
               onReady={onAvatarReady}
               onItemBoundsChange={onItemBoundsChange}

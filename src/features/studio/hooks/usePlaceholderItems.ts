@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 
 import { studioKeys } from "@/features/studio/queryKeys"
 import { mapTrayItemToStudioRenderedItem } from "@/features/studio/mappers/renderedItemMapper"
+import { hidesBottomPlaceholder } from "@/features/studio/utils/layerOrder"
 import { studioService, type StudioProductTrayItem } from "@/services/studio/studioService"
 
 /**
@@ -41,13 +42,10 @@ function usePlaceholderProduct(productId: string | undefined) {
   }).data ?? null
 }
 
-/**
- * A dress on the (visible) top already covers the bottom zone, so the bottom stand-in must not
- * paint over it. Same free-form match as resolveCategory in tryon-generate-summary.
- */
+/** A visible top that covers the hips (a dress, a bodysuit) needs no stand-in bottom. The kinds live in config/layerRules.ts. */
 export function isDressTop(trayItems: StudioProductTrayItem[], topHidden: boolean) {
-  const typeCategory = trayItems.find((item) => item.slot === "top")?.typeCategory ?? ""
-  return !topHidden && /dress|gown|one piece/i.test(typeCategory)
+  const top = trayItems.find((item) => item.slot === "top")
+  return !topHidden && hidesBottomPlaceholder({ typeCategory: top?.typeCategory, productName: top?.title })
 }
 
 /**

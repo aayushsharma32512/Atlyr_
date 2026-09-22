@@ -27,6 +27,8 @@ export interface StudioProductMetadata {
   size?: string | null
   color?: string | null
   colorGroup?: string | null
+  /** The tagger's free-text kind, e.g. "bodysuit". The layer rules read it. */
+  typeCategory?: string | null
   gender?: "male" | "female" | "unisex" | null
   productUrl?: string | null
 }

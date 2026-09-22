@@ -41,6 +41,7 @@ import { useCurrentLookId } from "@/features/studio/hooks/useCurrentLookId"
 import { isPlaceableOnMannequin, shouldFilterSlotByPlacement } from "@/features/studio/utils/placementSupport"
 import { mapTrayItemToStudioRenderedItem } from "@/features/studio/mappers/renderedItemMapper"
 import { isDressTop, STUDIO_BASE_ITEMS_ENABLED, usePlaceholderItems } from "@/features/studio/hooks/usePlaceholderItems"
+import { defaultLayerOrder } from "@/features/studio/utils/layerOrder"
 import { mapTrayItemToAlternative, mapTrayItemToProductDetail } from "@/services/studio/studioService"
 import { getOutfitTagsFromItems, getTrayItemTags } from "@/utils/productTags"
 import { useSaveOutfit } from "@/features/outfits/hooks/useSaveOutfit"
@@ -564,7 +565,7 @@ export function StudioAlternativesView() {
         const baseItem = baseByZone.get(zone)
         // hiddenSlots only tracks an explicit ×; a zone that never had an item (a saved
         // dress-only look has no bottom entry at all) is just as empty and needs the same
-        // stand-in, or the bare mannequin's own baked-in underwear shows through instead.
+        // stand-in, or the figure is bare there.
         if (hiddenSlots[zone] || (!trayItem && !baseItem)) {
           return zone === "top" ? placeholderTop : zone === "bottom" && !topIsDress ? placeholderBottom : null
         }
@@ -1334,6 +1335,12 @@ export function StudioAlternativesView() {
         ? "Nothing saved in this slot"
         : "No results found"
 
+  // The worn top's kind decides the stacking here too; a per-look order arrives with the row later.
+  const heroSlotOrder = useMemo(() => {
+    const wornTop = hiddenSlots.top ? null : resolvedTrayItems.find((item) => item.slot === "top")
+    return defaultLayerOrder({ typeCategory: wornTop?.typeCategory, productName: wornTop?.title })
+  }, [hiddenSlots.top, resolvedTrayItems])
+
   // One figure for both layouts: the split (with the rack) and focus.
   const figureNode = (
       <div className="absolute inset-0 flex items-end justify-center pb-3">
@@ -1342,6 +1349,7 @@ export function StudioAlternativesView() {
           preset="heroCanonical"
           outfitId={outfitData?.studioOutfit?.id ?? heroAvatar.id}
           renderedItems={heroRenderedItems ?? outfitData?.studioOutfit?.renderedItems}
+          slotOrder={heroSlotOrder}
           fallbackImageSrc={
             hiddenSlots.top || hiddenSlots.bottom || hiddenSlots.shoes
               ? heroRenderedItems?.[0]?.imageUrl ?? heroAvatar.items[0]?.imageUrl
@@ -1372,6 +1380,7 @@ export function StudioAlternativesView() {
           preset="heroCanonical"
           outfitId="temp-admin-outfit"
           renderedItems={heroRenderedItems || []}
+          slotOrder={heroSlotOrder}
           fallbackImageSrc={heroRenderedItems?.[0]?.imageUrl ?? undefined}
           title="New Outfit"
           chips={[]}

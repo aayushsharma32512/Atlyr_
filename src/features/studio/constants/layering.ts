@@ -6,6 +6,9 @@ import type { StudioProductTraySlot } from "@/services/studio/studioService"
  */
 export const LAYERING_ENABLED = false
 
+/** Gates the layer rules config and the stored per-look order. Off restores the fixed top, bottom, shoes stacking. */
+export const LAYER_ORDER_ENABLED = true
+
 /** The service knows three slots. The canvas adds `layer` on top of them. */
 export type StudioCanvasSlot = StudioProductTraySlot | "layer"
 
