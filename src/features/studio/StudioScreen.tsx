@@ -165,8 +165,22 @@ export function StudioScreenView() {
   // Find items opens over a still of the figure, so its scan runs on the look the user is seeing.
   const { captureRef, navigateWithFigure } = useFigureCapture()
 
+  // The figure paints in one step once every garment is loaded; until the first paint of a look
+  // the canvas is empty, so a label stands in. A swap keeps the previous frame, so no reset then.
+  const [figureShown, setFigureShown] = useState(false)
+  const handleAvatarReady = useCallback(
+    (ready: boolean) => {
+      setAvatarReady(ready)
+      if (ready) setFigureShown(true)
+    },
+    [setAvatarReady],
+  )
+
   const resolvedOutfitId = outfitId ?? studioAvatar?.id ?? null
   const syncOutfitId = outfitId ?? selectedOutfitId ?? null
+  useEffect(() => {
+    setFigureShown(false)
+  }, [resolvedOutfitId])
   const basePath = useMemo(() => {
     const match = location.pathname.match(/(.*\/studio)(?:\/.*)?$/)
     if (match?.[1]) {
@@ -1160,7 +1174,7 @@ export function StudioScreenView() {
 
         <StudioCanvas
           figure={
-            studioAvatar || (isAdminMode && !outfitId) ? (
+            (studioAvatar && !isLoadingOverrides) || (isAdminMode && !outfitId) ? (
               <div className="absolute inset-0 flex items-end justify-center pb-4">
                 <OutfitInspirationTile
                   preset="heroCanonical"
@@ -1181,10 +1195,13 @@ export function StudioScreenView() {
                   slotOrder={slotOrder}
                   allowEmptyMannequin={isAdminMode || !STUDIO_BASE_ITEMS_ENABLED}
                   onSlotSelect={isAdminMode && !isViewOnly ? (slot) => openAlternativesSplit(slot) : undefined}
-                  onAvatarReady={setAvatarReady}
+                  onAvatarReady={handleAvatarReady}
                   avatarRef={snapshotRef}
                   captureRef={captureRef}
                 />
+                {figureShown ? null : (
+                  <div className="absolute inset-0 flex items-center justify-center text-body text-taupe">Loading outfit…</div>
+                )}
               </div>
             ) : (
               <div className="flex h-full w-full items-center justify-center text-body text-taupe">
@@ -1242,6 +1259,17 @@ export function StudioScreenView() {
               />
             ) : (
               <>
+            {isLoadingOverrides ? (
+              // The rows read the same list as the figure: blank until the requested pieces arrive.
+              <div className="flex flex-col gap-0.5" aria-busy="true">
+                {slotOrder.map((slot) => (
+                  <div key={slot} className="flex h-8 items-center gap-2">
+                    <span className="h-6 w-6 flex-none" />
+                    <div className="h-8 min-w-0 flex-1 animate-pulse rounded-control bg-skeleton" />
+                  </div>
+                ))}
+              </div>
+            ) : (
             <StudioPieceRows
               slots={slotOrder}
               onReorder={handleReorderSlot}
@@ -1252,6 +1280,7 @@ export function StudioScreenView() {
               onFill={handleOpenAlternates}
               onRemove={(slot) => handleRemoveSlot(toTraySlot(slot))}
             />
+            )}
             <StudioActionBar
               isReadOnly={isViewOnly}
               saved={currentOutfitMoodboardSlugs.length > 0}

@@ -184,11 +184,13 @@ export function StudioAlternativesView() {
 
   const requestedSlotIds = parsedParams.slotIds
 
-  const { trayItems: resolvedTrayItems } = useStudioResolvedSlots({
+  const { trayItems: resolvedTrayItems, isResolving: slotsResolving } = useStudioResolvedSlots({
     outfitId: resolvedOutfitId,
     baseOutfitItems: outfitData?.trayItems ?? [],
     requestedSlotIds,
   })
+  // Same rule as Studio: never draw the saved pieces while the URL's pieces are still loading.
+  const isLoadingOverrides = slotsResolving && Boolean(requestedSlotIds.top || requestedSlotIds.bottom || requestedSlotIds.shoes)
 
   const activeSlotIds: SlotIdMap = useMemo(() => {
     const map: SlotIdMap = {}
@@ -1351,7 +1353,7 @@ export function StudioAlternativesView() {
   // One figure for both layouts: the split (with the rack) and focus.
   const figureNode = (
       <div className="absolute inset-0 flex items-end justify-center pb-3">
-      {heroAvatar ? (
+      {heroAvatar && !isLoadingOverrides ? (
         <OutfitInspirationTile
           preset="heroCanonical"
           outfitId={outfitData?.studioOutfit?.id ?? heroAvatar.id}
@@ -1408,7 +1410,7 @@ export function StudioAlternativesView() {
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center px-3 text-center text-body text-taupe">
-          {isOutfitLoading ? "Loading outfit…" : "Select an outfit to view alternatives"}
+          {isOutfitLoading || isLoadingOverrides ? "Loading outfit…" : "Select an outfit to view alternatives"}
         </div>
       )}
       </div>
