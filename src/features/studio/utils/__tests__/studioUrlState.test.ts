@@ -1,6 +1,33 @@
 import { describe, expect, it } from "bun:test"
 
-import { buildStudioFocusUrl, parseStudioPath, parseStudioSearchParams } from "../studioUrlState"
+import {
+  buildStudioFocusUrl,
+  buildStudioSearchParams,
+  parseLayerOrder,
+  parseStudioPath,
+  parseStudioSearchParams,
+} from "../studioUrlState"
+
+describe("layers parameter", () => {
+  it("parses a full permutation and rejects anything else", () => {
+    expect(parseLayerOrder("bottom,top,shoes")).toEqual(["bottom", "top", "shoes"])
+    expect(parseLayerOrder(" shoes , top , bottom ")).toEqual(["shoes", "top", "bottom"])
+    expect(parseLayerOrder("bottom,top")).toBeNull()
+    expect(parseLayerOrder("bottom,top,top")).toBeNull()
+    expect(parseLayerOrder("bottom,top,hat")).toBeNull()
+    expect(parseLayerOrder("")).toBeNull()
+    expect(parseLayerOrder(null)).toBeNull()
+  })
+
+  it("round-trips through the search params and is absent when null", () => {
+    const withOrder = buildStudioSearchParams({ outfitId: "o1", layerOrder: ["bottom", "top", "shoes"] })
+    expect(withOrder.get("layers")).toBe("bottom,top,shoes")
+    expect(parseStudioSearchParams(withOrder).layerOrder).toEqual(["bottom", "top", "shoes"])
+    const without = buildStudioSearchParams({ outfitId: "o1", layerOrder: null })
+    expect(without.has("layers")).toBe(false)
+    expect(parseStudioSearchParams(without).layerOrder).toBeNull()
+  })
+})
 
 describe("buildStudioFocusUrl", () => {
   it("puts the product in its slot and focuses that zone", () => {

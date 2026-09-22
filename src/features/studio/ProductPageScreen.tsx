@@ -145,12 +145,14 @@ export function ProductPageView() {
           outfitId: string
           slotIds: { top: string | null; bottom: string | null; shoes: string | null }
           hiddenSlots: { top: boolean; bottom: boolean; shoes: boolean }
+          layerOrder?: ("top" | "bottom" | "shoes")[] | null
         }
         if (session?.outfitId) {
           const params = buildStudioSearchParams({
             outfitId: session.outfitId,
             slotIds: session.slotIds,
             hiddenSlots: session.hiddenSlots,
+            layerOrder: session.layerOrder ?? null,
           })
           const search = params.toString()
           navigate(`/studio${search ? `?${search}` : ""}`)
@@ -211,6 +213,7 @@ export function ProductPageView() {
       outfitId: string
       slotIds: { top: string | null; bottom: string | null; shoes: string | null }
       hiddenSlots: { top: boolean; bottom: boolean; shoes: boolean }
+      layerOrder?: ("top" | "bottom" | "shoes")[] | null
     } | null = null
     try {
       const raw = window.sessionStorage.getItem("atlyr:studio:lastSession")
@@ -262,6 +265,7 @@ export function ProductPageView() {
             shoes:  draftShoesId,
           },
           hiddenSlots: { top: false, bottom: false, shoes: false },
+          layerOrder: null,
         }
         try {
           const existingRaw = window.localStorage.getItem(historyKey)
@@ -269,7 +273,9 @@ export function ProductPageView() {
           const existingPast: StudioHistorySnapshot[] = existingHistory?.past ?? []
           window.localStorage.setItem(
             historyKey,
-            JSON.stringify(seededState(newDraftSnapshot, [...existingPast, previousSnapshot])),
+            JSON.stringify(
+              seededState(newDraftSnapshot, [...existingPast, { ...previousSnapshot, layerOrder: previousSnapshot.layerOrder ?? null }]),
+            ),
           )
         } catch { /* quota / private-mode — undo just won't have the previous outfit */ }
       }

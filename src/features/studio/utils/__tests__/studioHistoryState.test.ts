@@ -5,6 +5,7 @@ import {
   anchoredState,
   recordChangeState,
   redoState,
+  normalizeSnapshot,
   seededState,
   snapshotsEqual,
   studioHistoryStorageKey,
@@ -18,6 +19,20 @@ const snap = (outfitId: string | null, top: string | null, bottom: string | null
   outfitId,
   slotIds: { top, bottom, shoes },
   hiddenSlots: { top: false, bottom: false, shoes: false },
+  layerOrder: null,
+})
+
+describe("layerOrder on a snapshot", () => {
+  it("tells two stacks of the same pieces apart", () => {
+    const dragged = { ...snap("o1", "T"), layerOrder: ["bottom", "top", "shoes"] as const }
+    expect(snapshotsEqual(snap("o1", "T"), { ...dragged, layerOrder: [...dragged.layerOrder] })).toBe(false)
+    expect(snapshotsEqual({ ...dragged, layerOrder: [...dragged.layerOrder] }, { ...dragged, layerOrder: [...dragged.layerOrder] })).toBe(true)
+  })
+
+  it("normalises a stored snapshot without the field to the default", () => {
+    const stored = { outfitId: "o1", slotIds: { top: "T", bottom: "B", shoes: "S" }, hiddenSlots: { top: false, bottom: false, shoes: false } }
+    expect(normalizeSnapshot(stored as unknown as StudioHistorySnapshot)?.layerOrder).toBeNull()
+  })
 })
 
 const LANDED = snap("A", "T1")

@@ -13,6 +13,8 @@ export interface StudioUrlState {
   productId: string | null
   share?: boolean
   hiddenSlots?: Partial<Record<StudioProductTraySlot, boolean>>
+  /** Stacking, front-most first, when the user dragged the rows. Null or absent: the default rule applies. */
+  layerOrder?: StudioProductTraySlot[] | null
   /** Studio focus zoom. Null is the un-zoomed canvas. */
   focus?: StudioCanvasSlot | null
   source?: StudioSource | null
@@ -24,6 +26,12 @@ export function isStudioSource(value: string | null): value is StudioSource {
 
 export function isStudioSlot(slot: string | null): slot is StudioProductTraySlot {
   return slot === "top" || slot === "bottom" || slot === "shoes"
+}
+
+/** `layers=bottom,top,shoes` → the three slots in that order; anything else (missing, repeated, unknown) → null. */
+export function parseLayerOrder(value: string | null | undefined): StudioProductTraySlot[] | null {
+  const slots = (value ?? "").split(",").map((part) => part.trim()).filter(isStudioSlot)
+  return slots.length === 3 && new Set(slots).size === 3 ? slots : null
 }
 
 export function parseStudioSearchParams(searchParams: URLSearchParams): StudioUrlState {
@@ -43,6 +51,7 @@ export function parseStudioSearchParams(searchParams: URLSearchParams): StudioUr
     slot,
     productId: searchParams.get("productId"),
     share: searchParams.get("share") === "1",
+    layerOrder: parseLayerOrder(searchParams.get("layers")),
     hiddenSlots: {
       top: searchParams.get("topHidden") === "1",
       bottom: searchParams.get("bottomHidden") === "1",
@@ -90,6 +99,9 @@ export function buildStudioSearchParams(state: Partial<StudioUrlState>): URLSear
     if (state.hiddenSlots.shoes) {
       params.set("shoesHidden", "1")
     }
+  }
+  if (state.layerOrder?.length) {
+    params.set("layers", state.layerOrder.join(","))
   }
   return params
 }

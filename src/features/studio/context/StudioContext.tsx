@@ -132,6 +132,10 @@ export function StudioContextProvider({ children }: { children: ReactNode }) {
     () => parseStudioSearchParams(new URLSearchParams(location.search)).hiddenSlots,
     [location.search],
   )
+  const layerOrderParam = useMemo(
+    () => parseStudioSearchParams(new URLSearchParams(location.search)).layerOrder ?? null,
+    [location.search],
+  )
 
   const lastSyncedRef = useRef<string>("")
 
@@ -218,9 +222,10 @@ export function StudioContextProvider({ children }: { children: ReactNode }) {
       slotIds: slotProductIds,
       share: shareParam,
       hiddenSlots: hiddenSlotsParam,
+      layerOrder: layerOrderParam,
     })
     navigate(url)
-  }, [basePath, hiddenSlotsParam, location.pathname, location.search, navigate, selectedOutfitId, shareParam, slotProductIds])
+  }, [basePath, hiddenSlotsParam, layerOrderParam,location.pathname, location.search, navigate, selectedOutfitId, shareParam, slotProductIds])
 
   const openScrollUp = useCallback(() => {
     const params = buildStudioSearchParams({
@@ -228,12 +233,13 @@ export function StudioContextProvider({ children }: { children: ReactNode }) {
       slotIds: slotProductIds,
       share: shareParam,
       hiddenSlots: hiddenSlotsParam,
+      layerOrder: layerOrderParam,
     })
     const originPath = `${location.pathname}${location.search}` || basePath
     params.set("returnTo", encodeURIComponent(originPath))
     const search = params.toString()
     navigate(`${basePath}/scroll-up${search ? `?${search}` : ""}`)
-  }, [basePath, hiddenSlotsParam, navigate, selectedOutfitId, shareParam, slotProductIds])
+  }, [basePath, hiddenSlotsParam, layerOrderParam,navigate, selectedOutfitId, shareParam, slotProductIds])
 
   const closeScrollUp = useCallback(() => {
     openStudio()
@@ -257,6 +263,7 @@ export function StudioContextProvider({ children }: { children: ReactNode }) {
         productId: item.id ?? null,
         share: parsed.share,
         hiddenSlots: parsed.hiddenSlots,
+        layerOrder: parsed.layerOrder,
       })
       const originPath = `${location.pathname}${location.search}` || basePath
       params.set("returnTo", encodeURIComponent(originPath))
@@ -279,6 +286,7 @@ export function StudioContextProvider({ children }: { children: ReactNode }) {
         productId: slotProductIds[slot] ?? null,
         share: parsed.share,
         hiddenSlots: parsed.hiddenSlots,
+        layerOrder: parsed.layerOrder,
       })
       const originPath = `${location.pathname}${location.search}` || basePath
       params.set("returnTo", encodeURIComponent(originPath))
@@ -310,6 +318,7 @@ export function StudioContextProvider({ children }: { children: ReactNode }) {
         slotIds: slotProductIds,
         share: shareParam,
         hiddenSlots: hiddenSlotsParam,
+        layerOrder: layerOrderParam,
       })
       if (productId) {
         params.set("productId", productId)
@@ -328,7 +337,7 @@ export function StudioContextProvider({ children }: { children: ReactNode }) {
           // Prefetch failure should not block navigation
         })
     },
-    [basePath, hiddenSlotsParam, location.pathname, location.search, navigate, queryClient, selectedOutfitId, shareParam, slotProductIds],
+    [basePath, hiddenSlotsParam, layerOrderParam,location.pathname, location.search, navigate, queryClient, selectedOutfitId, shareParam, slotProductIds],
   )
 
   const openSimilarItems = useCallback(
@@ -344,6 +353,7 @@ export function StudioContextProvider({ children }: { children: ReactNode }) {
         slotIds: slotProductIds,
         share: shareParam,
         hiddenSlots: hiddenSlotsParam,
+        layerOrder: layerOrderParam,
       })
       params.set("productId", productId)
       const originPath = `${location.pathname}${location.search}` || `${basePath}/product/${productId}`

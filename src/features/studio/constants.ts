@@ -75,9 +75,24 @@ export function rememberStudioLastPath(gender: "male" | "female" | null | undefi
     return
   }
   try {
-    window.sessionStorage.setItem(studioLastPathStorageKey(gender), fullPath)
+    // Local, not session, storage: closing the app and coming back resumes the same look.
+    window.localStorage.setItem(studioLastPathStorageKey(gender), fullPath)
   } catch {
     // Quota / private mode — the tab just falls back to a fresh studio.
+  }
+}
+
+/** On sign-out: the next person on this device must not resume this one's look. */
+export function clearStudioLastPaths() {
+  if (typeof window === "undefined") {
+    return
+  }
+  for (const gender of ["male", "female", null] as const) {
+    try {
+      window.localStorage.removeItem(studioLastPathStorageKey(gender))
+    } catch {
+      // Nothing to clear.
+    }
   }
 }
 
@@ -93,7 +108,7 @@ export function readStudioLastPath(gender: "male" | "female" | null | undefined)
   }
   let storedPath: string | null = null
   try {
-    storedPath = window.sessionStorage.getItem(studioLastPathStorageKey(gender))
+    storedPath = window.localStorage.getItem(studioLastPathStorageKey(gender))
   } catch {
     storedPath = null
   }
@@ -102,8 +117,7 @@ export function readStudioLastPath(gender: "male" | "female" | null | undefined)
   }
   // The product page sits under /studio but is a detail view opened from any
   // tab, so it is never what the Studio tab should resume. Checked on read as
-  // well as on write: a path stored before that rule existed outlives the fix,
-  // because sessionStorage survives until the tab closes.
+  // well as on write: a path stored before that rule existed outlives the fix.
   if (isStudioProductPath(storedPath)) {
     return "/studio"
   }

@@ -280,12 +280,13 @@ export function StudioScreenView() {
           bottom: Boolean(parsedParams.hiddenSlots?.bottom),
           shoes: Boolean(parsedParams.hiddenSlots?.shoes),
         },
+        layerOrder: parsedParams.layerOrder ?? null,
       }
       window.sessionStorage.setItem("atlyr:studio:lastSession", JSON.stringify(state))
     } catch {
       // quota / private-mode — ignore
     }
-  }, [outfitId, topIdParam, bottomIdParam, shoesIdParam, slotProductIds, parsedParams.hiddenSlots])
+  }, [outfitId, topIdParam, bottomIdParam, shoesIdParam, slotProductIds, parsedParams.hiddenSlots, parsedParams.layerOrder])
 
   useEffect(() => {
     setSelectedOutfitId(resolvedOutfitId)
@@ -325,12 +326,13 @@ export function StudioScreenView() {
           bottom: Boolean(parsedParams.hiddenSlots?.bottom),
           shoes: Boolean(parsedParams.hiddenSlots?.shoes),
         },
+        layerOrder: parsedParams.layerOrder ?? null,
       }
       window.sessionStorage.setItem("atlyr:studio:lastSession", JSON.stringify(state))
     } catch {
       // quota / private-mode — ignore, same as the sibling effect above
     }
-  }, [resolvedOutfitId, topIdParam, bottomIdParam, shoesIdParam, slotProductIds, parsedParams.hiddenSlots])
+  }, [resolvedOutfitId, topIdParam, bottomIdParam, shoesIdParam, slotProductIds, parsedParams.hiddenSlots, parsedParams.layerOrder])
 
   // Background prefetch of search-v3 after initial render (Option B: deferred)
   // Starts after page loads so it doesn't block initial paint, but data ready
@@ -425,16 +427,13 @@ export function StudioScreenView() {
     requestedSlotIds,
   })
 
-  // The worn top's kind decides the default stacking (a bodysuit goes under the bottom). Keyed on
-  // the resulting order, so a swap that keeps the same stacking keeps a dragged order too.
+  // The stacking: the URL's `layers` when the user dragged the rows, else the worn top's kind
+  // decides (a bodysuit goes under the bottom). No component state, so it survives every route
+  // change and reload the URL survives.
   const wornTop = hiddenSlots.top ? null : resolvedTrayItems.find((item) => item.slot === "top")
   const defaultOrderKey = defaultLayerOrder({ typeCategory: wornTop?.typeCategory, productName: wornTop?.title }).join(",")
   const defaultSlotOrder = useMemo(() => defaultOrderKey.split(",") as StudioProductTraySlot[], [defaultOrderKey])
-  const [slotOrder, setSlotOrder] = useState<StudioProductTraySlot[]>(defaultSlotOrder)
-
-  useEffect(() => {
-    setSlotOrder(defaultSlotOrder)
-  }, [defaultSlotOrder, resolvedOutfitId])
+  const slotOrder = parsedParams.layerOrder ?? defaultSlotOrder
 
   const normalizeSlot = useCallback((type: OutfitItem["type"]): StudioProductTraySlot | null => {
     if (type === "top" || type === "bottom" || type === "shoes") {
@@ -897,6 +896,7 @@ export function StudioScreenView() {
         outfitId: syncOutfitId,
         slotIds: currentSlotIds,
         hiddenSlots: { ...hiddenSlots, [slot]: true },
+        layerOrder: parsedParams.layerOrder ?? null,
       }
       recordChange(nextSnapshot)
       applySnapshot(nextSnapshot)
@@ -928,18 +928,23 @@ export function StudioScreenView() {
    */
   const handleReorderSlot = useCallback(
     (slot: StudioCanvasSlot, delta: number) => {
-      if (isViewOnly) return
-      const traySlot = toTraySlot(slot)
-      setSlotOrder((prev) => {
-        const from = prev.indexOf(traySlot)
-        const to = from + delta
-        if (from < 0 || to < 0 || to >= prev.length) return prev
-        const next = [...prev]
-        next.splice(to, 0, ...next.splice(from, 1))
-        return next
-      })
+      if (isViewOnly || !syncOutfitId) return
+      const from = slotOrder.indexOf(toTraySlot(slot))
+      const to = from + delta
+      if (from < 0 || to < 0 || to >= slotOrder.length) return
+      const next = [...slotOrder]
+      next.splice(to, 0, ...next.splice(from, 1))
+      // Back at the default: drop the parameter, so the look keeps following the rule.
+      const nextSnapshot = {
+        outfitId: syncOutfitId,
+        slotIds: currentSlotIds,
+        hiddenSlots,
+        layerOrder: next.join(",") === defaultOrderKey ? null : next,
+      }
+      recordChange(nextSnapshot)
+      applySnapshot(nextSnapshot)
     },
-    [isViewOnly],
+    [applySnapshot, currentSlotIds, defaultOrderKey, hiddenSlots, isViewOnly, recordChange, slotOrder, syncOutfitId],
   )
 
   /** The piece card's globe: the retailer listing when the piece has one. */
@@ -960,10 +965,11 @@ export function StudioScreenView() {
         outfitId: shareOutfitId,
         slotIds: shareSlotIds,
         hiddenSlots,
+        layerOrder: parsedParams.layerOrder,
         share: true,
       }),
     )
-  }, [basePath, hiddenSlots, shareLook, shareOutfitId, shareSlotIds])
+  }, [basePath, hiddenSlots, parsedParams.layerOrder, shareLook, shareOutfitId, shareSlotIds])
 
   /** Worn pieces keyed by canvas slot. The layer entry is a second top. */
   const itemBySlot = useMemo(() => {

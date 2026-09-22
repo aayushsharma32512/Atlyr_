@@ -1,4 +1,4 @@
-import type { SlotIdMap } from "@/features/studio/utils/studioUrlState"
+import { parseLayerOrder, type SlotIdMap } from "@/features/studio/utils/studioUrlState"
 import type { StudioProductTraySlot } from "@/services/studio/studioService"
 
 export const MAX_HISTORY = 7
@@ -30,6 +30,8 @@ export type StudioHistorySnapshot = {
   outfitId: string | null
   slotIds: NormalizedSlotIds
   hiddenSlots: HiddenSlotMap
+  /** Stacking, front-most first, when the user dragged the rows. Null: the default rule applies. */
+  layerOrder: StudioProductTraySlot[] | null
 }
 
 export type StudioHistoryState = {
@@ -83,6 +85,8 @@ export function normalizeSnapshot(snapshot: StudioHistorySnapshot | null): Studi
     outfitId: snapshot.outfitId ?? null,
     slotIds: normalizeSlotIds(snapshot.slotIds ?? {}),
     hiddenSlots: normalizeHiddenSlots(snapshot.hiddenSlots),
+    // Stored stacks from before this field carry none: they follow the default rule.
+    layerOrder: parseLayerOrder(snapshot.layerOrder?.join(",")),
   }
 }
 
@@ -117,7 +121,8 @@ export function snapshotsEqual(a: StudioHistorySnapshot | null, b: StudioHistory
     a.slotIds.shoes === b.slotIds.shoes &&
     a.hiddenSlots.top === b.hiddenSlots.top &&
     a.hiddenSlots.bottom === b.hiddenSlots.bottom &&
-    a.hiddenSlots.shoes === b.hiddenSlots.shoes
+    a.hiddenSlots.shoes === b.hiddenSlots.shoes &&
+    (a.layerOrder?.join(",") ?? "") === (b.layerOrder?.join(",") ?? "")
   )
 }
 

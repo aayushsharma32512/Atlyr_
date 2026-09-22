@@ -969,6 +969,7 @@ export function StudioAlternativesView() {
             slotIds: nextSlotIds,
             productId: product.id,
             share: parsedParams.share,
+            layerOrder: parsedParams.layerOrder,
             // Wearing a piece un-hides its slot, as the normal branch does below.
             hiddenSlots: { ...parsedParams.hiddenSlots, [slot]: false },
             source,
@@ -991,6 +992,7 @@ export function StudioAlternativesView() {
             slotIds: activeSlotIds,
             productId: product.id,
             share: parsedParams.share,
+            layerOrder: parsedParams.layerOrder,
             hiddenSlots: nextHiddenSlots,
             source,
           }),
@@ -1008,6 +1010,7 @@ export function StudioAlternativesView() {
             bottom: Boolean(nextHiddenSlots.bottom),
             shoes: Boolean(nextHiddenSlots.shoes),
           },
+          layerOrder: parsedParams.layerOrder ?? null,
         })
         return
       }
@@ -1059,6 +1062,7 @@ export function StudioAlternativesView() {
         slotIds: nextSlotIds,
         productId: product.id,
         share: parsedParams.share,
+        layerOrder: parsedParams.layerOrder,
         hiddenSlots: nextHiddenSlots,
         source,
       })
@@ -1075,6 +1079,7 @@ export function StudioAlternativesView() {
           bottom: Boolean(nextHiddenSlots?.bottom),
           shoes: Boolean(nextHiddenSlots?.shoes),
         },
+        layerOrder: parsedParams.layerOrder ?? null,
       })
       // NOTE: Search does NOT update - grid stays static per spec (Passive Selection)
     },
@@ -1133,6 +1138,7 @@ export function StudioAlternativesView() {
         productId: nextProductId,
         slotIds: nextSlotIds,
         share: parsedParams.share,
+        layerOrder: parsedParams.layerOrder,
         hiddenSlots: parsedParams.hiddenSlots,
         source,
         focus: "focus" in options ? options.focus : parsedParams.focus,
@@ -1335,11 +1341,12 @@ export function StudioAlternativesView() {
         ? "Nothing saved in this slot"
         : "No results found"
 
-  // The worn top's kind decides the stacking here too; a per-look order arrives with the row later.
+  // The URL's `layers` when the user dragged the rows in Studio, else the worn top's kind decides.
   const heroSlotOrder = useMemo(() => {
+    if (parsedParams.layerOrder) return parsedParams.layerOrder
     const wornTop = hiddenSlots.top ? null : resolvedTrayItems.find((item) => item.slot === "top")
     return defaultLayerOrder({ typeCategory: wornTop?.typeCategory, productName: wornTop?.title })
-  }, [hiddenSlots.top, resolvedTrayItems])
+  }, [hiddenSlots.top, parsedParams.layerOrder, resolvedTrayItems])
 
   // One figure for both layouts: the split (with the rack) and focus.
   const figureNode = (

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, Session, AuthError } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { clearStudioLastPaths } from '@/features/studio/constants';
 
 interface AuthContextType {
   user: User | null;
@@ -73,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    clearStudioLastPaths();
     const { error } = await supabase.auth.signOut();
     return { error };
   };
