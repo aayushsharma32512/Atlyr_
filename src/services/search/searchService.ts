@@ -228,6 +228,7 @@ async function fetchCategoryOutfits(categoryId: string, gender: Gender, from: nu
         created_at,
         created_by,
         user_id,
+        layer_order,
         occasion:occasions!occasion(
           id,
           name,

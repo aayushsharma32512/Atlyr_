@@ -180,6 +180,7 @@ function OutfitMasonryCard({
           title={title}
           outfitId={item.id}
           renderedItems={item.renderedItems}
+          slotOrder={item.layerOrder}
           gender={gender}
           onSelect={onOutfitSelect ? handleSelect : undefined}
         />

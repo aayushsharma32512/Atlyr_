@@ -62,6 +62,7 @@ import { mergeOutfitItemsWithTray } from "@/features/studio/utils/mergeOutfitIte
 import { useOutfitSnapshot } from "@/features/outfits/hooks/useOutfitSnapshot"
 import { useFigureCapture } from "./hooks/useFigureCapture"
 import { defaultLayerOrder } from "./utils/layerOrder"
+import { LAYER_ORDER_ENABLED } from "./constants/layering"
 import { useOptionalAdminGender } from "@/features/admin/providers/AdminGenderContext"
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
 import { setPendingStudioComboChange, useStudioCombinationTracking } from "@/integrations/posthog/engagementTracking/studio/studioTracking"
@@ -441,13 +442,18 @@ export function StudioScreenView() {
     requestedSlotIds,
   })
 
-  // The stacking: the URL's `layers` when the user dragged the rows, else the worn top's kind
-  // decides (a bodysuit goes under the bottom). No component state, so it survives every route
-  // change and reload the URL survives.
+  // The stacking: the URL's `layers` when the user dragged the rows, else the order stored on the
+  // row, else the worn top's kind decides (a bodysuit goes under the bottom). No component state,
+  // so it survives every route change and reload the URL survives.
   const wornTop = hiddenSlots.top ? null : resolvedTrayItems.find((item) => item.slot === "top")
-  const defaultOrderKey = defaultLayerOrder({ typeCategory: wornTop?.typeCategory, productName: wornTop?.title }).join(",")
-  const defaultSlotOrder = useMemo(() => defaultOrderKey.split(",") as StudioProductTraySlot[], [defaultOrderKey])
-  const slotOrder = parsedParams.layerOrder ?? defaultSlotOrder
+  const rowLayerOrder = LAYER_ORDER_ENABLED ? outfitData?.studioOutfit?.layerOrder ?? null : null
+  const baseOrderKey = (rowLayerOrder ?? defaultLayerOrder({ typeCategory: wornTop?.typeCategory, productName: wornTop?.title })).join(",")
+  const baseSlotOrder = useMemo(() => baseOrderKey.split(",") as StudioProductTraySlot[], [baseOrderKey])
+  const slotOrder = parsedParams.layerOrder ?? baseSlotOrder
+  // `layers` is present only when the order differs from the base, so its presence is the change.
+  const orderChanged = parsedParams.layerOrder != null
+  // What a save writes: the dragged order, else what the row already stores (a copy keeps its source's).
+  const layerOrderToSave = parsedParams.layerOrder ?? rowLayerOrder
 
   const normalizeSlot = useCallback((type: OutfitItem["type"]): StudioProductTraySlot | null => {
     if (type === "top" || type === "bottom" || type === "shoes") {
@@ -626,9 +632,11 @@ export function StudioScreenView() {
   const { currentLookId } = useCurrentLookId({
     outfitId: resolvedOutfitId,
     hasSlotOverrides,
+    orderChanged,
     topId: outfitItems.topId,
     bottomId: outfitItems.bottomId,
     shoesId: outfitItems.footwearId,
+    layerOrder: parsedParams.layerOrder ?? null,
   })
 
   // The save row's tags win; an owned, never-saved base look falls back to its public tags.
@@ -650,7 +658,7 @@ export function StudioScreenView() {
     if (!studioAvatar || !user?.id) {
       return null
     }
-    if (!hasSlotOverrides) {
+    if (!hasSlotOverrides && !orderChanged) {
       return {
         id: studioAvatar.id,
         name: studioAvatar.name ?? null,
@@ -664,6 +672,7 @@ export function StudioScreenView() {
       topId: outfitItems.topId,
       bottomId: outfitItems.bottomId,
       shoesId: outfitItems.footwearId,
+      layerOrder: parsedParams.layerOrder ?? null,
     })
     if (existing?.id) {
       return {
@@ -696,6 +705,8 @@ export function StudioScreenView() {
     createDraftOutfitMutation,
     findOutfitByItemsMutation,
     hasSlotOverrides,
+    orderChanged,
+    parsedParams.layerOrder,
     outfitItems.bottomId,
     outfitItems.footwearId,
     outfitItems.topId,
@@ -753,6 +764,7 @@ export function StudioScreenView() {
             isPrivate: data.isPrivate,
             tags: data.tags,
             createdByName: profile?.name ?? null,
+            layerOrder: layerOrderToSave,
           })
           outfitId = resolvedOutfitId
         } else {
@@ -770,6 +782,7 @@ export function StudioScreenView() {
             userId: user.id,
             backgroundId: studioAvatar?.backgroundId ?? null,
             sourceOutfitId: (resolvedOutfitId && !hasSlotOverrides) ? resolvedOutfitId : null,
+            layerOrder: layerOrderToSave,
           })
           outfitId = saved.id
         }
@@ -862,6 +875,7 @@ export function StudioScreenView() {
       profile?.name,
       resolvedOutfitId,
       hasSlotOverrides,
+      layerOrderToSave,
       saveOutfitMutation,
       saveToCollectionMutation,
       studioAvatar?.backgroundId,
@@ -948,17 +962,17 @@ export function StudioScreenView() {
       if (from < 0 || to < 0 || to >= slotOrder.length) return
       const next = [...slotOrder]
       next.splice(to, 0, ...next.splice(from, 1))
-      // Back at the default: drop the parameter, so the look keeps following the rule.
+      // Back at the base: drop the parameter, so the look keeps following the row or the rule.
       const nextSnapshot = {
         outfitId: syncOutfitId,
         slotIds: currentSlotIds,
         hiddenSlots,
-        layerOrder: next.join(",") === defaultOrderKey ? null : next,
+        layerOrder: next.join(",") === baseOrderKey ? null : next,
       }
       recordChange(nextSnapshot)
       applySnapshot(nextSnapshot)
     },
-    [applySnapshot, currentSlotIds, defaultOrderKey, hiddenSlots, isViewOnly, recordChange, slotOrder, syncOutfitId],
+    [applySnapshot, baseOrderKey, currentSlotIds, hiddenSlots, isViewOnly, recordChange, slotOrder, syncOutfitId],
   )
 
   /** The piece card's globe: the retailer listing when the piece has one. */

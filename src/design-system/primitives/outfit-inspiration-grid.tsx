@@ -250,6 +250,7 @@ function BalancedGridCard({
       cardOverrides={cardOverrides}
       outfitId={data.outfitId ?? data.outfit?.id ?? null}
       renderedItems={data.renderedItems}
+      slotOrder={data.layerOrder ?? undefined}
       fallbackImageSrc={data.imageSrcFallback}
       title={data.title}
       chips={data.chips}
@@ -321,6 +322,7 @@ function FixedAvatarGridCard({
       cardOverrides={cardOverrides}
       outfitId={data.outfitId ?? data.outfit?.id ?? null}
       renderedItems={data.renderedItems}
+      slotOrder={data.layerOrder ?? undefined}
       fallbackImageSrc={data.imageSrcFallback}
       title={data.title}
       chips={data.chips}

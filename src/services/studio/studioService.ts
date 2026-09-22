@@ -144,6 +144,7 @@ const OUTFIT_SELECT = `
   created_at,
   created_by,
   user_id,
+  layer_order,
   occasion:occasions!occasion(
     id,
     name,

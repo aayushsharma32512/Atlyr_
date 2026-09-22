@@ -23,6 +23,7 @@ const coverOf = (board: SearchBrowseCollection, gender: Gender) => {
   return {
     outfitId: cover?.outfit.id,
     renderedItems: cover?.studioOutfit?.renderedItems,
+    layerOrder: cover?.studioOutfit?.layerOrder ?? null,
     gender: cover?.outfit.gender === "male" ? "male" : cover?.outfit.gender === "female" ? "female" : gender,
   } as const
 }
@@ -33,7 +34,7 @@ function CurationRailCard({ board, gender, heightCm, onSelect }: CurationBoardCa
   return (
     <button type="button" role="listitem" onClick={onSelect} className={cn("flex flex-col gap-1.5 text-left", RAIL_CARD)}>
       <div className={cn("w-full", RAIL_FRAME)}>
-        <OutfitCard title={board.title} footer={false} outfitId={cover.outfitId} renderedItems={cover.renderedItems} gender={cover.gender} heightCm={heightCm} />
+        <OutfitCard title={board.title} footer={false} outfitId={cover.outfitId} renderedItems={cover.renderedItems} slotOrder={cover.layerOrder} gender={cover.gender} heightCm={heightCm} />
       </div>
       <span className="w-full truncate px-0.5 text-card font-medium text-ink">{board.title}</span>
     </button>
@@ -45,7 +46,7 @@ function CurationPageCard({ board, gender, heightCm, onSelect }: CurationBoardCa
   const cover = coverOf(board, gender)
   return (
     <div role="listitem" className={PAGE_CARD}>
-      <OutfitCard title={board.title} outfitId={cover.outfitId} renderedItems={cover.renderedItems} gender={cover.gender} heightCm={heightCm} onSelect={onSelect} />
+      <OutfitCard title={board.title} outfitId={cover.outfitId} renderedItems={cover.renderedItems} slotOrder={cover.layerOrder} gender={cover.gender} heightCm={heightCm} onSelect={onSelect} />
     </div>
   )
 }

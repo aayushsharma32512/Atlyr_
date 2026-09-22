@@ -2,6 +2,7 @@ import type { OutfitItem } from "@/types"
 import type { StudioProductTrayItem } from "@/services/studio/studioService"
 
 import { ensurePlacementValue, MANNEQUIN_SEGMENT_ALIASES, MANNEQUIN_SEGMENT_NAMES, MANNEQUIN_SEGMENT_NAME_SET } from "@/features/studio/constants"
+import { parseLayerOrder } from "@/features/studio/utils/studioUrlState"
 import type {
   MannequinSegmentName,
   StudioRenderedItem,
@@ -406,5 +407,7 @@ export function mapDbOutfitToStudioOutfit(row: SupabaseOutfitWithProducts | null
     renderedItems,
     bodyPartsVisibleByZone,
     imageSrcFallback: renderedItems[0]?.imageUrl ?? null,
+    // Rows from a select that omits the column read as null: the default rule applies.
+    layerOrder: parseLayerOrder(row.layer_order?.join(",")),
   }
 }

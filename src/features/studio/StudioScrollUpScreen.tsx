@@ -274,6 +274,7 @@ export function StudioScrollUpView() {
       topId: outfitItems.topId,
       bottomId: outfitItems.bottomId,
       shoesId: outfitItems.footwearId,
+      layerOrder: parsedParams.layerOrder ?? null,
     })
     if (existing?.id) {
       return {
@@ -489,6 +490,7 @@ export function StudioScrollUpView() {
         topId: outfitItems.topId,
         bottomId: outfitItems.bottomId,
         shoesId: outfitItems.footwearId,
+        layerOrder: parsedParams.layerOrder ?? null,
       })
       let outfitId = existing?.id
       if (!outfitId) {

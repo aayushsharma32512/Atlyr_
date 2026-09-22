@@ -7,7 +7,7 @@ type OutfitInsert = Database["public"]["Tables"]["outfits"]["Insert"]
 type OutfitRow = Database["public"]["Tables"]["outfits"]["Row"]
 type OutfitByItemsRow = Pick<
   OutfitRow,
-  "id" | "name" | "category" | "occasion" | "background_id" | "gender" | "top_id" | "bottom_id" | "shoes_id"
+  "id" | "name" | "category" | "occasion" | "background_id" | "gender" | "top_id" | "bottom_id" | "shoes_id" | "layer_order"
 >
 
 export interface CategoryOption {
@@ -37,6 +37,8 @@ export interface SaveOutfitInput {
   userId: string
   backgroundId?: string | null
   sourceOutfitId?: string | null
+  /** Stacking, front-most first. Null: the default rule applies. */
+  layerOrder?: string[] | null
 }
 
 export interface DraftOutfitInput {
@@ -62,12 +64,16 @@ export interface UpdateOutfitInput {
   isPrivate: boolean
   tags?: string[] | null
   createdByName?: string | null
+  /** Omit to leave the stored stacking as is; null clears it. */
+  layerOrder?: string[] | null
 }
 
 export interface FindOutfitByItemsInput {
   topId?: string | null
   bottomId?: string | null
   shoesId?: string | null
+  /** Omit to match any stacking; null matches rows on the default rule; an array matches that exact order. */
+  layerOrder?: string[] | null
 }
 
 function mapCategory(row: CategoryRow): CategoryOption {
@@ -187,6 +193,7 @@ export async function saveOutfit(input: SaveOutfitInput) {
     user_id: input.userId,
     // original: source_outfit_id = own id. copy: source_outfit_id = source outfit's id.
     source_outfit_id: input.sourceOutfitId ?? newId,
+    layer_order: input.layerOrder ?? null,
   }
 
   const { data, error } = await supabase.from("outfits").insert(payload).select().single()
@@ -245,6 +252,7 @@ export async function updateOutfit(input: UpdateOutfitInput) {
     created_by: createdBy,
     tags: normalizeTags(input.tags),
     updated_at: new Date().toISOString(),
+    ...(input.layerOrder !== undefined ? { layer_order: input.layerOrder } : {}),
   }
 
   const { data, error } = await supabase
@@ -273,7 +281,7 @@ export async function findOutfitByItems(input: FindOutfitByItemsInput): Promise<
 
   let query = supabase
     .from("outfits")
-    .select("id,name,category,occasion,background_id,gender,top_id,bottom_id,shoes_id")
+    .select("id,name,category,occasion,background_id,gender,top_id,bottom_id,shoes_id,layer_order")
     .eq("visible_in_feed", true)
     .eq("is_private", false)
     .limit(1)
@@ -281,6 +289,12 @@ export async function findOutfitByItems(input: FindOutfitByItemsInput): Promise<
   query = topId ? query.eq("top_id", topId) : query.is("top_id", null)
   query = bottomId ? query.eq("bottom_id", bottomId) : query.is("bottom_id", null)
   query = shoesId ? query.eq("shoes_id", shoesId) : query.is("shoes_id", null)
+  if (input.layerOrder !== undefined) {
+    // Array equality is order-sensitive, which is the point: {bottom,top,shoes} is a different look.
+    query = input.layerOrder
+      ? query.filter("layer_order", "eq", `{${input.layerOrder.join(",")}}`)
+      : query.is("layer_order", null)
+  }
 
   const { data, error } = await query.maybeSingle()
 

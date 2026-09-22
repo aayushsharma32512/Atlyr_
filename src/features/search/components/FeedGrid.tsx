@@ -38,6 +38,7 @@ export function FeedGrid(props: FeedGridProps) {
                 title={look.title}
                 outfitId={look.outfit.id}
                 renderedItems={look.renderedItems}
+                slotOrder={look.layerOrder}
                 gender={look.gender}
                 heightCm={heightCm}
                 saved={saved}

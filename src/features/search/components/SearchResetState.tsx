@@ -66,6 +66,7 @@ export function SearchResetState({
             title: entry.title,
             outfitId: entry.outfit.id,
             renderedItems: entry.studioOutfit?.renderedItems,
+            layerOrder: entry.studioOutfit?.layerOrder ?? null,
             gender: resolveGender(entry.outfit.gender, gender),
             saved: isSaved(entry.outfit.id),
           })),
@@ -167,6 +168,7 @@ export function SearchResetState({
                     by={firstName(entry.outfit.created_by)}
                     outfitId={entry.outfit.id}
                     renderedItems={entry.renderedItems}
+                    slotOrder={entry.layerOrder}
                     gender={resolveGender(entry.outfit.gender, gender)}
                     heightCm={heightCm}
                     saved={saved}

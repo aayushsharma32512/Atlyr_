@@ -740,6 +740,7 @@ export function SearchScreenView() {
           chips: getOutfitChips(result.outfit),
           outfitId: result.outfit.id,
           renderedItems: result.studioOutfit?.renderedItems ?? mapLegacyOutfitItemsToStudioItems(result.outfit.items),
+          layerOrder: result.studioOutfit?.layerOrder ?? null,
           gender: resolvedGender,
           heightCm: resolvedHeight,
           attribution: undefined,
@@ -1046,6 +1047,7 @@ export function SearchScreenView() {
                 title={item.title ?? ""}
                 outfitId={outfitId}
                 renderedItems={item.renderedItems}
+                slotOrder={item.layerOrder}
                 gender={item.gender}
                 heightCm={item.heightCm}
                 saved={Boolean(item.isSaved)}

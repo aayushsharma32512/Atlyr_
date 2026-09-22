@@ -20,6 +20,8 @@ export interface StudioOutfitDTO {
   renderedItems: StudioRenderedItem[]
   bodyPartsVisibleByZone?: ZoneVisibilityMap
   imageSrcFallback?: string | null
+  /** Stacking stored on the row, front-most first. Null: the default rule applies. */
+  layerOrder: StudioRenderedZone[] | null
 }
 
 export interface StudioOutfitProductsResult {

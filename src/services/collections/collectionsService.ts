@@ -4,7 +4,8 @@ import { mapDbOutfitToOutfit } from "@/services/shared/transformers/outfitTransf
 import { mapDbOutfitToStudioOutfit } from "@/features/studio/mappers/renderedItemMapper"
 import { parseBodyPartsVisible } from "@/features/studio/mappers/renderedItemMapper"
 import { toPlacementTransform } from "@/features/studio/mappers/renderedItemMapper"
-import type { StudioPlacementByMannequin, StudioRenderedItem } from "@/features/studio/types"
+import type { StudioPlacementByMannequin, StudioRenderedItem, StudioRenderedZone } from "@/features/studio/types"
+import { parseLayerOrder } from "@/features/studio/utils/studioUrlState"
 import type { HomeOutfitEntry } from "@/services/home/homeService"
 import type { Outfit } from "@/types"
 import { getOutfitChips } from "@/utils/outfitChips"
@@ -96,6 +97,7 @@ export type MoodboardPreviewItem =
     id: string
     gender?: "male" | "female" | null
     renderedItems?: StudioRenderedItem[]
+    layerOrder?: StudioRenderedZone[] | null
   }
   | {
     itemType: "product"
@@ -119,6 +121,7 @@ export type MoodboardItem =
     createdAt: string
     gender?: "male" | "female" | null
     renderedItems?: StudioRenderedItem[]
+    layerOrder?: StudioRenderedZone[] | null
     outfit?: Outfit
   }
   | {
@@ -261,6 +264,7 @@ function mapRowsToEntries(rows: DbOutfitWithJoins[]): HomeOutfitEntry[] {
       chips: getOutfitChips(outfit),
       outfit,
       renderedItems: studioOutfit?.renderedItems,
+      layerOrder: studioOutfit?.layerOrder ?? null,
     }
   })
 }
@@ -327,11 +331,14 @@ function parsePreviewItem(entry: any): MoodboardPreviewItem | null {
     const genderValue = entry?.gender
     const gender = genderValue === "male" || genderValue === "female" ? genderValue : null
     const renderedItems = parseStudioRenderedItems(entry?.renderedItems ?? entry?.rendered_items)
+    // The preview RPC may or may not emit the stacking; absent reads as the default rule.
+    const rawOrder = entry?.layerOrder ?? entry?.layer_order
     return {
       itemType: "outfit",
       id,
       gender,
       renderedItems,
+      layerOrder: parseLayerOrder(Array.isArray(rawOrder) ? rawOrder.join(",") : null),
     }
   }
 
@@ -1451,6 +1458,7 @@ export async function fetchMoodboardItems(params: {
             createdAt,
             gender,
             renderedItems: studioOutfit?.renderedItems,
+            layerOrder: studioOutfit?.layerOrder ?? null,
             outfit,
           }
         }
@@ -1520,6 +1528,7 @@ export async function fetchMoodboardItemsBatch(params: {
         createdAt,
         gender,
         renderedItems: studioOutfit?.renderedItems,
+        layerOrder: studioOutfit?.layerOrder ?? null,
         outfit,
       })
       continue

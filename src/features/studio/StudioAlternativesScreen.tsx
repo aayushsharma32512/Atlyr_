@@ -42,6 +42,7 @@ import { isPlaceableOnMannequin, shouldFilterSlotByPlacement } from "@/features/
 import { mapTrayItemToStudioRenderedItem } from "@/features/studio/mappers/renderedItemMapper"
 import { isDressTop, STUDIO_BASE_ITEMS_ENABLED, usePlaceholderItems } from "@/features/studio/hooks/usePlaceholderItems"
 import { defaultLayerOrder } from "@/features/studio/utils/layerOrder"
+import { LAYER_ORDER_ENABLED } from "@/features/studio/constants/layering"
 import { mapTrayItemToAlternative, mapTrayItemToProductDetail } from "@/services/studio/studioService"
 import { getOutfitTagsFromItems, getTrayItemTags } from "@/utils/productTags"
 import { useSaveOutfit } from "@/features/outfits/hooks/useSaveOutfit"
@@ -191,6 +192,10 @@ export function StudioAlternativesView() {
   })
   // Same rule as Studio: never draw the saved pieces while the URL's pieces are still loading.
   const isLoadingOverrides = slotsResolving && Boolean(requestedSlotIds.top || requestedSlotIds.bottom || requestedSlotIds.shoes)
+  // The stacking stored on the row; `layers` in the URL is present only when it differs from that.
+  const rowLayerOrder = LAYER_ORDER_ENABLED ? outfitData?.studioOutfit?.layerOrder ?? null : null
+  const orderChanged = parsedParams.layerOrder != null
+  const layerOrderToSave = parsedParams.layerOrder ?? rowLayerOrder
 
   const activeSlotIds: SlotIdMap = useMemo(() => {
     const map: SlotIdMap = {}
@@ -644,9 +649,11 @@ export function StudioAlternativesView() {
   const { currentLookId } = useCurrentLookId({
     outfitId: resolvedOutfitId,
     hasSlotOverrides,
+    orderChanged,
     topId: outfitItems.topId,
     bottomId: outfitItems.bottomId,
     shoesId: outfitItems.footwearId,
+    layerOrder: parsedParams.layerOrder ?? null,
   })
 
   // The save row's tags win; an owned, never-saved base look falls back to its public tags.
@@ -682,6 +689,7 @@ export function StudioAlternativesView() {
       topId: outfitItems.topId,
       bottomId: outfitItems.bottomId,
       shoesId: outfitItems.footwearId,
+      layerOrder: parsedParams.layerOrder ?? null,
     })
     if (existing?.id) {
       return {
@@ -785,6 +793,7 @@ export function StudioAlternativesView() {
             isPrivate: data.isPrivate,
             tags: data.tags,
             createdByName: profile?.name ?? null,
+            layerOrder: layerOrderToSave,
           })
           outfitId = resolvedOutfitId
         } else {
@@ -802,6 +811,7 @@ export function StudioAlternativesView() {
             userId: user.id,
             backgroundId: outfitData?.outfit?.backgroundId ?? null,
             sourceOutfitId: (resolvedOutfitId && !hasSlotOverrides) ? resolvedOutfitId : null,
+            layerOrder: layerOrderToSave,
           })
           outfitId = saved.id
         }
@@ -1343,12 +1353,14 @@ export function StudioAlternativesView() {
         ? "Nothing saved in this slot"
         : "No results found"
 
-  // The URL's `layers` when the user dragged the rows in Studio, else the worn top's kind decides.
+  // The URL's `layers` when the user dragged the rows in Studio, else the row's stored order, else
+  // the worn top's kind decides.
   const heroSlotOrder = useMemo(() => {
     if (parsedParams.layerOrder) return parsedParams.layerOrder
+    if (rowLayerOrder) return rowLayerOrder
     const wornTop = hiddenSlots.top ? null : resolvedTrayItems.find((item) => item.slot === "top")
     return defaultLayerOrder({ typeCategory: wornTop?.typeCategory, productName: wornTop?.title })
-  }, [hiddenSlots.top, parsedParams.layerOrder, resolvedTrayItems])
+  }, [hiddenSlots.top, parsedParams.layerOrder, resolvedTrayItems, rowLayerOrder])
 
   // One figure for both layouts: the split (with the rack) and focus.
   const figureNode = (

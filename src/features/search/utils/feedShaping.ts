@@ -14,6 +14,7 @@ export interface FeedLook {
   title: string
   outfit: Outfit
   renderedItems?: StudioRenderedItem[]
+  layerOrder?: ("top" | "bottom" | "shoes")[] | null
   gender: Gender
 }
 
@@ -42,6 +43,7 @@ export function flattenBrowseLooks(collections: SearchBrowseCollection[] | undef
         title: entry.title,
         outfit: entry.outfit,
         renderedItems: entry.studioOutfit?.renderedItems,
+        layerOrder: entry.studioOutfit?.layerOrder ?? null,
         gender: resolveGender(entry.outfit.gender, fallback),
       })
     }
@@ -82,6 +84,7 @@ export function looksFromHomeEntries(pages: HomeOutfitEntry[][] | undefined, fal
     title: entry.title,
     outfit: entry.outfit,
     renderedItems: entry.renderedItems,
+    layerOrder: entry.layerOrder ?? null,
     gender: resolveGender(entry.outfit.gender, fallback),
   }))
 }

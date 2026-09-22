@@ -22,6 +22,7 @@ export interface HomeOutfitEntry {
   chips: string[]
   outfit: Outfit
   renderedItems?: StudioRenderedItem[]
+  layerOrder?: ("top" | "bottom" | "shoes")[] | null
 }
 
 interface RecentStylesInput {
@@ -60,6 +61,7 @@ const OUTFIT_SELECT = `
   created_at,
   created_by,
   user_id,
+  layer_order,
   occasion:occasions!occasion(
     id,
     name,
@@ -168,6 +170,7 @@ function mapRowsToEntries(rows: DbOutfitWithJoins[]): HomeOutfitEntry[] {
       chips: getOutfitChips(outfit),
       outfit,
       renderedItems: studioOutfit?.renderedItems,
+      layerOrder: studioOutfit?.layerOrder ?? null,
     }
   })
 }

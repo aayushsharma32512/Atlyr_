@@ -50,6 +50,7 @@ export function SearchRail(props: SearchRailProps) {
             footer={false}
             outfitId={look.outfit.id}
             renderedItems={look.renderedItems}
+            slotOrder={look.layerOrder}
             gender={look.gender}
             heightCm={heightCm}
             saved={saved}
