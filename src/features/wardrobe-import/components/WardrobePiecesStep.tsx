@@ -1,10 +1,12 @@
 import { useState } from "react"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Loader2, RotateCcw } from "lucide-react"
 
 import { Icons } from "@/design-system/icons"
 import { cn } from "@/lib/utils"
 import { CandidatePicker } from "@/features/inspiration-import/components/CandidatePicker"
-import { useSelectImportCandidates } from "@/features/inspiration-import/hooks/useInspirationImport"
+import { inspirationImportKeys } from "@/features/inspiration-import/queryKeys"
+import { inspirationImportService } from "@/services/inspirationImport/inspirationImportService"
 import {
   useStartWardrobeBatch,
   useWardrobePhotoImport,
@@ -27,8 +29,16 @@ export function WardrobePiecesStep({ photo, onAdvance }: Props) {
   const { setConfirmedPieces, setStep } = useWardrobeBatch()
   const { candidates, sourceUrl, errorMessage } = useWardrobePhotoImport(photo)
   const startBatch = useStartWardrobeBatch()
+  const queryClient = useQueryClient()
   // The web search only runs on candidates the row marks selected, so confirm them there first.
-  const selectMutation = useSelectImportCandidates(photo.importId ?? "")
+  // The step flips in the hook-level callback so it still lands if the user moves to another photo meanwhile.
+  const selectMutation = useMutation({
+    mutationFn: (candidateIds: string[]) => inspirationImportService.selectCandidates(photo.importId ?? "", candidateIds),
+    onSuccess: () => {
+      setStep(photo.id, "matches")
+      return queryClient.invalidateQueries({ queryKey: inspirationImportKeys.detail(photo.importId ?? "") })
+    },
+  })
   const [pickError, setPickError] = useState<string | null>(null)
 
   const imageUrl = photo.previewUrl || sourceUrl
@@ -102,7 +112,6 @@ export function WardrobePiecesStep({ photo, onAdvance }: Props) {
           candidates={candidates}
           selectedIds={photo.confirmedPieceIds}
           error={pickError ?? selectMutation.error?.message ?? null}
-          heading={`Detected pieces (${confirmedCount})`}
           onSelect={togglePiece}
         />
       ) : (
@@ -117,12 +126,12 @@ export function WardrobePiecesStep({ photo, onAdvance }: Props) {
             type="button"
             className={WARDROBE_PRIMARY}
             disabled={selectMutation.isPending}
-            onClick={() => selectMutation.mutate(photo.confirmedPieceIds, { onSuccess: () => setStep(photo.id, "matches") })}
+            onClick={() => selectMutation.mutate(photo.confirmedPieceIds)}
           >
             {selectMutation.isPending
               ? <Loader2 className="h-[18px] w-[18px] animate-spin" aria-hidden="true" />
               : <Icons.search className="h-[18px] w-[18px]" aria-hidden="true" />}
-            find matches · {confirmedCount}
+            find items · {confirmedCount}
           </button>
         ) : (
           <button

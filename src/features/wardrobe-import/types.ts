@@ -24,6 +24,17 @@ export type WardrobePieceSelection = {
   priceLabel?: string
   selectionToken?: string
   candidateId: string
+  /** Set once the pick has been sent on — to the wardrobe board, or to the Atlyr team. */
+  committedAt?: number
+}
+
+/** Inventory and web each keep their own pick of one piece; one never replaces the other. */
+export type WardrobePiecePicks = Partial<Record<WardrobeRailSource, WardrobePieceSelection>>
+
+/** Names one pick of one photo: which piece it dresses, and which rail it came from. */
+export type WardrobePieceRef = {
+  type: WardrobePieceType
+  source: WardrobeRailSource
 }
 
 export type WardrobePhoto = {
@@ -37,13 +48,13 @@ export type WardrobePhoto = {
   /** Stops the detector's default pick from overriding a user who cleared every piece. */
   piecesDefaulted: boolean
   step: WardrobePhotoStep
-  selections: Partial<Record<WardrobePieceType, WardrobePieceSelection>>
+  selections: Partial<Record<WardrobePieceType, WardrobePiecePicks>>
   /** Which rail each piece was last looking at, keyed by candidate id. */
   railByPiece: Partial<Record<string, WardrobeRailSource>>
 }
 
 export type WardrobeBatch = {
-  stage: "add" | "identify" | "review"
+  stage: "add" | "identify"
   photos: WardrobePhoto[]
   activePhotoId: string | null
 }

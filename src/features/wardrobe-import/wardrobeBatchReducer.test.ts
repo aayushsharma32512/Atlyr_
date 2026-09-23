@@ -1,8 +1,12 @@
-import { describe, expect, it } from "@jest/globals"
+import { afterAll, beforeEach, describe, expect, it } from "@jest/globals"
 
+import {
+  clearWardrobeBatch,
+  readWardrobeBatch,
+  writeWardrobeBatch,
+} from "@/features/wardrobe-import/batchStorage"
 import { detectionStatusFromImport, syncedDetectionStatus } from "@/features/wardrobe-import/importStatus"
 import { photoProgress } from "@/features/wardrobe-import/photoProgress"
-import { reviewItems } from "@/features/wardrobe-import/reviewItems"
 import {
   MAX_WARDROBE_PHOTOS,
   emptyWardrobeBatch,
@@ -122,49 +126,70 @@ describe("wardrobeBatchReducer", () => {
     expect(next.photos[0].importId).toBe("import-a")
   })
 
-  it("replaces the pick of a piece and clears it on demand", () => {
+  it("replaces the pick of a piece and rail, and clears it on demand", () => {
     const state = batchOf([photo("a", { confirmedPieceIds: ["c1"] })])
     const first = wardrobeBatchReducer(state, {
-      type: "setSelection", photoId: "a", pieceType: "top", selection: selection("c1", "p1"),
+      type: "setSelection", photoId: "a", pieceType: "top", source: "inventory", selection: selection("c1", "p1"),
     })
-    expect(first.photos[0].selections.top?.productId).toBe("p1")
+    expect(first.photos[0].selections.top?.inventory?.productId).toBe("p1")
 
     const replaced = wardrobeBatchReducer(first, {
-      type: "setSelection", photoId: "a", pieceType: "top", selection: selection("c1", "p2"),
+      type: "setSelection", photoId: "a", pieceType: "top", source: "inventory", selection: selection("c1", "p2"),
     })
-    expect(replaced.photos[0].selections.top?.productId).toBe("p2")
+    expect(replaced.photos[0].selections.top?.inventory?.productId).toBe("p2")
 
     const cleared = wardrobeBatchReducer(replaced, {
-      type: "setSelection", photoId: "a", pieceType: "top", selection: null,
+      type: "setSelection", photoId: "a", pieceType: "top", source: "inventory", selection: null,
     })
     expect(cleared.photos[0].selections.top).toBeUndefined()
     expect(Object.keys(cleared.photos[0].selections)).toEqual([])
   })
 
+  it("keeps an inventory pick and a web pick on the same piece", () => {
+    const state = batchOf([photo("a", { confirmedPieceIds: ["c1"] })])
+    const withInventory = wardrobeBatchReducer(state, {
+      type: "setSelection", photoId: "a", pieceType: "top", source: "inventory", selection: selection("c1", "p1"),
+    })
+    const withBoth = wardrobeBatchReducer(withInventory, {
+      type: "setSelection", photoId: "a", pieceType: "top", source: "web", selection: webSelection("c1", "https://shop/1"),
+    })
+    expect(withBoth.photos[0].selections.top?.inventory?.productId).toBe("p1")
+    expect(withBoth.photos[0].selections.top?.web?.listingUrl).toBe("https://shop/1")
+
+    const clearedWeb = wardrobeBatchReducer(withBoth, {
+      type: "setSelection", photoId: "a", pieceType: "top", source: "web", selection: null,
+    })
+    expect(clearedWeb.photos[0].selections.top?.web).toBeUndefined()
+    expect(clearedWeb.photos[0].selections.top?.inventory?.productId).toBe("p1")
+  })
+
   it("keeps one pick per piece while other pieces keep theirs", () => {
     const state = batchOf([photo("a", { confirmedPieceIds: ["c1", "c2"] })])
     const withTop = wardrobeBatchReducer(state, {
-      type: "setSelection", photoId: "a", pieceType: "top", selection: selection("c1", "p1"),
+      type: "setSelection", photoId: "a", pieceType: "top", source: "inventory", selection: selection("c1", "p1"),
     })
     const withBoth = wardrobeBatchReducer(withTop, {
-      type: "setSelection", photoId: "a", pieceType: "bottom", selection: selection("c2", "p2"),
+      type: "setSelection", photoId: "a", pieceType: "bottom", source: "inventory", selection: selection("c2", "p2"),
     })
-    expect(withBoth.photos[0].selections.top?.productId).toBe("p1")
-    expect(withBoth.photos[0].selections.bottom?.productId).toBe("p2")
+    expect(withBoth.photos[0].selections.top?.inventory?.productId).toBe("p1")
+    expect(withBoth.photos[0].selections.bottom?.inventory?.productId).toBe("p2")
 
     const clearedTop = wardrobeBatchReducer(withBoth, {
-      type: "setSelection", photoId: "a", pieceType: "top", selection: null,
+      type: "setSelection", photoId: "a", pieceType: "top", source: "inventory", selection: null,
     })
     expect(clearedTop.photos[0].selections.top).toBeUndefined()
-    expect(clearedTop.photos[0].selections.bottom?.productId).toBe("p2")
+    expect(clearedTop.photos[0].selections.bottom?.inventory?.productId).toBe("p2")
   })
 
-  it("drops the pick of a piece the user takes off the photo", () => {
+  it("drops both picks of a piece the user takes off the photo", () => {
     const state = batchOf([photo("a", { confirmedPieceIds: ["c1", "c2"] })])
     const picked = wardrobeBatchReducer(state, {
-      type: "setSelection", photoId: "a", pieceType: "top", selection: selection("c1", "p1"),
+      type: "setSelection", photoId: "a", pieceType: "top", source: "inventory", selection: selection("c1", "p1"),
     })
-    const reduced = wardrobeBatchReducer(picked, {
+    const both = wardrobeBatchReducer(picked, {
+      type: "setSelection", photoId: "a", pieceType: "top", source: "web", selection: webSelection("c1", "https://shop/1"),
+    })
+    const reduced = wardrobeBatchReducer(both, {
       type: "setConfirmedPieces", photoId: "a", candidateIds: ["c2"],
     })
     expect(reduced.photos[0].selections.top).toBeUndefined()
@@ -181,13 +206,56 @@ describe("wardrobeBatchReducer", () => {
     })).toBe(next)
   })
 
-  it("restores a stored batch straight into the identify stage", () => {
-    const next = wardrobeBatchReducer(emptyWardrobeBatch, {
-      type: "restore",
-      photos: [photo("a", { importId: "import-a", previewUrl: "" })],
+  it("stamps only the named picks as sent on, once", () => {
+    const state = batchOf([photo("a", {
+      confirmedPieceIds: ["c1", "c2"],
+      step: "matches",
+      selections: {
+        top: { inventory: selection("c1", "p1"), web: webSelection("c1", "https://shop/1") },
+        bottom: { web: webSelection("c2", "https://shop/2") },
+      },
+    })])
+    const next = wardrobeBatchReducer(state, {
+      type: "markCommitted", photoId: "a", picks: [{ type: "top", source: "web" }], at: 10,
     })
-    expect(next.stage).toBe("identify")
-    expect(next.activePhotoId).toBe("a")
+    expect(next.photos[0].selections.top?.web?.committedAt).toBe(10)
+    expect(next.photos[0].selections.top?.inventory?.committedAt).toBeUndefined()
+    expect(next.photos[0].selections.bottom?.web?.committedAt).toBeUndefined()
+
+    expect(wardrobeBatchReducer(next, {
+      type: "markCommitted", photoId: "a", picks: [{ type: "top", source: "web" }], at: 20,
+    })).toBe(next)
+  })
+
+  it("ignores a stamp for a piece with nothing picked", () => {
+    const state = batchOf([photo("a", { confirmedPieceIds: ["c1"], step: "matches" })])
+    expect(wardrobeBatchReducer(state, {
+      type: "markCommitted", photoId: "a", picks: [{ type: "top", source: "inventory" }], at: 10,
+    })).toBe(state)
+  })
+
+  it("restores the stage and the photo the user left", () => {
+    const stored = batchOf(
+      [
+        photo("a", { importId: "import-a", previewUrl: "" }),
+        photo("b", {
+          importId: "import-b",
+          previewUrl: "",
+          step: "matches",
+          confirmedPieceIds: ["c1"],
+          selections: { top: { inventory: selection("c1", "p1") } },
+          railByPiece: { c1: "web" },
+        }),
+      ],
+      { stage: "identify", activePhotoId: "b" },
+    )
+    const next = wardrobeBatchReducer(emptyWardrobeBatch, { type: "restore", batch: stored })
+    expect(next).toEqual(stored)
+  })
+
+  it("keeps the batch in place when the restore has no photos", () => {
+    const state = batchOf([photo("a")])
+    expect(wardrobeBatchReducer(state, { type: "restore", batch: emptyWardrobeBatch })).toBe(state)
   })
 })
 
@@ -210,23 +278,53 @@ describe("detection status mapping", () => {
 })
 
 describe("photoProgress", () => {
-  it("counts a photo done only once every kept piece has a pick", () => {
+  it("counts a photo done only once every kept piece has been sent on", () => {
     const pending = photo("a", { confirmedPieceIds: ["c1", "c2"], step: "matches" })
-    expect(photoProgress(pending)).toEqual({ selected: 0, total: 2, complete: false })
+    expect(photoProgress(pending)).toEqual({ selected: 0, committed: 0, total: 2, complete: false })
+
+    const picked = photo("a", {
+      confirmedPieceIds: ["c1", "c2"],
+      step: "matches",
+      selections: {
+        top: { inventory: selection("c1", "p1") },
+        bottom: { inventory: selection("c2", "p2") },
+      },
+    })
+    expect(photoProgress(picked)).toEqual({ selected: 2, committed: 0, total: 2, complete: false })
 
     const half = photo("a", {
       confirmedPieceIds: ["c1", "c2"],
       step: "matches",
-      selections: { top: selection("c1", "p1") },
+      selections: {
+        top: { inventory: { ...selection("c1", "p1"), committedAt: 1 } },
+        bottom: { inventory: selection("c2", "p2") },
+      },
     })
-    expect(photoProgress(half)).toEqual({ selected: 1, total: 2, complete: false })
+    expect(photoProgress(half)).toEqual({ selected: 2, committed: 1, total: 2, complete: false })
 
     const done = photo("a", {
       confirmedPieceIds: ["c1", "c2"],
       step: "matches",
-      selections: { top: selection("c1", "p1"), bottom: selection("c2", "p2") },
+      selections: {
+        top: { inventory: { ...selection("c1", "p1"), committedAt: 1 } },
+        bottom: { inventory: { ...selection("c2", "p2"), committedAt: 1 } },
+      },
     })
-    expect(photoProgress(done)).toEqual({ selected: 2, total: 2, complete: true })
+    expect(photoProgress(done)).toEqual({ selected: 2, committed: 2, total: 2, complete: true })
+  })
+
+  it("counts a piece done once either of its two picks has been sent on", () => {
+    const halfSent = photo("a", {
+      confirmedPieceIds: ["c1"],
+      step: "matches",
+      selections: {
+        top: {
+          inventory: selection("c1", "p1"),
+          web: { ...webSelection("c1", "https://shop/1"), committedAt: 1 },
+        },
+      },
+    })
+    expect(photoProgress(halfSent)).toEqual({ selected: 1, committed: 1, total: 1, complete: true })
   })
 
   it("counts a skipped photo done and a photo still on pieces not", () => {
@@ -235,54 +333,116 @@ describe("photoProgress", () => {
   })
 })
 
-describe("reviewItems", () => {
-  it("splits the batch into inventory and web picks", () => {
-    const items = reviewItems([
-      photo("a", { importId: "import-a", selections: { top: selection("c1", "p1") } }),
-      photo("b", { importId: "import-b", selections: { bottom: webSelection("c2", "https://shop/1") } }),
-    ])
-    expect(items.inventory.map((item) => item.selection.productId)).toEqual(["p1"])
-    expect(items.web.map((item) => item.selection.listingUrl)).toEqual(["https://shop/1"])
-    expect(items.total).toBe(2)
+describe("wardrobe batch storage", () => {
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window")
+  const values = new Map<string, string>()
+  const localStorage = {
+    getItem: (key: string) => values.get(key) ?? null,
+    removeItem: (key: string) => { values.delete(key) },
+    setItem: (key: string, value: string) => { values.set(key, value) },
+  }
+  const day = 24 * 60 * 60 * 1000
+
+  beforeEach(() => {
+    values.clear()
+    Object.defineProperty(globalThis, "window", { configurable: true, value: { localStorage } })
   })
 
-  it("counts the same product picked on two photos once", () => {
-    const items = reviewItems([
-      photo("a", { selections: { top: selection("c1", "p1") } }),
-      photo("b", { selections: { top: selection("c2", "p1") } }),
-    ])
-    expect(items.inventory).toHaveLength(1)
-    expect(items.total).toBe(1)
+  afterAll(() => {
+    if (originalWindow) Object.defineProperty(globalThis, "window", originalWindow)
+    else Reflect.deleteProperty(globalThis, "window")
   })
 
-  it("counts the same listing picked on two photos once, keeping the first photo's import", () => {
-    const items = reviewItems([
-      photo("a", { importId: "import-a", selections: { top: webSelection("c1", "https://shop/1") } }),
-      photo("b", { importId: "import-b", selections: { top: webSelection("c2", "https://shop/1") } }),
-    ])
-    expect(items.web).toHaveLength(1)
-    expect(items.web[0].importId).toBe("import-a")
+  it("brings the whole batch back, without the file or its blob preview", () => {
+    const saved = batchOf(
+      [
+        photo("a", { importId: "import-a", file: new File([], "a.jpg"), detectionStatus: "complete" }),
+        photo("b", {
+          importId: "import-b",
+          previewUrl: "https://signed/b",
+          detectionStatus: "complete",
+          step: "matches",
+          confirmedPieceIds: ["c1"],
+          piecesDefaulted: true,
+          selections: { top: { inventory: selection("c1", "p1"), web: webSelection("c1", "https://shop/1") } },
+          railByPiece: { c1: "web" },
+        }),
+      ],
+      { stage: "identify", activePhotoId: "b" },
+    )
+    writeWardrobeBatch("user-1", saved, 1_000)
+
+    const restored = readWardrobeBatch("user-1", 1_000)
+    expect(restored).toEqual({
+      ...saved,
+      photos: [{ ...saved.photos[0], file: undefined, previewUrl: "" }, saved.photos[1]],
+    })
+    expect(restored?.photos[0]).not.toHaveProperty("file")
   })
 
-  it("reads an empty batch as nothing selected", () => {
-    expect(reviewItems([])).toEqual({ inventory: [], web: [], total: 0 })
-  })
-})
-
-describe("stage moves", () => {
-  it("opens review and returns to identify on the same photo", () => {
-    const state = batchOf([photo("a"), photo("b")], { activePhotoId: "b" })
-    const review = wardrobeBatchReducer(state, { type: "setStage", stage: "review" })
-    expect(review.stage).toBe("review")
-    expect(review.activePhotoId).toBe("b")
-
-    const back = wardrobeBatchReducer(review, { type: "setStage", stage: "identify" })
-    expect(back.stage).toBe("identify")
-    expect(back.activePhotoId).toBe("b")
+  it("keeps one user's batch away from another", () => {
+    writeWardrobeBatch("user-1", batchOf([photo("a", { importId: "import-a" })]), 1_000)
+    expect(readWardrobeBatch("user-2", 1_000)).toBeNull()
   })
 
-  it("refuses review with no photos", () => {
-    expect(wardrobeBatchReducer(emptyWardrobeBatch, { type: "setStage", stage: "review" }))
-      .toBe(emptyWardrobeBatch)
+  it("drops a photo that has no import row and falls back to a kept photo", () => {
+    const saved = batchOf(
+      [photo("a"), photo("b", { importId: "import-b" })],
+      { activePhotoId: "a" },
+    )
+    writeWardrobeBatch("user-1", saved, 1_000)
+
+    const restored = readWardrobeBatch("user-1", 1_000)
+    expect(restored?.photos.map((item) => item.id)).toEqual(["b"])
+    expect(restored?.activePhotoId).toBe("b")
+  })
+
+  it("forgets a batch with nothing left to rebuild", () => {
+    writeWardrobeBatch("user-1", batchOf([photo("a")]), 1_000)
+    expect(readWardrobeBatch("user-1", 1_000)).toBeNull()
+    expect(values.size).toBe(0)
+  })
+
+  it("expires a batch after a day and clears it", () => {
+    const saved = batchOf([photo("a", { importId: "import-a" })])
+    writeWardrobeBatch("user-1", saved, 1_000)
+
+    expect(readWardrobeBatch("user-1", 1_000 + day)).not.toBeNull()
+    expect(readWardrobeBatch("user-1", 1_000 + day + 1)).toBeNull()
+    expect(values.size).toBe(0)
+  })
+
+  it("reads a batch stored before a piece could hold two picks as having none", () => {
+    const saved = batchOf([photo("a", {
+      importId: "import-a",
+      previewUrl: "https://signed/a",
+      confirmedPieceIds: ["c1"],
+    })])
+    writeWardrobeBatch("user-1", saved, 1_000)
+    const key = [...values.keys()][0]
+    const stored = JSON.parse(values.get(key) as string)
+    stored.batch.photos[0].selections = { top: selection("c1", "p1") }
+    values.set(key, JSON.stringify(stored))
+
+    expect(readWardrobeBatch("user-1", 1_000)?.photos[0].selections).toEqual({})
+  })
+
+  it("ignores a stored value it cannot read", () => {
+    writeWardrobeBatch("user-1", batchOf([photo("a", { importId: "import-a" })]), 1_000)
+    const key = [...values.keys()][0]
+    values.set(key, "not json")
+    expect(readWardrobeBatch("user-1", 1_000)).toBeNull()
+
+    values.set(key, JSON.stringify({ savedAt: 1_000, batch: { stage: "nowhere", photos: [] } }))
+    expect(readWardrobeBatch("user-1", 1_000)).toBeNull()
+  })
+
+  it("clears only the batch of the user it is given", () => {
+    writeWardrobeBatch("user-1", batchOf([photo("a", { importId: "import-a" })]), 1_000)
+    writeWardrobeBatch("user-2", batchOf([photo("b", { importId: "import-b" })]), 1_000)
+
+    clearWardrobeBatch("user-1")
+    expect(readWardrobeBatch("user-1", 1_000)).toBeNull()
+    expect(readWardrobeBatch("user-2", 1_000)).not.toBeNull()
   })
 })

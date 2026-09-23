@@ -14,6 +14,7 @@ import { CollectionsPrefetcher } from "@/features/collections/providers/Collecti
 import { boardPath } from "@/features/collections/boardUrl";
 import { JobsProvider } from "@/features/progress/providers/JobsContext";
 import { SaveTrayProvider } from "@/features/collections/providers/SaveTrayProvider";
+import { WardrobeBatchProvider } from "@/features/wardrobe-import/providers/WardrobeBatchProvider";
 import { NotificationsWatcher } from "@/features/notifications/NotificationsWatcher";
 import { LikenessDrawerHost } from "@/features/likeness/LikenessDrawerHost";
 import { PostHogIdentitySync } from "@/integrations/posthog/PostHogIdentitySync";
@@ -199,6 +200,8 @@ const App = () => (
               <EngagementAnalyticsProvider>
                 <JobsProvider>
                 <SaveTrayProvider>
+                  {/* App-wide: leaving the wardrobe flow must not throw away the batch in progress. */}
+                  <WardrobeBatchProvider>
                   <SurfaceTheme />
                   <NotificationsWatcher />
                   <CollectionsPrefetcher />
@@ -531,6 +534,7 @@ const App = () => (
                       </Routes>
                     </Suspense>
                   </ErrorBoundary>
+                  </WardrobeBatchProvider>
                 </SaveTrayProvider>
                 </JobsProvider>
               </EngagementAnalyticsProvider>

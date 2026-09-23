@@ -3,6 +3,8 @@ import type {
   WardrobeDetectionStatus,
   WardrobePhoto,
   WardrobePhotoStep,
+  WardrobePiecePicks,
+  WardrobePieceRef,
   WardrobePieceSelection,
   WardrobePieceType,
   WardrobeRailSource,
@@ -16,7 +18,6 @@ export type WardrobeBatchAction =
   | { type: "addPhotos"; photos: WardrobePhoto[] }
   | { type: "removePhoto"; photoId: string }
   | { type: "startIdentify" }
-  | { type: "setStage"; stage: WardrobeBatch["stage"] }
   | { type: "setImportId"; photoId: string; importId: string }
   | { type: "setDetectionStatus"; photoId: string; status: WardrobeDetectionStatus; previewUrl?: string | null }
   | { type: "setActivePhoto"; photoId: string }
@@ -27,11 +28,13 @@ export type WardrobeBatchAction =
       type: "setSelection"
       photoId: string
       pieceType: WardrobePieceType
+      source: WardrobeRailSource
       selection: WardrobePieceSelection | null
     }
   | { type: "setPieceSource"; photoId: string; candidateId: string; source: WardrobeRailSource }
+  | { type: "markCommitted"; photoId: string; picks: WardrobePieceRef[]; at: number }
   | { type: "retryPhoto"; photoId: string }
-  | { type: "restore"; photos: WardrobePhoto[] }
+  | { type: "restore"; batch: WardrobeBatch }
   | { type: "reset" }
 
 export function createWardrobePhoto(file: File, previewUrl: string): WardrobePhoto {
@@ -49,14 +52,37 @@ export function createWardrobePhoto(file: File, previewUrl: string): WardrobePho
   }
 }
 
-/** Drops the matches of pieces the user has since taken off the photo. */
+/** Drops both picks of any piece the user has since taken off the photo. */
 function keptSelections(
   selections: WardrobePhoto["selections"],
   candidateIds: string[],
 ): WardrobePhoto["selections"] {
-  const entries = Object.entries(selections) as [WardrobePieceType, WardrobePieceSelection][]
-  const kept = entries.filter(([, selection]) => candidateIds.includes(selection.candidateId))
+  const entries = Object.entries(selections) as [WardrobePieceType, WardrobePiecePicks][]
+  const kept = entries.filter(([, picks]) => {
+    const candidateId = (picks.inventory ?? picks.web)?.candidateId
+    return candidateId !== undefined && candidateIds.includes(candidateId)
+  })
   return kept.length === entries.length ? selections : Object.fromEntries(kept)
+}
+
+/**
+ * Stamps the named picks as sent on. Exported so a caller can ask what the photo
+ * will look like after the stamp without waiting for the next render.
+ */
+export function withCommittedSelections(
+  photo: WardrobePhoto,
+  picks: WardrobePieceRef[],
+  at: number,
+): WardrobePhoto {
+  const selections = { ...photo.selections }
+  let changed = false
+  for (const { type, source } of picks) {
+    const selection = selections[type]?.[source]
+    if (!selection || selection.committedAt) continue
+    selections[type] = { ...selections[type], [source]: { ...selection, committedAt: at } }
+    changed = true
+  }
+  return changed ? { ...photo, selections } : photo
 }
 
 function withPhoto(
@@ -101,14 +127,6 @@ export function wardrobeBatchReducer(state: WardrobeBatch, action: WardrobeBatch
       return { ...state, stage: "identify", activePhotoId: state.activePhotoId ?? state.photos[0].id }
     }
 
-    case "setStage": {
-      if (state.stage === action.stage) return state
-      // Every stage past the first needs photos; the active one is kept so a
-      // return from review lands back on the photo the user left.
-      if (action.stage !== "add" && !state.photos.length) return state
-      return { ...state, stage: action.stage }
-    }
-
     case "setImportId":
       return withPhoto(state, action.photoId, (photo) => (
         photo.importId === action.importId ? photo : { ...photo, importId: action.importId }
@@ -148,9 +166,14 @@ export function wardrobeBatchReducer(state: WardrobeBatch, action: WardrobeBatch
 
     case "setSelection":
       return withPhoto(state, action.photoId, (photo) => {
-        if (!action.selection && !photo.selections[action.pieceType]) return photo
+        const picks = photo.selections[action.pieceType]
+        if (!action.selection && !picks?.[action.source]) return photo
+        const next: WardrobePiecePicks = { ...picks }
+        if (action.selection) next[action.source] = action.selection
+        else delete next[action.source]
         const selections = { ...photo.selections }
-        if (action.selection) selections[action.pieceType] = action.selection
+        // A piece with neither pick left leaves no entry, so a count of picked pieces stays right.
+        if (next.inventory || next.web) selections[action.pieceType] = next
         else delete selections[action.pieceType]
         return { ...photo, selections }
       })
@@ -162,12 +185,17 @@ export function wardrobeBatchReducer(state: WardrobeBatch, action: WardrobeBatch
           : { ...photo, railByPiece: { ...photo.railByPiece, [action.candidateId]: action.source } }
       ))
 
+    case "markCommitted":
+      return withPhoto(state, action.photoId, (photo) => (
+        withCommittedSelections(photo, action.picks, action.at)
+      ))
+
     case "retryPhoto":
       return withPhoto(state, action.photoId, (photo) => ({ ...photo, detectionStatus: "pending" }))
 
     case "restore":
-      if (!action.photos.length) return state
-      return { stage: "identify", photos: action.photos, activePhotoId: action.photos[0].id }
+      if (!action.batch.photos.length) return state
+      return action.batch
 
     case "reset":
       return emptyWardrobeBatch

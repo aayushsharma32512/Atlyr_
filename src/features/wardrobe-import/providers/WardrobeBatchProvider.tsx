@@ -9,10 +9,10 @@ import {
   type ReactNode,
 } from "react"
 
+import { useAuth } from "@/contexts/AuthContext"
 import {
   clearWardrobeBatch,
   readWardrobeBatch,
-  restoredWardrobePhoto,
   writeWardrobeBatch,
 } from "@/features/wardrobe-import/batchStorage"
 import {
@@ -26,6 +26,7 @@ import type {
   WardrobeDetectionStatus,
   WardrobePhoto,
   WardrobePhotoStep,
+  WardrobePieceRef,
   WardrobePieceSelection,
   WardrobePieceType,
   WardrobeRailSource,
@@ -38,7 +39,6 @@ type WardrobeBatchValue = {
   addFiles: (files: File[]) => void
   removePhoto: (photoId: string) => void
   startIdentify: () => void
-  setStage: (stage: WardrobeBatch["stage"]) => void
   setImportId: (photoId: string, importId: string) => void
   setDetectionStatus: (photoId: string, status: WardrobeDetectionStatus, previewUrl?: string | null) => void
   setActivePhoto: (photoId: string) => void
@@ -48,9 +48,11 @@ type WardrobeBatchValue = {
   setSelection: (
     photoId: string,
     pieceType: WardrobePieceType,
+    source: WardrobeRailSource,
     selection: WardrobePieceSelection | null,
   ) => void
   setPieceSource: (photoId: string, candidateId: string, source: WardrobeRailSource) => void
+  markCommitted: (photoId: string, picks: WardrobePieceRef[]) => void
   retryPhoto: (photoId: string) => void
   reset: () => void
 }
@@ -63,21 +65,46 @@ function revokePreview(photo: WardrobePhoto) {
 
 export function WardrobeBatchProvider({ children }: { children: ReactNode }) {
   const [batch, dispatch] = useReducer(wardrobeBatchReducer, emptyWardrobeBatch)
+  const { user } = useAuth()
+  const userId = user?.id ?? null
   const { toast } = useToast()
   // Cleanup on unmount must see the last photos, not the ones this render closed over.
   const photosRef = useRef(batch.photos)
   photosRef.current = batch.photos
+  const userIdRef = useRef(userId)
+  userIdRef.current = userId
+  const restoredForRef = useRef<string | null>(null)
+  const signedInRef = useRef(userId)
 
-  useEffect(() => {
-    const stored = readWardrobeBatch()
-    if (stored.length) dispatch({ type: "restore", photos: stored.map(restoredWardrobePhoto) })
+  const reset = useCallback(() => {
+    for (const photo of photosRef.current) revokePreview(photo)
+    if (userIdRef.current) clearWardrobeBatch(userIdRef.current)
+    dispatch({ type: "reset" })
   }, [])
+
+  // The stored batch is rebuilt once per signed-in user, and never over one already in memory.
+  useEffect(() => {
+    if (!userId || restoredForRef.current === userId) return
+    restoredForRef.current = userId
+    if (photosRef.current.length) return
+    const stored = readWardrobeBatch(userId)
+    if (stored) dispatch({ type: "restore", batch: stored })
+  }, [userId])
+
+  // A sign-out must not hand the batch to whoever signs in next on this device.
+  useEffect(() => {
+    if (signedInRef.current && signedInRef.current !== userId) {
+      restoredForRef.current = null
+      reset()
+    }
+    signedInRef.current = userId
+  }, [reset, userId])
 
   // An empty batch never writes: on mount that would erase the batch the restore is rebuilding.
   // Emptying the batch clears storage from the action that emptied it.
   useEffect(() => {
-    if (batch.photos.length) writeWardrobeBatch(batch.photos)
-  }, [batch.photos])
+    if (userId && batch.photos.length) writeWardrobeBatch(userId, batch)
+  }, [batch, userId])
 
   useEffect(() => () => {
     for (const photo of photosRef.current) revokePreview(photo)
@@ -103,14 +130,8 @@ export function WardrobeBatchProvider({ children }: { children: ReactNode }) {
   const removePhoto = useCallback((photoId: string) => {
     const photo = photosRef.current.find((item) => item.id === photoId)
     if (photo) revokePreview(photo)
-    if (photosRef.current.length === 1) clearWardrobeBatch()
+    if (photosRef.current.length === 1 && userIdRef.current) clearWardrobeBatch(userIdRef.current)
     dispatch({ type: "removePhoto", photoId })
-  }, [])
-
-  const reset = useCallback(() => {
-    for (const photo of photosRef.current) revokePreview(photo)
-    clearWardrobeBatch()
-    dispatch({ type: "reset" })
   }, [])
 
   const value = useMemo<WardrobeBatchValue>(() => ({
@@ -119,7 +140,6 @@ export function WardrobeBatchProvider({ children }: { children: ReactNode }) {
     addFiles,
     removePhoto,
     startIdentify: () => dispatch({ type: "startIdentify" }),
-    setStage: (stage) => dispatch({ type: "setStage", stage }),
     setImportId: (photoId, importId) => dispatch({ type: "setImportId", photoId, importId }),
     setDetectionStatus: (photoId, status, previewUrl) =>
       dispatch({ type: "setDetectionStatus", photoId, status, previewUrl }),
@@ -129,10 +149,12 @@ export function WardrobeBatchProvider({ children }: { children: ReactNode }) {
     applyDefaultPieces: (photoId, candidateIds) =>
       dispatch({ type: "applyDefaultPieces", photoId, candidateIds }),
     setStep: (photoId, step) => dispatch({ type: "setStep", photoId, step }),
-    setSelection: (photoId, pieceType, selection) =>
-      dispatch({ type: "setSelection", photoId, pieceType, selection }),
+    setSelection: (photoId, pieceType, source, selection) =>
+      dispatch({ type: "setSelection", photoId, pieceType, source, selection }),
     setPieceSource: (photoId, candidateId, source) =>
       dispatch({ type: "setPieceSource", photoId, candidateId, source }),
+    markCommitted: (photoId, picks) =>
+      dispatch({ type: "markCommitted", photoId, picks, at: Date.now() }),
     retryPhoto: (photoId) => dispatch({ type: "retryPhoto", photoId }),
     reset,
   }), [addFiles, batch, removePhoto, reset])
