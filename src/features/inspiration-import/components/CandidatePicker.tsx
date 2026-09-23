@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useLayoutEffect, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
 import type { InspirationCandidate, InspirationCategory } from "@/services/inspirationImport/types"
 
@@ -48,6 +48,30 @@ export function SourceCrop({ sourceUrl, bbox, alt }: { sourceUrl: string; bbox: 
  */
 export function CandidatePicker({ sourceUrl, candidates, selectedIds, error, heading, onSelect }: Props) {
   const selectedSet = new Set(selectedIds)
+  const frameRef = useRef<HTMLDivElement>(null)
+  const [imageRatio, setImageRatio] = useState<number | null>(null)
+  const [frame, setFrame] = useState<{ width: number; height: number } | null>(null)
+
+  // The boxes are percentages of the wrapper, so the wrapper must be exactly the photo's
+  // fitted size; a percentage max-height on the image alone resolves to nothing here.
+  useLayoutEffect(() => {
+    const node = frameRef.current
+    if (!node || typeof ResizeObserver === "undefined") return
+    const measure = () => {
+      const { width, height } = node.getBoundingClientRect()
+      if (width > 0 && height > 0) setFrame({ width, height })
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
+
+  const fitStyle = imageRatio && frame
+    ? frame.width / frame.height > imageRatio
+      ? { height: frame.height, width: frame.height * imageRatio }
+      : { width: frame.width, height: frame.width / imageRatio }
+    : { maxWidth: "100%", maxHeight: "100%" }
   const pickFor = (category: InspirationCategory) =>
     candidates.find((candidate) => selectedSet.has(candidate.id) && candidate.category === category) ?? null
 
@@ -55,9 +79,14 @@ export function CandidatePicker({ sourceUrl, candidates, selectedIds, error, hea
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Photo on the ground, 8px radius; detections ride on it. */}
       <div className="relative min-h-0 flex-1 px-4 py-3">
-        <div className="relative flex h-full items-center justify-center overflow-hidden rounded-control">
-          <div className="relative max-h-full">
-            <img src={sourceUrl} alt="Your inspiration" className="block max-h-full w-auto max-w-full" />
+        <div ref={frameRef} className="relative flex h-full items-center justify-center overflow-hidden rounded-control">
+          <div className="relative" style={fitStyle}>
+            <img
+              src={sourceUrl}
+              alt="Your inspiration"
+              className="block h-full w-full"
+              onLoad={(event) => setImageRatio(event.currentTarget.naturalWidth / event.currentTarget.naturalHeight)}
+            />
             {candidates.map((candidate, index) => {
               const active = selectedSet.has(candidate.id)
               const name = candidate.label ?? SLOT_LABEL[candidate.category]
