@@ -2,7 +2,10 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { inspirationImportKeys } from "@/features/inspiration-import/queryKeys"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { useJobs } from "@/features/progress/providers/JobsContext"
-import { inspirationImportService } from "@/services/inspirationImport/inspirationImportService"
+import {
+  inspirationImportService,
+  isWebSearchBusy,
+} from "@/services/inspirationImport/inspirationImportService"
 import type {
   InspirationImport,
   InspirationOpenStudioInput,
@@ -10,11 +13,14 @@ import type {
 } from "@/services/inspirationImport/types"
 
 const DETECTION_POLL_INTERVAL_MS = 3_000
+const WEB_SEARCH_BUSY_RETRY_DELAY_MS = 5_000
+// Enough polls to cover a whole slow online search.
+const WEB_SEARCH_BUSY_RETRIES = 10
 
 export function useStartInspirationImport() {
   const { addJob } = useJobs()
   return useMutation({
-    mutationFn: inspirationImportService.startImageImport,
+    mutationFn: (file: File) => inspirationImportService.startImageImport(file),
     // The detect step runs in the background; tracking it as a job is what
     // lets the hub and Notifications say "pieces found" after you leave.
     onSuccess: ({ importId }) =>
@@ -51,11 +57,16 @@ export function useSelectImportCandidates(importId: string) {
   })
 }
 
+/**
+ * One catalogue search per chosen candidate. `candidateIds` lets a caller whose
+ * choice lives in memory search without first writing that choice to the row.
+ */
 export function useImportCatalogueResults(
   importRecord: InspirationImport | undefined,
+  candidateIds?: string[],
 ) {
   const { gender, isLoading: isProfileLoading } = useProfileContext()
-  const selectedIds = new Set(importRecord?.selectedCandidateIds ?? [])
+  const selectedIds = new Set(candidateIds ?? importRecord?.selectedCandidateIds ?? [])
   const selectedCandidates = (importRecord?.candidates ?? [])
     .filter((candidate) => selectedIds.has(candidate.id))
     .sort((left, right) => left.category.localeCompare(right.category))
@@ -94,12 +105,13 @@ export function useImportWebResults(
   const queries = useQueries({
     queries: candidates.map((candidate) => ({
       queryKey: inspirationImportKeys.web(importId, candidate.id),
-      queryFn: ({ signal }: { signal: AbortSignal }) =>
-        inspirationImportService.searchWeb(importId, candidate.id, signal),
+      queryFn: () => inspirationImportService.searchWeb(importId, candidate.id),
       enabled: Boolean(importId && candidate.id),
-      retry: false,
-      staleTime: 60 * 60 * 1000,
-      gcTime: 60 * 60 * 1000,
+      // A busy answer means another request is already paying for this search; poll for its result.
+      retry: (count: number, error: unknown) => isWebSearchBusy(error) && count < WEB_SEARCH_BUSY_RETRIES,
+      retryDelay: WEB_SEARCH_BUSY_RETRY_DELAY_MS,
+      staleTime: 24 * 60 * 60 * 1000,
+      gcTime: 24 * 60 * 60 * 1000,
     })),
   })
 

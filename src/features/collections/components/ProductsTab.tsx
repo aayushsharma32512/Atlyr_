@@ -177,7 +177,7 @@ export function ProductsTab({ saveActions, onSave }: ProductsTabProps) {
           <button
             type="button"
             aria-label="Add to wardrobe"
-            onClick={() => navigate("/inspiration-import?intent=wardrobe")}
+            onClick={() => navigate("/wardrobe/add")}
             className="flex h-[168px] w-[112px] shrink-0 items-center justify-center rounded-lg border border-dashed border-hairline-dashed text-ink"
           >
             <Icons.add className="h-5 w-5" aria-hidden="true" />

@@ -30,6 +30,7 @@ import {
   useAddImportWebSelections,
   useStartInspirationImport,
 } from "@/features/inspiration-import/hooks/useInspirationImport"
+import { useSlowSearchNotice } from "@/features/inspiration-import/hooks/useSlowSearchNotice"
 import { useCreateDraftOutfit } from "@/features/outfits/hooks/useCreateDraftOutfit"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { useToast } from "@/hooks/use-toast"
@@ -273,6 +274,7 @@ export default function InspirationImportScreen() {
   const webQueries = useImportWebResults(importId ?? "", selectedCandidates)
   const webQuery = webQueries.find((query) => query.candidateId === selectedCandidate?.id)
     ?? { candidateId: null, data: undefined, error: null, isFetching: false, isPending: false, isError: false, refetch: () => undefined }
+  const webQueryIsSlow = useSlowSearchNotice(webQuery.isFetching)
   // The Studio scan covers the arrival only: the piece the rack opens on. Other tabs show their own spinner.
   const landingWebQuery = webQueries.find((query) => query.candidateId === record?.selectedCandidateIds[0])
   const catalogueSearches = useImportCatalogueResults(record)
@@ -777,9 +779,18 @@ export default function InspirationImportScreen() {
                     onSelect={selectWebResult}
                   />
                 ) : webQuery.isFetching ? (
-                  <div className="flex min-h-40 items-center justify-center">
-                    <Loader2 className="h-5 w-5 animate-spin text-ink" aria-hidden="true" />
-                  </div>
+                  webQueryIsSlow ? (
+                    <div className="flex min-h-40 flex-col items-center justify-center gap-3 px-4 text-center">
+                      <p className="text-body text-taupe">Web search is taking longer than expected</p>
+                      <button type="button" className={cn(TOGGLE, "h-9")} onClick={() => void webQuery.refetch()}>
+                        <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" /> retry
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex min-h-40 items-center justify-center">
+                      <Loader2 className="h-5 w-5 animate-spin text-ink" aria-hidden="true" />
+                    </div>
+                  )
                 ) : (
                   <p className="px-4 py-8 text-center text-body text-taupe">
                     {webQuery.isError ? "Online search failed." : "No online matches for this piece."}

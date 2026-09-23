@@ -1,6 +1,8 @@
 export const inspirationImportKeys = {
   all: ["inspiration-imports"] as const,
   webRequests: () => [...inspirationImportKeys.all, "admin", "web-requests"] as const,
+  myWardrobeWebRequests: (userId: string | null) =>
+    [...inspirationImportKeys.all, "mine", "wardrobe-web-requests", userId ?? "anonymous"] as const,
   detail: (importId: string) => [...inspirationImportKeys.all, "detail", importId] as const,
   catalogue: (
     importId: string,

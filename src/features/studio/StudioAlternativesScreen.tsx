@@ -1549,7 +1549,7 @@ export function StudioAlternativesView() {
                 queryLine={queryLine}
                 onClearQuery={handleClearQuery}
                 emptyLabel={emptyLabel}
-                onAddToWardrobe={source === "wardrobe" ? () => navigate("/inspiration-import?intent=wardrobe") : undefined}
+                onAddToWardrobe={source === "wardrobe" ? () => navigate("/wardrobe/add") : undefined}
                 showWebSearch={source === "explore"}
                 onWebSearch={handleFindItems}
                 onSelect={isViewOnly ? undefined : (product) => void handleAlternativeSelect(product)}

@@ -1,10 +1,14 @@
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { useQuery } from "@tanstack/react-query"
+import { useNavigate } from "react-router-dom"
 
+import { ToastAction } from "@/components/ui/toast"
 import { useAuth } from "@/contexts/AuthContext"
 import { useSearchBrowseCollections } from "@/features/search/hooks/useSearchBrowseCollections"
+import { useToast } from "@/hooks/use-toast"
 import { checkTryOnLimit } from "@/services/tryon/tryonService"
 
+import { useUserNotifications } from "./hooks/useUserNotifications"
 import { addNotice, readStored, writeStored } from "./notices"
 
 const SEEN_CURATIONS_KEY = "atlyr:notifications:seenCurations"
@@ -95,15 +99,51 @@ function useQuotaRenewalNotice(enabled: boolean) {
 }
 
 /**
+ * Toasts a server notification the moment it arrives. The first poll only
+ * records what is already unread — a returning user would otherwise be toasted
+ * for a backlog they have not opened yet.
+ */
+function useServerNotificationToasts() {
+  const notifications = useUserNotifications()
+  const { toast } = useToast()
+  const navigate = useNavigate()
+  const seenIds = useRef<Set<string> | null>(null)
+
+  useEffect(() => {
+    const unread = (notifications.data ?? []).filter((notification) => notification.readAt === null)
+    if (!notifications.data) return
+    if (seenIds.current === null) {
+      seenIds.current = new Set(unread.map((notification) => notification.id))
+      return
+    }
+    for (const notification of unread) {
+      if (seenIds.current.has(notification.id)) continue
+      seenIds.current.add(notification.id)
+      const href = notification.href
+      toast({
+        title: notification.title,
+        description: notification.body ?? undefined,
+        action: href ? (
+          <ToastAction altText="View" onClick={() => navigate(href)}>
+            View
+          </ToastAction>
+        ) : undefined,
+      })
+    }
+  }, [navigate, notifications.data, toast])
+}
+
+/**
  * Mounted once, inside JobsProvider. Renders nothing; it only watches for the
- * two notices that come from data rather than from a user action. Both are
- * gated on a signed-in user — checkTryOnLimit would otherwise sign a visitor
- * in anonymously just to read a count.
+ * notices that come from data rather than from a user action. All are gated on
+ * a signed-in user — checkTryOnLimit would otherwise sign a visitor in
+ * anonymously just to read a count.
  */
 export function NotificationsWatcher() {
   const { user } = useAuth()
   const enabled = Boolean(user)
   useCurationNotices(enabled)
   useQuotaRenewalNotice(enabled)
+  useServerNotificationToasts()
   return null
 }
