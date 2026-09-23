@@ -557,16 +557,15 @@ async function webSearch(context: Awaited<ReturnType<typeof requireUser>>, body:
   const stored = storedWebListings(current.candidate)
   if (stored) return { results: await withSelectionTokens(stored, importId, rowId) }
 
-  // One statement, so two requests that both find the garment unsearched cannot both pay for it.
-  const now = Date.now()
-  const { data: claimed, error: claimError } = await context.admin.from("inspiration_import_candidates")
-    .update({ web_search_heartbeat_at: new Date(now).toISOString() })
-    .eq("id", rowId)
-    .or(`web_results.is.null,web_searched_at.lt.${new Date(now - WEB_RESULT_MAX_AGE_MS).toISOString()}`)
-    .or(`web_search_heartbeat_at.is.null,web_search_heartbeat_at.lt.${new Date(now - WEB_SEARCH_STALE_MS).toISOString()}`)
-    .select("id")
+  // A SQL function, because PostgREST re-applies update filters to the returned rows and the
+  // freshly written heartbeat would fail its own "older than stale" test.
+  const { data: claimed, error: claimError } = await context.admin.rpc("claim_candidate_web_search", {
+    candidate_id: rowId,
+    stale_seconds: Math.round(WEB_SEARCH_STALE_MS / 1000),
+    max_age_seconds: Math.round(WEB_RESULT_MAX_AGE_MS / 1000),
+  })
   queryError(claimError, "Unable to start online search")
-  if (!claimed?.length) {
+  if (!claimed) {
     const latest = await selectedCandidate(context, importId, rowId)
     const arrived = storedWebListings(latest.candidate)
     if (arrived) return { results: await withSelectionTokens(arrived, importId, rowId) }
