@@ -9,7 +9,8 @@
  *   bun run metrics:launch --sheets                          # write daily + users + meta tabs to Google Sheets
  *   bun run metrics:launch --team                            # also list the excluded team accounts
  *
- * Env: DATABASE_URL_DIRECT (Bun loads .env automatically). Runs SELECT only. Days are UTC.
+ * Env: DATABASE_URL_DIRECT (Bun loads .env automatically). Runs SELECT only.
+ * All timestamps and day boundaries are IST (Asia/Kolkata).
  * For --sheets: METRICS_SHEET_ID and GOOGLE_SERVICE_ACCOUNT_JSON (inline JSON or a path to the key
  * file). Share the sheet with the service account's client_email first.
  */
@@ -64,7 +65,9 @@ if (!url) {
   process.exit(1)
 }
 
-const sql = new Bun.SQL(url)
+// One connection, so the session time zone below applies to every query.
+const sql = new Bun.SQL(url, { max: 1 })
+await sql.unsafe("set timezone to 'Asia/Kolkata'")
 
 const team = await sql`
   select u.id, u.email, coalesce(p.name, u.raw_user_meta_data->>'full_name') as name
@@ -243,6 +246,7 @@ async function pushToSheets(daily: Row[], users: Row[]) {
   const sheetId = process.env.METRICS_SHEET_ID
   if (!sheetId) throw new Error("METRICS_SHEET_ID is not set")
   const token = await accessToken(await loadServiceAccount())
+  const [{ now }] = await sql`select to_char(now(), 'YYYY-MM-DD HH24:MI') as now`
   const base = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}`
   const call = async (path: string, init: RequestInit = {}) => {
     const res = await fetch(`${base}${path}`, {
@@ -256,8 +260,8 @@ async function pushToSheets(daily: Row[], users: Row[]) {
   const tabs: Record<string, [string[], Row[]]> = {
     daily: [DAY_COLUMNS, daily],
     users: [USER_COLUMNS, users],
-    meta: [["updated_at_utc", "since", "team_accounts_excluded"],
-      [{ updated_at_utc: new Date().toISOString(), since, team_accounts_excluded: team.length }]],
+    meta: [["updated_at_ist", "since", "team_accounts_excluded"],
+      [{ updated_at_ist: now, since, team_accounts_excluded: team.length }]],
   }
 
   const meta = await call("?fields=sheets.properties.title")
@@ -325,7 +329,7 @@ const [distinct] = await sql`
 const signups = sum("signups")
 const imports = sum("imports")
 
-console.log(`\nAtlyr launch metrics since ${since} (${team.length} team accounts excluded, days in UTC)\n`)
+console.log(`\nAtlyr launch metrics since ${since} (${team.length} team accounts excluded, times in IST)\n`)
 table(
   [
     { metric: "Signups", value: signups, share: "" },
