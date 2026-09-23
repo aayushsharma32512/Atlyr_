@@ -1,4 +1,4 @@
-export const POSTHOG_ALLOWED_HOSTNAMES = new Set(["www.atlyr.in", "atlyr.in"])
+export const POSTHOG_ALLOWED_HOSTNAMES = new Set(["atlyr.app", "www.atlyr.app", "atlyr.in", "www.atlyr.in"])
 
 const EXACT_ALLOWED_PATHS = new Set([
   "/",
@@ -8,6 +8,7 @@ const EXACT_ALLOWED_PATHS = new Set([
   "/auth/login",
   "/auth/signup",
   "/auth/callback",
+  "/auth/invite",
 ])
 
 const PREFIX_ALLOWED_PATHS = ["/home", "/search", "/collection", "/studio", "/profile", "/inspiration-import"]
