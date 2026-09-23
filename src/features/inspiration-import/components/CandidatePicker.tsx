@@ -114,12 +114,14 @@ export function CandidatePicker({ sourceUrl, candidates, selectedIds, error, hea
               disabled={!pick}
               onClick={pick ? () => onSelect(pick.id) : undefined}
               aria-label={pick ? `Clear ${SLOT_LABEL[category]}` : `${SLOT_LABEL[category]} — empty`}
-              className="relative flex min-h-0 items-center justify-center overflow-hidden rounded-chip border border-hairline bg-background disabled:cursor-default"
+              className="flex min-h-0 flex-col overflow-hidden rounded-chip border border-hairline bg-background disabled:cursor-default"
             >
-              {pick ? (
-                <SourceCrop sourceUrl={sourceUrl} bbox={pick.bbox} alt={pick.label ?? SLOT_LABEL[category]} />
-              ) : null}
-              <span className="absolute left-2 top-2 text-chip text-taupe">{SLOT_LABEL[category]}</span>
+              <span className="flex-none px-2 pt-1.5 text-left text-chip text-taupe">{SLOT_LABEL[category]}</span>
+              <div className="flex min-h-0 flex-1 items-center justify-center">
+                {pick ? (
+                  <SourceCrop sourceUrl={sourceUrl} bbox={pick.bbox} alt={pick.label ?? SLOT_LABEL[category]} />
+                ) : null}
+              </div>
             </button>
           )
         })}
