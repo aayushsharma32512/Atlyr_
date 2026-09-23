@@ -19,6 +19,8 @@ export interface OutfitCardProps {
   tiltIndex?: number
   outfitId?: string | null
   renderedItems?: OutfitCardRenderedItems
+  /** The row's stored stacking, front-most first. Absent or null: the default rule. */
+  slotOrder?: ("top" | "bottom" | "shoes")[] | null
   gender?: "male" | "female"
   heightCm?: number
   onSelect?: () => void
@@ -41,6 +43,7 @@ export function OutfitCard({
   tiltIndex,
   outfitId,
   renderedItems,
+  slotOrder,
   gender = "female",
   heightCm = 170,
   onSelect,
@@ -87,6 +90,7 @@ export function OutfitCard({
             preset="moodboardPreview"
             outfitId={outfitId}
             renderedItems={renderedItems}
+            slotOrder={slotOrder ?? undefined}
             avatarGender={gender}
             avatarHeightCm={heightCm}
             wrapperClassName="h-full w-full rounded-none bg-transparent p-0"

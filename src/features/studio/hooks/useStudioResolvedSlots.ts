@@ -70,7 +70,9 @@ export function useStudioResolvedSlots({
   const queryClient = useQueryClient()
   const baseSlotMap = useMemo(() => buildSlotMap(baseOutfitItems), [baseOutfitItems])
   const [resolvedSlots, setResolvedSlots] = useState<SlotMap>(() => baseSlotMap)
-  const [isResolving, setIsResolving] = useState(false)
+  // True from the very first render when the URL asks for pieces the saved look does not hold,
+  // so no screen draws the saved pieces before the requested ones arrive.
+  const [isResolving, setIsResolving] = useState(() => computePendingSlots(requestedSlotIds, baseSlotMap).length > 0)
 
   useEffect(() => {
     setResolvedSlots((prev) => mergeSlotMaps(prev, baseSlotMap))

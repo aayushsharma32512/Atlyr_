@@ -41,6 +41,8 @@ import { useCurrentLookId } from "@/features/studio/hooks/useCurrentLookId"
 import { isPlaceableOnMannequin, shouldFilterSlotByPlacement } from "@/features/studio/utils/placementSupport"
 import { mapTrayItemToStudioRenderedItem } from "@/features/studio/mappers/renderedItemMapper"
 import { isDressTop, STUDIO_BASE_ITEMS_ENABLED, usePlaceholderItems } from "@/features/studio/hooks/usePlaceholderItems"
+import { defaultLayerOrder } from "@/features/studio/utils/layerOrder"
+import { LAYER_ORDER_ENABLED } from "@/features/studio/constants/layering"
 import { mapTrayItemToAlternative, mapTrayItemToProductDetail } from "@/services/studio/studioService"
 import { getOutfitTagsFromItems, getTrayItemTags } from "@/utils/productTags"
 import { useSaveOutfit } from "@/features/outfits/hooks/useSaveOutfit"
@@ -144,6 +146,9 @@ export function StudioAlternativesView() {
   const { user } = useAuth()
   const { profile, gender } = useProfileContext()
   const [isSaveDrawerOpen, setIsSaveDrawerOpen] = useState(false)
+  // Bumped on open: the card mounts fresh for each look and stays put while a save is in flight.
+  const [saveCardKey, setSaveCardKey] = useState(0)
+  const [isSavingLook, setIsSavingLook] = useState(false)
   /** The product a pin opened the save card for; null when the card isn't up. */
   const [productSaveId, setProductSaveId] = useState<string | null>(null)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
@@ -183,11 +188,17 @@ export function StudioAlternativesView() {
 
   const requestedSlotIds = parsedParams.slotIds
 
-  const { trayItems: resolvedTrayItems } = useStudioResolvedSlots({
+  const { trayItems: resolvedTrayItems, isResolving: slotsResolving } = useStudioResolvedSlots({
     outfitId: resolvedOutfitId,
     baseOutfitItems: outfitData?.trayItems ?? [],
     requestedSlotIds,
   })
+  // Same rule as Studio: never draw the saved pieces while the URL's pieces are still loading.
+  const isLoadingOverrides = slotsResolving && Boolean(requestedSlotIds.top || requestedSlotIds.bottom || requestedSlotIds.shoes)
+  // The stacking stored on the row; `layers` in the URL is present only when it differs from that.
+  const rowLayerOrder = LAYER_ORDER_ENABLED ? outfitData?.studioOutfit?.layerOrder ?? null : null
+  const orderChanged = parsedParams.layerOrder != null
+  const layerOrderToSave = parsedParams.layerOrder ?? rowLayerOrder
 
   const activeSlotIds: SlotIdMap = useMemo(() => {
     const map: SlotIdMap = {}
@@ -564,7 +575,7 @@ export function StudioAlternativesView() {
         const baseItem = baseByZone.get(zone)
         // hiddenSlots only tracks an explicit ×; a zone that never had an item (a saved
         // dress-only look has no bottom entry at all) is just as empty and needs the same
-        // stand-in, or the bare mannequin's own baked-in underwear shows through instead.
+        // stand-in, or the figure is bare there.
         if (hiddenSlots[zone] || (!trayItem && !baseItem)) {
           return zone === "top" ? placeholderTop : zone === "bottom" && !topIsDress ? placeholderBottom : null
         }
@@ -633,17 +644,19 @@ export function StudioAlternativesView() {
   const isOwnOutfit = Boolean(outfitData?.outfit && user?.id && outfitData.outfit.user_id === user.id)
 
   // Re-saving an already-persisted outfit with no item changes updates it in
-  // place instead of spinning off a new copy — swapping an item still makes
-  // a fresh derived look, which is the existing/correct behavior.
-  const isEditingExistingOutfit = Boolean(resolvedOutfitId && isOwnOutfit && !hasSlotOverrides)
+  // place instead of spinning off a new copy — swapping an item, or changing
+  // the stacking, makes a fresh derived look: a different picture is a different outfit.
+  const isEditingExistingOutfit = Boolean(resolvedOutfitId && isOwnOutfit && !hasSlotOverrides && !orderChanged)
 
   // Saved state (heart, boards, tags) keys on the combo on screen, not the URL's base look.
   const { currentLookId } = useCurrentLookId({
     outfitId: resolvedOutfitId,
     hasSlotOverrides,
+    orderChanged,
     topId: outfitItems.topId,
     bottomId: outfitItems.bottomId,
     shoesId: outfitItems.footwearId,
+    layerOrder: parsedParams.layerOrder ?? null,
   })
 
   // The save row's tags win; an owned, never-saved base look falls back to its public tags.
@@ -679,6 +692,7 @@ export function StudioAlternativesView() {
       topId: outfitItems.topId,
       bottomId: outfitItems.bottomId,
       shoesId: outfitItems.footwearId,
+      layerOrder: parsedParams.layerOrder ?? null,
     })
     if (existing?.id) {
       return {
@@ -782,6 +796,7 @@ export function StudioAlternativesView() {
             isPrivate: data.isPrivate,
             tags: data.tags,
             createdByName: profile?.name ?? null,
+            layerOrder: layerOrderToSave,
           })
           outfitId = resolvedOutfitId
         } else {
@@ -799,8 +814,13 @@ export function StudioAlternativesView() {
             userId: user.id,
             backgroundId: outfitData?.outfit?.backgroundId ?? null,
             sourceOutfitId: (resolvedOutfitId && !hasSlotOverrides) ? resolvedOutfitId : null,
+            layerOrder: layerOrderToSave,
           })
           outfitId = saved.id
+          // Stand on the saved look from now on; the row holds the pieces and the stacking.
+          if (saved.id !== resolvedOutfitId) {
+            setSearchParams(buildStudioSearchParams({ outfitId: saved.id, slot, source, share: parsedParams.share }), { replace: true })
+          }
         }
 
         const selectedMoodboardSlugs = data.moodboardIds ?? []
@@ -884,6 +904,11 @@ export function StudioAlternativesView() {
       removeFromCollectionMutation,
       resolvedOutfitId,
       hasSlotOverrides,
+      layerOrderToSave,
+      parsedParams.share,
+      setSearchParams,
+      slot,
+      source,
       selectableMoodboards,
       outfitData?.avatarGender,
       outfitData?.outfit?.backgroundId,
@@ -902,6 +927,8 @@ export function StudioAlternativesView() {
   /** The card has no category or occasion fields, so carry the outfit's own. */
   const handleSaveFromCard = useCallback(
     async (data: { name: string; tags: string[]; boardSlugs: string[] }) => {
+      if (isSavingLook) return
+      setIsSavingLook(true)
       try {
         await handleSaveOutfit({
           outfitName: data.name,
@@ -914,9 +941,11 @@ export function StudioAlternativesView() {
         setIsSaveDrawerOpen(false)
       } catch {
         // handleSaveOutfit has already toasted; keep the card open to retry.
+      } finally {
+        setIsSavingLook(false)
       }
     },
-    [handleSaveOutfit, outfitData?.outfit?.category, outfitData?.outfit?.occasion?.id],
+    [handleSaveOutfit, isSavingLook, outfitData?.outfit?.category, outfitData?.outfit?.occasion?.id],
   )
 
   /** Product pins open the same card, boards and tags both. */
@@ -968,6 +997,7 @@ export function StudioAlternativesView() {
             slotIds: nextSlotIds,
             productId: product.id,
             share: parsedParams.share,
+            layerOrder: parsedParams.layerOrder,
             // Wearing a piece un-hides its slot, as the normal branch does below.
             hiddenSlots: { ...parsedParams.hiddenSlots, [slot]: false },
             source,
@@ -990,6 +1020,7 @@ export function StudioAlternativesView() {
             slotIds: activeSlotIds,
             productId: product.id,
             share: parsedParams.share,
+            layerOrder: parsedParams.layerOrder,
             hiddenSlots: nextHiddenSlots,
             source,
           }),
@@ -1007,6 +1038,7 @@ export function StudioAlternativesView() {
             bottom: Boolean(nextHiddenSlots.bottom),
             shoes: Boolean(nextHiddenSlots.shoes),
           },
+          layerOrder: parsedParams.layerOrder ?? null,
         })
         return
       }
@@ -1058,6 +1090,7 @@ export function StudioAlternativesView() {
         slotIds: nextSlotIds,
         productId: product.id,
         share: parsedParams.share,
+        layerOrder: parsedParams.layerOrder,
         hiddenSlots: nextHiddenSlots,
         source,
       })
@@ -1074,6 +1107,7 @@ export function StudioAlternativesView() {
           bottom: Boolean(nextHiddenSlots?.bottom),
           shoes: Boolean(nextHiddenSlots?.shoes),
         },
+        layerOrder: parsedParams.layerOrder ?? null,
       })
       // NOTE: Search does NOT update - grid stays static per spec (Passive Selection)
     },
@@ -1132,6 +1166,7 @@ export function StudioAlternativesView() {
         productId: nextProductId,
         slotIds: nextSlotIds,
         share: parsedParams.share,
+        layerOrder: parsedParams.layerOrder,
         hiddenSlots: parsedParams.hiddenSlots,
         source,
         focus: "focus" in options ? options.focus : parsedParams.focus,
@@ -1285,6 +1320,7 @@ export function StudioAlternativesView() {
       filled: currentOutfitMoodboardSlugs.length > 0,
       onClick: () => {
         setProductSaveId(null)
+        setSaveCardKey((key) => key + 1)
         setIsSaveDrawerOpen(true)
       },
     },
@@ -1334,14 +1370,24 @@ export function StudioAlternativesView() {
         ? "Nothing saved in this slot"
         : "No results found"
 
+  // The URL's `layers` when the user dragged the rows in Studio, else the row's stored order, else
+  // the worn top's kind decides.
+  const heroSlotOrder = useMemo(() => {
+    if (parsedParams.layerOrder) return parsedParams.layerOrder
+    if (rowLayerOrder) return rowLayerOrder
+    const wornTop = hiddenSlots.top ? null : resolvedTrayItems.find((item) => item.slot === "top")
+    return defaultLayerOrder({ typeCategory: wornTop?.typeCategory, productName: wornTop?.title })
+  }, [hiddenSlots.top, parsedParams.layerOrder, resolvedTrayItems, rowLayerOrder])
+
   // One figure for both layouts: the split (with the rack) and focus.
   const figureNode = (
       <div className="absolute inset-0 flex items-end justify-center pb-3">
-      {heroAvatar ? (
+      {heroAvatar && !isLoadingOverrides ? (
         <OutfitInspirationTile
           preset="heroCanonical"
           outfitId={outfitData?.studioOutfit?.id ?? heroAvatar.id}
           renderedItems={heroRenderedItems ?? outfitData?.studioOutfit?.renderedItems}
+          slotOrder={heroSlotOrder}
           fallbackImageSrc={
             hiddenSlots.top || hiddenSlots.bottom || hiddenSlots.shoes
               ? heroRenderedItems?.[0]?.imageUrl ?? heroAvatar.items[0]?.imageUrl
@@ -1372,6 +1418,7 @@ export function StudioAlternativesView() {
           preset="heroCanonical"
           outfitId="temp-admin-outfit"
           renderedItems={heroRenderedItems || []}
+          slotOrder={heroSlotOrder}
           fallbackImageSrc={heroRenderedItems?.[0]?.imageUrl ?? undefined}
           title="New Outfit"
           chips={[]}
@@ -1392,7 +1439,7 @@ export function StudioAlternativesView() {
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center px-3 text-center text-body text-taupe">
-          {isOutfitLoading ? "Loading outfit…" : "Select an outfit to view alternatives"}
+          {isOutfitLoading || isLoadingOverrides ? "Loading outfit…" : "Select an outfit to view alternatives"}
         </div>
       )}
       </div>
@@ -1535,7 +1582,8 @@ export function StudioAlternativesView() {
             {isSaveDrawerOpen || productSaveId ? (
               isSaveDrawerOpen ? (
               <StudioSaveCard
-                key={`look:${currentLookId ?? ""}:${getOutfitTagsFromItems(resolvedTrayItems).join("|")}:${lookInitialTags.join("|")}`}
+                key={saveCardKey}
+                isSaving={isSavingLook}
                 className="h-full"
                 defaultName={
                   outfitData?.outfit?.name?.startsWith("draft-look-")

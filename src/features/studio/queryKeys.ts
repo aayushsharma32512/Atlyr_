@@ -59,6 +59,11 @@ export const studioKeys = {
     ] as const,
   swap: (outfitId: string | null | undefined) => [...studioKeys.all, "swap", outfitId ?? "none"] as const,
   productImages: (productId: string | null | undefined) => [...studioKeys.all, "product-images", productId ?? "none"] as const,
-  lookByItems: (topId: string | null | undefined, bottomId: string | null | undefined, shoesId: string | null | undefined) =>
-    [...studioKeys.all, "look-by-items", topId ?? "none", bottomId ?? "none", shoesId ?? "none"] as const,
+  lookByItems: (
+    topId: string | null | undefined,
+    bottomId: string | null | undefined,
+    shoesId: string | null | undefined,
+    layerOrder?: string[] | null,
+  ) =>
+    [...studioKeys.all, "look-by-items", topId ?? "none", bottomId ?? "none", shoesId ?? "none", layerOrder?.join(",") ?? "default"] as const,
 }

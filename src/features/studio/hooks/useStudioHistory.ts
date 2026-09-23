@@ -30,6 +30,7 @@ function buildSnapshotFromSearchParams(searchParams: URLSearchParams): StudioHis
     outfitId: parsed.outfitId,
     slotIds: normalizeSlotIds(parsed.slotIds),
     hiddenSlots: normalizeHiddenSlots(parsed.hiddenSlots),
+    layerOrder: parsed.layerOrder ?? null,
   }
 }
 
@@ -174,6 +175,7 @@ export function useStudioHistory() {
         outfitId: snapshot.outfitId,
         slotIds: snapshot.slotIds,
         hiddenSlots: snapshot.hiddenSlots,
+        layerOrder: snapshot.layerOrder,
         share: currentShare,
         slot: currentView.slot,
         source: currentView.source,

@@ -2,6 +2,15 @@ import { supabase } from "@/integrations/supabase/client"
 import type { Database } from "@/integrations/supabase/types"
 import type { StudioRenderedItem, StudioRenderedZone } from "@/features/studio/types"
 import { mapSupabaseProductToStudioItem } from "@/features/studio/mappers/renderedItemMapper"
+import { parseLayerOrder } from "@/features/studio/utils/studioUrlState"
+
+/** The pieces a card draws, plus the stacking stored on the row (null: the default rule). */
+export type OutfitProductsResult = {
+  renderedItems: StudioRenderedItem[]
+  layerOrder: StudioRenderedZone[] | null
+}
+
+const EMPTY: OutfitProductsResult = { renderedItems: [], layerOrder: null }
 
 type DbProductRow = Database["public"]["Tables"]["products"]["Row"] & {
   body_parts_visible?: string[] | null
@@ -14,6 +23,7 @@ type DbProductRow = Database["public"]["Tables"]["products"]["Row"] & {
 // rendered the same outfits from ~400px webp.
 const OUTFIT_PRODUCTS_SELECT = `
   id,
+  layer_order,
   top:products!outfits_top_id_fkey(
     id,
     brand,
@@ -54,14 +64,15 @@ const OUTFIT_PRODUCTS_SELECT = `
 
 type OutfitWithProducts = {
   id: string
+  layer_order?: string[] | null
   top: DbProductRow | null
   bottom: DbProductRow | null
   shoes: DbProductRow | null
 }
 
-export async function fetchOutfitProducts(outfitId: string): Promise<StudioRenderedItem[]> {
+export async function fetchOutfitProducts(outfitId: string): Promise<OutfitProductsResult> {
   if (!outfitId) {
-    return []
+    return EMPTY
   }
 
   const { data, error } = await supabase
@@ -75,7 +86,7 @@ export async function fetchOutfitProducts(outfitId: string): Promise<StudioRende
   }
 
   if (!data) {
-    return []
+    return EMPTY
   }
 
   const zones: Array<[StudioRenderedZone, DbProductRow | null]> = [
@@ -84,9 +95,12 @@ export async function fetchOutfitProducts(outfitId: string): Promise<StudioRende
     ["shoes", data.shoes],
   ]
 
-  return zones
-    .map(([zone, product]) => mapSupabaseProductToStudioItem(zone, product))
-    .filter((item): item is StudioRenderedItem => Boolean(item))
+  return {
+    renderedItems: zones
+      .map(([zone, product]) => mapSupabaseProductToStudioItem(zone, product))
+      .filter((item): item is StudioRenderedItem => Boolean(item)),
+    layerOrder: parseLayerOrder(data.layer_order?.join(",")),
+  }
 }
 
 export const outfitProductsService = {

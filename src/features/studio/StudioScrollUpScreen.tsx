@@ -274,6 +274,7 @@ export function StudioScrollUpView() {
       topId: outfitItems.topId,
       bottomId: outfitItems.bottomId,
       shoesId: outfitItems.footwearId,
+      layerOrder: parsedParams.layerOrder ?? null,
     })
     if (existing?.id) {
       return {
@@ -365,6 +366,7 @@ export function StudioScrollUpView() {
           bottom: false,
           shoes: false,
         },
+        layerOrder: parsedParams.layerOrder ?? null,
       }
       setPendingStudioComboChange({ change_type: "remix" })
       recordChange(nextSnapshot)
@@ -416,6 +418,7 @@ export function StudioScrollUpView() {
       outfitId: shareOutfitId,
       slotIds: shareSlotIds,
       hiddenSlots,
+      layerOrder: parsedParams.layerOrder,
       share: true,
     })
     const shareUrl =
@@ -487,6 +490,7 @@ export function StudioScrollUpView() {
         topId: outfitItems.topId,
         bottomId: outfitItems.bottomId,
         shoesId: outfitItems.footwearId,
+        layerOrder: parsedParams.layerOrder ?? null,
       })
       let outfitId = existing?.id
       if (!outfitId) {

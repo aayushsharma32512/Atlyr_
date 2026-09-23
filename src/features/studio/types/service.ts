@@ -20,6 +20,8 @@ export interface StudioOutfitDTO {
   renderedItems: StudioRenderedItem[]
   bodyPartsVisibleByZone?: ZoneVisibilityMap
   imageSrcFallback?: string | null
+  /** Stacking stored on the row, front-most first. Null: the default rule applies. */
+  layerOrder: StudioRenderedZone[] | null
 }
 
 export interface StudioOutfitProductsResult {
@@ -31,6 +33,7 @@ export type SupabaseProductLike =
   | {
       id: string
       type?: Database["public"]["Enums"]["item_type"] | null
+      type_category?: string | null
       brand?: string | null
       product_name?: string | null
       description?: string | null

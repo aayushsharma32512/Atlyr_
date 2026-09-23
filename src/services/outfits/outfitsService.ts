@@ -7,7 +7,7 @@ type OutfitInsert = Database["public"]["Tables"]["outfits"]["Insert"]
 type OutfitRow = Database["public"]["Tables"]["outfits"]["Row"]
 type OutfitByItemsRow = Pick<
   OutfitRow,
-  "id" | "name" | "category" | "occasion" | "background_id" | "gender" | "top_id" | "bottom_id" | "shoes_id"
+  "id" | "name" | "category" | "occasion" | "background_id" | "gender" | "top_id" | "bottom_id" | "shoes_id" | "layer_order"
 >
 
 export interface CategoryOption {
@@ -37,6 +37,8 @@ export interface SaveOutfitInput {
   userId: string
   backgroundId?: string | null
   sourceOutfitId?: string | null
+  /** Stacking, front-most first. Null: the default rule applies. */
+  layerOrder?: string[] | null
 }
 
 export interface DraftOutfitInput {
@@ -62,12 +64,16 @@ export interface UpdateOutfitInput {
   isPrivate: boolean
   tags?: string[] | null
   createdByName?: string | null
+  /** Omit to leave the stored stacking as is; null clears it. */
+  layerOrder?: string[] | null
 }
 
 export interface FindOutfitByItemsInput {
   topId?: string | null
   bottomId?: string | null
   shoesId?: string | null
+  /** Omit to match any stacking; null matches rows on the default rule; an array matches that exact order. */
+  layerOrder?: string[] | null
 }
 
 function mapCategory(row: CategoryRow): CategoryOption {
@@ -169,6 +175,39 @@ export async function saveOutfit(input: SaveOutfitInput) {
 
   const createdBy = input.isPrivate ? "ATLYR" : normalizeText(input.createdByName) ?? "ATLYR"
 
+  // Idempotent: a repeat tap, or a re-save of the same pieces and stacking, reuses the user's own
+  // row and refreshes its details instead of adding a copy.
+  let lookup = supabase.from("outfits").select().eq("user_id", input.userId)
+  lookup = input.topId ? lookup.eq("top_id", input.topId) : lookup.is("top_id", null)
+  lookup = input.bottomId ? lookup.eq("bottom_id", input.bottomId) : lookup.is("bottom_id", null)
+  lookup = input.shoesId ? lookup.eq("shoes_id", input.shoesId) : lookup.is("shoes_id", null)
+  lookup = input.layerOrder
+    ? lookup.filter("layer_order", "eq", `{${input.layerOrder.join(",")}}`)
+    : lookup.is("layer_order", null)
+  const { data: existing } = await lookup.order("created_at", { ascending: true }).limit(1).maybeSingle()
+  if (existing) {
+    const { data, error } = await supabase
+      .from("outfits")
+      .update({
+        name: input.name,
+        category: input.categoryId,
+        occasion: input.occasionId,
+        background_id: input.backgroundId ?? null,
+        is_private: input.isPrivate,
+        visible_in_feed: true,
+        created_by: createdBy,
+        tags: normalizeTags(input.tags),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", existing.id)
+      .select()
+      .single()
+    if (error) {
+      throw new Error(error.message)
+    }
+    return data
+  }
+
   const newId = crypto.randomUUID()
   const payload: OutfitInsert = {
     id: newId,
@@ -187,6 +226,7 @@ export async function saveOutfit(input: SaveOutfitInput) {
     user_id: input.userId,
     // original: source_outfit_id = own id. copy: source_outfit_id = source outfit's id.
     source_outfit_id: input.sourceOutfitId ?? newId,
+    layer_order: input.layerOrder ?? null,
   }
 
   const { data, error } = await supabase.from("outfits").insert(payload).select().single()
@@ -245,6 +285,7 @@ export async function updateOutfit(input: UpdateOutfitInput) {
     created_by: createdBy,
     tags: normalizeTags(input.tags),
     updated_at: new Date().toISOString(),
+    ...(input.layerOrder !== undefined ? { layer_order: input.layerOrder } : {}),
   }
 
   const { data, error } = await supabase
@@ -273,7 +314,7 @@ export async function findOutfitByItems(input: FindOutfitByItemsInput): Promise<
 
   let query = supabase
     .from("outfits")
-    .select("id,name,category,occasion,background_id,gender,top_id,bottom_id,shoes_id")
+    .select("id,name,category,occasion,background_id,gender,top_id,bottom_id,shoes_id,layer_order")
     .eq("visible_in_feed", true)
     .eq("is_private", false)
     .limit(1)
@@ -281,6 +322,12 @@ export async function findOutfitByItems(input: FindOutfitByItemsInput): Promise<
   query = topId ? query.eq("top_id", topId) : query.is("top_id", null)
   query = bottomId ? query.eq("bottom_id", bottomId) : query.is("bottom_id", null)
   query = shoesId ? query.eq("shoes_id", shoesId) : query.is("shoes_id", null)
+  if (input.layerOrder !== undefined) {
+    // Array equality is order-sensitive, which is the point: {bottom,top,shoes} is a different look.
+    query = input.layerOrder
+      ? query.filter("layer_order", "eq", `{${input.layerOrder.join(",")}}`)
+      : query.is("layer_order", null)
+  }
 
   const { data, error } = await query.maybeSingle()
 
@@ -291,19 +338,25 @@ export async function findOutfitByItems(input: FindOutfitByItemsInput): Promise<
   return data ?? null
 }
 
-/** One random feed-visible outfit, for the user's gender when known. Null when there is none. */
+/** An original, not a user's copy of another look. Copies show only in their owner's boards. */
+export function isOriginalOutfit(row: { id: string; source_outfit_id?: string | null }): boolean {
+  return !row.source_outfit_id || row.source_outfit_id === row.id
+}
+
+/** One random feed-visible original, for the user's gender when known. Null when there is none. */
 export async function fetchRandomOutfitId(gender: "male" | "female" | null): Promise<string | null> {
   let query = supabase
     .from("outfits")
-    .select("id")
+    .select("id,source_outfit_id")
     .eq("visible_in_feed", true)
     .eq("is_private", false)
     .not("top_id", "is", null)
     .limit(40)
   if (gender) query = query.eq("gender", gender)
   const { data, error } = await query
-  if (error || !data?.length) return null
-  return data[Math.floor(Math.random() * data.length)].id
+  const originals = (data ?? []).filter(isOriginalOutfit)
+  if (error || !originals.length) return null
+  return originals[Math.floor(Math.random() * originals.length)].id
 }
 
 /**

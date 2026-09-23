@@ -913,6 +913,7 @@ export type Database = {
           gender: string | null
           id: string
           is_private: boolean
+          layer_order: string[] | null
           name: string
           occasion: string
           outfit_images: string | null
@@ -950,6 +951,7 @@ export type Database = {
           gender?: string | null
           id: string
           is_private?: boolean
+          layer_order?: string[] | null
           name: string
           occasion: string
           outfit_images?: string | null
@@ -987,6 +989,7 @@ export type Database = {
           gender?: string | null
           id?: string
           is_private?: boolean
+          layer_order?: string[] | null
           name?: string
           occasion?: string
           outfit_images?: string | null
@@ -1836,6 +1839,7 @@ export type Database = {
           image_url: string
           item_id: string
           item_type: string
+          layer_order: Json | null
           price: number
           product_name: string
           rendered_items: Json

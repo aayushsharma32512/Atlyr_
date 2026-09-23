@@ -7,6 +7,7 @@ import { mapDbOutfitToStudioOutfit } from "@/features/studio/mappers/renderedIte
 import { mapDbOutfitToOutfit } from "@/services/shared/transformers/outfitTransformers"
 import { getOutfitChips } from "@/utils/outfitChips"
 import { buildGenderFilter } from "./genderFilter"
+import { isOriginalOutfit } from "@/services/outfits/outfitsService"
 
 type Gender = "male" | "female" | null
 
@@ -228,6 +229,8 @@ async function fetchCategoryOutfits(categoryId: string, gender: Gender, from: nu
         created_at,
         created_by,
         user_id,
+        layer_order,
+        source_outfit_id,
         occasion:occasions!occasion(
           id,
           name,
@@ -334,7 +337,8 @@ async function fetchCategoryOutfits(categoryId: string, gender: Gender, from: nu
     throw new Error(error.message)
   }
 
-  return (data ?? []) as DbOutfitWithJoins[]
+  // Copies show only in their owner's boards; the feed functions apply the same rule in SQL.
+  return ((data ?? []) as DbOutfitWithJoins[]).filter(isOriginalOutfit)
 }
 
 function toBrowseOutfit(
