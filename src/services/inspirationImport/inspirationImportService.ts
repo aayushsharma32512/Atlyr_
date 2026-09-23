@@ -46,9 +46,17 @@ async function invokeImport<T>(
   }
   if (typeof Response !== "undefined" && context instanceof Response) {
     const payload = await context.clone().json().catch(() => null) as { message?: string; error?: string } | null
-    throw new Error(payload?.message ?? payload?.error ?? error.message)
+    const thrown = new Error(payload?.message ?? payload?.error ?? error.message)
+    // The server's error code is what tells a caller a retry is worth making.
+    throw payload?.error ? Object.assign(thrown, { code: payload.error }) : thrown
   }
   throw new Error(error.message)
+}
+
+/** The server is already running this garment's one paid online search; ask again shortly. */
+export function isWebSearchBusy(error: unknown): boolean {
+  return typeof error === "object" && error !== null
+    && (error as { code?: unknown }).code === "web_search_busy"
 }
 
 async function createImport(file: File, intent?: InspirationImportIntent) {
@@ -167,18 +175,20 @@ async function searchCatalogue(
   return response.results
 }
 
+/**
+ * No abort signal: the search is paid for the moment it starts, so an unmounting
+ * screen must never cancel it. It finishes and lands in the query cache.
+ */
 async function searchWeb(
   importId: string,
   candidateId: string,
-  signal?: AbortSignal,
 ): Promise<InspirationWebResult[]> {
   const cached = readWebSearchCache(importId, candidateId)
   if (cached) return cached
   const response = await invokeImport<{ results: InspirationWebResult[] }>({
     action: "web-search", importId, candidateId,
   }, {
-    signal,
-    timeoutMs: 55_000,
+    timeoutMs: 60_000,
     timeoutMessage: "Online search took too long. Please try again.",
   })
   const results = filterValidWebResults(response.results)

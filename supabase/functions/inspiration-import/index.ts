@@ -18,6 +18,25 @@ const DEFAULT_IMPORT_INTENT = "inspiration"
 const IMPORT_INTENTS = new Set([DEFAULT_IMPORT_INTENT, "wardrobe"])
 // A web pick must stay redeemable across a whole multi-photo session, not one hour of it.
 const WEB_SELECTION_TTL_SECONDS = 24 * 60 * 60
+const SERPAPI_UPLOAD_TIMEOUT_MS = 8_000
+// Above the slowest honest Lens answer seen: a timeout never saves a paid search, it only wastes one.
+const SERPAPI_LENS_TIMEOUT_MS = 40_000
+const WEB_RESULT_MAX_AGE_MS = 24 * 60 * 60 * 1000
+const WEB_SEARCH_HEARTBEAT_MS = 5_000
+// Three missed beats: long enough to trust a slow search, short enough to free a dead one.
+const WEB_SEARCH_STALE_MS = 15_000
+
+// A stored listing carries no selection token, so it can never hold an expired one.
+type WebListing = {
+  providerResultId: string
+  candidateId: string
+  title: string
+  merchantDomain: string
+  listingUrl: string
+  imageUrl: string
+  rank: number
+  priceLabel: string | null
+}
 
 function queryError(error: { message: string } | null, message: string) {
   if (error) throw new Error(`${message}: ${error.message}`)
@@ -434,69 +453,81 @@ async function selectedCandidate(
   return { importRow, candidate: data[0] as ImportRow }
 }
 
-async function normalizeLens(
+function normalizeLens(
   payload: Record<string, unknown>,
   imageId: string,
-  importId: string,
   candidateId: string,
-) {
+): WebListing[] {
   const matches = filterShoppingResults(
     Array.isArray(payload.visual_matches) ? payload.visual_matches as Record<string, unknown>[] : [],
   )
   const seen = new Set<string>()
-  const expiresAt = Math.floor(Date.now() / 1000) + WEB_SELECTION_TTL_SECONDS
-  const results = matches.flatMap((raw, index) => {
+  return matches.flatMap((raw, index) => {
     const listingUrl = safeHttpUrl(raw.link)
     const imageUrl = safeHttpUrl(raw.image) ?? safeHttpUrl(raw.thumbnail)
     if (!listingUrl || !imageUrl || typeof raw.title !== "string" || seen.has(listingUrl)) return []
     seen.add(listingUrl)
-    const providerResultId = `${imageId}:${String(raw.position ?? index)}`
     return [{
-      version: 1 as const,
-      importId,
+      providerResultId: `${imageId}:${String(raw.position ?? index)}`,
       candidateId,
-      providerResultId,
       rank: typeof raw.position === "number" ? raw.position : index,
       title: raw.title,
       merchantDomain: new URL(listingUrl).hostname.replace(/^www\./, ""),
       listingUrl,
       imageUrl,
       priceLabel: getLensPriceLabel(raw),
-      expiresAt,
     }]
   })
-  return Promise.all(results.map(async (result) => {
-    const { priceLabel, ...selectionPayload } = result
-    return {
-      id: result.providerResultId,
-      candidateId: result.candidateId,
-      providerResultId: result.providerResultId,
-      title: result.title,
-      merchantDomain: result.merchantDomain,
-      listingUrl: result.listingUrl,
-      imageUrl: result.imageUrl,
-      rank: result.rank,
-      priceLabel,
-      selectionToken: await signInspirationWebSelection(
-        selectionPayload,
-        env("SUPABASE_SERVICE_ROLE_KEY"),
-      ),
-    }
-  }))
 }
 
-async function webSearch(context: Awaited<ReturnType<typeof requireUser>>, body: Record<string, unknown>) {
-  const importId = requiredString(body, "importId")
-  const candidateId = optionalString(body, "candidateId")
-  const current = await selectedCandidate(context, importId, candidateId)
-  const { data: crop, error: cropError } = await context.admin.storage.from(INSPIRATION_BUCKET).download(current.candidate.retrieval_crop_path)
+function withSelectionTokens(listings: WebListing[], importId: string, candidateId: string) {
+  const expiresAt = Math.floor(Date.now() / 1000) + WEB_SELECTION_TTL_SECONDS
+  return Promise.all(listings.map(async (listing) => ({
+    id: listing.providerResultId,
+    candidateId,
+    providerResultId: listing.providerResultId,
+    title: listing.title,
+    merchantDomain: listing.merchantDomain,
+    listingUrl: listing.listingUrl,
+    imageUrl: listing.imageUrl,
+    rank: listing.rank,
+    priceLabel: listing.priceLabel,
+    selectionToken: await signInspirationWebSelection({
+      version: 1,
+      importId,
+      candidateId,
+      providerResultId: listing.providerResultId,
+      rank: listing.rank,
+      title: listing.title,
+      merchantDomain: listing.merchantDomain,
+      listingUrl: listing.listingUrl,
+      imageUrl: listing.imageUrl,
+      expiresAt,
+    }, env("SUPABASE_SERVICE_ROLE_KEY")),
+  })))
+}
+
+function storedWebListings(candidate: ImportRow): WebListing[] | null {
+  if (!Array.isArray(candidate.web_results)) return null
+  const searchedAtMs = typeof candidate.web_searched_at === "string" ? Date.parse(candidate.web_searched_at) : NaN
+  if (!Number.isFinite(searchedAtMs) || Date.now() - searchedAtMs >= WEB_RESULT_MAX_AGE_MS) return null
+  return candidate.web_results as WebListing[]
+}
+
+async function runLensSearch(
+  context: Awaited<ReturnType<typeof requireUser>>,
+  candidate: ImportRow,
+): Promise<WebListing[]> {
+  const { data: crop, error: cropError } = await context.admin.storage.from(INSPIRATION_BUCKET).download(candidate.retrieval_crop_path)
   queryError(cropError, "Unable to read retrieval crop")
   if (!crop || crop.size > 500 * 1024) throw new HttpError(400, "lens_image_too_large", "Garment crop is too large for online search")
   const form = new FormData()
   form.set("api_key", env("SERPAPI_API_KEY"))
   form.set("image", crop, "retrieval.webp")
-  const uploadResponse = await fetch("https://serpapi.com/image", { method: "POST", body: form, signal: AbortSignal.timeout(20_000) })
+  const uploadStartedAt = Date.now()
+  const uploadResponse = await fetch("https://serpapi.com/image", { method: "POST", body: form, signal: AbortSignal.timeout(SERPAPI_UPLOAD_TIMEOUT_MS) })
   const upload = await uploadResponse.json().catch(() => ({})) as Record<string, unknown>
+  const uploadMs = Date.now() - uploadStartedAt
   if (!uploadResponse.ok || typeof upload.image_id !== "string") {
     console.error("[inspiration-import] serpapi upload", uploadResponse.status, upload.error ?? null)
     throw new Error("SerpApi image upload failed")
@@ -506,16 +537,65 @@ async function webSearch(context: Awaited<ReturnType<typeof requireUser>>, body:
     country: Deno.env.get("SERPAPI_COUNTRY") ?? "us", hl: "en", safe: "active", auto_crop: "false",
     api_key: env("SERPAPI_API_KEY"),
   })
-  const response = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(25_000) })
+  const lensStartedAt = Date.now()
+  const response = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(SERPAPI_LENS_TIMEOUT_MS) })
   const payload = await response.json().catch(() => ({})) as Record<string, unknown>
+  const lensMs = Date.now() - lensStartedAt
+  console.log("[inspiration-import] serpapi timing", { uploadMs, lensMs })
   if (!response.ok || !Array.isArray(payload.visual_matches)) {
     console.error("[inspiration-import] serpapi lens", response.status, payload.error ?? null)
     throw new Error("SerpApi Lens search failed")
   }
-  const stillSelected = await selectedCandidate(context, importId, current.candidate.id)
-  if (stillSelected.candidate.id !== current.candidate.id) throw new HttpError(409, "candidate_changed", "The selected garment changed; search again")
-  return {
-    results: await normalizeLens(payload, upload.image_id, importId, current.candidate.id),
+  return normalizeLens(payload, upload.image_id, candidate.id)
+}
+
+async function webSearch(context: Awaited<ReturnType<typeof requireUser>>, body: Record<string, unknown>) {
+  const importId = requiredString(body, "importId")
+  const candidateId = optionalString(body, "candidateId")
+  const current = await selectedCandidate(context, importId, candidateId)
+  const rowId = current.candidate.id as string
+  const stored = storedWebListings(current.candidate)
+  if (stored) return { results: await withSelectionTokens(stored, importId, rowId) }
+
+  // One statement, so two requests that both find the garment unsearched cannot both pay for it.
+  const now = Date.now()
+  const { data: claimed, error: claimError } = await context.admin.from("inspiration_import_candidates")
+    .update({ web_search_heartbeat_at: new Date(now).toISOString() })
+    .eq("id", rowId)
+    .or(`web_results.is.null,web_searched_at.lt.${new Date(now - WEB_RESULT_MAX_AGE_MS).toISOString()}`)
+    .or(`web_search_heartbeat_at.is.null,web_search_heartbeat_at.lt.${new Date(now - WEB_SEARCH_STALE_MS).toISOString()}`)
+    .select("id")
+  queryError(claimError, "Unable to start online search")
+  if (!claimed?.length) {
+    const latest = await selectedCandidate(context, importId, rowId)
+    const arrived = storedWebListings(latest.candidate)
+    if (arrived) return { results: await withSelectionTokens(arrived, importId, rowId) }
+    throw new HttpError(409, "web_search_busy", "Search in progress")
+  }
+
+  const touchHeartbeat = async () => {
+    await context.admin.from("inspiration_import_candidates")
+      .update({ web_search_heartbeat_at: new Date().toISOString() }).eq("id", rowId)
+  }
+  const heartbeat = setInterval(() => { touchHeartbeat().catch(() => undefined) }, WEB_SEARCH_HEARTBEAT_MS)
+  let owned = true
+  try {
+    const listings = await runLensSearch(context, current.candidate)
+    const { error } = await context.admin.from("inspiration_import_candidates")
+      .update({ web_results: listings, web_searched_at: new Date().toISOString() })
+      .eq("id", rowId)
+    queryError(error, "Unable to store online search results")
+    owned = false
+    const stillSelected = await selectedCandidate(context, importId, rowId)
+    if (stillSelected.candidate.id !== rowId) throw new HttpError(409, "candidate_changed", "The selected garment changed; search again")
+    return { results: await withSelectionTokens(listings, importId, rowId) }
+  } finally {
+    clearInterval(heartbeat)
+    // A failed search leaves no results, so the claim must go at once or the next request waits it out.
+    if (owned) {
+      await context.admin.from("inspiration_import_candidates")
+        .update({ web_search_heartbeat_at: null }).eq("id", rowId)
+    }
   }
 }
 

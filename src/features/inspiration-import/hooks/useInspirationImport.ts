@@ -2,7 +2,10 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { inspirationImportKeys } from "@/features/inspiration-import/queryKeys"
 import { useProfileContext } from "@/features/profile/providers/ProfileProvider"
 import { useJobs } from "@/features/progress/providers/JobsContext"
-import { inspirationImportService } from "@/services/inspirationImport/inspirationImportService"
+import {
+  inspirationImportService,
+  isWebSearchBusy,
+} from "@/services/inspirationImport/inspirationImportService"
 import type {
   InspirationImport,
   InspirationOpenStudioInput,
@@ -10,6 +13,9 @@ import type {
 } from "@/services/inspirationImport/types"
 
 const DETECTION_POLL_INTERVAL_MS = 3_000
+const WEB_SEARCH_BUSY_RETRY_DELAY_MS = 5_000
+// Enough polls to cover a whole slow online search.
+const WEB_SEARCH_BUSY_RETRIES = 10
 
 export function useStartInspirationImport() {
   const { addJob } = useJobs()
@@ -99,10 +105,11 @@ export function useImportWebResults(
   const queries = useQueries({
     queries: candidates.map((candidate) => ({
       queryKey: inspirationImportKeys.web(importId, candidate.id),
-      queryFn: ({ signal }: { signal: AbortSignal }) =>
-        inspirationImportService.searchWeb(importId, candidate.id, signal),
+      queryFn: () => inspirationImportService.searchWeb(importId, candidate.id),
       enabled: Boolean(importId && candidate.id),
-      retry: false,
+      // A busy answer means another request is already paying for this search; poll for its result.
+      retry: (count: number, error: unknown) => isWebSearchBusy(error) && count < WEB_SEARCH_BUSY_RETRIES,
+      retryDelay: WEB_SEARCH_BUSY_RETRY_DELAY_MS,
       staleTime: 24 * 60 * 60 * 1000,
       gcTime: 24 * 60 * 60 * 1000,
     })),
