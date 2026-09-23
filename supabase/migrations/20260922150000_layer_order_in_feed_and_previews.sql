@@ -3,17 +3,12 @@
 --    so the feed shows the default rule and personal orders stay personal.
 -- 2. Board previews and board items carry the row's stacking, so cards draw it.
 -- 3. Existing preview JSON is rebuilt once so current boards pick it up.
+-- Function bodies are copied from the live database, which already casts the lineage comparison to uuid.
 
 -- get_curated_outfit_ids_seeded: prefer null layer_order inside the per-combo dedupe.
-CREATE OR REPLACE FUNCTION public.get_curated_outfit_ids_seeded(
-  p_gender TEXT,
-  p_seed TEXT,
-  p_limit INT DEFAULT 50,
-  p_offset INT DEFAULT 0
-)
-RETURNS TABLE (id TEXT)
-LANGUAGE sql
-AS $$
+CREATE OR REPLACE FUNCTION "public"."get_curated_outfit_ids_seeded"("p_gender" "text", "p_seed" "text", "p_limit" integer DEFAULT 50, "p_offset" integer DEFAULT 0) RETURNS TABLE("id" "text")
+    LANGUAGE "sql"
+    AS $$
   SELECT deduped.id
   FROM (
     SELECT DISTINCT ON (o.top_id, o.bottom_id, o.shoes_id)
@@ -23,7 +18,7 @@ AS $$
     FROM public.outfits o
     WHERE o.visible_in_feed = true
       AND o.is_private = false
-      AND o.source_outfit_id = o.id
+      AND o.source_outfit_id = o.id::uuid
       AND o.category <> 'others'
       AND o.gender IS NOT NULL
       AND (
@@ -45,15 +40,9 @@ AS $$
 $$;
 
 -- get_all_outfit_ids: prefer null layer_order inside the per-combo dedupe.
-CREATE OR REPLACE FUNCTION public.get_all_outfit_ids(
-  p_gender TEXT,
-  p_sort_by TEXT DEFAULT 'newly_added',
-  p_limit INT DEFAULT 50,
-  p_offset INT DEFAULT 0
-)
-RETURNS TABLE (id TEXT)
-LANGUAGE sql
-AS $$
+CREATE OR REPLACE FUNCTION "public"."get_all_outfit_ids"("p_gender" "text", "p_sort_by" "text" DEFAULT 'newly_added'::"text", "p_limit" integer DEFAULT 50, "p_offset" integer DEFAULT 0) RETURNS TABLE("id" "text")
+    LANGUAGE "sql"
+    AS $$
   SELECT deduped.id
   FROM (
     SELECT DISTINCT ON (o.top_id, o.bottom_id, o.shoes_id)
@@ -63,7 +52,7 @@ AS $$
     FROM public.outfits o
     WHERE o.visible_in_feed = true
       AND o.is_private = false
-      AND o.source_outfit_id = o.id
+      AND o.source_outfit_id = o.id::uuid
       AND o.category <> 'others'
       AND o.gender IS NOT NULL
       AND (
@@ -88,15 +77,10 @@ AS $$
 $$;
 
 -- refresh_user_collection_stats: outfit preview entries carry layerOrder (2 sites).
-CREATE OR REPLACE FUNCTION public.refresh_user_collection_stats(
-  p_user_id uuid,
-  p_collection_slug text
-)
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
+CREATE OR REPLACE FUNCTION "public"."refresh_user_collection_stats"("p_user_id" "uuid", "p_collection_slug" "text") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
 DECLARE
   normalized_slug text;
   v_count bigint;
@@ -348,24 +332,11 @@ END;
 $$;
 
 -- get_moodboard_previews: one more output column, so the function is recreated.
-DROP FUNCTION IF EXISTS public.get_moodboard_previews(uuid, text[]);
-CREATE OR REPLACE FUNCTION public.get_moodboard_previews(
-  p_user_id uuid,
-  p_slugs text[]
-)
-RETURNS TABLE (
-  collection_slug text,
-  item_type text,
-  item_id text,
-  image_url text,
-  gender text,
-  rendered_items jsonb,
-  layer_order jsonb,
-  brand text,
-  price integer,
-  currency text,
-  product_name text
-) AS $$
+DROP FUNCTION IF EXISTS "public"."get_moodboard_previews"("uuid", "text"[]);
+CREATE OR REPLACE FUNCTION "public"."get_moodboard_previews"("p_user_id" "uuid", "p_slugs" "text"[]) RETURNS TABLE("collection_slug" "text", "item_type" "text", "item_id" "text", "image_url" "text", "gender" "text", "rendered_items" "jsonb", "layer_order" "jsonb", "brand" "text", "price" integer, "currency" "text", "product_name" "text")
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
   SELECT
     j.collection_slug,
     (item->>'itemType')::text AS item_type,
@@ -387,20 +358,13 @@ RETURNS TABLE (
     ON s.user_id = p_user_id AND s.collection_slug = j.collection_slug
   LEFT JOIN LATERAL jsonb_array_elements(COALESCE(s.preview_items, '[]'::jsonb)) AS item ON true
   ORDER BY j.collection_slug;
-$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
-GRANT EXECUTE ON FUNCTION public.get_moodboard_previews(uuid, text[]) TO authenticated, service_role, anon;
+$$;
+GRANT EXECUTE ON FUNCTION "public"."get_moodboard_previews"("uuid", "text"[]) TO "authenticated", "service_role", "anon";
 
 -- get_collections_with_previews: outfit preview entries carry layerOrder.
-CREATE OR REPLACE FUNCTION public.get_collections_with_previews(p_user_id uuid DEFAULT auth.uid())
-RETURNS TABLE (
-  collection_slug text,
-  collection_label text,
-  item_count bigint,
-  is_system boolean,
-  preview_outfit_ids text[],
-  preview_outfits_render jsonb,
-  preview_items jsonb
-) AS $$
+CREATE OR REPLACE FUNCTION "public"."get_collections_with_previews"("p_user_id" "uuid" DEFAULT "auth"."uid"()) RETURNS TABLE("collection_slug" "text", "collection_label" "text", "item_count" bigint, "is_system" boolean, "preview_outfit_ids" "text"[], "preview_outfits_render" "jsonb", "preview_items" "jsonb")
+    LANGUAGE "sql" SECURITY DEFINER
+    AS $$
 WITH system_collections AS (
   SELECT 'wardrobe'::text AS collection_slug, 'Wardrobe'::text AS collection_label, true AS is_system
   UNION ALL
@@ -494,26 +458,12 @@ LEFT JOIN LATERAL (
     ) items ON true
   ) entry
 ) preview ON true;
-$$ LANGUAGE sql SECURITY DEFINER;
+$$;
 
 -- get_moodboard_items_batch: the outfit object carries layer_order, read by the same mapper as Studio.
-create or replace function public.get_moodboard_items_batch(
-  p_user_id uuid default auth.uid(),
-  p_slugs text[] default '{}'::text[],
-  p_limit integer default 20,
-  p_offset integer default 0
-)
-returns table (
-  collection_slug text,
-  created_at timestamptz,
-  item_type text,
-  outfit jsonb,
-  product jsonb
-)
-language sql
-stable
-security definer
-as $$
+CREATE OR REPLACE FUNCTION "public"."get_moodboard_items_batch"("p_user_id" "uuid" DEFAULT "auth"."uid"(), "p_slugs" "text"[] DEFAULT '{}'::"text"[], "p_limit" integer DEFAULT 20, "p_offset" integer DEFAULT 0) RETURNS TABLE("collection_slug" "text", "created_at" timestamp with time zone, "item_type" "text", "outfit" "jsonb", "product" "jsonb")
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    AS $$
 with normalized_slugs as (
   select distinct public.canonical_collection_slug(slug) as collection_slug
   from unnest(p_slugs) as slug
@@ -670,5 +620,5 @@ order by f.collection_slug, f.created_at desc;
 $$;
 
 -- Rebuild every stored preview once, so current boards carry the stacking without waiting for a save.
-SELECT public.refresh_user_collection_stats(s.user_id, s.collection_slug)
-FROM public.user_collection_stats s;
+SELECT "public"."refresh_user_collection_stats"(s.user_id, s.collection_slug)
+FROM "public"."user_collection_stats" s;
