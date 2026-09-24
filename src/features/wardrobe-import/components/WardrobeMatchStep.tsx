@@ -18,7 +18,6 @@ import {
 import { useSlowSearchNotice } from "@/features/inspiration-import/hooks/useSlowSearchNotice"
 import {
   WARDROBE_PRIMARY,
-  WARDROBE_SECONDARY,
   WARDROBE_TOGGLE,
 } from "@/features/wardrobe-import/components/WardrobeImportChrome"
 import { useWardrobeBatch } from "@/features/wardrobe-import/providers/WardrobeBatchProvider"
@@ -74,6 +73,14 @@ function webSelection(result: InspirationWebResult, candidateId: string): Wardro
     selectionToken: result.selectionToken ?? undefined,
     candidateId,
   }
+}
+
+/** Inventory picks land in the wardrobe now; web picks wait on the Atlyr team's review. */
+function addedSummary(saved: number, sent: number): string {
+  const parts: string[] = []
+  if (saved) parts.push(`${saved} added`)
+  if (sent) parts.push(sent === 1 ? "1 on its way" : `${sent} on the way`)
+  return parts.join(", ")
 }
 
 /** The inventory row behind an inventory pick, which is what the mannequin wears. */
@@ -171,16 +178,36 @@ export function WardrobeMatchStep({ photo, onCommitted }: Props) {
   })
   const pendingInventory = pendingPicks("inventory")
   const pendingWeb = pendingPicks("web")
+  const pendingAll = [...pendingInventory, ...pendingWeb]
   const committing = saveProduct.isPending || addWebSelections.isPending
 
+  const saveInventoryPicks = async () => {
+    for (const { type } of pendingInventory) {
+      const productId = photo.selections[type]?.inventory?.productId
+      if (productId) await saveProduct.mutateAsync({ productId, slug: "wardrobe", label: "Wardrobe" })
+    }
+  }
+
+  const sendWebPicks = async () => {
+    if (!photo.importId) throw new Error("This photo has no import to attach the picks to")
+    const selections = pendingWeb.flatMap(({ type }) => {
+      const pick = photo.selections[type]?.web
+      return pick?.selectionToken
+        ? [{ candidateId: pick.candidateId, selectionToken: pick.selectionToken }]
+        : []
+    })
+    if (selections.length !== pendingWeb.length) throw new Error("An online pick expired")
+    await addWebSelections.mutateAsync({ selections })
+  }
+
+  // One button for both rails, so both runs start even if one of them fails.
   const addToWardrobe = async () => {
-    if (!pendingInventory.length) return
-    try {
-      for (const { type } of pendingInventory) {
-        const productId = photo.selections[type]?.inventory?.productId
-        if (productId) await saveProduct.mutateAsync({ productId, slug: "wardrobe", label: "Wardrobe" })
-      }
-    } catch {
+    if (!pendingAll.length) return
+    const outcomes = await Promise.allSettled([
+      ...(pendingInventory.length ? [saveInventoryPicks()] : []),
+      ...(pendingWeb.length ? [sendWebPicks()] : []),
+    ])
+    if (outcomes.some((outcome) => outcome.status === "rejected")) {
       toast({
         title: "Could not add to your wardrobe",
         description: "Your picks are still here — try again.",
@@ -188,38 +215,8 @@ export function WardrobeMatchStep({ photo, onCommitted }: Props) {
       })
       return
     }
-    toast({ title: "Added to your wardrobe" })
-    onCommitted(photo.id, pendingInventory)
-  }
-
-  const addToAtlyr = async () => {
-    if (!pendingWeb.length || !photo.importId) return
-    const selections = pendingWeb.flatMap(({ type }) => {
-      const pick = photo.selections[type]?.web
-      return pick?.selectionToken
-        ? [{ candidateId: pick.candidateId, selectionToken: pick.selectionToken }]
-        : []
-    })
-    if (selections.length !== pendingWeb.length) {
-      toast({
-        title: "An online pick expired",
-        description: "Search online again and reselect it.",
-        variant: "destructive",
-      })
-      return
-    }
-    try {
-      await addWebSelections.mutateAsync({ selections })
-    } catch {
-      toast({
-        title: "Could not send your online picks",
-        description: "Your picks are still here — try again.",
-        variant: "destructive",
-      })
-      return
-    }
-    toast({ title: "Added to Atlyr", description: "The Atlyr team will review and add it to Atlyr's inventory." })
-    onCommitted(photo.id, pendingWeb)
+    toast({ title: addedSummary(pendingInventory.length, pendingWeb.length) })
+    onCommitted(photo.id, pendingAll)
   }
 
   const backLink = (
@@ -235,34 +232,21 @@ export function WardrobeMatchStep({ photo, onCommitted }: Props) {
     </div>
   )
 
-  // The tray: web picks go to the Atlyr team, inventory picks go to the wardrobe board.
+  // The tray: one button sends every uncommitted pick on this photo, both rails at once.
   const tray = (
     <div className="flex h-[76px] flex-none items-center gap-3 border-t border-hairline bg-background px-4 pb-2">
       <button
         type="button"
-        className={WARDROBE_SECONDARY}
-        disabled={!pendingWeb.length || committing}
-        onClick={() => void addToAtlyr()}
-      >
-        {addWebSelections.isPending ? (
-          <Loader2 className="h-[18px] w-[18px] animate-spin" aria-hidden="true" />
-        ) : (
-          <Icons.add className="h-[18px] w-[18px]" aria-hidden="true" />
-        )}
-        add to atlyr · {pendingWeb.length}
-      </button>
-      <button
-        type="button"
         className={WARDROBE_PRIMARY}
-        disabled={!pendingInventory.length || committing}
+        disabled={!pendingAll.length || committing}
         onClick={() => void addToWardrobe()}
       >
-        {saveProduct.isPending ? (
+        {committing ? (
           <Loader2 className="h-[18px] w-[18px] animate-spin" aria-hidden="true" />
         ) : (
           <Icons.sourceWardrobe className="h-[18px] w-[18px]" aria-hidden="true" />
         )}
-        add to wardrobe · {pendingInventory.length}
+        add to wardrobe · {pendingAll.length}
       </button>
     </div>
   )

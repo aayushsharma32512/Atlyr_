@@ -18,6 +18,7 @@ export function mapImportResultToStudioItem(
     placement: toPlacementTransform({ placement: result.placement, gender: result.gender }),
     brand: result.brand,
     productName: result.title,
+    typeCategory: result.type_category,
     price: result.price,
     currency: result.currency,
     size: result.size,

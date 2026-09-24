@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { AvatarItemBoundsFrame } from "@/features/studio/types"
-import { getGarmentPreviewCrop } from "./previewCrop"
+import { getGarmentPreviewCrop, isBoundsFrameFor } from "./previewCrop"
 
 const frame: AvatarItemBoundsFrame = {
   canvasWidth: 240,
@@ -42,5 +42,19 @@ describe("getGarmentPreviewCrop", () => {
     const expandedHeight = 100 - crop.topPercent - crop.bottomPercent
 
     expect(expandedHeight).toBeLessThanOrEqual(100 / 0.42 + 0.001)
+  })
+})
+
+describe("isBoundsFrameFor", () => {
+  test("accepts the frame that measured the garments now on the figure", () => {
+    expect(isBoundsFrameFor(frame, ["top-1", "bottom-1"])).toBe(true)
+  })
+
+  test("rejects a frame from a build the figure has already replaced", () => {
+    expect(isBoundsFrameFor(frame, ["top-2", "bottom-1"])).toBe(false)
+  })
+
+  test("accepts an empty frame, which is how the renderer reports no measurable garment", () => {
+    expect(isBoundsFrameFor({ ...frame, items: [] }, ["top-1"])).toBe(true)
   })
 })
