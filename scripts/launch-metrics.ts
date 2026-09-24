@@ -31,6 +31,10 @@ const TEAM_EMAILS = [
   "silov.solutions@gmail.com",
   "sumakesh1997sbdav@gmail.com",
   "atlyrapp@gmail.com",
+  "aakashdaswani@gmail.com",
+  "vidhikashyaplsr@gmail.com",
+  "aayushsharma6698@gmail.com",
+  "sushantsondhi@gmail.com",
 ]
 
 const LAUNCH_DATE = "2026-09-15"
