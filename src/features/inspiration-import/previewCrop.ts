@@ -1,6 +1,6 @@
 import type { AvatarItemBoundsFrame, StudioRenderedZone } from "@/features/studio/types"
 
-type PreviewCropInsets = {
+export type PreviewCropInsets = {
   topPercent: number
   rightPercent: number
   bottomPercent: number
@@ -13,6 +13,16 @@ const MAX_HORIZONTAL_ZOOM = 1.8
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value))
+}
+
+/**
+ * True when a bounds frame describes the given garments, and not a render that the figure has
+ * already replaced. A build that finishes late reports the items it drew, so a frame carrying an id
+ * that is no longer worn belongs to an earlier outfit and must be discarded.
+ */
+export function isBoundsFrameFor(frame: AvatarItemBoundsFrame, itemIds: string[]): boolean {
+  if (!frame.items.length) return true
+  return frame.items.every((bounds) => itemIds.includes(bounds.id))
 }
 
 export function getGarmentPreviewCrop(
