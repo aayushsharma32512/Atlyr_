@@ -33,6 +33,8 @@ const TEAM_EMAILS = [
   "atlyrapp@gmail.com",
   "aakashdaswani@gmail.com",
   "vidhikashyaplsr@gmail.com",
+  "vidhik709@gmail.com",
+  "coeht.iitd@gmail.com",
   "aayushsharma6698@gmail.com",
   "sushantsondhi@gmail.com",
 ]
