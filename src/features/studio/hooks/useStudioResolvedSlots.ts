@@ -2,64 +2,34 @@ import { useEffect, useMemo, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 
 import { studioKeys } from "@/features/studio/queryKeys"
+import {
+  buildSlotMap,
+  computePendingSlots,
+  firstResolveDone,
+  firstResolveState,
+  mergeSlotMaps,
+  type FirstResolveState,
+  type RequestedSlotIds,
+  type SlotMap,
+} from "@/features/studio/utils/resolvedSlotsState"
 import { studioService, type StudioProductTrayItem, type StudioProductTraySlot } from "@/services/studio/studioService"
 
 interface UseStudioResolvedSlotsArgs {
   outfitId: string | null
   baseOutfitItems: StudioProductTrayItem[]
-  requestedSlotIds: Partial<Record<StudioProductTraySlot, string | null>>
+  requestedSlotIds: RequestedSlotIds
 }
 
 interface ResolvedSlotsResult {
   trayItems: StudioProductTrayItem[]
+  /** A fetch for a requested piece is in flight. */
   isResolving: boolean
+  /** True until the URL's pieces are in for the first time since mount or an outfit change. */
+  awaitingFirstResolve: boolean
 }
 
 function toSlotOrder(): StudioProductTraySlot[] {
   return ["top", "bottom", "shoes"]
-}
-
-type SlotMap = Record<StudioProductTraySlot, StudioProductTrayItem | null>
-
-function buildSlotMap(items: StudioProductTrayItem[]): SlotMap {
-  const map: SlotMap = {
-    top: null,
-    bottom: null,
-    shoes: null,
-  }
-  items.forEach((item) => {
-    if (item.slot === "top" || item.slot === "bottom" || item.slot === "shoes") {
-      map[item.slot] = item
-    }
-  })
-  return map
-}
-
-function mergeSlotMaps(target: SlotMap, source: SlotMap): SlotMap {
-  let changed = false
-  const next: SlotMap = { ...target }
-  toSlotOrder().forEach((slot) => {
-    const incoming = source[slot]
-    if (incoming && (!next[slot] || next[slot]?.productId !== incoming.productId)) {
-      next[slot] = incoming
-      changed = true
-    }
-  })
-  return changed ? next : target
-}
-
-function computePendingSlots(
-  requestedSlotIds: Partial<Record<StudioProductTraySlot, string | null>>,
-  resolvedSlots: SlotMap,
-): StudioProductTraySlot[] {
-  return toSlotOrder().filter((slot) => {
-    const requestedId = requestedSlotIds[slot]
-    if (!requestedId) {
-      return false
-    }
-    const resolved = resolvedSlots[slot]
-    return !resolved || resolved.productId !== requestedId
-  })
 }
 
 export function useStudioResolvedSlots({
@@ -70,9 +40,15 @@ export function useStudioResolvedSlots({
   const queryClient = useQueryClient()
   const baseSlotMap = useMemo(() => buildSlotMap(baseOutfitItems), [baseOutfitItems])
   const [resolvedSlots, setResolvedSlots] = useState<SlotMap>(() => baseSlotMap)
-  // True from the very first render when the URL asks for pieces the saved look does not hold,
-  // so no screen draws the saved pieces before the requested ones arrive.
   const [isResolving, setIsResolving] = useState(() => computePendingSlots(requestedSlotIds, baseSlotMap).length > 0)
+  // Set from the very first render, so no screen draws the saved pieces before the requested ones arrive.
+  const [firstResolve, setFirstResolve] = useState<FirstResolveState>(() =>
+    firstResolveState(null, outfitId, computePendingSlots(requestedSlotIds, baseSlotMap).length),
+  )
+  // An outfit change is decided during render, so no frame draws the previous look's pieces on the new one.
+  if (firstResolve.outfitId !== outfitId) {
+    setFirstResolve(firstResolveState(firstResolve, outfitId, computePendingSlots(requestedSlotIds, resolvedSlots).length))
+  }
 
   useEffect(() => {
     setResolvedSlots((prev) => mergeSlotMaps(prev, baseSlotMap))
@@ -86,6 +62,7 @@ export function useStudioResolvedSlots({
   useEffect(() => {
     if (pendingSlots.length === 0) {
       setIsResolving(false)
+      setFirstResolve(firstResolveDone)
       return
     }
 
@@ -134,6 +111,7 @@ export function useStudioResolvedSlots({
       }
       if (!cancelled) {
         setIsResolving(false)
+        setFirstResolve(firstResolveDone)
       }
     }
 
@@ -154,7 +132,5 @@ export function useStudioResolvedSlots({
     return items
   }, [resolvedSlots])
 
-  return { trayItems, isResolving }
+  return { trayItems, isResolving, awaitingFirstResolve: firstResolve.awaiting }
 }
-
-
