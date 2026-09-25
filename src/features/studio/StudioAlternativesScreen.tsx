@@ -729,6 +729,7 @@ export function StudioAlternativesView() {
     outfitItems.bottomId,
     outfitItems.footwearId,
     outfitItems.topId,
+    parsedParams.layerOrder,
     profile?.name,
     user?.id,
   ])
@@ -1130,6 +1131,7 @@ export function StudioAlternativesView() {
       toast,
       parsedParams.hiddenSlots,
       parsedParams.share,
+      parsedParams.layerOrder,
       createDraftOutfitMutation,
       user?.id,
       gender,
@@ -1186,6 +1188,7 @@ export function StudioAlternativesView() {
       parsedParams.share,
       parsedParams.hiddenSlots,
       parsedParams.focus,
+      parsedParams.layerOrder,
     ],
   )
 

@@ -953,7 +953,7 @@ export function StudioScreenView() {
       recordChange(nextSnapshot)
       applySnapshot(nextSnapshot)
     },
-    [applySnapshot, currentSlotIds, hiddenSlots, isViewOnly, recordChange, syncOutfitId],
+    [applySnapshot, currentSlotIds, hiddenSlots, isViewOnly, recordChange, syncOutfitId, parsedParams.layerOrder],
   )
 
   /** The row's 4-square, the rail on an empty slot — both open Alternates. */
