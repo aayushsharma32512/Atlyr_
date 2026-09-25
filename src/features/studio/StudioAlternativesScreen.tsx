@@ -188,13 +188,13 @@ export function StudioAlternativesView() {
 
   const requestedSlotIds = parsedParams.slotIds
 
-  const { trayItems: resolvedTrayItems, isResolving: slotsResolving } = useStudioResolvedSlots({
+  // Same rule as Studio: never draw the saved pieces while the URL's pieces load for the first time.
+  // A later miss (a rack tap, an undo) keeps the figure and swaps one piece when it arrives.
+  const { trayItems: resolvedTrayItems, awaitingFirstResolve: isLoadingOverrides } = useStudioResolvedSlots({
     outfitId: resolvedOutfitId,
     baseOutfitItems: outfitData?.trayItems ?? [],
     requestedSlotIds,
   })
-  // Same rule as Studio: never draw the saved pieces while the URL's pieces are still loading.
-  const isLoadingOverrides = slotsResolving && Boolean(requestedSlotIds.top || requestedSlotIds.bottom || requestedSlotIds.shoes)
   // The stacking stored on the row; `layers` in the URL is present only when it differs from that.
   const rowLayerOrder = LAYER_ORDER_ENABLED ? outfitData?.studioOutfit?.layerOrder ?? null : null
   const orderChanged = parsedParams.layerOrder != null
@@ -729,6 +729,7 @@ export function StudioAlternativesView() {
     outfitItems.bottomId,
     outfitItems.footwearId,
     outfitItems.topId,
+    parsedParams.layerOrder,
     profile?.name,
     user?.id,
   ])
@@ -1130,6 +1131,7 @@ export function StudioAlternativesView() {
       toast,
       parsedParams.hiddenSlots,
       parsedParams.share,
+      parsedParams.layerOrder,
       createDraftOutfitMutation,
       user?.id,
       gender,
@@ -1186,6 +1188,7 @@ export function StudioAlternativesView() {
       parsedParams.share,
       parsedParams.hiddenSlots,
       parsedParams.focus,
+      parsedParams.layerOrder,
     ],
   )
 
