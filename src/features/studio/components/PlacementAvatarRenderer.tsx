@@ -498,6 +498,7 @@ export function PlacementAvatarRenderer({
     onReady?.(false)
     const app = new Application()
     const buildNo = ++avatarBuilds
+    let phase = "first draw"
     const startedAt = performance.now()
 
     // A garment tap handler is what forces this avatar to keep a live renderer: PIXI hit testing
@@ -848,6 +849,7 @@ export function PlacementAvatarRenderer({
         onReady?.(true)
         if (!upgradable) return
 
+        phase = "full-res upgrade"
         const fulls = await Promise.allSettled(fullTex)
         if (disposed) return
         let swapped = false
@@ -860,7 +862,7 @@ export function PlacementAvatarRenderer({
         if (swapped) app.render()
         present(true)
       } catch (err) {
-        if (import.meta.env.DEV) console.error("[avatar] build failed", err)
+        if (import.meta.env.DEV) console.error(`[avatar] build #${buildNo} failed during ${phase}`, err instanceof Error ? err.stack : err)
         if (!disposed) {
           // Don't leave the previous outfit on screen as if it were this one.
           host.replaceChildren()
