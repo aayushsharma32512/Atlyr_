@@ -39,6 +39,8 @@ export const studioKeys = {
     [...studioKeys.all, "mannequin", gender ?? "neutral", bodyType ?? "default"] as const,
   outfitProducts: (outfitId: string | null | undefined) =>
     [...studioKeys.all, "outfit-products", outfitId ?? "none"] as const,
+  /** Prefix shared by every search of one Alternates tab. */
+  searchAlternativesTab: (slot: string) => [...studioKeys.all, "search-alternatives", slot] as const,
   searchAlternatives: (args: {
     slot: string
     query: string
@@ -48,9 +50,7 @@ export const studioKeys = {
     productId?: string | null
   }) =>
     [
-      ...studioKeys.all,
-      "search-alternatives",
-      args.slot,
+      ...studioKeys.searchAlternativesTab(args.slot),
       args.query || "none",
       args.imageUrl || "none",
       args.filtersHash || "none",
