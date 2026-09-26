@@ -533,7 +533,8 @@ export function PlacementAvatarRenderer({
           // frames re-drawing an unchanging composite across the whole feed.
           autoStart: false,
         })
-        if (disposed) { app.destroy(true); return }
+        // Never `destroy(true)`: in Pixi 8 that also clears the page-wide pools other live avatars still use.
+        if (disposed) { app.destroy({ removeView: true }); return }
         appRef.current = app
         // The browser can drop a WebGL context under memory pressure; rebuild on a fresh one, a few times at most.
         app.canvas.addEventListener("webglcontextlost", () => {
@@ -830,7 +831,7 @@ export function PlacementAvatarRenderer({
           if (!final) return
           released = true
           appRef.current = null
-          app.destroy(true, { children: true })
+          app.destroy({ removeView: true }, { children: true })
         }
 
         app.render()
@@ -885,7 +886,7 @@ export function PlacementAvatarRenderer({
       finalUrls.forEach(releaseFullRes)
       if (released) return
       const destroy = () => {
-        try { app.destroy(true, { children: true }) } catch { /* already torn down */ }
+        try { app.destroy({ removeView: true }, { children: true }) } catch { /* already torn down */ }
       }
       if (shown) {
         retireRef.current?.()
