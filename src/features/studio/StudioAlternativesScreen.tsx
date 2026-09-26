@@ -223,14 +223,6 @@ export function StudioAlternativesView() {
     }
   }, [hiddenSlots, resolvedTrayItems, slot])
 
-  // Lock the product ID used for search at slot initialization time.
-  // currentSlotProductId changes on every alternative selection (Passive Selection pattern),
-  // but the search query must NOT re-fire just because the user picked a different item.
-  const [searchProductId, setSearchProductId] = useState<string | null>(currentSlotProductId)
-  useEffect(() => {
-    setSearchProductId(currentSlotProductId)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slot]) // Intentionally NOT including currentSlotProductId — only re-lock on slot change
   // The piece card's ⟳ seeds the rack with the piece worn at that moment; a rack tap never does.
   const seedRef = useRef<
     Partial<Record<StudioProductTraySlot, { imageUrl: string; productId: string; product: StudioAlternativeProduct | null }>>
@@ -243,6 +235,7 @@ export function StudioAlternativesView() {
 
   // --- SEARCH STATE ---
   const search = useStudioSearch({
+    slot,
     onUploadError: (error) => {
       toast({
         title: "Upload failed",
@@ -251,6 +244,22 @@ export function StudioAlternativesView() {
       })
     },
   })
+
+  // Lock the product ID used for search when a tab opens, one lock per tab.
+  // currentSlotProductId changes on every alternative selection (Passive Selection pattern),
+  // but the search query must NOT re-fire just because the user picked a different item.
+  // A tab with a committed search keeps its lock, so coming back finds its results under the same key.
+  const [searchLocks, setSearchLocks] = useState<Partial<Record<StudioProductTraySlot, string | null>>>({})
+  const searchProductId = slot in searchLocks ? searchLocks[slot] ?? null : currentSlotProductId
+  const setSearchProductId = useCallback(
+    (productId: string | null) => setSearchLocks((prev) => ({ ...prev, [slot]: productId })),
+    [slot],
+  )
+  useEffect(() => {
+    if (slot in searchLocks && search.hasActiveSearch) return
+    setSearchProductId(currentSlotProductId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slot]) // Intentionally NOT including currentSlotProductId — only re-lock on slot change
 
   // Track previous slot to detect tab changes
   const prevSlotRef = useRef<StudioProductTraySlot>(slot)
@@ -273,7 +282,7 @@ export function StudioAlternativesView() {
     }
     setSearchProductId(currentSlotProductId)
     search.forceSearchForSlot(slot, currentSlotImageUrl)
-  }, [currentSlotImageUrl, currentSlotProductId, hiddenSlots, isViewOnly, resolvedTrayItems, search, slot])
+  }, [currentSlotImageUrl, currentSlotProductId, hiddenSlots, isViewOnly, resolvedTrayItems, search, setSearchProductId, slot])
 
   // --- INITIALIZATION FLOW: resume or initialise the slot's search; only the piece card's ⟳ seeds it ---
   useEffect(() => {
