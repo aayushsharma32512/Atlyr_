@@ -14,6 +14,29 @@ type AnyClient = Awaited<ReturnType<typeof requireUser>>["admin"]
 type ImportRow = Record<string, any>
 const MIME_EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" }
 const DEFAULT_DETECTION_TIMEOUT_SECONDS = 180
+const DEFAULT_IMPORT_INTENT = "inspiration"
+const IMPORT_INTENTS = new Set([DEFAULT_IMPORT_INTENT, "wardrobe"])
+// A web pick must stay redeemable across a whole multi-photo session, not one hour of it.
+const WEB_SELECTION_TTL_SECONDS = 24 * 60 * 60
+const SERPAPI_UPLOAD_TIMEOUT_MS = 8_000
+// Above the slowest honest Lens answer seen: a timeout never saves a paid search, it only wastes one.
+const SERPAPI_LENS_TIMEOUT_MS = 40_000
+const WEB_RESULT_MAX_AGE_MS = 24 * 60 * 60 * 1000
+const WEB_SEARCH_HEARTBEAT_MS = 5_000
+// Three missed beats: long enough to trust a slow search, short enough to free a dead one.
+const WEB_SEARCH_STALE_MS = 15_000
+
+// A stored listing carries no selection token, so it can never hold an expired one.
+type WebListing = {
+  providerResultId: string
+  candidateId: string
+  title: string
+  merchantDomain: string
+  listingUrl: string
+  imageUrl: string
+  rank: number
+  priceLabel: string | null
+}
 
 function queryError(error: { message: string } | null, message: string) {
   if (error) throw new Error(`${message}: ${error.message}`)
@@ -69,10 +92,15 @@ async function createImport(context: Awaited<ReturnType<typeof requireUser>>, bo
   const mimeType = requiredString(body, "mimeType")
   const extension = MIME_EXT[mimeType]
   if (!extension) throw new HttpError(415, "invalid_image_type", "Choose a JPEG, PNG or WebP image")
+  const intent = optionalString(body, "intent") ?? DEFAULT_IMPORT_INTENT
+  if (!IMPORT_INTENTS.has(intent)) {
+    throw new HttpError(400, "invalid_intent", "Intent must be inspiration or wardrobe")
+  }
   const importId = crypto.randomUUID()
   const uploadPath = `${context.userId}/${importId}/source/original.${extension}`
   const { error } = await context.admin.from("inspiration_imports").insert({
     id: importId, user_id: context.userId, source_kind: "image", source_path: uploadPath, status: "created",
+    intent,
   })
   queryError(error, "Unable to create import")
   return { importId, uploadPath }
@@ -425,69 +453,81 @@ async function selectedCandidate(
   return { importRow, candidate: data[0] as ImportRow }
 }
 
-async function normalizeLens(
+function normalizeLens(
   payload: Record<string, unknown>,
   imageId: string,
-  importId: string,
   candidateId: string,
-) {
+): WebListing[] {
   const matches = filterShoppingResults(
     Array.isArray(payload.visual_matches) ? payload.visual_matches as Record<string, unknown>[] : [],
   )
   const seen = new Set<string>()
-  const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60
-  const results = matches.flatMap((raw, index) => {
+  return matches.flatMap((raw, index) => {
     const listingUrl = safeHttpUrl(raw.link)
     const imageUrl = safeHttpUrl(raw.image) ?? safeHttpUrl(raw.thumbnail)
     if (!listingUrl || !imageUrl || typeof raw.title !== "string" || seen.has(listingUrl)) return []
     seen.add(listingUrl)
-    const providerResultId = `${imageId}:${String(raw.position ?? index)}`
     return [{
-      version: 1 as const,
-      importId,
+      providerResultId: `${imageId}:${String(raw.position ?? index)}`,
       candidateId,
-      providerResultId,
       rank: typeof raw.position === "number" ? raw.position : index,
       title: raw.title,
       merchantDomain: new URL(listingUrl).hostname.replace(/^www\./, ""),
       listingUrl,
       imageUrl,
       priceLabel: getLensPriceLabel(raw),
-      expiresAt,
     }]
   })
-  return Promise.all(results.map(async (result) => {
-    const { priceLabel, ...selectionPayload } = result
-    return {
-      id: result.providerResultId,
-      candidateId: result.candidateId,
-      providerResultId: result.providerResultId,
-      title: result.title,
-      merchantDomain: result.merchantDomain,
-      listingUrl: result.listingUrl,
-      imageUrl: result.imageUrl,
-      rank: result.rank,
-      priceLabel,
-      selectionToken: await signInspirationWebSelection(
-        selectionPayload,
-        env("SUPABASE_SERVICE_ROLE_KEY"),
-      ),
-    }
-  }))
 }
 
-async function webSearch(context: Awaited<ReturnType<typeof requireUser>>, body: Record<string, unknown>) {
-  const importId = requiredString(body, "importId")
-  const candidateId = optionalString(body, "candidateId")
-  const current = await selectedCandidate(context, importId, candidateId)
-  const { data: crop, error: cropError } = await context.admin.storage.from(INSPIRATION_BUCKET).download(current.candidate.retrieval_crop_path)
+function withSelectionTokens(listings: WebListing[], importId: string, candidateId: string) {
+  const expiresAt = Math.floor(Date.now() / 1000) + WEB_SELECTION_TTL_SECONDS
+  return Promise.all(listings.map(async (listing) => ({
+    id: listing.providerResultId,
+    candidateId,
+    providerResultId: listing.providerResultId,
+    title: listing.title,
+    merchantDomain: listing.merchantDomain,
+    listingUrl: listing.listingUrl,
+    imageUrl: listing.imageUrl,
+    rank: listing.rank,
+    priceLabel: listing.priceLabel,
+    selectionToken: await signInspirationWebSelection({
+      version: 1,
+      importId,
+      candidateId,
+      providerResultId: listing.providerResultId,
+      rank: listing.rank,
+      title: listing.title,
+      merchantDomain: listing.merchantDomain,
+      listingUrl: listing.listingUrl,
+      imageUrl: listing.imageUrl,
+      expiresAt,
+    }, env("SUPABASE_SERVICE_ROLE_KEY")),
+  })))
+}
+
+function storedWebListings(candidate: ImportRow): WebListing[] | null {
+  if (!Array.isArray(candidate.web_results)) return null
+  const searchedAtMs = typeof candidate.web_searched_at === "string" ? Date.parse(candidate.web_searched_at) : NaN
+  if (!Number.isFinite(searchedAtMs) || Date.now() - searchedAtMs >= WEB_RESULT_MAX_AGE_MS) return null
+  return candidate.web_results as WebListing[]
+}
+
+async function runLensSearch(
+  context: Awaited<ReturnType<typeof requireUser>>,
+  candidate: ImportRow,
+): Promise<WebListing[]> {
+  const { data: crop, error: cropError } = await context.admin.storage.from(INSPIRATION_BUCKET).download(candidate.retrieval_crop_path)
   queryError(cropError, "Unable to read retrieval crop")
   if (!crop || crop.size > 500 * 1024) throw new HttpError(400, "lens_image_too_large", "Garment crop is too large for online search")
   const form = new FormData()
   form.set("api_key", env("SERPAPI_API_KEY"))
   form.set("image", crop, "retrieval.webp")
-  const uploadResponse = await fetch("https://serpapi.com/image", { method: "POST", body: form, signal: AbortSignal.timeout(20_000) })
+  const uploadStartedAt = Date.now()
+  const uploadResponse = await fetch("https://serpapi.com/image", { method: "POST", body: form, signal: AbortSignal.timeout(SERPAPI_UPLOAD_TIMEOUT_MS) })
   const upload = await uploadResponse.json().catch(() => ({})) as Record<string, unknown>
+  const uploadMs = Date.now() - uploadStartedAt
   if (!uploadResponse.ok || typeof upload.image_id !== "string") {
     console.error("[inspiration-import] serpapi upload", uploadResponse.status, upload.error ?? null)
     throw new Error("SerpApi image upload failed")
@@ -497,16 +537,64 @@ async function webSearch(context: Awaited<ReturnType<typeof requireUser>>, body:
     country: Deno.env.get("SERPAPI_COUNTRY") ?? "us", hl: "en", safe: "active", auto_crop: "false",
     api_key: env("SERPAPI_API_KEY"),
   })
-  const response = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(25_000) })
+  const lensStartedAt = Date.now()
+  const response = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(SERPAPI_LENS_TIMEOUT_MS) })
   const payload = await response.json().catch(() => ({})) as Record<string, unknown>
+  const lensMs = Date.now() - lensStartedAt
+  console.log("[inspiration-import] serpapi timing", { uploadMs, lensMs })
   if (!response.ok || !Array.isArray(payload.visual_matches)) {
     console.error("[inspiration-import] serpapi lens", response.status, payload.error ?? null)
     throw new Error("SerpApi Lens search failed")
   }
-  const stillSelected = await selectedCandidate(context, importId, current.candidate.id)
-  if (stillSelected.candidate.id !== current.candidate.id) throw new HttpError(409, "candidate_changed", "The selected garment changed; search again")
-  return {
-    results: await normalizeLens(payload, upload.image_id, importId, current.candidate.id),
+  return normalizeLens(payload, upload.image_id, candidate.id)
+}
+
+async function webSearch(context: Awaited<ReturnType<typeof requireUser>>, body: Record<string, unknown>) {
+  const importId = requiredString(body, "importId")
+  const candidateId = optionalString(body, "candidateId")
+  const current = await selectedCandidate(context, importId, candidateId)
+  const rowId = current.candidate.id as string
+  const stored = storedWebListings(current.candidate)
+  if (stored) return { results: await withSelectionTokens(stored, importId, rowId) }
+
+  // A SQL function, because PostgREST re-applies update filters to the returned rows and the
+  // freshly written heartbeat would fail its own "older than stale" test.
+  const { data: claimed, error: claimError } = await context.admin.rpc("claim_candidate_web_search", {
+    candidate_id: rowId,
+    stale_seconds: Math.round(WEB_SEARCH_STALE_MS / 1000),
+    max_age_seconds: Math.round(WEB_RESULT_MAX_AGE_MS / 1000),
+  })
+  queryError(claimError, "Unable to start online search")
+  if (!claimed) {
+    const latest = await selectedCandidate(context, importId, rowId)
+    const arrived = storedWebListings(latest.candidate)
+    if (arrived) return { results: await withSelectionTokens(arrived, importId, rowId) }
+    throw new HttpError(409, "web_search_busy", "Search in progress")
+  }
+
+  const touchHeartbeat = async () => {
+    await context.admin.from("inspiration_import_candidates")
+      .update({ web_search_heartbeat_at: new Date().toISOString() }).eq("id", rowId)
+  }
+  const heartbeat = setInterval(() => { touchHeartbeat().catch(() => undefined) }, WEB_SEARCH_HEARTBEAT_MS)
+  let owned = true
+  try {
+    const listings = await runLensSearch(context, current.candidate)
+    const { error } = await context.admin.from("inspiration_import_candidates")
+      .update({ web_results: listings, web_searched_at: new Date().toISOString() })
+      .eq("id", rowId)
+    queryError(error, "Unable to store online search results")
+    owned = false
+    const stillSelected = await selectedCandidate(context, importId, rowId)
+    if (stillSelected.candidate.id !== rowId) throw new HttpError(409, "candidate_changed", "The selected garment changed; search again")
+    return { results: await withSelectionTokens(listings, importId, rowId) }
+  } finally {
+    clearInterval(heartbeat)
+    // A failed search leaves no results, so the claim must go at once or the next request waits it out.
+    if (owned) {
+      await context.admin.from("inspiration_import_candidates")
+        .update({ web_search_heartbeat_at: null }).eq("id", rowId)
+    }
   }
 }
 
@@ -596,7 +684,7 @@ async function adminListWebRequests(context: Awaited<ReturnType<typeof requireUs
       .in("id", unique(rows.map((row) => row.web_result_id))),
     context.admin.from("inspiration_import_candidates").select("id,category,retrieval_crop_path")
       .in("id", unique(rows.map((row) => row.candidate_id))),
-    context.admin.from("inspiration_imports").select("id,user_id")
+    context.admin.from("inspiration_imports").select("id,user_id,intent")
       .in("id", unique(rows.map((row) => row.import_id))),
   ])
   queryError(webResults.error, "Unable to read online results")
@@ -639,18 +727,81 @@ async function adminListWebRequests(context: Awaited<ReturnType<typeof requireUs
   const requests = await Promise.all(rows.map(async (row) => {
     const web = webById.get(row.web_result_id) ?? {}
     const candidate = candidateById.get(row.candidate_id) ?? {}
-    const userId = importById.get(row.import_id)?.user_id ?? null
+    const importRow = importById.get(row.import_id)
+    const userId = importRow?.user_id ?? null
     const live = liveStatus(row)
     return {
       id: row.id, importId: row.import_id, status: live.status, jobState: live.jobState, createdAt: row.created_at,
       ingestionJobId: row.ingestion_job_id ?? null, ingestedProductId: live.productId,
       category: candidate.category ?? null,
+      intent: importRow?.intent ?? DEFAULT_IMPORT_INTENT,
       cropUrl: await signedUrl(context.admin, candidate.retrieval_crop_path ?? null),
       title: web.title ?? "", merchantDomain: web.merchant_domain ?? "",
       listingUrl: safeHttpUrl(web.listing_url) ?? "", imageUrl: safeHttpUrl(web.image_url) ?? "",
       userId, userName: userId ? nameByUserId.get(userId) ?? null : null,
     }
   }))
+  return { requests }
+}
+
+// The caller's own wardrobe requests, with the same live pipeline state the team's list shows.
+async function myWebRequests(context: Awaited<ReturnType<typeof requireUser>>) {
+  const { data: imports, error: importsError } = await context.admin.from("inspiration_imports")
+    .select("id").eq("user_id", context.userId).eq("intent", "wardrobe")
+    .order("created_at", { ascending: false }).limit(200)
+  queryError(importsError, "Unable to read imports")
+  const importIds = (imports ?? []).map((row: ImportRow) => row.id)
+  if (!importIds.length) return { requests: [] }
+
+  const { data: selections, error } = await context.admin.from("inspiration_import_selections")
+    .select("id,import_id,candidate_id,web_result_id,status,ingestion_job_id,ingested_product_id,created_at")
+    .eq("source", "web").in("import_id", importIds)
+    .order("created_at", { ascending: false }).limit(50)
+  queryError(error, "Unable to read requests")
+  const rows = (selections ?? []) as ImportRow[]
+  if (!rows.length) return { requests: [] }
+
+  const unique = (values: unknown[]) => [...new Set(values.filter(Boolean))] as string[]
+  const { data: webResults, error: webError } = await context.admin.from("inspiration_import_web_results")
+    .select("id,title,merchant_domain,listing_url,image_url")
+    .in("id", unique(rows.map((row) => row.web_result_id)))
+  queryError(webError, "Unable to read online results")
+  const webById = new Map((webResults ?? []).map((row: ImportRow) => [row.id, row]))
+
+  const jobById = new Map<string, ImportRow>()
+  const verdictByProductId = new Map<string, string>()
+  const jobIds = unique(rows.map((row) => row.ingestion_job_id))
+  if (jobIds.length) {
+    const { data: jobs, error: jobsError } = await context.admin.from("ingestion_pipeline_jobs")
+      .select("job_id,current_state,ingested_product_id").in("job_id", jobIds)
+    queryError(jobsError, "Unable to read ingestion jobs")
+    for (const job of (jobs ?? []) as ImportRow[]) jobById.set(job.job_id, job)
+    const productIds = unique((jobs ?? []).map((job: ImportRow) => job.ingested_product_id))
+    if (productIds.length) {
+      const { data: products, error: productsError } = await context.admin.from("ingested_products")
+        .select("id,verdict").in("id", productIds)
+      queryError(productsError, "Unable to read ingested products")
+      for (const product of (products ?? []) as ImportRow[]) verdictByProductId.set(product.id, product.verdict)
+    }
+  }
+
+  const requests = rows.map((row) => {
+    const web = webById.get(row.web_result_id) ?? {}
+    const job = row.ingestion_job_id ? jobById.get(row.ingestion_job_id) : null
+    let status = row.status
+    if (job) {
+      const productId = job.ingested_product_id ?? null
+      if (productId && verdictByProductId.get(productId) === "approved") status = "ingested"
+      else if (["failed", "discarded", "cancelled"].includes(job.current_state)) status = "failed"
+      else status = "ingesting"
+    }
+    return {
+      selectionId: row.id, importId: row.import_id, candidateId: row.candidate_id, status,
+      createdAt: row.created_at,
+      title: web.title ?? "", merchantDomain: web.merchant_domain ?? "",
+      listingUrl: safeHttpUrl(web.listing_url) ?? "", imageUrl: safeHttpUrl(web.image_url) ?? "",
+    }
+  })
   return { requests }
 }
 
@@ -715,6 +866,7 @@ serve(async (req) => {
       "add-web-selections": () => addWebSelections(context, body),
       // Older app builds still send this name; remove once every client uses add-web-selections.
       "stage-selections": () => addWebSelections(context, body),
+      "my-web-requests": () => myWebRequests(context),
       "admin-list-web-requests": () => adminListWebRequests(context),
       "admin-mark-web-request": () => adminMarkWebRequest(context, body),
       "open-studio": () => openStudio(context, body),

@@ -43,17 +43,18 @@ export interface UseStudioSearchReturn {
 }
 
 interface UseStudioSearchOptions {
+    /** The tab on screen. Its state is read in the same render the tab changes, never another tab's. */
+    slot: StudioProductTraySlot
     onUploadError?: (error: Error) => void
 }
 
-export function useStudioSearch(options: UseStudioSearchOptions = {}): UseStudioSearchReturn {
-    const { onUploadError } = options
+export function useStudioSearch(options: UseStudioSearchOptions): UseStudioSearchReturn {
+    const { slot: activeSearchSlot, onUploadError } = options
 
     // Get search state from context - persists across route changes
     const {
         slotSearchStates,
         setSlotSearchStates,
-        activeSearchSlot,
         setActiveSearchSlot
     } = useStudioContext()
 

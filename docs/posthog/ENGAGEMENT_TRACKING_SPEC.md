@@ -13,7 +13,7 @@ This spec is written to be followed **step-by-step** when implementing tracking.
 ### 0.1 In scope
 - New app: `/search`, `/collection`, `/collection/board/:slug`, `/profile`, `/studio/*`
   - `/home` is retired and redirects; it still resolves to the same surfaces for old links.
-- Auth funnel: `/auth/login`, `/auth/signup`, `/auth/callback`
+- Auth funnel: `/auth/login`, `/auth/signup`, `/auth/callback`, `/auth/invite`
 - Landing (waitlist entry): `surface=landing`
 
 ### 0.2 Out of scope

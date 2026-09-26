@@ -252,11 +252,16 @@ function loadImage(url: string): Promise<HTMLImageElement> {
  * is deferred a tick because a rebuild releases the old outfit BEFORE it acquires the new one, and
  * a garment present in both must keep its download.
  */
-type FullResLoad = { tex: Promise<Texture>; abort: AbortController; users: number; done: boolean }
+type FullResLoad = { tex: Promise<Texture>; abort: AbortController; users: number; done: boolean; bytes: number }
 const fullResLoads = new Map<string, FullResLoad>()
+/** Finished loads no avatar uses now, oldest first: kept so switching back is instant, capped so memory stays flat. */
+const idleFullRes = new Set<string>()
+const MAX_IDLE_FULL_RES = 6
+let avatarBuilds = 0
 
 function acquireFullRes(url: string): Promise<Texture> {
   let entry = fullResLoads.get(url)
+  idleFullRes.delete(url)
   if (!entry) {
     const abort = new AbortController()
     const tex = fetch(url, { mode: "cors", signal: abort.signal })
@@ -269,9 +274,9 @@ function acquireFullRes(url: string): Promise<Texture> {
       .then((bitmap) => new Texture({
         source: new ImageSource({ resource: bitmap, alphaMode: "premultiply-alpha-on-upload", label: url }),
       }))
-    const created: FullResLoad = { tex, abort, users: 0, done: false }
+    const created: FullResLoad = { tex, abort, users: 0, done: false, bytes: 0 }
     tex.then(
-      () => { created.done = true },
+      (t) => { created.done = true; created.bytes = t.source.pixelWidth * t.source.pixelHeight * 4 },
       () => { if (fullResLoads.get(url) === created) fullResLoads.delete(url) },
     )
     fullResLoads.set(url, created)
@@ -286,10 +291,44 @@ function releaseFullRes(url: string) {
   if (!entry) return
   entry.users--
   setTimeout(() => {
-    if (entry.users > 0 || entry.done || fullResLoads.get(url) !== entry) return
-    fullResLoads.delete(url)
-    entry.abort.abort()
+    if (entry.users > 0 || fullResLoads.get(url) !== entry) return
+    if (!entry.done) {
+      fullResLoads.delete(url)
+      entry.abort.abort()
+      return
+    }
+    idleFullRes.add(url)
+    for (const oldest of idleFullRes) {
+      if (idleFullRes.size <= MAX_IDLE_FULL_RES) break
+      evictFullRes(oldest)
+    }
   }, 0)
+}
+
+/** Frees a decoded full-res garment: its GPU copies and the bitmap itself (~17 MB for a 2K cutout). */
+function evictFullRes(url: string) {
+  idleFullRes.delete(url)
+  const entry = fullResLoads.get(url)
+  if (!entry) return
+  fullResLoads.delete(url)
+  entry.tex.then((tex) => {
+    const bitmap = tex.source.resource
+    tex.destroy(true)
+    if (bitmap instanceof ImageBitmap) bitmap.close()
+  }, () => {})
+}
+
+/** Dev-only console line with the build's timing and what the garment cache holds. */
+function logBuild(build: number, ms: number) {
+  if (!import.meta.env.DEV) return
+  let inUse = 0
+  let bytes = 0
+  fullResLoads.forEach((e) => { if (e.users > 0) inUse++; bytes += e.bytes })
+  const heap = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize
+  console.info(
+    `[avatar] build #${build} shown in ${Math.round(ms)} ms · full-res images ${fullResLoads.size} (${inUse} in use, ${idleFullRes.size} idle) ≈ ${Math.round(bytes / 1e6)} MB` +
+      (heap ? ` · JS heap ${Math.round(heap / 1e6)} MB` : ""),
+  )
 }
 
 /**
@@ -404,6 +443,9 @@ export function PlacementAvatarRenderer({
   onItemBoundsChange,
 }: Props) {
   const [host, setHost] = useState<HTMLDivElement | null>(null)
+  // Bumped when the WebGL context is lost, to rebuild on a new one; the times cap the retries.
+  const [contextEpoch, setContextEpoch] = useState(0)
+  const lostAtRef = useRef<number[]>([])
   const appRef = useRef<Application | null>(null)
   // Tears down the last build that reached the screen. Deferred until the next build presents, so a
   // changed outfit keeps the previous frame up instead of blanking while the new textures load.
@@ -455,6 +497,9 @@ export function PlacementAvatarRenderer({
     let shown = false
     onReady?.(false)
     const app = new Application()
+    const buildNo = ++avatarBuilds
+    let phase = "first draw"
+    const startedAt = performance.now()
 
     // A garment tap handler is what forces this avatar to keep a live renderer: PIXI hit testing
     // needs the scene graph. Without one the composite is a still image and nothing ever redraws it,
@@ -488,8 +533,17 @@ export function PlacementAvatarRenderer({
           // frames re-drawing an unchanging composite across the whole feed.
           autoStart: false,
         })
-        if (disposed) { app.destroy(true); return }
+        // Never `destroy(true)`: in Pixi 8 that also clears the page-wide pools other live avatars still use.
+        if (disposed) { app.destroy({ removeView: true }); return }
         appRef.current = app
+        // The browser can drop a WebGL context under memory pressure; rebuild on a fresh one, a few times at most.
+        app.canvas.addEventListener("webglcontextlost", () => {
+          if (disposed || released) return
+          const now = performance.now()
+          lostAtRef.current = lostAtRef.current.filter((t) => now - t < 10_000).concat(now)
+          if (import.meta.env.DEV) console.warn(`[avatar] WebGL context lost (${lostAtRef.current.length} in 10 s)`)
+          if (lostAtRef.current.length <= 3) setContextEpoch((n) => n + 1)
+        })
 
         const mannequinUrl = mannequinAssetUrl(mannequin)
         // Loaded via loadImage rather than Assets.load because the skin retone needs CPU-side pixel
@@ -777,7 +831,7 @@ export function PlacementAvatarRenderer({
           if (!final) return
           released = true
           appRef.current = null
-          app.destroy(true, { children: true })
+          app.destroy({ removeView: true }, { children: true })
         }
 
         app.render()
@@ -786,6 +840,7 @@ export function PlacementAvatarRenderer({
         const upgradable = loaded.some((l) => !l.isFull)
         present(!upgradable)
         shown = true
+        logBuild(buildNo, performance.now() - startedAt)
         // Set before the previous build retires, so a capture never lands in the gap between two outfits.
         if (captureRef) captureRef.current = () => { try { return snapshot() } catch { return null } }
         retireRef.current?.()
@@ -795,6 +850,7 @@ export function PlacementAvatarRenderer({
         onReady?.(true)
         if (!upgradable) return
 
+        phase = "full-res upgrade"
         const fulls = await Promise.allSettled(fullTex)
         if (disposed) return
         let swapped = false
@@ -806,7 +862,8 @@ export function PlacementAvatarRenderer({
         })
         if (swapped) app.render()
         present(true)
-      } catch {
+      } catch (err) {
+        if (import.meta.env.DEV) console.error(`[avatar] build #${buildNo} failed during ${phase}`, err instanceof Error ? err.stack : err)
         if (!disposed) {
           // Don't leave the previous outfit on screen as if it were this one.
           host.replaceChildren()
@@ -829,7 +886,7 @@ export function PlacementAvatarRenderer({
       finalUrls.forEach(releaseFullRes)
       if (released) return
       const destroy = () => {
-        try { app.destroy(true, { children: true }) } catch { /* already torn down */ }
+        try { app.destroy({ removeView: true }, { children: true }) } catch { /* already torn down */ }
       }
       if (shown) {
         retireRef.current?.()
@@ -839,7 +896,7 @@ export function PlacementAvatarRenderer({
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sig, host])
+  }, [sig, host, contextEpoch])
 
   // Declared after the build effect so its cleanup runs last on unmount, once that one has parked
   // its app here.

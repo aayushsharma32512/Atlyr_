@@ -263,3 +263,10 @@ node scripts/generate-fashion-siglip-embeddings-local.js
 - **Slow Performance**: Normal on first run; subsequent runs use cached models
 - **Image Load Errors**: Ensure `image_url` values are accessible
 - **Node.js Version**: Requires Node.js 18+ for transformers.js 
+## 📈 Launch metrics → Google Sheets
+
+`launch-metrics.ts` prints signup, activation and usage metrics by day (`bun run metrics:launch`) or by user (`--users`), as a table or CSV (`--csv`). Team accounts are excluded by the email list at the top of the file. Read-only.
+
+`--sheets` writes three tabs (`daily`, `users`, `meta`) to the Google Sheet in `METRICS_SHEET_ID`, authenticating with the service account in `GOOGLE_SERVICE_ACCOUNT_JSON` (inline JSON or a path). Share the sheet with the service account's `client_email` first.
+
+`.github/workflows/metrics-to-sheets.yml` runs `--sheets` every 12 hours from `master`. Repo secrets: `DATABASE_URL_DIRECT`, `GOOGLE_SERVICE_ACCOUNT_JSON`, `METRICS_SHEET_ID`.

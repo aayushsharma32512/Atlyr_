@@ -444,7 +444,13 @@ export function StudioScreenView() {
     setIsSaveDrawerOpen(true)
   }, [])
 
-  const { trayItems: resolvedTrayItems, isResolving: slotsResolving } = useStudioResolvedSlots({
+  // The figure and the rows hide only while the URL's pieces load for the first time. A later miss
+  // (an undo, a redo) keeps the figure and swaps one piece when it arrives.
+  const {
+    trayItems: resolvedTrayItems,
+    isResolving: slotsResolving,
+    awaitingFirstResolve: isLoadingOverrides,
+  } = useStudioResolvedSlots({
     outfitId: resolvedOutfitId,
     baseOutfitItems: productTrayItems,
     requestedSlotIds,
@@ -598,7 +604,6 @@ export function StudioScreenView() {
       })
       .filter((item): item is StudioRenderedItem => Boolean(item))
   }, [hiddenSlots, outfitData?.studioOutfit?.renderedItems, placeholderBottom, placeholderTop, resolvedTrayItems])
-  const isLoadingOverrides = slotsResolving && Boolean(requestedSlotIds.top || requestedSlotIds.bottom || requestedSlotIds.shoes)
 
   const outfitItems = useMemo(
     () => ({
@@ -948,7 +953,7 @@ export function StudioScreenView() {
       recordChange(nextSnapshot)
       applySnapshot(nextSnapshot)
     },
-    [applySnapshot, currentSlotIds, hiddenSlots, isViewOnly, recordChange, syncOutfitId],
+    [applySnapshot, currentSlotIds, hiddenSlots, isViewOnly, recordChange, syncOutfitId, parsedParams.layerOrder],
   )
 
   /** The row's 4-square, the rail on an empty slot — both open Alternates. */

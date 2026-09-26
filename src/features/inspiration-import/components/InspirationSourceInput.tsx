@@ -11,7 +11,11 @@ type Props = {
   error: string | null
   /** Which flow this is: the copy in the drop zone changes, nothing else. */
   intent?: InspirationIntent
-  onFile: (file: File) => void
+  /** Lets one tap bring in a batch. The zone itself is unchanged. */
+  multiple?: boolean
+  onFile?: (file: File) => void
+  /** Takes every chosen file; when set it is used in place of onFile. */
+  onFiles?: (files: File[]) => void
 }
 
 const COPY: Record<InspirationIntent, { prompt: [string, string]; hint: string }> = {
@@ -31,7 +35,15 @@ const COPY: Record<InspirationIntent, { prompt: [string, string]; hint: string }
  * hint line. Once a photo is in, it fills the zone. The tray ("identify
  * items") belongs to the screen, so this is only the zone.
  */
-export function InspirationSourceInput({ file, isPending, error, intent = "inspiration", onFile }: Props) {
+export function InspirationSourceInput({
+  file,
+  isPending,
+  error,
+  intent = "inspiration",
+  multiple = false,
+  onFile,
+  onFiles,
+}: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const copy = COPY[intent]
@@ -87,10 +99,14 @@ export function InspirationSourceInput({ file, isPending, error, intent = "inspi
         ref={inputRef}
         className="sr-only"
         type="file"
+        multiple={multiple}
         accept="image/jpeg,image/png,image/webp"
         onChange={(event) => {
-          const nextFile = event.target.files?.[0]
-          if (nextFile) onFile(nextFile)
+          const nextFiles = [...(event.target.files ?? [])]
+          if (nextFiles.length) {
+            if (onFiles) onFiles(nextFiles)
+            else onFile?.(nextFiles[0])
+          }
           event.target.value = ""
         }}
       />

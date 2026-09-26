@@ -55,6 +55,7 @@ import { fetchMoodboardItems, fetchMoodboardItemsBatch } from "@/services/collec
 import { buildStudioUrl } from "@/features/studio/utils/studioUrlState"
 import { useToast } from "@/hooks/use-toast"
 import { MixedMasonryGrid } from "@/features/collections/components/MixedMasonryGrid"
+import { WardrobePendingStrip } from "@/features/wardrobe-import/components/WardrobePendingStrip"
 import { resolveOutfitAttribution } from "@/utils/outfitAttribution"
 import { getOutfitChips } from "@/utils/outfitChips"
 import { useEngagementAnalytics } from "@/integrations/posthog/engagementTracking/EngagementAnalyticsContext"
@@ -1448,18 +1449,18 @@ export function HomeScreenView() {
     }
     if (moodboardItems.length === 0) {
       return isWardrobeActive
-        ? renderAddItemsPlaceholder("Add wardrobe item", "/inspiration-import?intent=wardrobe")
+        ? renderAddItemsPlaceholder("Add wardrobe item", "/wardrobe/add")
         : renderAddItemsPlaceholder("Add items", "/search")
     }
 
     // A leading "+" tile on the wardrobe board only — the wardrobe's items come
     // from photographing what the user already owns, not from browsing the
-    // catalogue, so it launches inspiration-import instead of search.
+    // catalogue, so it launches the wardrobe photo flow instead of search.
     const leadingTile = isWardrobeActive ? (
       <button
         type="button"
         aria-label="Add wardrobe item"
-        onClick={() => navigate("/inspiration-import?intent=wardrobe")}
+        onClick={() => navigate("/wardrobe/add")}
         className="flex w-full flex-col gap-1.5 text-left"
       >
         <div className="flex aspect-square w-full items-center justify-center rounded-lg border border-dashed border-hairline-dashed text-ink transition-colors hover:bg-editorial/30">
@@ -1710,7 +1711,10 @@ export function HomeScreenView() {
                 ) : null}
               </>
             ) : isItemMoodboardActive ? (
-              renderMoodboardItemsContent()
+              <>
+                <WardrobePendingStrip slug={activeMoodboardId} />
+                {renderMoodboardItemsContent()}
+              </>
             ) : (
               <>
                 {filteredCuratedItems.length >= 2 ? (

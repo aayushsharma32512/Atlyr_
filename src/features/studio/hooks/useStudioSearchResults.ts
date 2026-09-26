@@ -84,6 +84,11 @@ export function useStudioSearchResults({
             })
         },
         select: (data) => data ?? [],
+        // A new search keeps this tab's last grid up until its results land. Another tab's grid never stands in.
+        placeholderData: (previousData, previousQuery) => {
+            const tabKey = studioKeys.searchAlternativesTab(slot)
+            return tabKey.every((part, i) => previousQuery?.queryKey[i] === part) ? previousData : undefined
+        },
         // The model returns different descriptions on each call, so a silent refetch changes
         // the grid. Fetch once per key. Only a new key, the refresh button, or Retry fetches again.
         staleTime: Infinity,
